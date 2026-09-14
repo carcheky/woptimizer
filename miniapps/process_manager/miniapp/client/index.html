@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Process Manager — Gamer Mode</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1419;
+      --bg-2: #1a1f26;
+      --bg-3: #252b33;
+      --border: #2d343d;
+      --fg: #e6e6e6;
+      --fg-muted: #8b95a3;
+      --accent: #ff6b35;
+      --danger: #e81123;
+      --success: #107c10;
+      --info: #0078d4;
+      --warn: #ffcc00;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-2);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    header .badge { color: var(--fg-muted); font-size: 12px; }
+    main { padding: 16px 24px; display: flex; flex-direction: column; gap: 16px; height: calc(100% - 73px); }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button {
+      font: inherit;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg-3);
+      color: var(--fg);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    button:hover { background: #2f353d; }
+    button:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+    button.primary { background: var(--info); border-color: var(--info); color: white; }
+    button.danger { background: var(--danger); border-color: var(--danger); color: white; font-weight: 600; }
+    button.success { background: var(--success); border-color: var(--success); color: white; font-weight: 600; }
+    button.gaming { background: var(--accent); border-color: var(--accent); color: white; font-weight: 600; }
+    button.gaming:hover { background: #ff8c5a; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    input[type="search"], input[type="text"] {
+      font: inherit;
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg-3);
+      color: var(--fg);
+      min-width: 240px;
+    }
+    input[type="search"]:focus { outline: 2px solid var(--info); outline-offset: -1px; }
+    .modes { display: flex; gap: 12px; align-items: center; padding: 8px 0; }
+    .modes label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    .options { display: flex; gap: 16px; align-items: center; padding: 4px 0; }
+    .options label { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--fg-muted); font-size: 13px; }
+
+    .table-wrap {
+      flex: 1;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-2);
+      position: relative;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    thead { position: sticky; top: 0; background: var(--bg-2); z-index: 1; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { font-weight: 600; color: var(--fg-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    tbody tr { transition: background 0.1s; }
+    tbody tr:hover { background: var(--bg-3); }
+    tbody tr.selected { background: rgba(0, 120, 212, 0.18); }
+    tbody tr.selected:hover { background: rgba(0, 120, 212, 0.25); }
+    tbody tr.cat-row { background: var(--bg-3); cursor: pointer; user-select: none; }
+    tbody tr.cat-row:hover { background: #2f353d; }
+    tbody tr.cat-row td { font-weight: 600; color: var(--fg); }
+    td.pid { font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 12px; color: var(--fg-muted); white-space: nowrap; }
+    td.mem { font-variant-numeric: tabular-nums; text-align: right; color: var(--fg-muted); white-space: nowrap; }
+    td.cmd { color: var(--fg-muted); font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 12px; word-break: break-all; }
+    td.checkbox { width: 36px; text-align: center; }
+    input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; }
+
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background: var(--bg-2);
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--fg-muted);
+      border: 1px solid var(--border);
+    }
+    .status-bar .ok { color: var(--success); }
+    .status-bar .err { color: var(--danger); }
+    .status-bar .busy { color: var(--warn); }
+
+    dialog {
+      background: var(--bg-2);
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      max-width: 480px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }
+    dialog::backdrop { background: rgba(0, 0, 0, 0.7); }
+    dialog h3 { margin: 0 0 12px; font-size: 16px; }
+    dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+    dialog pre { background: var(--bg); padding: 10px; border-radius: 6px; max-height: 200px; overflow: auto; font-size: 12px; }
+
+    .prio-high { color: var(--danger); }
+    .prio-medium { color: var(--warn); }
+    .prio-low { color: var(--success); }
+
+    .empty-state {
+      padding: 60px 24px;
+      text-align: center;
+      color: var(--fg-muted);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>🔄 Process Manager <span class="badge">— Gamer Mode</span></h1>
+    </div>
+    <div class="badge" id="updated" role="status" aria-live="polite">—</div>
+  </header>
+
+  <main>
+    <div class="toolbar" role="toolbar" aria-label="Acciones principales">
+      <button id="btn-refresh" class="primary" type="button">🔄 Actualizar</button>
+      <button id="btn-kill" class="danger" type="button">⛔ Matar seleccionados</button>
+      <button id="btn-save" class="primary" type="button">💾 Guardar para relanzar</button>
+      <button id="btn-relaunch" class="success" type="button">▶️ Relanzar guardados</button>
+      <button id="btn-clear" type="button">🗑️ Limpiar guardados</button>
+      <button id="btn-gaming" class="gaming" type="button">🚀 Preparar para gaming</button>
+    </div>
+
+    <div class="options">
+      <label><input type="checkbox" id="opt-killtree" checked /> Matar también procesos hijos (/T)</label>
+      <label><input type="checkbox" id="opt-autorefresh" /> Auto-refrescar cada 5s</label>
+    </div>
+
+    <div class="modes" role="radiogroup" aria-label="Modo de visualización">
+      <span style="color: var(--fg-muted); font-size: 13px;">Modo:</span>
+      <label><input type="radio" name="mode" value="simple" checked /> Simple (gamer)</label>
+      <label><input type="radio" name="mode" value="full" /> Completo</label>
+      <input type="search" id="search" placeholder="🔍 Buscar nombre o cmdline..." aria-label="Buscar procesos" />
+    </div>
+
+    <div class="table-wrap" role="region" aria-label="Lista de procesos">
+      <table id="proc-table">
+        <thead>
+          <tr>
+            <th class="checkbox"><input type="checkbox" id="check-all" aria-label="Seleccionar todos" /></th>
+            <th>Proceso</th>
+            <th class="pid">PID</th>
+            <th class="mem">RAM</th>
+            <th class="cmd">Línea de comando</th>
+          </tr>
+        </thead>
+        <tbody id="proc-body"></tbody>
+      </table>
+    </div>
+
+    <div class="status-bar">
+      <span id="status-count">— procesos cargados</span>
+      <span id="status-busy" aria-live="polite"></span>
+    </div>
+  </main>
+
+  <dialog id="modal">
+    <h3 id="modal-title">—</h3>
+    <div id="modal-body">—</div>
+    <div class="actions">
+      <button id="modal-cancel" type="button">Cancelar</button>
+      <button id="modal-ok" class="primary" type="button">Aceptar</button>
+    </div>
+  </dialog>
+
+  <script type="module">
+    const SIMPLE_CATEGORIES = ['🔴 Navegadores', '🔴 Sincronización', '🟡 Chat y Comunicación', '🟡 Productividad', '🟡 Media'];
+    const CATEGORY_PRIORITY = {
+      '🔴 Navegadores': 'high', '🔴 Sincronización': 'high',
+      '🟡 Chat y Comunicación': 'medium', '🟡 Productividad': 'medium', '🟡 Media': 'medium',
+      '🟢 Overlays / Streaming': 'low', '🟢 Launchers / Anti-cheat': 'low',
+      '⚫ Antivirus / Seguridad': 'none', '⚫ Sistema': 'none', '⚪ Otros': 'none',
+    };
+
+    const state = {
+      processes: [],
+      selectedPids: new Set(),
+      loading: false,
+      search: '',
+      simpleMode: true,
+      autoRefresh: false,
+      autoRefreshTimer: null,
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const tbody = $('proc-body');
+    const statusCount = $('status-count');
+    const statusBusy = $('status-busy');
+    const updatedEl = $('updated');
+    const modal = $('modal');
+
+    function setBusy(text, kind = '') {
+      statusBusy.textContent = text || '';
+      statusBusy.className = kind;
+    }
+
+    function fmtMem(mb) {
+      if (!mb) return '';
+      if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+      return mb.toFixed(1) + ' MB';
+    }
+
+    async function api(path, options = {}) {
+      const opts = { headers: { 'content-type': 'application/json' }, ...options };
+      const res = await fetch(path, opts);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || `HTTP ${res.status}`);
+      return data;
+    }
+
+    async function loadProcesses() {
+      if (state.loading) return;
+      state.loading = true;
+      setBusy('🔄 Cargando procesos...', 'busy');
+      $('btn-refresh').disabled = true;
+      try {
+        const { processes } = await api('/api/processes');
+        state.processes = processes;
+        render();
+        updatedEl.textContent = '🟢 ' + new Date().toLocaleTimeString();
+        setBusy('');
+      } catch (err) {
+        setBusy('❌ ' + err.message.slice(0, 80), 'err');
+      } finally {
+        state.loading = false;
+        $('btn-refresh').disabled = false;
+      }
+    }
+
+    function getFiltered() {
+      const search = state.search.toLowerCase().trim();
+      const cats = state.simpleMode ? SIMPLE_CATEGORIES : null;
+      const groups = new Map();
+      for (const p of state.processes) {
+        if (cats && !cats.includes(p.category)) continue;
+        if (search && !(p.name.toLowerCase().includes(search) || (p.commandline || '').toLowerCase().includes(search))) continue;
+        if (!groups.has(p.category)) groups.set(p.category, []);
+        groups.get(p.category).push(p);
+      }
+      return groups;
+    }
+
+    function render() {
+      const groups = getFiltered();
+      const fragment = document.createDocumentFragment();
+      const order = ['🔴 Navegadores', '🔴 Sincronización', '🟡 Chat y Comunicación', '🟡 Productividad', '🟡 Media',
+                     '🟢 Overlays / Streaming', '🟢 Launchers / Anti-cheat', '⚫ Antivirus / Seguridad', '⚫ Sistema', '⚪ Otros'];
+      for (const cat of order) {
+        if (!groups.has(cat)) continue;
+        const procs = groups.get(cat);
+        const priority = CATEGORY_PRIORITY[cat] || 'none';
+        const prioCls = priority === 'high' ? 'prio-high' : priority === 'medium' ? 'prio-medium' : priority === 'low' ? 'prio-low' : '';
+        const tr = document.createElement('tr');
+        tr.className = 'cat-row';
+        tr.dataset.category = cat;
+        tr.innerHTML = `
+          <td class="checkbox"><input type="checkbox" class="cat-check" aria-label="Seleccionar categoría ${cat}" /></td>
+          <td colspan="4"><span class="${prioCls}">${cat}</span> &nbsp;(${procs.length})</td>
+        `;
+        fragment.appendChild(tr);
+
+        for (const p of procs) {
+          const trp = document.createElement('tr');
+          trp.dataset.pid = p.pid;
+          trp.dataset.name = p.name;
+          trp.className = state.selectedPids.has(p.pid) ? 'selected' : '';
+          trp.innerHTML = `
+            <td class="checkbox"><input type="checkbox" class="row-check" ${state.selectedPids.has(p.pid) ? 'checked' : ''} /></td>
+            <td>${escapeHtml(p.name)}</td>
+            <td class="pid">${escapeHtml(p.pid)}</td>
+            <td class="mem">${fmtMem(p.memoryMB)}</td>
+            <td class="cmd">${escapeHtml((p.commandline || '').slice(0, 200))}</td>
+          `;
+          fragment.appendChild(trp);
+        }
+      }
+      tbody.replaceChildren(fragment);
+      const total = state.processes.length;
+      const visible = Array.from(groups.values()).reduce((a, b) => a + b.length, 0);
+      statusCount.textContent = `${visible} visibles / ${total} totales · ${state.selectedPids.size} seleccionados`;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // --- Selección por click ---
+    tbody.addEventListener('click', (ev) => {
+      const tr = ev.target.closest('tr');
+      if (!tr) return;
+      const pid = tr.dataset.pid;
+      if (tr.classList.contains('cat-row')) {
+        const cat = tr.dataset.category;
+        const visiblePids = state.processes
+          .filter((p) => p.category === cat && getFiltered().get(cat)?.includes(p))
+          .map((p) => p.pid);
+        const allSelected = visiblePids.length > 0 && visiblePids.every((p) => state.selectedPids.has(p));
+        for (const p of visiblePids) {
+          if (allSelected) state.selectedPids.delete(p); else state.selectedPids.add(p);
+        }
+        render();
+        return;
+      }
+      if (!pid) return;
+      if (ev.target.classList.contains('row-check') || ev.target.closest('.checkbox')) return;
+      togglePid(pid);
+      render();
+    });
+
+    tbody.addEventListener('change', (ev) => {
+      const tr = ev.target.closest('tr');
+      if (!tr) return;
+      if (ev.target.classList.contains('row-check') && tr.dataset.pid) {
+        togglePid(tr.dataset.pid, ev.target.checked);
+        render();
+      } else if (ev.target.classList.contains('cat-check') && tr.dataset.category) {
+        const cat = tr.dataset.category;
+        const visiblePids = (getFiltered().get(cat) || []).map((p) => p.pid);
+        const allSelected = visiblePids.every((p) => state.selectedPids.has(p));
+        for (const p of visiblePids) {
+          if (allSelected) state.selectedPids.delete(p); else state.selectedPids.add(p);
+        }
+        render();
+      }
+    });
+
+    function togglePid(pid, force) {
+      if (force === undefined) {
+        if (state.selectedPids.has(pid)) state.selectedPids.delete(pid);
+        else state.selectedPids.add(pid);
+      } else if (force) state.selectedPids.add(pid);
+      else state.selectedPids.delete(pid);
+    }
+
+    $('check-all').addEventListener('change', (ev) => {
+      const checked = ev.target.checked;
+      const filtered = Array.from(getFiltered().values()).flat();
+      for (const p of filtered) {
+        if (checked) state.selectedPids.add(p.pid); else state.selectedPids.delete(p.pid);
+      }
+      render();
+    });
+
+    // --- Búsqueda con debounce ---
+    let searchTimer = null;
+    $('search').addEventListener('input', (ev) => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => { state.search = ev.target.value; render(); }, 150);
+    });
+
+    // --- Modo ---
+    document.querySelectorAll('input[name="mode"]').forEach((r) => {
+      r.addEventListener('change', (ev) => {
+        state.simpleMode = ev.target.value === 'simple';
+        render();
+      });
+    });
+
+    // --- Auto-refresh ---
+    $('opt-autorefresh').addEventListener('change', (ev) => {
+      state.autoRefresh = ev.target.checked;
+      if (state.autoRefresh) {
+        state.autoRefreshTimer = setInterval(loadProcesses, 5000);
+      } else {
+        clearInterval(state.autoRefreshTimer);
+        state.autoRefreshTimer = null;
+      }
+    });
+
+    // --- Acciones ---
+    async function withSelection(fn, emptyMsg) {
+      const pids = Array.from(state.selectedPids);
+      if (pids.length === 0) { openModal('Sin selección', emptyMsg); return; }
+      try {
+        setBusy('⏳ Trabajando...', 'busy');
+        await fn(pids);
+      } catch (err) {
+        openModal('Error', err.message || String(err), { hideCancel: true, okLabel: 'OK' });
+      } finally {
+        setBusy('');
+      }
+    }
+
+    $('btn-refresh').addEventListener('click', loadProcesses);
+    $('btn-kill').addEventListener('click', async () => {
+      await withSelection(async (pids) => {
+        if (!await confirmModal('⚠️ Cerrar ' + pids.length + ' proceso(s)', 'Esto cierra también procesos hijos si está activado. ¿Continuar?')) return;
+        const killTree = $('opt-killtree').checked;
+        const { results } = await api('/api/kill', { method: 'POST', body: JSON.stringify({ pids, killTree }) });
+        const ok = results.filter((r) => r.ok).length;
+        const fail = results.length - ok;
+        // Auto-guardar los matados para relanzar
+        if (ok > 0) {
+          const items = state.processes
+            .filter((p) => state.selectedPids.has(p.pid) && results.find((r) => r.pid === p.pid && r.ok))
+            .map((p) => ({ name: p.name, pid: p.pid, commandline: p.commandline }));
+          if (items.length) await api('/api/saved', { method: 'POST', body: JSON.stringify({ items }) });
+        }
+        openModal('Resultado', `✅ Cerrados: ${ok}\n❌ Fallidos: ${fail}`, { hideCancel: true, okLabel: 'OK' });
+        await loadProcesses();
+      }, 'No hay procesos seleccionados.');
+    });
+    $('btn-save').addEventListener('click', async () => {
+      await withSelection(async (pids) => {
+        const items = state.processes
+          .filter((p) => state.selectedPids.has(p.pid) && p.commandline)
+          .map((p) => ({ name: p.name, pid: p.pid, commandline: p.commandline }));
+        if (items.length === 0) { openModal('Aviso', 'Los seleccionados no tienen commandline. No se pueden guardar.', { hideCancel: true, okLabel: 'OK' }); return; }
+        const r = await api('/api/saved', { method: 'POST', body: JSON.stringify({ items }) });
+        openModal('Guardado', `✅ ${r.added} proceso(s) añadido(s). Total guardados: ${r.total}`, { hideCancel: true, okLabel: 'OK' });
+      }, 'No hay procesos seleccionados.');
+    });
+    $('btn-relaunch').addEventListener('click', async () => {
+      try {
+        setBusy('▶️ Relanzando...', 'busy');
+        const { launched, failed } = await api('/api/relaunch', { method: 'POST', body: '{}' });
+        openModal('Resultado', `✅ Relanzados: ${launched.length}\n❌ Fallidos: ${failed.length}`, { hideCancel: true, okLabel: 'OK' });
+        await loadProcesses();
+      } catch (err) {
+        openModal('Error', err.message, { hideCancel: true, okLabel: 'OK' });
+      } finally {
+        setBusy('');
+      }
+    });
+    $('btn-clear').addEventListener('click', async () => {
+      if (!await confirmModal('Limpiar guardados', '¿Borrar la lista de procesos para relanzar?')) return;
+      await api('/api/saved', { method: 'DELETE' });
+      openModal('OK', 'Lista limpiada.', { hideCancel: true, okLabel: 'OK' });
+    });
+    $('btn-gaming').addEventListener('click', async () => {
+      const targets = state.processes.filter((p) => {
+        const prio = CATEGORY_PRIORITY[p.category] || 'none';
+        return prio === 'high' || prio === 'medium';
+      });
+      if (targets.length === 0) { openModal('Info', 'No hay procesos gaming para cerrar.', { hideCancel: true, okLabel: 'OK' }); return; }
+      const summary = targets.reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + 1; return acc; }, {});
+      const lines = Object.entries(summary).map(([c, n]) => `  ${c}: ${n}`).join('\n');
+      if (!await confirmModal('🚀 Preparar para Gaming', `Se cerrarán ${targets.length} procesos:\n\n${lines}\n\n¿Continuar?`)) return;
+      try {
+        setBusy('🚀 Cerrando para gaming...', 'busy');
+        const killTree = $('opt-killtree').checked;
+        const { results } = await api('/api/kill', { method: 'POST', body: JSON.stringify({ pids: targets.map((t) => t.pid), killTree }) });
+        const ok = results.filter((r) => r.ok);
+        const items = targets.filter((t) => ok.find((r) => r.pid === t.pid)).map((t) => ({ name: t.name, pid: t.pid, commandline: t.commandline }));
+        if (items.length) await api('/api/saved', { method: 'POST', body: JSON.stringify({ items }) });
+        openModal('🚀 Listo para gaming', `✅ Cerrados: ${ok.length}\n❌ Fallidos: ${results.length - ok.length}`, { hideCancel: true, okLabel: 'OK' });
+        await loadProcesses();
+      } catch (err) {
+        openModal('Error', err.message, { hideCancel: true, okLabel: 'OK' });
+      } finally {
+        setBusy('');
+      }
+    });
+
+    // --- Modal helper ---
+    let modalResolve = null;
+    function openModal(title, body, opts = {}) {
+      $('modal-title').textContent = title;
+      $('modal-body').textContent = body;
+      $('modal-cancel').style.display = opts.hideCancel ? 'none' : '';
+      $('modal-ok').textContent = opts.okLabel || 'Aceptar';
+      modalResolve = null;
+      modal.showModal();
+    }
+    function confirmModal(title, body) {
+      return new Promise((resolve) => {
+        $('modal-title').textContent = title;
+        $('modal-body').textContent = body;
+        $('modal-cancel').style.display = '';
+        $('modal-ok').textContent = 'Sí';
+        modalResolve = resolve;
+        modal.showModal();
+      });
+    }
+    $('modal-ok').addEventListener('click', () => {
+      if (modalResolve) { modalResolve(true); modalResolve = null; }
+      modal.close();
+    });
+    $('modal-cancel').addEventListener('click', () => {
+      if (modalResolve) { modalResolve(false); modalResolve = null; }
+      modal.close();
+    });
+    modal.addEventListener('close', () => {
+      if (modalResolve) { modalResolve(false); modalResolve = null; }
+    });
+
+    // --- Atajos de teclado ---
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'F5') { ev.preventDefault(); loadProcesses(); }
+      else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'a') {
+        if (document.activeElement && /input|textarea/i.test(document.activeElement.tagName)) return;
+        ev.preventDefault();
+        const filtered = Array.from(getFiltered().values()).flat();
+        for (const p of filtered) state.selectedPids.add(p.pid);
+        render();
+      } else if (ev.key === 'Delete') {
+        $('btn-kill').click();
+      } else if (ev.key === 'Escape' && document.activeElement === $('search')) {
+        $('search').value = '';
+        state.search = '';
+        render();
+      }
+    });
+
+    loadProcesses();
+  </script>
+</body>
+</html>

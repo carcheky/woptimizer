@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "name": "process_manager",
+  "displayName": "Process Manager — Gamer Mode",
+  "version": "1.0.0",
+  "description": "Gestor de procesos Windows con categorías gaming (navegadores, sync, chat, etc). Permite cerrar, guardar y relanzar procesos con un clic para preparar el PC antes de jugar.",
+  "author": "User",
+  "icon": "icon.png",
+  "category": "Tools",
+  "exampleQueries": ["lista procesos", "prepara para gaming", "mata chrome", "relanza lo cerrado"],
+  "apps": [],
+  "mcpServers": [],
+  "skills": []
+}

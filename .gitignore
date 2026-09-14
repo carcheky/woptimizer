@@ -1,0 +1,39 @@
+# =============================================================================
+# woptimizer .gitignore
+# Excluye datos del usuario y artefactos generados. Versionado: solo codigo
+# y documentacion.
+# =============================================================================
+
+# Datos de usuario (perfiles, sesiones, lista de procesos matados)
+profiles.json
+saved_processes.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Editores / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Windows / Office
+Thumbs.db
+desktop.ini
+*.lnk
+
+# Logs
+*.log
+logs/
+
+# Outputs temporales / tests
+.cache/
+tmp/
