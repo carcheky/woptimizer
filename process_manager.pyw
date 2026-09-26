@@ -7,20 +7,35 @@ from tkinter import ttk, messagebox
 import subprocess
 import json
 import os
+import sys
 import shlex
 import threading
 from datetime import datetime
 
 # Version del producto (bumpear con cada feature/fix)
-__version__ = "2.0.5"
+__version__ = "2.1.0"
 
 # Constante para evitar ventanas de consola en subprocesos (Windows)
 CREATE_NO_WINDOW = 0x08000000
 
-# Archivo para guardar la lista de procesos cerrados
-PROCESS_LIST_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saved_processes.json")
-# Archivo para perfiles de relanzado (v2.0)
-PROFILES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles.json")
+
+def _app_dir() -> str:
+    """Directorio donde vive el ejecutable (frozen) o el script (dev).
+
+    En frozen mode (PyInstaller --onefile), __file__ apunta al temp dir de
+    extraccion (sys._MEIPASS), NO al .exe real. Hay que usar sys.executable.
+    En dev mode, __file__ apunta al .pyw real, que es lo que queremos.
+    Trampa #17: nunca usar __file__ para data files en frozen mode.
+    """
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+# Archivo para guardar la lista de procesos cerrados (junto al .exe / .pyw)
+PROCESS_LIST_FILE = os.path.join(_app_dir(), "saved_processes.json")
+# Archivo para perfiles de relanzado (v2.0) (junto al .exe / .pyw)
+PROFILES_FILE = os.path.join(_app_dir(), "profiles.json")
 # Delimitador unico raro para evitar colisiones con pipes en commandlines
 PS_DELIM = "|||DAT|||"
 # Maximo commandline que capturamos (evita JSON enorme)
@@ -114,38 +129,121 @@ CATEGORY_ORDER = [
     '⚫ Sistema',
 ]
 
-# Procesos que se MANTIENEN durante "Preparar para Gaming" (Trampa #15).
-# Aunque pertenezcan a una categoria que normalmente se mata (ej: discord
-# esta en "Chat y Comunicación"), durante gaming se preservan para no
-# interrumpir la partida.
-GAMING_KEEPERS = {
-    'discord',  # chat de voz con amigos durante la partida
+# ============================================================
+# PERFIL DE SISTEMA "GAMING" (v2.0.6)
+# ============================================================
+# Antes (Trampa #15, v2.0.5): `GAMING_KEEPERS` era un set hardcoded en código.
+# Ahora: vive en `profiles.json` bajo la clave `__system_gaming__`, es
+# editable desde la UI de Perfiles y reseteable a valores de fábrica.
+# `should_kill_for_gaming()` ahora acepta el profile cargado como parámetro.
+
+SYSTEM_GAMING_PROFILE_KEY = "__system_gaming__"
+SYSTEM_GAMING_LABEL = "🚀 Preparar para Gaming"
+
+# Valores de fábrica (NUNCA cambiar sin actualizar el spec AGENTS.md y tests).
+# Se embeben en cada profile persistido para que "Reset a fábrica" sea
+# independiente del estado actual del código (Trampa: no auto-reparar si
+# alguien edita la constante por accidente).
+SYSTEM_GAMING_FACTORY = {
+    "kind": "system",
+    "label": SYSTEM_GAMING_LABEL,
+    "keepers": ["discord"],          # chat de voz con amigos durante la partida
+    "kill_low_chat": True,            # matar Telegram, Teams, Signal... durante gaming
 }
 
 
-def should_kill_for_gaming(proc_name):
+def is_system_profile(name):
+    """Devuelve True si `name` es la clave reservada de un perfil de sistema."""
+    return name == SYSTEM_GAMING_PROFILE_KEY
+
+
+def load_gaming_profile(profiles_data=None):
+    """Devuelve el dict del perfil gaming desde profiles_data.
+
+    Si no existe o esta corrupto/parcial, devuelve una copia fresca de
+    SYSTEM_GAMING_FACTORY. NO escribe a disco — el caller decide si persistir.
+    """
+    if profiles_data is None:
+        profiles_data = load_profiles()
+    prof = profiles_data.get('profiles', {}).get(SYSTEM_GAMING_PROFILE_KEY)
+    if not isinstance(prof, dict) or prof.get('kind') != 'system':
+        # No existe o esta corrupto: devolver factory limpio
+        return dict(SYSTEM_GAMING_FACTORY)
+    # Rellenar campos faltantes con valores de fabrica (auto-repair)
+    out = dict(SYSTEM_GAMING_FACTORY)
+    for k, v in prof.items():
+        if k in ('keepers', 'kill_low_chat', 'label'):
+            out[k] = v
+    return out
+
+
+def save_gaming_profile(profile_data, profiles_data=None):
+    """Guarda el perfil gaming (con factory embebido) en profiles.json.
+
+    Args:
+        profile_data: dict con al menos 'keepers' (list[str]) y 'kill_low_chat' (bool).
+        profiles_data: dict completo de profiles (opcional, recarga si None).
+
+    Returns:
+        profiles_data actualizado, o None si fallo.
+    """
+    if profiles_data is None:
+        profiles_data = load_profiles()
+    if 'profiles' not in profiles_data:
+        profiles_data['profiles'] = {}
+    # Normalizar campos
+    keepers = profile_data.get('keepers') or []
+    keepers_clean = [str(k).strip().lower() for k in keepers if str(k).strip()]
+    kill_low_chat = bool(profile_data.get('kill_low_chat', True))
+    # Construir dict final con factory embebido (para reset independiente del código)
+    final = {
+        "kind": "system",
+        "label": SYSTEM_GAMING_LABEL,
+        "keepers": keepers_clean,
+        "kill_low_chat": kill_low_chat,
+        "factory": dict(SYSTEM_GAMING_FACTORY),  # snapshot de fábrica para reset
+    }
+    profiles_data['profiles'][SYSTEM_GAMING_PROFILE_KEY] = final
+    if save_profiles(profiles_data):
+        return profiles_data
+    return None
+
+
+def reset_gaming_profile_to_factory(profiles_data=None):
+    """Resetea el perfil gaming a valores de fabrica. Devuelve profiles_data actualizado o None."""
+    return save_gaming_profile(dict(SYSTEM_GAMING_FACTORY), profiles_data=profiles_data)
+
+
+def should_kill_for_gaming(proc_name, gaming_profile=None):
     """Decide si un proceso debe matarse durante `prepare_for_gaming`.
 
-    Reglas (Trampa #15):
-    1. Si el nombre matchea cualquier `GAMING_KEEPERS` → False (se mantiene).
-    2. Si prioridad high o medium → True (se mata).
-    3. Si prioridad low y categoria Chat → True (override gaming: molesta).
-    4. Resto → False (launchers, overlays, antivirus, sistema: se mantienen).
+    Args:
+        proc_name: nombre del proceso (sin extension).
+        gaming_profile: dict del perfil gaming (de load_gaming_profile()).
+                       Si es None, usa SYSTEM_GAMING_FACTORY (comportamiento legacy).
+
+    Reglas (v2.0.6, antes Trampa #15):
+    1. Si el nombre matchea cualquier string en `gaming_profile["keepers"]` → False.
+    2. Si prioridad high o medium → True.
+    3. Si prioridad low y categoria Chat Y `gaming_profile["kill_low_chat"]` es True → True.
+    4. Resto → False.
 
     Devuelve True = matar, False = mantener.
     """
+    if gaming_profile is None:
+        gaming_profile = SYSTEM_GAMING_FACTORY
     name_lower = proc_name.lower()
-    # Regla 1: keepers (discord) siempre se mantienen
-    for keeper in GAMING_KEEPERS:
-        if keeper in name_lower:
+    # Regla 1: keepers siempre se mantienen
+    for keeper in gaming_profile.get('keepers', []):
+        if keeper and keeper in name_lower:
             return False
     # Regla 2-4: basada en prioridad + override de categoria
     cat = categorize_process(proc_name)
     priority = PROCESS_CATEGORIES.get(cat, {}).get('priority', 'none')
     if priority in ('high', 'medium'):
         return True
-    if priority == 'low' and cat == '🟡 Chat y Comunicación':
-        return True  # override: gaming mata chat (excepto keepers ya filtrados)
+    if priority == 'low' and cat == '🟡 Chat y Comunicación' and gaming_profile.get('kill_low_chat', True):
+        return True
     return False
 
 
@@ -593,18 +691,59 @@ def clear_saved_processes():
 # - Si el favorito no existe o esta vacio, el boton principal no hace nada
 
 def load_profiles():
-    """Carga los perfiles desde profiles.json. Devuelve dict con 'profiles' y 'favorite'."""
+    """Carga los perfiles desde profiles.json. Devuelve dict con 'profiles' y 'favorite'.
+
+    v2.0.6: garantiza que el perfil de sistema "Gaming" existe. Si falta o esta
+    corrupto, lo crea con valores de fabrica y PERSISTE el archivo.
+    """
     if not os.path.exists(PROFILES_FILE):
-        return {'profiles': {}, 'favorite': None}
+        # Crear archivo nuevo con el perfil gaming de fabrica ya dentro
+        data = {'profiles': {}, 'favorite': None}
+        return _ensure_gaming_profile_in_data(data, persist=True)
     try:
         with open(PROFILES_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
         # Normalizar estructura
         if 'profiles' not in data:
             data = {'profiles': data, 'favorite': None}
-        return data
+        # Auto-reparar: garantizar perfil gaming
+        return _ensure_gaming_profile_in_data(data, persist=True)
     except Exception:
-        return {'profiles': {}, 'favorite': None}
+        # Archivo corrupto: empezar limpio con gaming de fabrica
+        data = {'profiles': {}, 'favorite': None}
+        return _ensure_gaming_profile_in_data(data, persist=False)
+
+
+def _ensure_gaming_profile_in_data(data, persist=True):
+    """Garantiza que el perfil gaming existe en `data`. Si falta o esta mal,
+    lo reemplaza por SYSTEM_GAMING_FACTORY. Si persist=True, escribe a disco.
+
+    Devuelve `data` (modificado in-place y persistido si persist=True).
+    """
+    if 'profiles' not in data or not isinstance(data['profiles'], dict):
+        data['profiles'] = {}
+    prof = data['profiles'].get(SYSTEM_GAMING_PROFILE_KEY)
+    needs_init = (
+        not isinstance(prof, dict)
+        or prof.get('kind') != 'system'
+        or 'keepers' not in prof
+        or 'kill_low_chat' not in prof
+    )
+    if needs_init:
+        data['profiles'][SYSTEM_GAMING_PROFILE_KEY] = {
+            "kind": "system",
+            "label": SYSTEM_GAMING_LABEL,
+            "keepers": list(SYSTEM_GAMING_FACTORY["keepers"]),
+            "kill_low_chat": SYSTEM_GAMING_FACTORY["kill_low_chat"],
+            "factory": dict(SYSTEM_GAMING_FACTORY),
+        }
+        if persist:
+            try:
+                with open(PROFILES_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+            except Exception:
+                pass  # no crashear: load_profiles() debe ser robusto
+    return data
 
 
 def save_profiles(data):
@@ -1309,23 +1448,27 @@ class ProcessManagerApp:
         self._set_status(summary_text, "black", "#ffcc00")
 
     def prepare_for_gaming(self):
-        """Mata TODOS los procesos que estorban en gaming (modo rapido, v2.0.3).
+        """Mata TODOS los procesos que estorban en gaming (modo rapido, v2.0.6).
 
         Doble-tap para confirmar (Trampa #14): 1ª pulsacion = freeze,
         2ª = ejecuta. Auto-revert en 3s. Resultado en status label inline.
 
-        Trampa #15: usa `should_kill_for_gaming()` que mata high+medium + chat
-        (Telegram, Teams, Signal...) EXCEPTO los `GAMING_KEEPERS` (discord).
-        Mantiene: launchers, overlays, antivirus, sistema, discord.
+        v2.0.6: lee el perfil gaming desde `profiles.json` (edit/reset) en vez
+        de usar constante. Si no existe, `load_gaming_profile()` lo crea con
+        factory defaults. Mantiene la semantica original: high+medium + chat
+        (si kill_low_chat) - keepers.
         Por cada nombre unico, hace taskkill /F /IM <name> /T que mata TODAS
         las instancias + sus hijos. NO guarda nada. Exit 128 (ya no estaba) se ignora.
         """
+        # v2.0.6: cargar perfil gaming desde disco (no constante hardcoded)
+        gaming_profile = load_gaming_profile(self.profiles_data)
+
         # Agrupar TODOS los programas unicos que deben morir en gaming
         programs_to_kill = {}  # name -> count (del snapshot)
         kept_examples = []  # para mostrar al usuario que se mantuvo
         for proc in self.processes:
             name = proc['name']
-            if should_kill_for_gaming(name):
+            if should_kill_for_gaming(name, gaming_profile):
                 programs_to_kill[name] = programs_to_kill.get(name, 0) + 1
             else:
                 if len(kept_examples) < 3:
@@ -1614,16 +1757,17 @@ class ProcessManagerApp:
 
 
 class ProfilesDialog:
-    """Ventana modal para gestionar perfiles de relanzado (v2.0).
+    """Ventana modal para gestionar perfiles (v2.0 + perfil sistema Gaming en v2.0.6).
 
     Lista los perfiles, permite crear/editar/borrar/marcar favorito/lanzar.
-    Cada perfil es una lista de nombres de ejecutables (ej: ['chrome.exe', 'discord.exe']).
+    Perfiles de usuario: lista de ejecutables (ej: ['chrome.exe', 'discord.exe']).
+    Perfil de sistema "Gaming": keepers + kill_low_chat; NO borrable, NO favorito, NO lanzable.
     """
 
     def __init__(self, parent, app):
         self.app = app
         self.win = tk.Toplevel(parent)
-        self.win.title("📚 Perfiles de relanzado")
+        self.win.title("📚 Perfiles")
         self.win.geometry("700x550")
         self.win.configure(bg=app.bg_color)
         self.win.transient(parent)
@@ -1640,10 +1784,10 @@ class ProfilesDialog:
         fg = self.app.fg_color
 
         # Header
-        tk.Label(self.win, text="📚 Perfiles de relanzado",
+        tk.Label(self.win, text="📚 Perfiles",
                 font=("Segoe UI", 16, "bold"), bg=bg, fg=fg).pack(pady=10)
 
-        tk.Label(self.win, text="Crea packs de apps para relanzar con un click. Marca uno como favorito para lanzarlo desde el botón principal.",
+        tk.Label(self.win, text="Crea packs de apps para relanzar con un click. El perfil 🔒 'Preparar para Gaming' es del sistema: solo puedes editar sus keepers y resetearlo a fábrica.",
                 font=("Segoe UI", 9), bg=bg, fg="#888888", wraplength=650).pack(pady=(0, 10))
 
         # Frame principal: lista + botones
@@ -1693,30 +1837,39 @@ class ProfilesDialog:
         self.apps_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         apps_scrollbar.config(command=self.apps_listbox.yview)
 
-        # Indicador de favorito
+        # Indicador de favorito / sistema
         self.fav_label = tk.Label(detail_frame, text="", font=("Segoe UI", 10, "bold"),
                                   bg=bg, fg="#ffcc00")
         self.fav_label.pack(anchor=tk.W, pady=(5, 0))
 
-        # Botones de accion
+        # Botones de accion (v2.0.6: guardados como self.* para enable/disable dinamico)
         btn_frame = tk.Frame(self.win, bg=bg, pady=10)
         btn_frame.pack(fill=tk.X, padx=20)
 
-        tk.Button(btn_frame, text="➕ Nuevo", command=self.new_profile,
+        self.btn_new = tk.Button(btn_frame, text="➕ Nuevo", command=self.new_profile,
                   bg=self.app.success_color, fg="white", font=("Segoe UI", 10, "bold"),
-                  padx=12, pady=6, cursor="hand2").pack(side=tk.LEFT, padx=3)
-        tk.Button(btn_frame, text="✏️ Editar", command=self.edit_profile,
+                  padx=12, pady=6, cursor="hand2")
+        self.btn_new.pack(side=tk.LEFT, padx=3)
+
+        self.btn_edit = tk.Button(btn_frame, text="✏️ Editar", command=self.edit_profile,
                   bg=self.app.select_color, fg="white", font=("Segoe UI", 10, "bold"),
-                  padx=12, pady=6, cursor="hand2").pack(side=tk.LEFT, padx=3)
-        tk.Button(btn_frame, text="🗑️ Borrar", command=self.delete_profile,
+                  padx=12, pady=6, cursor="hand2")
+        self.btn_edit.pack(side=tk.LEFT, padx=3)
+
+        self.btn_delete = tk.Button(btn_frame, text="🗑️ Borrar", command=self.delete_profile,
                   bg="#666666", fg="white", font=("Segoe UI", 10, "bold"),
-                  padx=12, pady=6, cursor="hand2").pack(side=tk.LEFT, padx=3)
-        tk.Button(btn_frame, text="⭐ Favorito", command=self.toggle_favorite,
+                  padx=12, pady=6, cursor="hand2")
+        self.btn_delete.pack(side=tk.LEFT, padx=3)
+
+        self.btn_favorite = tk.Button(btn_frame, text="⭐ Favorito", command=self.toggle_favorite,
                   bg="#ffcc00", fg="black", font=("Segoe UI", 10, "bold"),
-                  padx=12, pady=6, cursor="hand2").pack(side=tk.LEFT, padx=3)
-        tk.Button(btn_frame, text="▶️ Lanzar", command=self.launch_selected,
+                  padx=12, pady=6, cursor="hand2")
+        self.btn_favorite.pack(side=tk.LEFT, padx=3)
+
+        self.btn_launch = tk.Button(btn_frame, text="▶️ Lanzar", command=self.launch_selected,
                   bg="#9b59b6", fg="white", font=("Segoe UI", 10, "bold"),
-                  padx=12, pady=6, cursor="hand2").pack(side=tk.LEFT, padx=3)
+                  padx=12, pady=6, cursor="hand2")
+        self.btn_launch.pack(side=tk.LEFT, padx=3)
 
         tk.Button(btn_frame, text="Cerrar", command=self.win.destroy,
                   bg="#444444", fg="white", font=("Segoe UI", 10),
@@ -1726,39 +1879,104 @@ class ProfilesDialog:
         self.profile_listbox.delete(0, tk.END)
         fav = self.data.get('favorite')
         profiles = self.data.get('profiles', {})
-        for name in sorted(profiles.keys()):
-            display = f"★ {name}" if name == fav else f"  {name}"
+        # Mostrar perfil de sistema primero (orden estable)
+        names = sorted(profiles.keys(),
+                       key=lambda n: (0 if is_system_profile(n) else 1, n.lower()))
+        for name in names:
+            if is_system_profile(name):
+                display = f"🔒 {SYSTEM_GAMING_LABEL}  (perfil de sistema)"
+            else:
+                display = f"★ {name}" if name == fav else f"  {name}"
             self.profile_listbox.insert(tk.END, display)
+        self._update_button_states()
 
     def _on_select(self, event=None):
         sel = self.profile_listbox.curselection()
         if not sel:
             self.apps_listbox.delete(0, tk.END)
             self.fav_label.config(text="")
+            self._update_button_states()
             return
-        # El nombre real sin el prefijo ★
+        # El nombre real sin prefijos (★ o 🔒)
         display = self.profile_listbox.get(sel[0])
-        name = display.lstrip("★ ").strip()
-        apps = self.data.get('profiles', {}).get(name, {}).get('apps', [])
-        self.apps_listbox.delete(0, tk.END)
-        for app in apps:
-            self.apps_listbox.insert(tk.END, app)
-        if self.data.get('favorite') == name:
-            self.fav_label.config(text=f"⭐ '{name}' es el favorito")
+        if display.startswith("🔒"):
+            # Perfil gaming: el nombre interno es la constante
+            name = SYSTEM_GAMING_PROFILE_KEY
         else:
-            self.fav_label.config(text="")
+            name = display.lstrip("★ ").strip()
+        self.apps_listbox.delete(0, tk.END)
+        prof = self.data.get('profiles', {}).get(name, {})
+        if is_system_profile(name):
+            # Mostrar keepers en la lista de detalle
+            keepers = prof.get('keepers', [])
+            for k in keepers:
+                self.apps_listbox.insert(tk.END, f"🔒 {k}")
+            kill_low = prof.get('kill_low_chat', True)
+            self.apps_listbox.insert(tk.END, f"{'☑' if kill_low else '☐'} Matar chat (low priority)")
+        else:
+            for app in prof.get('apps', []):
+                self.apps_listbox.insert(tk.END, app)
+        # Indicador de favorito / sistema
+        if is_system_profile(name):
+            self.fav_label.config(text=f"🔒 Perfil de sistema — solo keepers editables", fg="#888888")
+        elif self.data.get('favorite') == name:
+            self.fav_label.config(text=f"⭐ '{name}' es el favorito", fg="#ffcc00")
+        else:
+            self.fav_label.config(text="", fg="#ffcc00")
+        self._update_button_states()
+
+    def _update_button_states(self):
+        """Habilita/deshabilita botones segun el perfil seleccionado (v2.0.6).
+
+        Sistema (gaming): Nuevo ✓, Editar ✓ (abre editor especial), Borrar ✗,
+                          Favorito ✗ (no aplica), Lanzar ✗ (no aplica).
+        Usuario: todos segun logica normal.
+        Sin seleccion: solo Nuevo habilitado.
+        """
+        name = self._selected_name_or_none()
+        system = bool(name and is_system_profile(name))
+        has_sel = name is not None
+
+        self.btn_new.config(state='normal')
+        self.btn_edit.config(state='normal' if has_sel else 'disabled')
+        if system:
+            # Gaming: NO borrable, NO favorito, NO lanzable
+            self.btn_delete.config(state='disabled')
+            self.btn_favorite.config(state='disabled')
+            self.btn_launch.config(state='disabled')
+        elif has_sel:
+            self.btn_delete.config(state='normal')
+            self.btn_favorite.config(state='normal')
+            self.btn_launch.config(state='normal')
+        else:
+            self.btn_delete.config(state='disabled')
+            self.btn_favorite.config(state='disabled')
+            self.btn_launch.config(state='disabled')
 
     def _selected_name(self):
         sel = self.profile_listbox.curselection()
         if not sel:
             return None
         display = self.profile_listbox.get(sel[0])
+        if display.startswith("🔒"):
+            return SYSTEM_GAMING_PROFILE_KEY
         return display.lstrip("★ ").strip()
+
+    def _selected_name_or_none(self):
+        """Igual que _selected_name pero nunca lanza; devuelve None si no hay sel."""
+        try:
+            return self._selected_name()
+        except Exception:
+            return None
 
     def new_profile(self):
         """Dialog para crear un perfil nuevo."""
         name = self._prompt_string("Nuevo perfil", "Nombre del perfil:")
         if not name:
+            return
+        if name == SYSTEM_GAMING_PROFILE_KEY or name.startswith("🔒"):
+            messagebox.showerror("Error", "Ese nombre está reservado para el perfil de sistema.",
+                                 parent=self.win)
             return
         if name in self.data.get('profiles', {}):
             messagebox.showerror("Error", f"Ya existe un perfil '{name}'", parent=self.win)
@@ -1775,6 +1993,15 @@ class ProfilesDialog:
         if not name:
             messagebox.showwarning("Aviso", "Selecciona un perfil primero", parent=self.win)
             return
+        if is_system_profile(name):
+            # v2.0.6: editor especial para el perfil gaming
+            result = GamingProfileEditor.ask(self.win, self.app, self.data)
+            if result is not None:
+                self.data = result
+                self.app.profiles_data = self.data
+                self._refresh_list()
+                self._on_select()
+            return
         current_apps = self.data['profiles'][name].get('apps', [])
         apps = self._prompt_apps(name, initial=current_apps)
         if apps is None:
@@ -1788,6 +2015,14 @@ class ProfilesDialog:
         name = self._selected_name()
         if not name:
             messagebox.showwarning("Aviso", "Selecciona un perfil primero", parent=self.win)
+            return
+        if is_system_profile(name):
+            messagebox.showwarning(
+                "🔒 Perfil de sistema",
+                "El perfil 'Preparar para Gaming' es del sistema y no se puede borrar.\n"
+                "Puedes editar sus keepers o resetearlo a valores de fábrica.",
+                parent=self.win,
+            )
             return
         if not messagebox.askyesno(
             "Confirmar", f"¿Borrar el perfil '{name}'?", parent=self.win
@@ -1947,6 +2182,201 @@ class ProfilesDialog:
 
         dlg.wait_window(dlg)
         return result["value"]
+
+
+class GamingProfileEditor:
+    """Editor modal del perfil de sistema 'Gaming' (v2.0.6).
+
+    Permite:
+    - Editar la lista de keepers (un nombre por linea, lowercase)
+    - Toggle `kill_low_chat` (matar chat de baja prioridad durante gaming)
+    - Reset a valores de fabrica (doble-tap pattern, NO messagebox — Trampa #14)
+
+    Uso:
+        result = GamingProfileEditor.ask(parent_win, app, profiles_data)
+        - Si el usuario guarda: result = profiles_data actualizado (o el mismo si nada cambio)
+        - Si el usuario cancela: result = None
+    """
+
+    def __init__(self, parent, app, profiles_data):
+        self.app = app
+        self.parent = parent
+        self.profiles_data = profiles_data
+        self.dlg = tk.Toplevel(parent)
+        self.dlg.title(f"🔒 Editar perfil: {SYSTEM_GAMING_LABEL}")
+        self.dlg.geometry("560x500")
+        self.dlg.configure(bg=app.bg_color)
+        self.dlg.transient(parent)
+        self.dlg.grab_set()  # modal
+
+        # Cargar perfil actual desde disco (no desde el snapshot en memoria:
+        # podria estar desincronizado si otro proceso lo edito)
+        self.current = load_gaming_profile(profiles_data)
+
+        # Estado para doble-tap de "Reset a fabrica"
+        self._reset_pending = None
+
+        self._build_ui()
+
+    def _build_ui(self):
+        bg = self.app.bg_color
+        fg = self.app.fg_color
+
+        # Header
+        tk.Label(self.dlg, text=f"🔒 {SYSTEM_GAMING_LABEL}",
+                font=("Segoe UI", 14, "bold"), bg=bg, fg=fg).pack(pady=(15, 5))
+
+        tk.Label(self.dlg,
+                text=("Los 'keepers' son procesos que NUNCA se matan al preparar "
+                      "para gaming (ej: discord para chat de voz con amigos). "
+                      "Marca 'Matar chat' para que Telegram/Teams/Signal también "
+                      "se cierren."),
+                font=("Segoe UI", 9), bg=bg, fg="#888888", wraplength=510,
+                justify=tk.LEFT).pack(pady=(0, 10), padx=20)
+
+        # Frame principal
+        main = tk.Frame(self.dlg, bg=bg)
+        main.pack(fill=tk.BOTH, expand=True, padx=20)
+
+        # ---- Keepers ----
+        tk.Label(main, text="Keepers (un nombre por línea, ej: discord, steam, epic):",
+                font=("Segoe UI", 10, "bold"), bg=bg, fg=fg).pack(anchor=tk.W)
+
+        keepers_frame = tk.Frame(main, bg=bg)
+        keepers_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 10))
+
+        k_scroll = tk.Scrollbar(keepers_frame)
+        k_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.keepers_text = tk.Text(
+            keepers_frame, yscrollcommand=k_scroll.set,
+            bg="#2d2d2d", fg="white", insertbackground="white",
+            font=("Consolas", 10), wrap=tk.WORD, height=8
+        )
+        self.keepers_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        k_scroll.config(command=self.keepers_text.yview)
+
+        # Insertar keepers actuales
+        for k in self.current.get('keepers', []):
+            self.keepers_text.insert(tk.END, k + "\n")
+
+        # ---- Toggle kill_low_chat ----
+        toggle_frame = tk.Frame(main, bg=bg)
+        toggle_frame.pack(fill=tk.X, pady=(0, 10))
+
+        self.kill_low_chat_var = tk.BooleanVar(value=bool(self.current.get('kill_low_chat', True)))
+        self.chk_kill_low = tk.Checkbutton(
+            toggle_frame,
+            text="Matar apps de chat (low priority) durante gaming",
+            variable=self.kill_low_chat_var,
+            bg=bg, fg=fg, selectcolor="#2d2d2d",
+            activebackground=bg, activeforeground=fg,
+            font=("Segoe UI", 10),
+        )
+        self.chk_kill_low.pack(anchor=tk.W)
+
+        # ---- Botones ----
+        btn_frame = tk.Frame(self.dlg, bg=bg, pady=10)
+        btn_frame.pack(fill=tk.X, padx=20)
+
+        # Reset a fabrica (doble-tap, Trampa #14)
+        self.btn_reset = tk.Button(
+            btn_frame, text="🔄 Reset a fábrica",
+            command=self._on_reset_click,
+            bg="#9b59b6", fg="white", font=("Segoe UI", 10, "bold"),
+            padx=12, pady=6, cursor="hand2",
+        )
+        self.btn_reset.pack(side=tk.LEFT, padx=3)
+
+        # Guardar / Cancelar (a la derecha)
+        tk.Button(btn_frame, text="Cancelar", command=self.dlg.destroy,
+            bg="#666666", fg="white", font=("Segoe UI", 10),
+            padx=12, pady=6, cursor="hand2"
+        ).pack(side=tk.RIGHT, padx=3)
+        tk.Button(btn_frame, text="💾 Guardar", command=self._on_save,
+            bg=self.app.success_color, fg="white", font=("Segoe UI", 10, "bold"),
+            padx=12, pady=6, cursor="hand2"
+        ).pack(side=tk.RIGHT, padx=3)
+
+    def _on_save(self):
+        """Lee keepers del Text, valida, guarda via save_gaming_profile."""
+        raw = self.keepers_text.get("1.0", tk.END).strip()
+        keepers = []
+        seen = set()
+        for line in raw.splitlines():
+            k = line.strip().lower()
+            if k and k not in seen:
+                seen.add(k)
+                keepers.append(k)
+        new_profile = {
+            "kind": "system",
+            "label": SYSTEM_GAMING_LABEL,
+            "keepers": keepers,
+            "kill_low_chat": bool(self.kill_low_chat_var.get()),
+        }
+        result = save_gaming_profile(new_profile, profiles_data=self.profiles_data)
+        if result is None:
+            messagebox.showerror(
+                "Error",
+                "No se pudo guardar el perfil gaming. Comprueba permisos del profiles.json.",
+                parent=self.dlg,
+            )
+            return
+        self.profiles_data = result
+        self.dlg.destroy()
+
+    def _on_reset_click(self):
+        """Doble-tap: 1ª pulsacion freeze, 2ª ejecuta reset a fabrica."""
+        if self._reset_pending is None:
+            # 1ª pulsacion: marcar pending y cambiar label
+            self._reset_pending = True
+            original = "🔄 Reset a fábrica"
+            self.btn_reset.config(text="⚠️ PULSA OTRA VEZ PARA CONFIRMAR", bg="#e81123")
+            # Status inline en title bar (sin messagebox — Trampa #14)
+            self.dlg.title(f"⚠️ Reset a fábrica pendiente — pulsa otra vez")
+            # Auto-revert en 3 segundos
+            self._reset_after_id = self.dlg.after(3000, self._reset_pending_cancel)
+        else:
+            # 2ª pulsacion: ejecutar reset
+            self.dlg.after_cancel(self._reset_after_id)
+            self._reset_pending = None
+            result = reset_gaming_profile_to_factory(profiles_data=self.profiles_data)
+            if result is None:
+                messagebox.showerror(
+                    "Error", "No se pudo resetear el perfil gaming.",
+                    parent=self.dlg,
+                )
+                return
+            self.profiles_data = result
+            # Refrescar UI del editor antes de cerrar
+            fresh = load_gaming_profile(result)
+            self.keepers_text.delete("1.0", tk.END)
+            for k in fresh.get('keepers', []):
+                self.keepers_text.insert(tk.END, k + "\n")
+            self.kill_low_chat_var.set(bool(fresh.get('kill_low_chat', True)))
+            self.btn_reset.config(text="🔄 Reset a fábrica", bg="#9b59b6")
+            self.dlg.title(f"🔒 Editar perfil: {SYSTEM_GAMING_LABEL}")
+            # Mostrar feedback breve en title bar
+            self.dlg.title(f"✅ Reseteado a fábrica — pulsa Guardar para confirmar")
+
+    def _reset_pending_cancel(self):
+        """Cancela el pending de reset (timeout 3s)."""
+        if self._reset_pending:
+            self._reset_pending = None
+            self.btn_reset.config(text="🔄 Reset a fábrica", bg="#9b59b6")
+            self.dlg.title(f"🔒 Editar perfil: {SYSTEM_GAMING_LABEL}")
+
+    @classmethod
+    def ask(cls, parent, app, profiles_data):
+        """Lanza el editor modal y devuelve profiles_data actualizado o None si cancela.
+
+        Patron de uso:
+            result = GamingProfileEditor.ask(self.win, self.app, self.data)
+            if result is not None: self.data = result
+        """
+        editor = cls(parent, app, profiles_data)
+        parent.wait_window(editor.dlg)
+        return editor.profiles_data
 
 
 def main():

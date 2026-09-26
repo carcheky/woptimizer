@@ -1,0 +1,1257 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Process Manager con foco gamer para Windows — standalone .exe">
+      
+      
+        <meta name="author" content="carcheky">
+      
+      
+      
+        <link rel="prev" href="../testing/">
+      
+      
+        <link rel="next" href="../mini-app-status/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Known issues (17 trampas) - woptimizer</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#known-issues-y-trampas-criticas" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="woptimizer" class="md-header__button md-logo" aria-label="woptimizer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            woptimizer
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Known issues (17 trampas)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Modo oscuro"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Modo oscuro" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Modo claro"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Modo claro" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Inicio
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Arquitectura
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../extending/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Extending
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../testing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Testing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Known issues (17 trampas)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../mini-app-status/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Estado Mini App
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="woptimizer" class="md-nav__button md-logo" aria-label="woptimizer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    woptimizer
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inicio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arquitectura
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../extending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Known issues (17 trampas)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Known issues (17 trampas)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-1-pid-en-powershell-es-variable-reservada" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🚨 Trampa #1: $pid en PowerShell es variable reservada
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-2-request_admin_elevation-mata-el-proceso-silenciosamente" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🚨 Trampa #2: request_admin_elevation mata el proceso silenciosamente
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-3-powershell-replace-interpreta-pipe-como-regex-char-class" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #3: PowerShell -replace interpreta [PIPE] como regex char class
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-4-pythonwexe-gui-subsystem-shellexecutew-runas-falla" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #4: pythonw.exe GUI subsystem + ShellExecuteW runas falla
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-5-mysql-tkinter-no-incluye-checkboxes-en-treeview-por-defecto" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #5: MySQL tkinter no incluye checkboxes en Treeview por defecto
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bloqueo-conocido-mini-app-publish-eacces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bloqueo conocido: Mini App publish EACCES
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-6-encoding-cp1252-en-consola-de-windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #6: Encoding cp1252 en consola de Windows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-7-subprocess-sin-create_no_window-abre-consolas-visibles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #7: Subprocess sin CREATE_NO_WINDOW abre consolas visibles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-8-threading-en-tkinter-requiere-rootafter0-callback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #8: Threading en tkinter requiere root.after(0, callback)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-9-shell-restrictions-del-agente-eperm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #9: Shell restrictions del agente (EPERM)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-10-prockill-deja-procesos-hijo-huerfanos-en-windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🚨 Trampa #10: proc.kill() deja procesos hijo huérfanos en Windows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-11-cambiar-return-signature-de-kill_processes-relaunch_processes-rompe-todos-los-call-sites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #11: Cambiar return signature de kill_processes / relaunch_processes rompe todos los call sites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-12-tests-que-usan-apps-gui-notepad-calc-etc-molestan-al-usuario" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #12: Tests que usan apps GUI (notepad, calc, etc.) molestan al usuario
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-13-taskkill-t-solo-mata-descendientes-no-siblings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #13: taskkill /T solo mata descendientes, NO siblings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resumen-de-reglas-para-ia-que-modifique-este-proyecto" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resumen de reglas para IA que modifique este proyecto
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mini-app-status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Estado Mini App
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-1-pid-en-powershell-es-variable-reservada" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🚨 Trampa #1: $pid en PowerShell es variable reservada
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-2-request_admin_elevation-mata-el-proceso-silenciosamente" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🚨 Trampa #2: request_admin_elevation mata el proceso silenciosamente
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-3-powershell-replace-interpreta-pipe-como-regex-char-class" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #3: PowerShell -replace interpreta [PIPE] como regex char class
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-4-pythonwexe-gui-subsystem-shellexecutew-runas-falla" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #4: pythonw.exe GUI subsystem + ShellExecuteW runas falla
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-5-mysql-tkinter-no-incluye-checkboxes-en-treeview-por-defecto" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #5: MySQL tkinter no incluye checkboxes en Treeview por defecto
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bloqueo-conocido-mini-app-publish-eacces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bloqueo conocido: Mini App publish EACCES
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-6-encoding-cp1252-en-consola-de-windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #6: Encoding cp1252 en consola de Windows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-7-subprocess-sin-create_no_window-abre-consolas-visibles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #7: Subprocess sin CREATE_NO_WINDOW abre consolas visibles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-8-threading-en-tkinter-requiere-rootafter0-callback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #8: Threading en tkinter requiere root.after(0, callback)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-9-shell-restrictions-del-agente-eperm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #9: Shell restrictions del agente (EPERM)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-10-prockill-deja-procesos-hijo-huerfanos-en-windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🚨 Trampa #10: proc.kill() deja procesos hijo huérfanos en Windows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-11-cambiar-return-signature-de-kill_processes-relaunch_processes-rompe-todos-los-call-sites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #11: Cambiar return signature de kill_processes / relaunch_processes rompe todos los call sites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-12-tests-que-usan-apps-gui-notepad-calc-etc-molestan-al-usuario" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #12: Tests que usan apps GUI (notepad, calc, etc.) molestan al usuario
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trampa-13-taskkill-t-solo-mata-descendientes-no-siblings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trampa #13: taskkill /T solo mata descendientes, NO siblings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resumen-de-reglas-para-ia-que-modifique-este-proyecto" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resumen de reglas para IA que modifique este proyecto
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="known-issues-y-trampas-criticas">Known issues y trampas críticas<a class="headerlink" href="#known-issues-y-trampas-criticas" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p>⚠️ <strong>LEE ESTO ANTES DE MODIFICAR</strong> — Las trampas aquí causaron horas de debugging perdido.</p>
+</blockquote>
+<h2 id="trampa-1-pid-en-powershell-es-variable-reservada">🚨 Trampa #1: <code>$pid</code> en PowerShell es variable reservada<a class="headerlink" href="#trampa-1-pid-en-powershell-es-variable-reservada" title="Permanent link">&para;</a></h2>
+<p><strong>Síntoma:</strong> Todos los procesos aparecen con el MISMO PID en la lista. <code>taskkill /F /PID X</code> falla porque ese PID no existe o no es lo que esperas.</p>
+<p><strong>Causa:</strong> En PowerShell, <code>$pid</code> es una variable automática de solo lectura que contiene el PID del propio proceso PowerShell. Asignar <code>$pid = $_.ProcessId</code> falla silenciosamente.</p>
+<p><strong>Fix correcto:</strong></p>
+<div class="language-powershell highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c"># MAL - $pid es reserved, la asignacion falla silenciosamente</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">ForEach</span><span class="n">-Object</span> <span class="p">{</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="nv">$pid</span> <span class="p">=</span> <span class="nv">$_</span><span class="p">.</span><span class="n">ProcessId</span>    <span class="c"># ← BUG</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="nb">Write-Output</span> <span class="s2">"$name</span><span class="se">`t</span><span class="s2">$pid</span><span class="se">`t</span><span class="s2">$cmd"</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">}</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c"># BIEN - usar $procId u otro nombre</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="k">ForEach</span><span class="n">-Object</span> <span class="p">{</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="nv">$procId</span> <span class="p">=</span> <span class="nv">$_</span><span class="p">.</span><span class="n">ProcessId</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="nb">Write-Output</span> <span class="s2">"$name</span><span class="se">`t</span><span class="s2">$procId</span><span class="se">`t</span><span class="s2">$cmd"</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">}</span>
+</span></code></pre></div>
+<p><strong>Cómo detectar:</strong> Si <code>get_running_processes()</code> retorna siempre el mismo PID, este es el bug.</p>
+<p><strong>Test de regresión:</strong> <code>python test_kill_real.py</code> lanza notepad y verifica que el PID listado coincide con el real.</p>
+<hr />
+<h2 id="trampa-2-request_admin_elevation-mata-el-proceso-silenciosamente">🚨 Trampa #2: <code>request_admin_elevation</code> mata el proceso silenciosamente<a class="headerlink" href="#trampa-2-request_admin_elevation-mata-el-proceso-silenciosamente" title="Permanent link">&para;</a></h2>
+<p><strong>Síntoma:</strong> Doble clic en <code>ProcessManager.vbs</code> → no aparece nada, no hay error.</p>
+<p><strong>Causa:</strong> Si <code>request_admin_elevation()</code> falla (UAC cancelado, excepción), retorna <code>False</code> y <code>__main__</code> hace <code>sys.exit(0)</code>. Nada se muestra.</p>
+<p><strong>Lección:</strong> Nunca uses auto-elevation con <code>sys.exit</code> como fallback. Si falla, muestra error o continúa sin admin.</p>
+<p><strong>Fix actual:</strong> Eliminada la auto-elevation. La elevación admin es opcional via click derecho en la UI (futuro).</p>
+<p><strong>Test de regresión:</strong> <code>python verify_app.py</code> debe pasar (proceso vivo tras 4s).</p>
+<hr />
+<h2 id="trampa-3-powershell-replace-interpreta-pipe-como-regex-char-class">Trampa #3: PowerShell <code>-replace</code> interpreta <code>[PIPE]</code> como regex char class<a class="headerlink" href="#trampa-3-powershell-replace-interpreta-pipe-como-regex-char-class" title="Permanent link">&para;</a></h2>
+<p><strong>Síntoma:</strong> Texto de reemplazo raro en cmdlines que contienen <code>|</code>.</p>
+<p><strong>Causa:</strong> PowerShell <code>-replace</code> usa regex. <code>[PIPE]</code> en el reemplazo se interpreta como clase de caracteres (P, I, E).</p>
+<p><strong>Fix actual:</strong> Ya no se usa <code>-replace</code> con <code>[PIPE]</code>. Se usa TAB como delimitador y los cmdlines se limpian con <code>-replace "[\t\r\n]", ' '</code> (clases de caracteres válidas).</p>
+<p><strong>Cómo evitar:</strong> Si necesitas reemplazar texto en PowerShell, usa <code>[char[]]</code> casting o <code>String.Replace()</code> (literal, no regex).</p>
+<hr />
+<h2 id="trampa-4-pythonwexe-gui-subsystem-shellexecutew-runas-falla">Trampa #4: <code>pythonw.exe</code> GUI subsystem + <code>ShellExecuteW runas</code> falla<a class="headerlink" href="#trampa-4-pythonwexe-gui-subsystem-shellexecutew-runas-falla" title="Permanent link">&para;</a></h2>
+<p><strong>Síntoma:</strong> Cuando <code>pythonw.exe</code> intenta auto-elevarse con <code>ShellExecuteW(None, "runas", ...)</code>, falla silenciosamente en algunos Windows.</p>
+<p><strong>Fix actual:</strong> Eliminada la auto-elevation. Si se necesita admin, lanzar manualmente con clic derecho → "Ejecutar como administrador".</p>
+<hr />
+<h2 id="trampa-5-mysql-tkinter-no-incluye-checkboxes-en-treeview-por-defecto">Trampa #5: MySQL <code>tkinter</code> no incluye checkboxes en Treeview por defecto<a class="headerlink" href="#trampa-5-mysql-tkinter-no-incluye-checkboxes-en-treeview-por-defecto" title="Permanent link">&para;</a></h2>
+<p><strong>Síntoma:</strong> Querías checkboxes para selección múltiple visible, tkinter Treeview no las trae.</p>
+<p><strong>Workaround usado:</strong> Selección múltiple con Ctrl+click estándar + click toggle (sin Ctrl) implementado en <code>_on_click</code>. No hay checkboxes reales.</p>
+<p><strong>Alternativa si se necesita:</strong> Usar <code>ttk.Checkbutton</code> en una columna custom, pero requiere reimplementar el treeview.</p>
+<hr />
+<h2 id="bloqueo-conocido-mini-app-publish-eacces">Bloqueo conocido: Mini App publish EACCES<a class="headerlink" href="#bloqueo-conocido-mini-app-publish-eacces" title="Permanent link">&para;</a></h2>
+<p><strong>Síntoma:</strong> <code>miniapp.publish</code> retorna <code>RUNTIME_START_FAILED</code> con <code>Error: listen EACCES: permission denied 127.0.0.1:60784</code>.</p>
+<p><strong>Causa:</strong> El sandbox del proceso Node del Host MiniMax Code bloquea TCP binds al puerto 60784 específicamente. Probado con 6 estrategias diferentes, todas fallan.</p>
+<p><strong>Estado:</strong> <code>miniapps/process_manager/</code> queda como referencia. El código está completo y compila. No se puede publicar en este entorno.</p>
+<p><strong>Workarounds intentados (todos fallan):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Estrategia</th>
+<th>Resultado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>listen(60784, '127.0.0.1')</code></td>
+<td>EACCES</td>
+</tr>
+<tr>
+<td><code>listen(60784, '0.0.0.0')</code></td>
+<td>EACCES</td>
+</tr>
+<tr>
+<td><code>listen(60784, '::1')</code></td>
+<td>EACCES</td>
+</tr>
+<tr>
+<td><code>listen(60784, '::')</code></td>
+<td>EACCES</td>
+</tr>
+<tr>
+<td><code>listen(0, host)</code> (OS-assigned)</td>
+<td>OK pero Host busca en 60784 → timeout</td>
+</tr>
+<tr>
+<td><code>netsh interface portproxy</code> 60784 → real</td>
+<td>Regla añadida pero no enruta (ECONNREFUSED)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Acciones del usuario si quiere arreglar:</strong>
+- Reportar bug al soporte de MiniMax Code
+- Esperar actualización del Host
+- Empaquetar como Electron/Tauri standalone (no Mini App)</p>
+<hr />
+<h2 id="trampa-6-encoding-cp1252-en-consola-de-windows">Trampa #6: Encoding cp1252 en consola de Windows<a class="headerlink" href="#trampa-6-encoding-cp1252-en-consola-de-windows" title="Permanent link">&para;</a></h2>
+<p><strong>Síntoma:</strong> <code>UnicodeEncodeError: 'charmap' codec can't encode character '\u2705'</code> al hacer <code>print</code> con emojis o caracteres especiales.</p>
+<p><strong>Causa:</strong> La consola Windows usa cp1252 por defecto, no UTF-8.</p>
+<p><strong>Fix en scripts de validación:</strong></p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">reconfigure</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s1">'utf-8'</span><span class="p">)</span>  <span class="c1"># o</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">text</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">'ascii'</span><span class="p">,</span> <span class="s1">'replace'</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span>  <span class="c1"># evita emojis</span>
+</span></code></pre></div>
+<p><strong>En PowerShell:</strong> Setear <code>$OutputEncoding = [System.Text.Encoding]::UTF8</code> antes de operaciones que produzcan caracteres no-ASCII.</p>
+<hr />
+<h2 id="trampa-7-subprocess-sin-create_no_window-abre-consolas-visibles">Trampa #7: Subprocess sin <code>CREATE_NO_WINDOW</code> abre consolas visibles<a class="headerlink" href="#trampa-7-subprocess-sin-create_no_window-abre-consolas-visibles" title="Permanent link">&para;</a></h2>
+<p><strong>Síntoma:</strong> Al matar/relaunchar procesos aparecen ventanas de consola parpadeando brevemente.</p>
+<p><strong>Causa:</strong> <code>subprocess.run()</code> o <code>Popen()</code> en Windows por defecto abre una consola para procesos hijos.</p>
+<p><strong>Fix:</strong> Siempre pasar <code>creationflags=CREATE_NO_WINDOW</code> (0x08000000) en <code>subprocess.run()</code> y <code>subprocess.Popen()</code>.</p>
+<p><strong>Aplicado en:</strong> <code>get_running_processes()</code>, <code>kill_processes()</code>, <code>relaunch_processes()</code>.</p>
+<hr />
+<h2 id="trampa-8-threading-en-tkinter-requiere-rootafter0-callback">Trampa #8: Threading en tkinter requiere <code>root.after(0, callback)</code><a class="headerlink" href="#trampa-8-threading-en-tkinter-requiere-rootafter0-callback" title="Permanent link">&para;</a></h2>
+<p><strong>Síntoma:</strong> "RuntimeError: main thread is not in main loop" al actualizar widgets desde un thread.</p>
+<p><strong>Causa:</strong> tkinter no es thread-safe. Solo el hilo principal puede tocar widgets.</p>
+<p><strong>Fix usado:</strong></p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">worker</span><span class="p">():</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">some_io_call</span><span class="p">()</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">after</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_on_result</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>  <span class="c1"># ← clave</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">worker</span><span class="p">,</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+</span></code></pre></div>
+<p><code>daemon=True</code> permite que el thread muera si la app se cierra.</p>
+<hr />
+<h2 id="trampa-9-shell-restrictions-del-agente-eperm">Trampa #9: Shell restrictions del agente (EPERM)<a class="headerlink" href="#trampa-9-shell-restrictions-del-agente-eperm" title="Permanent link">&para;</a></h2>
+<p><strong>Síntoma:</strong> El agente tiene <code>spawn EPERM</code> al ejecutar comandos bash/python.</p>
+<p><strong>Causa:</strong> El entorno donde corre el agente tiene restricciones de spawn. Algunos shells están bloqueados.</p>
+<p><strong>Workaround:</strong> Escribir scripts <code>.py</code> o <code>.ps1</code> que el usuario ejecuta con doble clic. El agente no puede ejecutar directamente.</p>
+<hr />
+<h2 id="trampa-10-prockill-deja-procesos-hijo-huerfanos-en-windows">🚨 Trampa #10: <code>proc.kill()</code> deja procesos hijo huérfanos en Windows<a class="headerlink" href="#trampa-10-prockill-deja-procesos-hijo-huerfanos-en-windows" title="Permanent link">&para;</a></h2>
+<p><strong>Síntoma:</strong> Tras <code>python verify_app.py</code> (o cualquier test que mata un Python que lanzó <code>subprocess.run(["powershell", ...])</code>), queda un <code>pwsh.exe</code> o <code>powershell.exe</code> vivo en tu sesión. Si abres el Task Manager lo verás consumiendo recursos sin razón aparente.</p>
+<p><strong>Causa:</strong> <code>proc.kill()</code> en Windows llama a <code>TerminateProcess</code>, que mata SOLO el PID indicado. Los hijos (cualquier <code>subprocess.run</code> o <code>Popen</code> lanzado por el proceso padre) se quedan huérfanos porque Windows no propaga automáticamente la terminación. Esto difiere de Unix donde señales al líder del grupo a veces cierran hijos.</p>
+<p><strong>MAL — deja huérfanos:</strong></p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">proc</span><span class="o">.</span><span class="n">kill</span><span class="p">()</span>  <span class="c1"># solo mata el Python padre</span>
+</span></code></pre></div>
+<p><strong>BIEN — mata el árbol completo:</strong></p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">CREATE_NO_WINDOW</span> <span class="o">=</span> <span class="mh">0x08000000</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">kill_process_tree</span><span class="p">(</span><span class="n">pid</span><span class="p">):</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>        <span class="p">[</span><span class="s2">"taskkill"</span><span class="p">,</span> <span class="s2">"/F"</span><span class="p">,</span> <span class="s2">"/T"</span><span class="p">,</span> <span class="s2">"/PID"</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">pid</span><span class="p">)],</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>        <span class="n">creationflags</span><span class="o">=</span><span class="n">CREATE_NO_WINDOW</span><span class="p">,</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="p">)</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="n">kill_process_tree</span><span class="p">(</span><span class="n">proc</span><span class="o">.</span><span class="n">pid</span><span class="p">)</span>  <span class="c1"># /T = tree, mata tambien los hijos</span>
+</span></code></pre></div>
+<p><strong>Aplicado en:</strong> <code>verify_app.py</code> y <code>verify_pyw.py</code> (función <code>kill_process_tree</code>).</p>
+<p><strong>Aplicación futura:</strong> Si en algún momento <code>process_manager.py</code> lanza procesos <code>Popen</code> no-bloqueantes (PowerShell para queries periódicas, watchers de procesos, etc.), el cleanup al cerrar la app debe usar <code>taskkill /F /T</code> también. Hoy es seguro porque todos los subprocess son <code>run()</code> bloqueantes que mueren al retornar, pero el patrón sigue aplicando.</p>
+<p><strong>Test de regresión:</strong> Tras <code>python verify_app.py</code>, el conteo de procesos <code>pwsh</code>/<code>powershell</code> debe ser IGUAL al de antes del test (no uno más).</p>
+<hr />
+<h2 id="trampa-11-cambiar-return-signature-de-kill_processes-relaunch_processes-rompe-todos-los-call-sites">Trampa #11: Cambiar return signature de <code>kill_processes</code> / <code>relaunch_processes</code> rompe todos los call sites<a class="headerlink" href="#trampa-11-cambiar-return-signature-de-kill_processes-relaunch_processes-rompe-todos-los-call-sites" title="Permanent link">&para;</a></h2>
+<p><strong>Síntoma:</strong> Tras modificar <code>kill_processes</code> o <code>relaunch_processes</code> para devolver una tupla más larga (por ejemplo de 2 a 3 elementos), los call sites que hacen <code>a, b = func(...)</code> fallan con <code>ValueError: too many values to unpack (expected 2)</code>.</p>
+<p><strong>Causa:</strong> Las dos funciones son API pública del módulo. Cualquier script que las usa (incluidos <code>test_kill_real.py</code>, <code>test_harness.py</code>, <code>test_harness_v2.py</code> y los métodos internos de <code>class ProcessManagerApp</code>) tiene que actualizarse al unísono.</p>
+<p><strong>Signaturas actuales (v1.2.0):</strong></p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">kill_processes</span><span class="p">(</span><span class="n">processes_seleccionados</span><span class="p">,</span> <span class="n">kill_tree</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">dedupe_by_tree</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="sd">"""Returns: (killed: list, failed: list, skipped: list)"""</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">relaunch_processes</span><span class="p">(</span><span class="n">processes</span><span class="p">,</span> <span class="n">group_by_exe</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="sd">"""Returns: (launched: list, failed: list, skipped_count: int)"""</span>
+</span></code></pre></div>
+<p><strong>Regla:</strong> Cuando modifiques el return de una función pública del módulo, <strong>busca TODOS los call sites antes de cambiar</strong>:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>grep<span class="w"> </span>-rn<span class="w"> </span><span class="s2">"(kill|relaunch)_processes("</span><span class="w"> </span>--include<span class="o">=</span><span class="s2">"*.py"</span>
+</span></code></pre></div>
+<p>Y actualiza cada <code>a, b = ...</code> a <code>a, b, c = ...</code> (o usa <code>_</code> para los que no te importen).</p>
+<p><strong>Aplicado en:</strong> <code>process_manager.py</code> (4 métodos), <code>test_kill_real.py</code>, <code>test_harness.py</code>, <code>test_harness_v2.py</code>.</p>
+<hr />
+<h2 id="trampa-12-tests-que-usan-apps-gui-notepad-calc-etc-molestan-al-usuario">Trampa #12: Tests que usan apps GUI (notepad, calc, etc.) molestan al usuario<a class="headerlink" href="#trampa-12-tests-que-usan-apps-gui-notepad-calc-etc-molestan-al-usuario" title="Permanent link">&para;</a></h2>
+<p><strong>Síntoma:</strong> Cada vez que se ejecuta <code>test_kill_real.py</code>, aparece una ventana de Bloc de notas durante ~3 segundos en el escritorio del usuario. Aunque el test la mata al final, es visualmente molesto y en algunos casos (WMI snapshot desactualizado, race condition) la ventana puede quedarse viva sin que el test lo detecte.</p>
+<p><strong>Causa:</strong> El test original usaba <code>notepad.exe</code> como "proceso de prueba" para validar <code>kill_processes()</code>. Cualquier GUI app abre su ventana cuando se lanza. <code>CREATE_NO_WINDOW</code> (0x08000000) en <code>subprocess.Popen</code> solo suprime la <strong>consola</strong> del hijo, no la ventana de una GUI app — para notepad eso es irrelevante porque no tiene consola pero <strong>sí</strong> tiene ventana.</p>
+<p><strong>Fix:</strong> Usar un subprocess Python invisible como objetivo del test:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">marker</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"wopt_test_</span><span class="si">{</span><span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">target</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">(</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="p">[</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span> <span class="s2">"-c"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"import time; print('</span><span class="si">{</span><span class="n">marker</span><span class="si">}</span><span class="s2">'); time.sleep(60)"</span><span class="p">],</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">stdout</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span><span class="p">,</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">creationflags</span><span class="o">=</span><span class="n">CREATE_NO_WINDOW</span><span class="p">,</span>  <span class="c1"># sin consola</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="p">)</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># ...</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="n">target_in_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">processes</span> <span class="k">if</span> <span class="n">marker</span> <span class="ow">in</span> <span class="n">p</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'commandline'</span><span class="p">,</span> <span class="s1">''</span><span class="p">)]</span>
+</span></code></pre></div>
+<p><strong>Por qué funciona:</strong>
+- <code>python -c "..."</code> es un proceso de consola → <code>CREATE_NO_WINDOW</code> sí lo esconde
+- <code>time.sleep(60)</code> mantiene el proceso vivo sin hacer nada (no UI, no output)
+- Marker único en el commandline permite identificarlo en el WMI list (más robusto que matchear PID, que puede no aparecer en el snapshot)
+- <code>stdout=subprocess.PIPE</code> evita que <code>print()</code> muestre nada</p>
+<p><strong>Aplicado en:</strong> <code>test_kill_real.py</code> (reescrito 2026-09-14). Antes usaba <code>notepad.exe</code>.</p>
+<p><strong>Regla:</strong> Para tests que necesitan matar procesos reales, <strong>preferir siempre subprocess headless</strong> (Python, Node, pwsh). Solo usar GUI apps si el test está validando específicamente comportamiento de GUI (no es nuestro caso).</p>
+<hr />
+<h2 id="trampa-13-taskkill-t-solo-mata-descendientes-no-siblings">Trampa #13: <code>taskkill /T</code> solo mata descendientes, NO siblings<a class="headerlink" href="#trampa-13-taskkill-t-solo-mata-descendientes-no-siblings" title="Permanent link">&para;</a></h2>
+<p><strong>Síntoma:</strong> El usuario selecciona 5 firefox.exe separados (cada uno su propia ventana) y hace click en "Matar". Solo muere 1. Los otros 4 sobreviven aunque todos tengan el mismo <code>args[0]</code> (mismo exe path).</p>
+<p><strong>Causa:</strong> <code>taskkill /F /T /PID X</code> mata el proceso X <strong>y todo su árbol descendiente</strong>. Pero "descendiente" significa "hijo, nieto, etc." — NO significa "otros procesos con el mismo nombre". Si tienes 5 firefox.exe que son hermanos (todos hijos de <code>explorer.exe</code> pero independientes entre sí), <code>/T</code> de uno solo mata ese y sus renderers; los otros 4 sobreviven.</p>
+<p><strong>Fix en woptimizer (v1.3.0):</strong> <code>kill_selected</code> ahora:
+1. Expande la selección a <strong>TODOS los procesos del mismo nombre</strong> del snapshot (helper <code>expand_selection_by_name</code>)
+2. Pasa <code>dedupe_by_tree=False</code> a <code>kill_processes</code> (porque dedup agruparía los 5 firefox en 1 taskkill, dejando 4 vivos)</p>
+<p>Resultado: 5 firefox → 5 taskkill calls → 5 firefox + todos sus renderers mueren.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># En kill_selected:</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">expanded</span> <span class="o">=</span> <span class="n">expand_selection_by_name</span><span class="p">(</span><span class="n">selected</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">processes</span><span class="p">)</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">killed</span><span class="p">,</span> <span class="n">failed</span><span class="p">,</span> <span class="n">skipped</span> <span class="o">=</span> <span class="n">kill_processes</span><span class="p">(</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="n">expanded</span><span class="p">,</span> <span class="n">kill_tree</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">dedupe_by_tree</span><span class="o">=</span><span class="kc">False</span>  <span class="c1"># ← False es CLAVE</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="p">)</span>
+</span></code></pre></div>
+<p><strong>Diferencia con <code>prepare_for_gaming</code>:</strong> ahí SÍ queremos dedup, porque al matar "todos los high/medium", el browser main + sus renderers son un solo árbol → 1 taskkill los maneja. La expansión por nombre solo aplica a <code>kill_selected</code> (selección manual del usuario).</p>
+<p><strong>Test de regresión:</strong> <code>python test_kill_expansion.py</code> valida la lógica del helper y la integración.</p>
+<h2 id="resumen-de-reglas-para-ia-que-modifique-este-proyecto">Resumen de reglas para IA que modifique este proyecto<a class="headerlink" href="#resumen-de-reglas-para-ia-que-modifique-este-proyecto" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>NUNCA uses <code>$pid</code> en scripts PowerShell</strong> — usa <code>$procId</code> u otro nombre</li>
+<li><strong>NUNCA añadas auto-elevation con <code>sys.exit</code> silencioso</strong> — debe mostrar error o continuar</li>
+<li><strong>SIEMPRE aplica <code>CREATE_NO_WINDOW</code></strong> en todos los subprocess</li>
+<li><strong>SIEMPRE valida con <code>verify_app.py</code> y <code>test_kill_real.py</code></strong> tras cambios</li>
+<li><strong>NUNCA asumas que funciona</strong> — verifica con <code>poll()</code> que el proceso sigue vivo</li>
+<li><strong>USA <code>root.after(0, callback)</code></strong> para actualizar widgets desde threads</li>
+<li><strong>USA TAB como delimitador</strong> entre Python y PowerShell</li>
+<li><strong>NO añadas features sin test</strong> — un cambio a la vez, validando cada uno</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Released under the MIT License.
+Built with <a href="https://www.mkdocs.org">MkDocs</a> + <a href="https://squidfunk.github.io/mkdocs-material/">Material</a>.
+    </div>
+  
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

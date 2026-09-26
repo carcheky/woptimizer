@@ -57,9 +57,16 @@ def main():
 
     try:
         # --- Test 1: load_profiles vacio ---
+        # v2.0.6: load_profiles ahora garantiza el perfil de sistema 'Gaming'.
+        # Sin profiles.json, devuelve ese perfil auto-creado + favorite=None.
         print("[test] Test 1: load_profiles con archivo inexistente")
         data = pm.load_profiles()
-        assert_eq(data, {'profiles': {}, 'favorite': None}, "data inicial vacia")
+        assert_eq(data.get('favorite'), None, "favorite=None inicial")
+        assert_eq(pm.SYSTEM_GAMING_PROFILE_KEY in data['profiles'], True,
+                  f"perfil de sistema '{pm.SYSTEM_GAMING_PROFILE_KEY}' auto-creado")
+        # El resto de profiles debe estar vacio (solo el del sistema)
+        user_profiles = [k for k in data['profiles'] if not pm.is_system_profile(k)]
+        assert_eq(user_profiles, [], "no hay perfiles de usuario")
 
         # --- Test 2: create_profile ---
         print("[test] Test 2: create_profile")

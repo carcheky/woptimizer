@@ -2,30 +2,41 @@
 
 Process Manager con foco gamer para Windows.
 
-Ver documentación completa en [`docs/index.md`](docs/index.md) (formato MkDocs).
-
 ## Quick start
 
-Doble clic en `ProcessManager.vbs` para lanzar la GUI.
+Doble clic en `dist\woptimizer.exe` (recomendado) — auto-eleva como admin, sin instalar nada.
+Alternativa legacy: doble clic en `ProcessManager.vbs` (requiere Python 3.13 + tkinter instalado).
 
 ## Documentación
 
-La documentación está en formato MkDocs en la carpeta `docs/`. Para visualizarla:
+| Recurso | Para qué |
+|---|---|
+| [`AGENTS.md`](AGENTS.md) | Spec única para agentes IA. Léeme siempre al empezar/cerrar. |
+| [`llms.txt`](llms.txt) | Índice curado para cargar selectivamente con un agente IA. |
+| [`llms-full.txt`](llms-full.txt) | Texto completo concatenado (40 KB). |
+| [`docs/index.md`](docs/index.md) | Portal de la documentación detallada. |
+| [`openspec/README.md`](openspec/README.md) | Cómo funciona el flujo SDD (Spec-Driven Development) aquí. |
+| [`openspec/specs/`](openspec/specs/) | Requisitos canónicos en formato `SHALL`. |
+| [`openspec/changes/`](openspec/changes/) | Propuestas de cambio activas. |
+| [`openspec/changes/archive/`](openspec/changes/archive/) | Cambios cerrados (historial). |
+
+### Servir docs localmente
 
 ```bash
-pip install mkdocs mkdocs-material
+pip install mkdocs mkdocs-material pymdown-extensions
 mkdocs serve
 ```
 
-Y abrir http://localhost:8000 en el navegador.
+Abrir http://localhost:8000 en el navegador.
 
 Para generar el sitio estático:
 
 ```bash
-mkdocs build
+mkdocs build --strict
 ```
 
 ## Estado
 
-- ✅ Python funcional con UI gaming completa
+- ✅ v2.1.0 funcional — UI gaming completa, perfiles, ejecutable standalone
+- ✅ Flujo SDD + llms.txt para carga selectiva de docs por agentes
 - ❌ Mini App no publicable (bloqueo del sandbox del Host MiniMax Code, ver `docs/mini-app-status.md`)

@@ -1,0 +1,1132 @@
+
+# api
+
+<!-- source: docs/api.md -->
+
+---
+
+# API Reference
+
+Funciones principales que un agente IA podría necesitar llamar o extender.
+
+## Funciones de `process_manager.py` (módulo)
+
+### `get_running_processes() -> list[dict]`
+
+Retorna lista de procesos en ejecución.
+
+**Returns:** Lista de dicts con esta estructura:
+
+```python
+{
+    'name': 'chrome',           # nombre sin extensión
+    'full_name': 'chrome.exe',  # nombre con extensión
+    'pid': '1234',              # string (de PowerShell)
+    'commandline': 'C:\\...\\chrome.exe --type=renderer'
+}
+```
+
+**Side effects:** Muestra messagebox de error si PowerShell falla.
+
+**Performance:** 1-3 segundos (PowerShell Get-CimInstance).
+
+### `kill_processes(processes_seleccionados, kill_tree=True) -> tuple[list, list]`
+
+Mata procesos via `taskkill /F`.
+
+**Args:**
+- `processes_seleccionados`: list of dicts (mismo formato que `get_running_processes`)
+- `kill_tree`: si True, añade `/T` para matar hijos también
+
+**Returns:** `(killed, failed)`:
+- `killed`: list of dicts con `{name, pid, commandline, killed_at, already_gone}`
+- `failed`: list of strings con mensaje de error por proceso
+
+**Exit codes de taskkill:**
+- 0 = success
+- 128 = proceso ya no existe (tratado como success)
+- 1 = acceso denegado u otro error
+
+### `categorize_process(proc_name) -> str`
+
+Matchea nombre contra `PROCESS_CATEGORIES`, retorna nombre de categoría o `'⚪ Otros'`.
+
+**Args:** `proc_name` (str) — nombre del proceso (sin .exe o con .exe)
+
+**Returns:** String con el nombre de categoría.
+
+### `save_processes_to_relaunch(processes) -> bool`
+
+Añade procesos al JSON con dedup por `(name, pid)`.
+
+**Args:** `processes`: list of dicts con al menos `name`, `pid`, `commandline`
+
+**Returns:** True si escribió OK.
+
+### `load_saved_processes() -> list`
+
+Lee `saved_processes.json`, retorna lista (vacía si no existe o corrupto).
+
+### `clear_saved_processes() -> bool`
+
+Borra el archivo JSON.
+
+### `relaunch_processes(processes) -> tuple[list, list]**
+
+Relanza procesos via `subprocess.Popen` con `shlex.split` o fallback shell.
+
+**Returns:** `(launched, failed)`
+
+### `is_admin() -> bool`
+
+Detecta si el proceso actual corre con permisos admin via `ctypes`.
+
+## Constantes
+
+### `PROCESS_CATEGORIES` (dict)
+
+```python
+{
+    '🔴 Navegadores': {
+        'priority': 'high',     # 'high' | 'medium' | 'low' | 'none'
+        'patterns': ['chrome', 'firefox', ...],
+        'description': '...',
+    },
+    ...
+}
+```
+
+### `CATEGORY_ORDER` (list)
+
+Orden de visualización de categorías en el treeview.
+
+### `SIMPLE_CATEGORIES` (list)
+
+Categorías que se muestran en modo Simple (gamer-friendly).
+
+### `PROCESS_LIST_FILE` (str)
+
+Path absoluto a `saved_processes.json` (mismo dir que el script).
+
+### `MAX_CMDLINE_LEN` (int)
+
+4000 — commandlines más largos se truncan.
+
+### `CREATE_NO_WINDOW` (int)
+
+0x08000000 — flag de Windows para subprocess sin ventana de consola.
+
+## Clase `ProcessManagerApp`
+
+Métodos principales (sin self):
+
+| Método | Propósito |
+|--------|-----------|
+| `__init__(root)` | Configura ventana, llama `create_widgets` y `load_processes` |
+| `create_widgets()` | Construye toda la UI (botones, treeview, etc.) |
+| `load_processes()` | Async, lanza thread que llama `get_running_processes` |
+| `_on_processes_loaded(processes)` | Callback UI: actualiza treeview |
+| `populate_tree()` | Llena treeview con categorías |
+| `filter_processes()` / `_schedule_filter()` / `_do_filter()` | Búsqueda con debounce |
+| `toggle_select_all()` | Selecciona/deselecciona todas las hojas |
+| `kill_selected()` | Mata procesos seleccionados (con confirmación) |
+| `save_selected()` | Guarda seleccionados para relaunch |
+| `relaunch_saved()` | Relanza procesos guardados |
+| `prepare_for_gaming()` | Mata high+medium priority (botón Gaming) |
+| `clear_saved()` | Limpia lista guardada |
+| `update_count()` | Actualiza contador en status bar |
+| `_on_click(event)` | Handler click izquierdo (toggle) |
+| `_on_double_click(event)` | Handler doble click (expand/collapse categoría) |
+| `_show_context_menu(event)` | Muestra menú click derecho |
+| `_ctx_kill()`, `_ctx_save()`, `_ctx_copy_pids()`, `_ctx_copy_cmdlines()` | Acciones del menú |
+
+## Atajos de teclado
+
+| Atajo | Acción |
+|-------|--------|
+| `Ctrl+A` | Seleccionar todas las hojas |
+| `Delete` | Matar seleccionados |
+| `F5` / `Ctrl+R` | Refrescar lista |
+| `Escape` | Limpiar búsqueda |
+
+## Subprocess calls (resumen)
+
+| Operación | Comando | Flags |
+|-----------|---------|-------|
+| Listar procesos | `powershell -NoProfile -NonInteractive -Command <script>` | `CREATE_NO_WINDOW` |
+| Matar proceso | `taskkill /F [/T] /PID X` | `CREATE_NO_WINDOW` |
+| Relanzar proceso | `subprocess.Popen(args, detached=True, windowsHide=True)` | (windowsHide) |
+
+## Estados de la app
+
+- `self.processes`: list of dicts (procesos actuales)
+- `self.saved_processes`: list of dicts (cargado de JSON al inicio)
+- `self.simple_mode_var`: BooleanVar — toggle Simple/Completo
+- `self.kill_tree_var`: BooleanVar — checkbox `/T`
+- `self._loading`: bool — evita cargas concurrentes
+
+
+# architecture
+
+<!-- source: docs/architecture.md -->
+
+---
+
+# Architecture
+
+## Flujo de datos
+
+```
+[Usuario] --doble clic--> [ProcessManager.vbs] --Run--> [pythonw.exe]
+                                                       |
+                                                       v
+                                            [process_manager.pyw]
+                                            |
+                                            |-- tk.Tk() --crea--> [GUI tkinter]
+                                            |
+                                            |-- self.load_processes()
+                                            |     |
+                                            |     v
+                                            |   [threading.Thread]
+                                            |     |
+                                            |     v
+                                            |   subprocess.run([powershell, ...])
+                                            |     |
+                                            |     v
+                                            |   [PowerShell con Get-CimInstance]
+                                            |     |
+                                            |     v
+                                            |   stdout (TAB-separated)
+                                            |     |
+                                            |     v
+                                            |   root.after(0, _on_processes_loaded)
+                                            |     |
+                                            |     v
+                                            |   [populate_tree() con categorías]
+                                            |
+                                            |-- self.kill_selected()
+                                            |     |
+                                            |     v
+                                            |   [kill_processes()]
+                                            |     |
+                                            |     v
+                                            |   subprocess.run([taskkill, /F, /PID, ...])
+                                            |
+                                            |-- self.relaunch_saved()
+                                                  |
+                                                  v
+                                                [relaunch_processes()]
+                                                  |
+                                                  v
+                                                subprocess.Popen([...], detached=True)
+```
+
+## Componentes principales
+
+### `process_manager.py` (1086 líneas)
+
+Estructura interna:
+
+```
+Líneas 1-110    imports + constantes + categorías gaming
+Líneas 110-200  funciones helper (categorize_process, get_running_processes, kill_processes, etc.)
+Líneas 200-350  funciones de persistencia (save/load/clear saved_processes.json)
+Líneas 350-870  class ProcessManagerApp (tkinter UI)
+Líneas 870-1100 main(), __main__
+```
+
+**Funciones críticas (no renombrar sin actualizar todos los call sites):**
+
+- `get_running_processes()` — usa PowerShell Get-CimInstance, retorna lista de dicts
+- `kill_processes(procs, kill_tree=True)` — itera y llama taskkill, retorna (killed, failed)
+- `categorize_process(name)` — matchea nombre contra PROCESS_CATEGORIES
+- `save_processes_to_relaunch()` / `load_saved_processes()` — JSON persistence
+
+### Categorías gaming
+
+Diccionario `PROCESS_CATEGORIES` con esta estructura:
+
+```python
+{
+    '🔴 Navegadores': {
+        'priority': 'high',     # 'high' | 'medium' | 'low' | 'none'
+        'patterns': ['chrome', 'firefox', 'msedge', ...],
+        'description': 'Navegadores web',
+    },
+    ...
+}
+```
+
+`categorize_process(name)` itera sobre las categorías en orden y matchea si `pattern in name.lower()`. El orden de las categorías en `CATEGORY_ORDER` define el orden de visualización.
+
+### Modos Simple / Completo
+
+- **Simple** muestra solo: 🔴 Navegadores, 🔴 Sincronización, 🟡 Chat, 🟡 Productividad, 🟡 Media
+- **Completo** muestra todas + 🟢 Overlays, 🟢 Launchers, ⚫ Antivirus, ⚫ Sistema, ⚪ Otros
+- Constante `SIMPLE_CATEGORIES` lista las categorías gaming
+- Variable de instancia `self.simple_mode_var` (BooleanVar) controla el toggle
+
+### Async loading
+
+`load_processes()` lanza un thread daemon para no bloquear UI:
+
+```python
+def load_processes(self):
+    self._loading = True  # evita cargas concurrentes
+    
+    def worker():
+        processes = get_running_processes()
+        self.root.after(0, self._on_processes_loaded, processes)
+    
+    threading.Thread(target=worker, daemon=True).start()
+```
+
+`root.after(0, callback)` programa la actualización UI en el hilo principal (tkinter no es thread-safe).
+
+### Persistencia
+
+Archivo `saved_processes.json` (mismo dir que el script):
+
+```json
+[
+  {
+    "name": "chrome",
+    "pid": "1234",
+    "commandline": "C:\\...\\chrome.exe --type=renderer",
+    "killed_at": "2026-09-13T22:00:00",
+    "already_gone": false
+  }
+]
+```
+
+`save_processes_to_relaunch()` deduplica por `(name, pid)`.
+
+### Subprocess flags
+
+`CREATE_NO_WINDOW = 0x08000000` se aplica a:
+- `subprocess.run()` para PowerShell
+- `subprocess.run()` para taskkill
+- `subprocess.Popen()` para relaunch
+
+Sin este flag, los procesos hijos abren ventanas de consola visibles.
+
+## Decisiones de diseño
+
+1. **Categorías en código, no en JSON** — Permite iterar con priorities en runtime y validar al inicio.
+2. **TAB como delimitador PowerShell → Python** — TAB nunca aparece en cmdlines normales, evita colisiones.
+3. **Exit 128 = success** — `taskkill /F /PID X` retorna 128 si X ya no existe (objetivo cumplido). Tratarlo como éxito evita falsos "fallidos".
+4. **Dedup por (name, pid)** — Múltiples instancias del mismo proceso (5 chrome.exe) son todas guardables.
+5. **Thread daemon** — Si la app se cierra mientras carga PowerShell, el thread muere sin error.
+
+## Lo que NO es
+
+- **No es** un task manager tipo Process Explorer — solo lista y mata, no muestra detalles profundos
+- **No es** un monitor en tiempo real — refresh manual (F5) o auto-refresh opcional
+- **No es** portable — usa APIs Windows específicas (taskkill, Get-CimInstance)
+
+
+# extending
+
+<!-- source: docs/extending.md -->
+
+---
+
+# Extending — Cómo añadir features sin romper nada
+
+> ⚠️ **REGLA:** Una feature a la vez. Test después de cada cambio.
+
+## Workflow seguro para añadir features
+
+```
+1. Pensar la feature
+2. Implementar cambio mínimo
+3. Ejecutar verify_app.py → debe seguir abriendo
+4. Si es feature de kill → ejecutar test_kill_real.py → debe matar
+5. Si algo falla → revertir y pensar
+6. Solo cuando todo pasa → commit
+```
+
+## Cómo añadir una nueva categoría gaming
+
+Editar `PROCESS_CATEGORIES` en `process_manager.py`:
+
+```python
+PROCESS_CATEGORIES = {
+    '🔴 Navegadores': { ... },  # existente
+    # AÑADIR:
+    '🟠 Mi nueva categoría': {
+        'priority': 'high',     # high/medium/low/none
+        'patterns': ['miproceso', 'miproceso2'],
+        'description': 'Qué hace esta categoría',
+    },
+}
+```
+
+Y añadir la clave al final de `CATEGORY_ORDER`:
+
+```python
+CATEGORY_ORDER = [
+    '🔴 Navegadores',
+    # ...
+    '🟠 Mi nueva categoría',  # ← aquí
+]
+```
+
+Si quieres que aparezca en modo Simple:
+
+```python
+SIMPLE_CATEGORIES = [
+    '🔴 Navegadores',
+    # ...
+    '🟠 Mi nueva categoría',  # ← aquí
+]
+```
+
+**Test:** `python verify_app.py` y verificar visualmente.
+
+## Cómo añadir un nuevo botón de acción
+
+1. Crear el botón en `create_widgets()`:
+```python
+btn_mi_accion = tk.Button(actions_frame, text="Mi acción",
+                          command=self.mi_accion, ...)
+btn_mi_accion.pack(side=tk.LEFT, padx=5)
+```
+
+2. Añadir el método en la clase:
+```python
+def mi_accion(self):
+    # tu lógica
+    pass
+```
+
+3. Test: `python verify_app.py`
+
+## Cómo modificar el script PowerShell
+
+⚠️ **ZONA PELIGROSA.** Lee [`known-issues.md`](known-issues.md) antes de tocar.
+
+Reglas:
+- NUNCA uses `$pid` (variable reservada)
+- NUNCA uses `-replace "patron", "[PIPE]"` (regex char class)
+- SIEMPRE usa TAB como delimitador
+- SIEMPRE excluye `powershell.exe` y `pwsh.exe` (su CommandLine contiene el script completo)
+- SIEMPRE fuerza UTF-8: `$OutputEncoding = [System.Text.Encoding]::UTF8`
+
+Test de regresión tras cualquier cambio PowerShell:
+```bash
+python test_kill_real.py
+```
+
+## Cómo añadir un atajo de teclado
+
+En `create_widgets()`:
+
+```python
+self.root.bind('<F6>', lambda e: self.mi_accion_con_teclado())
+```
+
+Lista de teclas: `<F1>` a `<F12>`, `<Control-x>`, `<Alt-x>`, `<Shift-x>`, `<Escape>`, `<Delete>`, etc.
+
+Test: `python verify_app.py` + abrir la GUI y pulsar la tecla.
+
+## Cómo añadir persistencia (más campos en saved_processes.json)
+
+1. Modificar `kill_processes()` para incluir el nuevo campo en el dict
+2. Modificar `save_processes_to_relaunch()` si cambia la estructura
+3. La lectura (`load_saved_processes()`) usa `JSON.parse` que ignora campos extra → no breaking
+
+**Compatibilidad hacia atrás:** añadir campos es seguro. Eliminar campos requiere migración.
+
+## Cómo añadir un endpoint API (si vuelves a Mini App)
+
+Cuando MiniMax Code solvente el EACCES, en `server.mjs`:
+
+```javascript
+if (method === 'GET' && path === `${apiBase}/mi-endpoint`) {
+    // tu lógica
+    sendJson(res, 200, { data: ... });
+    return;
+}
+```
+
+Patrón ya establecido en `handleRequest()`.
+
+## Anti-patrones
+
+❌ **Añadir 5 features a la vez** → imposible validar cuál rompe
+❌ **Cambiar formato de saved_processes.json sin migrar** → pierdes datos del usuario
+❌ **Auto-elevation sin fallback visible** → app muere silenciosa
+❌ **Usar variables reservadas en PowerShell** → `$pid`, `$Host`, `$PSVersionTable`, etc.
+
+## Cómo revertir si algo se rompe
+
+```bash
+# Ver el último cambio (si usas git)
+git diff process_manager.py
+
+# Revertir cambios
+git checkout process_manager.py
+
+# O restaurar desde .pyw (que es copia)
+Copy-Item process_manager.pyw process_manager.py -Force
+```
+
+Si no usas git, restaura desde backup o reescribe la sección problemática.
+
+## Cómo pedir feedback al usuario tras cambios
+
+```
+"He aplicado [cambio]. Validado:
+- verify_app.py: PASS
+- test_kill_real.py: PASS
+- Sincronizado .pyw
+
+¿Quieres probarlo manualmente con doble clic?"
+```
+
+No asumas. Espera confirmación.
+
+
+# index
+
+<!-- source: docs/index.md -->
+
+---
+
+# woptimizer — Process Manager con foco gamer
+
+> **Estado actual:** Producto Python funcional. Mini App en `miniapps/process_manager/` queda como referencia (no publicable por bloqueo del sandbox del Host MiniMax Code, ver [`known-issues.md`](known-issues.md)).
+
+## Qué es
+
+App Windows para matar procesos de fondo en categorías gaming (navegadores, sync, chat, productividad, media), guardarlos y relanzarlos después. Pensada para preparar el PC antes de jugar.
+
+## Quick start
+
+```bash
+# Lanzar (doble clic en Windows)
+ProcessManager.vbs
+
+# O desde línea de comandos (sin consola)
+pythonw.exe process_manager.pyw
+
+# Validar que arranca
+python verify_app.py
+```
+
+## Características
+
+- 9 categorías gaming con prioridades (🔴 matar / 🟡 opcional / 🟢 mantener / ⚫ no tocar)
+- Modo Simple (solo categorías gaming) / Completo (todas)
+- Búsqueda en nombre + commandline
+- Click toggle (sin Ctrl), click derecho = menú contextual
+- Atajos: Ctrl+A, Delete, F5, Escape
+- Persistencia en `saved_processes.json` (auto-guarda lo matado, relanza cuando quieras)
+- Kill robusto (`taskkill /F /T` con exit 128 = success)
+- Auto-elevación admin (cuando se necesita matar procesos protegidos)
+
+## Estructura del repo
+
+```
+woptimizer/
+├── process_manager.py          # Script principal (source)
+├── process_manager.pyw         # Mismo, para pythonw.exe (sin consola)
+├── ProcessManager.vbs           # Lanzador silencioso (doble clic)
+├── ProcessManager.ps1           # Lanzador alternativo PowerShell
+├── saved_processes.json        # Estado persistente (auto-creado)
+│
+├── verify_app.py               # Test que lanza app y verifica que arranca
+├── verify_pyw.py               # Igual pero con pythonw.exe
+├── test_kill_real.py           # Test que mata notepad de verdad
+├── test_harness.py             # Test E2E original (cycle PowerShell→kill→save→relaunch)
+│
+└── miniapps/process_manager/   # Versión Mini App (no publicable)
+    └── BLOCKED.md              # Por qué no funciona
+```
+
+## Siguiente paso
+
+Lee [`architecture.md`](architecture.md) para entender el flujo de datos, o [`known-issues.md`](known-issues.md) si vas a modificar el script PowerShell (importante).
+
+
+# known-issues
+
+<!-- source: docs/known-issues.md -->
+
+---
+
+# Known issues y trampas críticas
+
+> ⚠️ **LEE ESTO ANTES DE MODIFICAR** — Las trampas aquí causaron horas de debugging perdido.
+
+## 🚨 Trampa #1: `$pid` en PowerShell es variable reservada
+
+**Síntoma:** Todos los procesos aparecen con el MISMO PID en la lista. `taskkill /F /PID X` falla porque ese PID no existe o no es lo que esperas.
+
+**Causa:** En PowerShell, `$pid` es una variable automática de solo lectura que contiene el PID del propio proceso PowerShell. Asignar `$pid = $_.ProcessId` falla silenciosamente.
+
+**Fix correcto:**
+
+```powershell
+# MAL - $pid es reserved, la asignacion falla silenciosamente
+ForEach-Object {
+    $pid = $_.ProcessId    # ← BUG
+    Write-Output "$name`t$pid`t$cmd"
+}
+
+# BIEN - usar $procId u otro nombre
+ForEach-Object {
+    $procId = $_.ProcessId
+    Write-Output "$name`t$procId`t$cmd"
+}
+```
+
+**Cómo detectar:** Si `get_running_processes()` retorna siempre el mismo PID, este es el bug.
+
+**Test de regresión:** `python test_kill_real.py` lanza notepad y verifica que el PID listado coincide con el real.
+
+---
+
+## 🚨 Trampa #2: `request_admin_elevation` mata el proceso silenciosamente
+
+**Síntoma:** Doble clic en `ProcessManager.vbs` → no aparece nada, no hay error.
+
+**Causa:** Si `request_admin_elevation()` falla (UAC cancelado, excepción), retorna `False` y `__main__` hace `sys.exit(0)`. Nada se muestra.
+
+**Lección:** Nunca uses auto-elevation con `sys.exit` como fallback. Si falla, muestra error o continúa sin admin.
+
+**Fix actual:** Eliminada la auto-elevation. La elevación admin es opcional via click derecho en la UI (futuro).
+
+**Test de regresión:** `python verify_app.py` debe pasar (proceso vivo tras 4s).
+
+---
+
+## Trampa #3: PowerShell `-replace` interpreta `[PIPE]` como regex char class
+
+**Síntoma:** Texto de reemplazo raro en cmdlines que contienen `|`.
+
+**Causa:** PowerShell `-replace` usa regex. `[PIPE]` en el reemplazo se interpreta como clase de caracteres (P, I, E).
+
+**Fix actual:** Ya no se usa `-replace` con `[PIPE]`. Se usa TAB como delimitador y los cmdlines se limpian con `-replace "[\t\r\n]", ' '` (clases de caracteres válidas).
+
+**Cómo evitar:** Si necesitas reemplazar texto en PowerShell, usa `[char[]]` casting o `String.Replace()` (literal, no regex).
+
+---
+
+## Trampa #4: `pythonw.exe` GUI subsystem + `ShellExecuteW runas` falla
+
+**Síntoma:** Cuando `pythonw.exe` intenta auto-elevarse con `ShellExecuteW(None, "runas", ...)`, falla silenciosamente en algunos Windows.
+
+**Fix actual:** Eliminada la auto-elevation. Si se necesita admin, lanzar manualmente con clic derecho → "Ejecutar como administrador".
+
+---
+
+## Trampa #5: MySQL `tkinter` no incluye checkboxes en Treeview por defecto
+
+**Síntoma:** Querías checkboxes para selección múltiple visible, tkinter Treeview no las trae.
+
+**Workaround usado:** Selección múltiple con Ctrl+click estándar + click toggle (sin Ctrl) implementado en `_on_click`. No hay checkboxes reales.
+
+**Alternativa si se necesita:** Usar `ttk.Checkbutton` en una columna custom, pero requiere reimplementar el treeview.
+
+---
+
+## Bloqueo conocido: Mini App publish EACCES
+
+**Síntoma:** `miniapp.publish` retorna `RUNTIME_START_FAILED` con `Error: listen EACCES: permission denied 127.0.0.1:60784`.
+
+**Causa:** El sandbox del proceso Node del Host MiniMax Code bloquea TCP binds al puerto 60784 específicamente. Probado con 6 estrategias diferentes, todas fallan.
+
+**Estado:** `miniapps/process_manager/` queda como referencia. El código está completo y compila. No se puede publicar en este entorno.
+
+**Workarounds intentados (todos fallan):**
+
+| Estrategia | Resultado |
+|------------|-----------|
+| `listen(60784, '127.0.0.1')` | EACCES |
+| `listen(60784, '0.0.0.0')` | EACCES |
+| `listen(60784, '::1')` | EACCES |
+| `listen(60784, '::')` | EACCES |
+| `listen(0, host)` (OS-assigned) | OK pero Host busca en 60784 → timeout |
+| `netsh interface portproxy` 60784 → real | Regla añadida pero no enruta (ECONNREFUSED) |
+
+**Acciones del usuario si quiere arreglar:**
+- Reportar bug al soporte de MiniMax Code
+- Esperar actualización del Host
+- Empaquetar como Electron/Tauri standalone (no Mini App)
+
+---
+
+## Trampa #6: Encoding cp1252 en consola de Windows
+
+**Síntoma:** `UnicodeEncodeError: 'charmap' codec can't encode character '\u2705'` al hacer `print` con emojis o caracteres especiales.
+
+**Causa:** La consola Windows usa cp1252 por defecto, no UTF-8.
+
+**Fix en scripts de validación:**
+
+```python
+import sys
+sys.stdout.reconfigure(encoding='utf-8')  # o
+print(text.encode('ascii', 'replace').decode())  # evita emojis
+```
+
+**En PowerShell:** Setear `$OutputEncoding = [System.Text.Encoding]::UTF8` antes de operaciones que produzcan caracteres no-ASCII.
+
+---
+
+## Trampa #7: Subprocess sin `CREATE_NO_WINDOW` abre consolas visibles
+
+**Síntoma:** Al matar/relaunchar procesos aparecen ventanas de consola parpadeando brevemente.
+
+**Causa:** `subprocess.run()` o `Popen()` en Windows por defecto abre una consola para procesos hijos.
+
+**Fix:** Siempre pasar `creationflags=CREATE_NO_WINDOW` (0x08000000) en `subprocess.run()` y `subprocess.Popen()`.
+
+**Aplicado en:** `get_running_processes()`, `kill_processes()`, `relaunch_processes()`.
+
+---
+
+## Trampa #8: Threading en tkinter requiere `root.after(0, callback)`
+
+**Síntoma:** "RuntimeError: main thread is not in main loop" al actualizar widgets desde un thread.
+
+**Causa:** tkinter no es thread-safe. Solo el hilo principal puede tocar widgets.
+
+**Fix usado:**
+
+```python
+def worker():
+    result = some_io_call()
+    self.root.after(0, self._on_result, result)  # ← clave
+
+threading.Thread(target=worker, daemon=True).start()
+```
+
+`daemon=True` permite que el thread muera si la app se cierra.
+
+---
+
+## Trampa #9: Shell restrictions del agente (EPERM)
+
+**Síntoma:** El agente tiene `spawn EPERM` al ejecutar comandos bash/python.
+
+**Causa:** El entorno donde corre el agente tiene restricciones de spawn. Algunos shells están bloqueados.
+
+**Workaround:** Escribir scripts `.py` o `.ps1` que el usuario ejecuta con doble clic. El agente no puede ejecutar directamente.
+
+---
+
+## 🚨 Trampa #10: `proc.kill()` deja procesos hijo huérfanos en Windows
+
+**Síntoma:** Tras `python verify_app.py` (o cualquier test que mata un Python que lanzó `subprocess.run(["powershell", ...])`), queda un `pwsh.exe` o `powershell.exe` vivo en tu sesión. Si abres el Task Manager lo verás consumiendo recursos sin razón aparente.
+
+**Causa:** `proc.kill()` en Windows llama a `TerminateProcess`, que mata SOLO el PID indicado. Los hijos (cualquier `subprocess.run` o `Popen` lanzado por el proceso padre) se quedan huérfanos porque Windows no propaga automáticamente la terminación. Esto difiere de Unix donde señales al líder del grupo a veces cierran hijos.
+
+**MAL — deja huérfanos:**
+
+```python
+proc.kill()  # solo mata el Python padre
+```
+
+**BIEN — mata el árbol completo:**
+
+```python
+import subprocess
+CREATE_NO_WINDOW = 0x08000000
+
+def kill_process_tree(pid):
+    subprocess.run(
+        ["taskkill", "/F", "/T", "/PID", str(pid)],
+        capture_output=True,
+        creationflags=CREATE_NO_WINDOW,
+    )
+
+kill_process_tree(proc.pid)  # /T = tree, mata tambien los hijos
+```
+
+**Aplicado en:** `verify_app.py` y `verify_pyw.py` (función `kill_process_tree`).
+
+**Aplicación futura:** Si en algún momento `process_manager.py` lanza procesos `Popen` no-bloqueantes (PowerShell para queries periódicas, watchers de procesos, etc.), el cleanup al cerrar la app debe usar `taskkill /F /T` también. Hoy es seguro porque todos los subprocess son `run()` bloqueantes que mueren al retornar, pero el patrón sigue aplicando.
+
+**Test de regresión:** Tras `python verify_app.py`, el conteo de procesos `pwsh`/`powershell` debe ser IGUAL al de antes del test (no uno más).
+
+---
+
+## Trampa #11: Cambiar return signature de `kill_processes` / `relaunch_processes` rompe todos los call sites
+
+**Síntoma:** Tras modificar `kill_processes` o `relaunch_processes` para devolver una tupla más larga (por ejemplo de 2 a 3 elementos), los call sites que hacen `a, b = func(...)` fallan con `ValueError: too many values to unpack (expected 2)`.
+
+**Causa:** Las dos funciones son API pública del módulo. Cualquier script que las usa (incluidos `test_kill_real.py`, `test_harness.py`, `test_harness_v2.py` y los métodos internos de `class ProcessManagerApp`) tiene que actualizarse al unísono.
+
+**Signaturas actuales (v1.2.0):**
+
+```python
+def kill_processes(processes_seleccionados, kill_tree=True, dedupe_by_tree=True):
+    """Returns: (killed: list, failed: list, skipped: list)"""
+
+def relaunch_processes(processes, group_by_exe=True):
+    """Returns: (launched: list, failed: list, skipped_count: int)"""
+```
+
+**Regla:** Cuando modifiques el return de una función pública del módulo, **busca TODOS los call sites antes de cambiar**:
+
+```bash
+grep -rn "(kill|relaunch)_processes(" --include="*.py"
+```
+
+Y actualiza cada `a, b = ...` a `a, b, c = ...` (o usa `_` para los que no te importen).
+
+**Aplicado en:** `process_manager.py` (4 métodos), `test_kill_real.py`, `test_harness.py`, `test_harness_v2.py`.
+
+---
+
+## Trampa #12: Tests que usan apps GUI (notepad, calc, etc.) molestan al usuario
+
+**Síntoma:** Cada vez que se ejecuta `test_kill_real.py`, aparece una ventana de Bloc de notas durante ~3 segundos en el escritorio del usuario. Aunque el test la mata al final, es visualmente molesto y en algunos casos (WMI snapshot desactualizado, race condition) la ventana puede quedarse viva sin que el test lo detecte.
+
+**Causa:** El test original usaba `notepad.exe` como "proceso de prueba" para validar `kill_processes()`. Cualquier GUI app abre su ventana cuando se lanza. `CREATE_NO_WINDOW` (0x08000000) en `subprocess.Popen` solo suprime la **consola** del hijo, no la ventana de una GUI app — para notepad eso es irrelevante porque no tiene consola pero **sí** tiene ventana.
+
+**Fix:** Usar un subprocess Python invisible como objetivo del test:
+
+```python
+marker = f"wopt_test_{os.getpid()}"
+target = subprocess.Popen(
+    [sys.executable, "-c", f"import time; print('{marker}'); time.sleep(60)"],
+    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    creationflags=CREATE_NO_WINDOW,  # sin consola
+)
+# ...
+target_in_list = [p for p in processes if marker in p.get('commandline', '')]
+```
+
+**Por qué funciona:**
+- `python -c "..."` es un proceso de consola → `CREATE_NO_WINDOW` sí lo esconde
+- `time.sleep(60)` mantiene el proceso vivo sin hacer nada (no UI, no output)
+- Marker único en el commandline permite identificarlo en el WMI list (más robusto que matchear PID, que puede no aparecer en el snapshot)
+- `stdout=subprocess.PIPE` evita que `print()` muestre nada
+
+**Aplicado en:** `test_kill_real.py` (reescrito 2026-09-14). Antes usaba `notepad.exe`.
+
+**Regla:** Para tests que necesitan matar procesos reales, **preferir siempre subprocess headless** (Python, Node, pwsh). Solo usar GUI apps si el test está validando específicamente comportamiento de GUI (no es nuestro caso).
+
+---
+
+## Trampa #13: `taskkill /T` solo mata descendientes, NO siblings
+
+**Síntoma:** El usuario selecciona 5 firefox.exe separados (cada uno su propia ventana) y hace click en "Matar". Solo muere 1. Los otros 4 sobreviven aunque todos tengan el mismo `args[0]` (mismo exe path).
+
+**Causa:** `taskkill /F /T /PID X` mata el proceso X **y todo su árbol descendiente**. Pero "descendiente" significa "hijo, nieto, etc." — NO significa "otros procesos con el mismo nombre". Si tienes 5 firefox.exe que son hermanos (todos hijos de `explorer.exe` pero independientes entre sí), `/T` de uno solo mata ese y sus renderers; los otros 4 sobreviven.
+
+**Fix en woptimizer (v1.3.0):** `kill_selected` ahora:
+1. Expande la selección a **TODOS los procesos del mismo nombre** del snapshot (helper `expand_selection_by_name`)
+2. Pasa `dedupe_by_tree=False` a `kill_processes` (porque dedup agruparía los 5 firefox en 1 taskkill, dejando 4 vivos)
+
+Resultado: 5 firefox → 5 taskkill calls → 5 firefox + todos sus renderers mueren.
+
+```python
+# En kill_selected:
+expanded = expand_selection_by_name(selected, self.processes)
+killed, failed, skipped = kill_processes(
+    expanded, kill_tree=True, dedupe_by_tree=False  # ← False es CLAVE
+)
+```
+
+**Diferencia con `prepare_for_gaming`:** ahí SÍ queremos dedup, porque al matar "todos los high/medium", el browser main + sus renderers son un solo árbol → 1 taskkill los maneja. La expansión por nombre solo aplica a `kill_selected` (selección manual del usuario).
+
+**Test de regresión:** `python test_kill_expansion.py` valida la lógica del helper y la integración.
+
+## Resumen de reglas para IA que modifique este proyecto
+
+1. **NUNCA uses `$pid` en scripts PowerShell** — usa `$procId` u otro nombre
+2. **NUNCA añadas auto-elevation con `sys.exit` silencioso** — debe mostrar error o continuar
+3. **SIEMPRE aplica `CREATE_NO_WINDOW`** en todos los subprocess
+4. **SIEMPRE valida con `verify_app.py` y `test_kill_real.py`** tras cambios
+5. **NUNCA asumas que funciona** — verifica con `poll()` que el proceso sigue vivo
+6. **USA `root.after(0, callback)`** para actualizar widgets desde threads
+7. **USA TAB como delimitador** entre Python y PowerShell
+8. **NO añadas features sin test** — un cambio a la vez, validando cada uno
+
+
+# mini-app-status
+
+<!-- source: docs/mini-app-status.md -->
+
+---
+
+# Mini App — Estado y bloqueo
+
+## Resumen ejecutivo
+
+Existe una versión Mini App en `miniapps/process_manager/` con código completo (manifest, server.mjs, client HTML). **No es publicable** en este entorno por un bug del sandbox del Host MiniMax Code.
+
+## Estado del código
+
+| Archivo | Estado |
+|---------|--------|
+| `miniapps/process_manager/package.json` | ✅ schemaVersion 2 (`mcode.miniApp`) |
+| `miniapps/process_manager/miniapp/miniapp.json` | ✅ schemaVersion 1, payloads declarados |
+| `miniapps/process_manager/miniapp/node/server.mjs` | ✅ 9.3 KB — endpoints REST completos |
+| `miniapps/process_manager/miniapp/client/index.html` | ✅ 23 KB — UI gaming mode completa |
+| `miniapps/process_manager/.minimax-plugin/plugin.json` | ✅ metadata + description |
+
+## Endpoints API implementados
+
+```
+GET  /api/processes       # lista procesos via PowerShell
+POST /api/kill            # mata procesos via taskkill
+POST /api/relaunch        # relanza via subprocess.Popen
+GET  /api/saved           # lee saved_processes.json
+POST /api/saved           # añade con dedup (name, pid)
+DELETE /api/saved         # limpia la lista
+GET  /dashboard           # sirve el cliente HTML
+```
+
+UI cliente incluye: categorías gaming, búsqueda, modo Simple/Completo, atajos teclado, menú contextual, modal de confirmación, auto-refresh opcional.
+
+## Bloqueo: `RUNTIME_START_FAILED` con EACCES
+
+Cada intento de `miniapp.publish` falla con:
+
+```
+code: PREPARATION_FAILED
+stage: runtime
+reasonCode: RUNTIME_START_FAILED
+runtimeError: Error: listen EACCES: permission denied 127.0.0.1:60784
+```
+
+### Causa raíz
+
+El sandbox del proceso Node del Host MiniMax Code **bloquea TCP binds al puerto 60784 específicamente**. Otros puertos funcionan (port 0 → OS-assigned OK), pero el Host asigna 60784 y verifica TCP readiness ahí.
+
+### Evidencia (6 estrategias probadas, todas fallan)
+
+| # | Estrategia | Resultado |
+|---|------------|-----------|
+| 1 | `listen(60784, '127.0.0.1')` (canónico) | EACCES |
+| 2 | `listen(60784, '0.0.0.0')` | EACCES |
+| 3 | `listen(60784, '::1')` | EACCES |
+| 4 | `listen(60784, '::')` | EACCES |
+| 5 | `listen(0, host)` (OS-assigned) | ✅ bind OK |
+| 6 | port 0 + `netsh interface portproxy` | Regla añadida, no enruta (ECONNREFUSED) |
+
+**Test #5 fue clave:** el bind a un puerto OS-assigned funciona. Esto confirma que el problema NO es la loopback en general — es específico al puerto 60784.
+
+**Test #6 fue clave:** las reglas portproxy se añaden correctamente (visibles con `netsh show`), pero el sandbox de Chromium/Electron del Host bloquea el enrutamiento hacia puertos reservados.
+
+**Confirmado:** el scaffold original del Host (sin mis modificaciones) **también falla** con EACCES. No es mi código.
+
+### Stderr capturado del último intento
+
+```
+[debug] context.listen = {"host":"127.0.0.1","port":60784}
+[debug] port type: number, host type: string
+[debug] listening on 127.0.0.1:57864  ← con port 0, OS picks otro puerto
+[debug] WARN: actual port != assigned, Host may time out
+```
+
+→ confirma que `context.listen` está bien formado.
+
+### Reinicio como admin
+
+Probado: cerrar MiniMax Code, relanzar como administrador. **Sin cambio.** El bloqueo es del sandbox del proceso, no de permisos de usuario.
+
+## Diagnóstico probable
+
+El Host MiniMax Code probablemente:
+1. Asigna un puerto específico a cada Mini App
+2. Reserva ese puerto a nivel del sandbox del proceso Node
+3. Los procesos hijos del sandbox no pueden hacer bind al mismo puerto
+
+Esto explicaría por qué:
+- Port 0 funciona (el sandbox no reserva puertos OS-assigned)
+- El puerto 60784 específicamente no funciona (está reservado por el Host)
+- Reinicio como admin no cambia nada (es el sandbox del proceso, no permisos del usuario)
+
+## Workarounds intentados que NO funcionan
+
+1. ❌ Bind a 0.0.0.0 en lugar de 127.0.0.1
+2. ❌ Bind a IPv6 (::1, ::)
+3. ❌ Bind a port 0 con OS-assign + actualizar context.listen.port
+4. ❌ netsh interface portproxy para redirigir 60784 → puerto real
+5. ❌ Reinicio de MiniMax Code como administrador
+
+## Workarounds que NO se han probado (posibles pero riesgosos)
+
+1. **stdin/stdout IPC en lugar de HTTP** — el runtime-api.md no menciona esta opción, pero otros runtimes podrían soportarla
+2. **Cambiar el puerto de asignación del Host** — requiere modificar archivos del Host, no permitido desde plugin
+3. **Usar HTTP/2 o WebSocket** — el problema es el bind, no el protocolo
+
+## Acciones requeridas del usuario
+
+Para usar la Mini App, alguna de estas:
+
+1. **Esperar** a que MiniMax Code solvente el bug en una actualización
+2. **Reportar** el bug al soporte de MiniMax Code adjuntando:
+   - El stderr capturado
+   - Las 6 estrategias probadas
+   - Confirmación de que el scaffold original también falla
+3. **Empaquetar como .exe standalone** (Electron, Tauri) — fuera del Host MiniMax Code
+
+## Decisión actual
+
+**Python es el producto final.** El código Mini App queda en `miniapps/process_manager/` como referencia para cuando el bug se solvente. No se seguirá trabajando en él mientras el sandbox del Host no permita bind TCP.
+
+## Si en el futuro se reintenta
+
+1. Actualizar MiniMax Code
+2. Ejecutar `miniapp.publish` sin modificar `server.mjs` (debería usar el scaffold canónico)
+3. Si sigue fallando, comparar el puerto asignado con otros plugins para ver si es bug específico del sandbox o del código
+4. Si funciona, validar con `miniapp.inspect` y `miniapp.open`
+5. Una vez publicado, comparar UX con la versión Python
+
+
+# testing
+
+<!-- source: docs/testing.md -->
+
+---
+
+# Testing
+
+> ⚠️ **REGLA DE ORO:** Nunca digas "listo" sin haber validado con un test real.
+
+## Scripts de validación incluidos
+
+### `verify_app.py`
+
+Lanza `python process_manager.py`, espera 4 segundos, verifica que el proceso sigue vivo (señal de que la GUI está abierta y funcionando).
+
+```bash
+python verify_app.py
+```
+
+**PASS esperado:**
+```
+[verify] Lanzando: python ...\process_manager.py
+[verify] Esperando 4s para que la GUI se abra...
+[verify] PASS - PROCESO VIVO tras 4s (PID=...). GUI abierta.
+[verify] PASS - la app arranca correctamente
+```
+
+**FAIL diagnóstico:**
+- Proceso muere en <4s → hay un `sys.exit()` o crash en imports
+- Proceso vivo pero con stderr → revisar el stderr
+
+### `verify_pyw.py`
+
+Igual pero con `pythonw.exe` (sin consola) — simula el flujo real del `.vbs`.
+
+```bash
+python verify_pyw.py
+```
+
+### `test_kill_real.py`
+
+**El más importante.** Lanza `notepad.exe`, lo lista con `get_running_processes()`, lo mata con `kill_processes()`, verifica que murió.
+
+```bash
+python test_kill_real.py
+```
+
+**PASS esperado:**
+```
+[test] notepad.exe lanzado con PID=...
+[test] notepad ENCONTRADO: name=Notepad, pid=...
+[test] killed=1, failed=0
+[test] notepad murio con codigo: 1
+[test] PASS - kill_processes funciona correctamente
+```
+
+**FAIL diagnóstico:**
+- notepad NO encontrado → bug en `get_running_processes` (probablemente `$pid` reservado)
+- killed=0, failed>0 → `taskkill` falla por permisos o PID incorrecto
+- notepad sigue vivo tras kill → matar no funcionó
+
+### `test_harness.py`
+
+Test E2E original: arranca PowerShell con sleep → kill → save → relaunch → verify alive → cleanup.
+
+```bash
+python test_harness.py
+```
+
+Más lento pero valida el ciclo completo.
+
+---
+
+## Patrón de validación para cambios
+
+Antes de decir "listo" tras modificar el código, ejecuta en este orden:
+
+```bash
+# 1. Sintaxis OK
+python -c "import py_compile; py_compile.compile('process_manager.py', doraise=True)"
+
+# 2. App arranca con python
+python verify_app.py
+
+# 3. App arranca con pythonw
+python verify_pyw.py
+
+# 4. Kill funciona con proceso real
+python test_kill_real.py
+
+# 5. Sincronizar .pyw
+Copy-Item process_manager.py process_manager.pyw -Force
+```
+
+Si los 4 pasan → cambio OK.
+
+Si alguno falla → **NO** marques como completo. Investiga, arregla, reintenta.
+
+---
+
+## Tests manuales del usuario
+
+El usuario debe verificar manualmente:
+
+| Test | Cómo |
+|------|------|
+| GUI abre sin consola | Doble clic en `ProcessManager.vbs` |
+| Lista carga | Esperar 2-3s, ver categorías con iconos |
+| Búsqueda funciona | Escribir "chrome" en buscador |
+| Kill funciona | Seleccionar chrome, click Matar → confirma |
+| Relanzar funciona | Click Relanzar → procesos vuelven |
+| Atajos | F5, Ctrl+A, Delete, Escape |
+
+---
+
+## Anti-patrones que NO debes usar
+
+❌ **"Debería funcionar, lo probé mentalmente"** → NO. Ejecuta.
+❌ **"Lo dejo como está, parece OK"** → NO. Verifica con test real.
+❌ **"Cambio múltiples cosas a la vez"** → NO. Un cambio → test → siguiente.
+❌ **"El usuario ya lo validará"** → NO. Valida tú primero con tests automatizados.
+
+---
+
+## Debug rápido cuando algo no funciona
+
+```bash
+# 1. Sintaxis
+python -c "import py_compile; py_compile.compile('process_manager.py', doraise=True)"
+
+# 2. Imports funcionan (sin GUI)
+python -c "import process_manager; print('imports OK')"
+
+# 3. Get_running_processes funciona solo
+python -c "import process_manager as pm; procs = pm.get_running_processes(); print(f'{len(procs)} procesos')"
+
+# 4. Kill funciona solo
+python test_kill_real.py
+
+# 5. Test completo
+python verify_app.py
+```
+
+Si todos pasan pero la GUI no → problema de tkinter (raro).
+Si get_running_processes falla → problema PowerShell (probablemente `$pid`).
+Si kill falla → problema de taskkill (permisos o PID incorrecto).
+

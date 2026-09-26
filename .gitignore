@@ -37,3 +37,9 @@ logs/
 # Outputs temporales / tests
 .cache/
 tmp/
+
+# Backups de tests (pueden contener datos de usuario reales: profiles.json.testbak*)
+*.testbak*
+
+# Dependencias instaladas (miniapps)
+node_modules/

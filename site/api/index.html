@@ -1,0 +1,1390 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Process Manager con foco gamer para Windows — standalone .exe">
+      
+      
+        <meta name="author" content="carcheky">
+      
+      
+      
+        <link rel="prev" href="../architecture/">
+      
+      
+        <link rel="next" href="../extending/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>API reference - woptimizer</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="woptimizer" class="md-header__button md-logo" aria-label="woptimizer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            woptimizer
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              API reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Modo oscuro"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Modo oscuro" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Modo claro"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Modo claro" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Inicio
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Arquitectura
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../extending/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Extending
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../testing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Testing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../known-issues/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Known issues (17 trampas)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../mini-app-status/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Estado Mini App
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="woptimizer" class="md-nav__button md-logo" aria-label="woptimizer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    woptimizer
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inicio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arquitectura
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#funciones-de-process_managerpy-modulo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Funciones de process_manager.py (módulo)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Funciones de process_manager.py (módulo)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get_running_processes-listdict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_running_processes() -&gt; list[dict]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kill_processesprocesses_seleccionados-kill_treetrue-tuplelist-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        kill_processes(processes_seleccionados, kill_tree=True) -&gt; tuple[list, list]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#categorize_processproc_name-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        categorize_process(proc_name) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#save_processes_to_relaunchprocesses-bool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        save_processes_to_relaunch(processes) -&gt; bool
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#load_saved_processes-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        load_saved_processes() -&gt; list
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clear_saved_processes-bool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        clear_saved_processes() -&gt; bool
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#relaunch_processesprocesses-tuplelist-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        `relaunch_processes(processes) -&gt; tuple[list, list]**
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#is_admin-bool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        is_admin() -&gt; bool
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#constantes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Constantes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Constantes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#process_categories-dict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PROCESS_CATEGORIES (dict)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#category_order-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CATEGORY_ORDER (list)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#simple_categories-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SIMPLE_CATEGORIES (list)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#process_list_file-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PROCESS_LIST_FILE (str)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#max_cmdline_len-int" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MAX_CMDLINE_LEN (int)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create_no_window-int" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CREATE_NO_WINDOW (int)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#clase-processmanagerapp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clase ProcessManagerApp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#atajos-de-teclado" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Atajos de teclado
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#subprocess-calls-resumen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subprocess calls (resumen)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#estados-de-la-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Estados de la app
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../extending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../known-issues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Known issues (17 trampas)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mini-app-status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Estado Mini App
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#funciones-de-process_managerpy-modulo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Funciones de process_manager.py (módulo)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Funciones de process_manager.py (módulo)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get_running_processes-listdict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_running_processes() -&gt; list[dict]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kill_processesprocesses_seleccionados-kill_treetrue-tuplelist-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        kill_processes(processes_seleccionados, kill_tree=True) -&gt; tuple[list, list]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#categorize_processproc_name-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        categorize_process(proc_name) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#save_processes_to_relaunchprocesses-bool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        save_processes_to_relaunch(processes) -&gt; bool
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#load_saved_processes-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        load_saved_processes() -&gt; list
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clear_saved_processes-bool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        clear_saved_processes() -&gt; bool
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#relaunch_processesprocesses-tuplelist-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        `relaunch_processes(processes) -&gt; tuple[list, list]**
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#is_admin-bool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        is_admin() -&gt; bool
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#constantes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Constantes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Constantes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#process_categories-dict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PROCESS_CATEGORIES (dict)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#category_order-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CATEGORY_ORDER (list)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#simple_categories-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SIMPLE_CATEGORIES (list)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#process_list_file-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PROCESS_LIST_FILE (str)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#max_cmdline_len-int" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MAX_CMDLINE_LEN (int)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create_no_window-int" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CREATE_NO_WINDOW (int)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#clase-processmanagerapp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clase ProcessManagerApp
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#atajos-de-teclado" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Atajos de teclado
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#subprocess-calls-resumen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subprocess calls (resumen)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#estados-de-la-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Estados de la app
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="api-reference">API Reference<a class="headerlink" href="#api-reference" title="Permanent link">&para;</a></h1>
+<p>Funciones principales que un agente IA podría necesitar llamar o extender.</p>
+<h2 id="funciones-de-process_managerpy-modulo">Funciones de <code>process_manager.py</code> (módulo)<a class="headerlink" href="#funciones-de-process_managerpy-modulo" title="Permanent link">&para;</a></h2>
+<h3 id="get_running_processes-listdict"><code>get_running_processes() -&gt; list[dict]</code><a class="headerlink" href="#get_running_processes-listdict" title="Permanent link">&para;</a></h3>
+<p>Retorna lista de procesos en ejecución.</p>
+<p><strong>Returns:</strong> Lista de dicts con esta estructura:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="s1">'name'</span><span class="p">:</span> <span class="s1">'chrome'</span><span class="p">,</span>           <span class="c1"># nombre sin extensión</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="s1">'full_name'</span><span class="p">:</span> <span class="s1">'chrome.exe'</span><span class="p">,</span>  <span class="c1"># nombre con extensión</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="s1">'pid'</span><span class="p">:</span> <span class="s1">'1234'</span><span class="p">,</span>              <span class="c1"># string (de PowerShell)</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="s1">'commandline'</span><span class="p">:</span> <span class="s1">'C:</span><span class="se">\\</span><span class="s1">...</span><span class="se">\\</span><span class="s1">chrome.exe --type=renderer'</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">}</span>
+</span></code></pre></div>
+<p><strong>Side effects:</strong> Muestra messagebox de error si PowerShell falla.</p>
+<p><strong>Performance:</strong> 1-3 segundos (PowerShell Get-CimInstance).</p>
+<h3 id="kill_processesprocesses_seleccionados-kill_treetrue-tuplelist-list"><code>kill_processes(processes_seleccionados, kill_tree=True) -&gt; tuple[list, list]</code><a class="headerlink" href="#kill_processesprocesses_seleccionados-kill_treetrue-tuplelist-list" title="Permanent link">&para;</a></h3>
+<p>Mata procesos via <code>taskkill /F</code>.</p>
+<p><strong>Args:</strong>
+- <code>processes_seleccionados</code>: list of dicts (mismo formato que <code>get_running_processes</code>)
+- <code>kill_tree</code>: si True, añade <code>/T</code> para matar hijos también</p>
+<p><strong>Returns:</strong> <code>(killed, failed)</code>:
+- <code>killed</code>: list of dicts con <code>{name, pid, commandline, killed_at, already_gone}</code>
+- <code>failed</code>: list of strings con mensaje de error por proceso</p>
+<p><strong>Exit codes de taskkill:</strong>
+- 0 = success
+- 128 = proceso ya no existe (tratado como success)
+- 1 = acceso denegado u otro error</p>
+<h3 id="categorize_processproc_name-str"><code>categorize_process(proc_name) -&gt; str</code><a class="headerlink" href="#categorize_processproc_name-str" title="Permanent link">&para;</a></h3>
+<p>Matchea nombre contra <code>PROCESS_CATEGORIES</code>, retorna nombre de categoría o <code>'⚪ Otros'</code>.</p>
+<p><strong>Args:</strong> <code>proc_name</code> (str) — nombre del proceso (sin .exe o con .exe)</p>
+<p><strong>Returns:</strong> String con el nombre de categoría.</p>
+<h3 id="save_processes_to_relaunchprocesses-bool"><code>save_processes_to_relaunch(processes) -&gt; bool</code><a class="headerlink" href="#save_processes_to_relaunchprocesses-bool" title="Permanent link">&para;</a></h3>
+<p>Añade procesos al JSON con dedup por <code>(name, pid)</code>.</p>
+<p><strong>Args:</strong> <code>processes</code>: list of dicts con al menos <code>name</code>, <code>pid</code>, <code>commandline</code></p>
+<p><strong>Returns:</strong> True si escribió OK.</p>
+<h3 id="load_saved_processes-list"><code>load_saved_processes() -&gt; list</code><a class="headerlink" href="#load_saved_processes-list" title="Permanent link">&para;</a></h3>
+<p>Lee <code>saved_processes.json</code>, retorna lista (vacía si no existe o corrupto).</p>
+<h3 id="clear_saved_processes-bool"><code>clear_saved_processes() -&gt; bool</code><a class="headerlink" href="#clear_saved_processes-bool" title="Permanent link">&para;</a></h3>
+<p>Borra el archivo JSON.</p>
+<h3 id="relaunch_processesprocesses-tuplelist-list">`relaunch_processes(processes) -&gt; tuple[list, list]**<a class="headerlink" href="#relaunch_processesprocesses-tuplelist-list" title="Permanent link">&para;</a></h3>
+<p>Relanza procesos via <code>subprocess.Popen</code> con <code>shlex.split</code> o fallback shell.</p>
+<p><strong>Returns:</strong> <code>(launched, failed)</code></p>
+<h3 id="is_admin-bool"><code>is_admin() -&gt; bool</code><a class="headerlink" href="#is_admin-bool" title="Permanent link">&para;</a></h3>
+<p>Detecta si el proceso actual corre con permisos admin via <code>ctypes</code>.</p>
+<h2 id="constantes">Constantes<a class="headerlink" href="#constantes" title="Permanent link">&para;</a></h2>
+<h3 id="process_categories-dict"><code>PROCESS_CATEGORIES</code> (dict)<a class="headerlink" href="#process_categories-dict" title="Permanent link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="s1">'🔴 Navegadores'</span><span class="p">:</span> <span class="p">{</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>        <span class="s1">'priority'</span><span class="p">:</span> <span class="s1">'high'</span><span class="p">,</span>     <span class="c1"># 'high' | 'medium' | 'low' | 'none'</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>        <span class="s1">'patterns'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'chrome'</span><span class="p">,</span> <span class="s1">'firefox'</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>        <span class="s1">'description'</span><span class="p">:</span> <span class="s1">'...'</span><span class="p">,</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="p">},</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="o">...</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">}</span>
+</span></code></pre></div>
+<h3 id="category_order-list"><code>CATEGORY_ORDER</code> (list)<a class="headerlink" href="#category_order-list" title="Permanent link">&para;</a></h3>
+<p>Orden de visualización de categorías en el treeview.</p>
+<h3 id="simple_categories-list"><code>SIMPLE_CATEGORIES</code> (list)<a class="headerlink" href="#simple_categories-list" title="Permanent link">&para;</a></h3>
+<p>Categorías que se muestran en modo Simple (gamer-friendly).</p>
+<h3 id="process_list_file-str"><code>PROCESS_LIST_FILE</code> (str)<a class="headerlink" href="#process_list_file-str" title="Permanent link">&para;</a></h3>
+<p>Path absoluto a <code>saved_processes.json</code> (mismo dir que el script).</p>
+<h3 id="max_cmdline_len-int"><code>MAX_CMDLINE_LEN</code> (int)<a class="headerlink" href="#max_cmdline_len-int" title="Permanent link">&para;</a></h3>
+<p>4000 — commandlines más largos se truncan.</p>
+<h3 id="create_no_window-int"><code>CREATE_NO_WINDOW</code> (int)<a class="headerlink" href="#create_no_window-int" title="Permanent link">&para;</a></h3>
+<p>0x08000000 — flag de Windows para subprocess sin ventana de consola.</p>
+<h2 id="clase-processmanagerapp">Clase <code>ProcessManagerApp</code><a class="headerlink" href="#clase-processmanagerapp" title="Permanent link">&para;</a></h2>
+<p>Métodos principales (sin self):</p>
+<table>
+<thead>
+<tr>
+<th>Método</th>
+<th>Propósito</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>__init__(root)</code></td>
+<td>Configura ventana, llama <code>create_widgets</code> y <code>load_processes</code></td>
+</tr>
+<tr>
+<td><code>create_widgets()</code></td>
+<td>Construye toda la UI (botones, treeview, etc.)</td>
+</tr>
+<tr>
+<td><code>load_processes()</code></td>
+<td>Async, lanza thread que llama <code>get_running_processes</code></td>
+</tr>
+<tr>
+<td><code>_on_processes_loaded(processes)</code></td>
+<td>Callback UI: actualiza treeview</td>
+</tr>
+<tr>
+<td><code>populate_tree()</code></td>
+<td>Llena treeview con categorías</td>
+</tr>
+<tr>
+<td><code>filter_processes()</code> / <code>_schedule_filter()</code> / <code>_do_filter()</code></td>
+<td>Búsqueda con debounce</td>
+</tr>
+<tr>
+<td><code>toggle_select_all()</code></td>
+<td>Selecciona/deselecciona todas las hojas</td>
+</tr>
+<tr>
+<td><code>kill_selected()</code></td>
+<td>Mata procesos seleccionados (con confirmación)</td>
+</tr>
+<tr>
+<td><code>save_selected()</code></td>
+<td>Guarda seleccionados para relaunch</td>
+</tr>
+<tr>
+<td><code>relaunch_saved()</code></td>
+<td>Relanza procesos guardados</td>
+</tr>
+<tr>
+<td><code>prepare_for_gaming()</code></td>
+<td>Mata high+medium priority (botón Gaming)</td>
+</tr>
+<tr>
+<td><code>clear_saved()</code></td>
+<td>Limpia lista guardada</td>
+</tr>
+<tr>
+<td><code>update_count()</code></td>
+<td>Actualiza contador en status bar</td>
+</tr>
+<tr>
+<td><code>_on_click(event)</code></td>
+<td>Handler click izquierdo (toggle)</td>
+</tr>
+<tr>
+<td><code>_on_double_click(event)</code></td>
+<td>Handler doble click (expand/collapse categoría)</td>
+</tr>
+<tr>
+<td><code>_show_context_menu(event)</code></td>
+<td>Muestra menú click derecho</td>
+</tr>
+<tr>
+<td><code>_ctx_kill()</code>, <code>_ctx_save()</code>, <code>_ctx_copy_pids()</code>, <code>_ctx_copy_cmdlines()</code></td>
+<td>Acciones del menú</td>
+</tr>
+</tbody>
+</table>
+<h2 id="atajos-de-teclado">Atajos de teclado<a class="headerlink" href="#atajos-de-teclado" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Atajo</th>
+<th>Acción</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Ctrl+A</code></td>
+<td>Seleccionar todas las hojas</td>
+</tr>
+<tr>
+<td><code>Delete</code></td>
+<td>Matar seleccionados</td>
+</tr>
+<tr>
+<td><code>F5</code> / <code>Ctrl+R</code></td>
+<td>Refrescar lista</td>
+</tr>
+<tr>
+<td><code>Escape</code></td>
+<td>Limpiar búsqueda</td>
+</tr>
+</tbody>
+</table>
+<h2 id="subprocess-calls-resumen">Subprocess calls (resumen)<a class="headerlink" href="#subprocess-calls-resumen" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Operación</th>
+<th>Comando</th>
+<th>Flags</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Listar procesos</td>
+<td><code>powershell -NoProfile -NonInteractive -Command &lt;script&gt;</code></td>
+<td><code>CREATE_NO_WINDOW</code></td>
+</tr>
+<tr>
+<td>Matar proceso</td>
+<td><code>taskkill /F [/T] /PID X</code></td>
+<td><code>CREATE_NO_WINDOW</code></td>
+</tr>
+<tr>
+<td>Relanzar proceso</td>
+<td><code>subprocess.Popen(args, detached=True, windowsHide=True)</code></td>
+<td>(windowsHide)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="estados-de-la-app">Estados de la app<a class="headerlink" href="#estados-de-la-app" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>self.processes</code>: list of dicts (procesos actuales)</li>
+<li><code>self.saved_processes</code>: list of dicts (cargado de JSON al inicio)</li>
+<li><code>self.simple_mode_var</code>: BooleanVar — toggle Simple/Completo</li>
+<li><code>self.kill_tree_var</code>: BooleanVar — checkbox <code>/T</code></li>
+<li><code>self._loading</code>: bool — evita cargas concurrentes</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Released under the MIT License.
+Built with <a href="https://www.mkdocs.org">MkDocs</a> + <a href="https://squidfunk.github.io/mkdocs-material/">Material</a>.
+    </div>
+  
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
