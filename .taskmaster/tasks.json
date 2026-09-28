@@ -10,7 +10,7 @@
       "description": "Ajustar pack_service.py y models.py. El modelo Pack debe incluir 'default_action' (start/kill). El array 'apps' será mixto: guardará rutas absolutas (añadidas por el usuario) o nombres simples (ej. 'chrome.exe', para el pack Gaming pre-poblado). Eliminar el campo 'keepers'. Asegurar que capture JSONDecodeError, restaure el JSON con el Gaming pack y que el borrado lance excepción si is_gaming=True.",
       "complexity": 4,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "docs/ai/data-models.md"
     },

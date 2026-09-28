@@ -9,8 +9,8 @@ DEFAULT_GAMING_PACK = Pack(
     name="🚀 Preparar para Gaming",
     is_favorite=True,
     is_gaming=True,
-    keepers=["discord"],
-    apps=[]
+    default_action="kill",
+    apps=["chrome.exe"]
 )
 
 class PackService:
@@ -35,8 +35,8 @@ class PackService:
                                     name=v.get("label", "🚀 Preparar para Gaming"),
                                     is_favorite=True,
                                     is_gaming=True,
-                                    keepers=v.get("keepers", ["discord"]),
-                                    apps=[]
+                                    default_action="kill",
+                                    apps=["chrome.exe"]
                                 )
                             else:
                                 packs_dict[k] = Pack(
@@ -45,13 +45,15 @@ class PackService:
                                     apps=v.get("apps", []),
                                     is_favorite=v.get("is_favorite", False),
                                     is_gaming=False,
-                                    keepers=[]
+                                    default_action="start"
                                 )
                         self._data = AppData(packs=packs_dict)
                     else:
                         self._data = AppData(**raw_data)
             except (json.JSONDecodeError, Exception):
                 self._data = AppData()
+                self._ensure_gaming_pack()
+                self.save()
 
         self._ensure_gaming_pack()
 
@@ -103,7 +105,7 @@ class PackService:
         if pack_id not in self._data.packs:
             return False
         if self._data.packs[pack_id].is_gaming:
-            return False
+            raise ValueError("No se puede eliminar el pack de sistema (Gaming).")
         
         del self._data.packs[pack_id]
         self.save()

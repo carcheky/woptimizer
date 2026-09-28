@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict
+from typing import List, Dict, Literal
 
 class ProcessInfo(BaseModel):
     name: str
@@ -15,7 +15,7 @@ class Pack(BaseModel):
     apps: List[str] = Field(default_factory=list)
     is_favorite: bool = False
     is_gaming: bool = False
-    keepers: List[str] = Field(default_factory=list)
+    default_action: Literal["start", "kill"] = "start"
 
 class AppData(BaseModel):
     """Estructura raíz de persistencia (profiles.json)"""
