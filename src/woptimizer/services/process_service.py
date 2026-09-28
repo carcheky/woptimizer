@@ -1,67 +1,85 @@
 import psutil
 from typing import List, Tuple
 from woptimizer.models import ProcessInfo
-from woptimizer.config import PROCESS_CATEGORIES, CATEGORY_ORDER
+from woptimizer.config import PROCESS_CATEGORIES, CATEGORY_ORDER, logger
 
 class ProcessService:
     def __init__(self):
         self.process_db = []
         self.is_db_loaded = False
-        
-    def load_csv_db_async(self, callback=None):
+        self._load_local_db()
+
+    def _load_local_db(self):
+        """Carga la base de datos local empaquetada inmediatamente en memoria."""
+        import json, os
+        try:
+            from woptimizer.config import _data_dir
+            local_path = os.path.join(_data_dir(), "assets", "process_db.json")
+            if os.path.exists(local_path):
+                with open(local_path, "r", encoding="utf-8") as f:
+                    db_dict = json.load(f)
+                    new_db = []
+                    for pattern, props in db_dict.items():
+                        new_db.append(ProcessInfo(
+                            name=pattern,
+                            full_name=pattern,
+                            pid=0,
+                            category=props.get('category', '? Otros'),
+                            priority=props.get('priority', 'none'),
+                            description=props.get('description', 'Sin descripción')
+                        ))
+                    self.process_db = new_db
+                    self.is_db_loaded = True
+        except Exception as e:
+            logger.warning(f"Error cargando DB local: {e}")
+
+    def load_db_async(self, callback=None):
         def _download():
-            import csv, urllib.request, os, threading
-            url = "https://raw.githubusercontent.com/carch/woptimizer/main/assets/fallback.csv"
+            import json, urllib.request, os
+            url = "https://gitlab.com/carcheky/woptimizer/-/raw/main/assets/process_db.json"
             try:
                 from woptimizer.config import _data_dir
                 assets_dir = os.path.join(_data_dir(), "assets")
             except Exception:
                 assets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
             
-            fallback_path = os.path.join(assets_dir, "fallback.csv")
+            os.makedirs(assets_dir, exist_ok=True)
+            local_path = os.path.join(assets_dir, "process_db.json")
             
-            db_temp = []
             try:
                 req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req, timeout=5) as response:
-                    lines = [l.decode('utf-8') for l in response.readlines()]
-                    reader = csv.DictReader(lines)
-                    for row in reader:
-                        db_temp.append(row)
-            except Exception:
-                if os.path.exists(fallback_path):
-                    try:
-                        with open(fallback_path, 'r', encoding='utf-8') as f:
-                            reader = csv.DictReader(f)
-                            for row in reader:
-                                db_temp.append(row)
-                    except Exception:
-                        pass
-                        
-            self.process_db = db_temp
-            self.is_db_loaded = True
+                    data = response.read().decode('utf-8')
+                    with open(local_path, "w", encoding="utf-8") as f:
+                        f.write(data)
+            except Exception as e:
+                logger.warning(f"Fallo descargando DB de GitLab: {e}")
+                
+            # Recargar en memoria
+            self._load_local_db()
             
             if callback:
-                callback()
+                try:
+                    callback()
+                except Exception as e:
+                    logger.warning(f"Error ejecutando callback de load_db_async: {e}")
                 
         import threading
         threading.Thread(target=_download, daemon=True).start()
 
     def _get_process_meta(self, name: str) -> Tuple[str, str, str]:
-        name_lower = name.lower()
+        name_clean = name.lower().replace('.exe', '')
         for row in self.process_db:
-            if row.get('pattern', '').lower() in name_lower:
-                return row.get('category', '⚪ Otros'), row.get('priority', 'none'), row.get('description', 'Sin descripción')
-                
-        for cat, data in PROCESS_CATEGORIES.items():
-            for pattern in data['patterns']:
-                if pattern in name_lower:
-                    return cat, data.get('priority', 'none'), data.get('description', 'Sin descripción')
-                    
-        return "⚪ Otros", "none", "Sin descripción"
+            pattern = row.name.lower().replace('.exe', '')
+            if pattern == name_clean or pattern in name_clean or name_clean in pattern:
+                return row.category, row.priority, row.description
+        return "? Otros", "none", "Sin descripción"
 
     def _get_priority(self, category: str) -> str:
-        return PROCESS_CATEGORIES.get(category, {}).get('priority', 'none')
+        for row in self.process_db:
+            if row.category == category:
+                return row.priority
+        return 'none'
 
     def _categorize(self, name: str) -> str:
         cat, _, _ = self._get_process_meta(name)
@@ -137,7 +155,7 @@ class ProcessService:
                 # El proceso ya no existe, objetivo cumplido indirectamente
                 skipped += 1
             except psutil.AccessDenied:
-                # Requiere admin u otro permiso
+                logger.warning(f"Access denied killing {pinfo.name}")
                 failed += 1
                 
         return killed, failed, skipped

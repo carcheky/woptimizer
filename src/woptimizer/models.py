@@ -14,6 +14,8 @@ class Pack(BaseModel):
     id: str
     name: str
     apps: List[str] = Field(default_factory=list)
+    keepers: List[str] = Field(default_factory=list)
+    target_categories: List[str] = Field(default_factory=list)
     is_favorite: bool = False
     is_gaming: bool = False
     default_action: Literal["start", "kill"] = "start"

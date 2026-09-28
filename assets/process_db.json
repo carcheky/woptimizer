@@ -1,0 +1,152 @@
+{
+    "chrome": {
+        "category": "🟢 Navegadores",
+        "priority": "high",
+        "description": "Navegador de Google. Alto consumo de RAM."
+    },
+    "firefox": {
+        "category": "🟢 Navegadores",
+        "priority": "high",
+        "description": "Navegador libre."
+    },
+    "msedge": {
+        "category": "🟢 Navegadores",
+        "priority": "high",
+        "description": "Navegador de Microsoft."
+    },
+    "discord": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Cliente de voz y texto."
+    },
+    "steam": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Plataforma de Valve."
+    },
+    "spotify": {
+        "category": "🟡 Media y Streaming",
+        "priority": "medium",
+        "description": "Reproductor de música."
+    },
+    "obs32": {
+        "category": "🟡 Media y Streaming",
+        "priority": "medium",
+        "description": "Software de streaming y grabación."
+    },
+    "obs64": {
+        "category": "🟡 Media y Streaming",
+        "priority": "medium",
+        "description": "Software de streaming y grabación."
+    },
+    "nextcloud": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "Sincronizador en la nube."
+    },
+    "svchost": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Proceso principal de servicios Windows."
+    },
+    "explorer": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Explorador de archivos de Windows."
+    },
+    "icue": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Software de periféricos Corsair (Mantener por perfiles)."
+    },
+    "razer": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Software de periféricos Razer."
+    },
+    "slack": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "App de mensajería empresarial."
+    },
+    "teams": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "App de comunicación de Microsoft."
+    },
+    "onedrive": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "Sincronizador de nube Microsoft."
+    },
+    "dropbox": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "Sincronizador de nube."
+    },
+    "epicgameslauncher": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Launcher de Epic Games."
+    },
+    "lghub": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Software de Logitech G HUB (Perfiles y Macros)."
+    },
+    "googledrivefs": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "Sincronizador de nube de Google."
+    },
+    "megasync": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "Cliente de sincronización de MEGA."
+    },
+    "rslsync": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "Cliente P2P Resilio Sync."
+    },
+    "syncthing": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "Sincronizador de archivos P2P libre."
+    },
+    "icloud": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "Sincronizador en la nube de Apple."
+    },
+    "ts3client": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Cliente de voz TeamSpeak."
+    },
+    "mumble": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Cliente de voz Mumble."
+    },
+    "skype": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Cliente de videollamadas Skype."
+    },
+    "telegram": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "App de mensajería Telegram."
+    },
+    "whatsapp": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "App de mensajería WhatsApp."
+    },
+    "zoom": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Cliente de videollamadas Zoom."
+    }
+}
