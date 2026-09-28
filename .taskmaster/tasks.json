@@ -1,0 +1,68 @@
+{
+  "project": "woptimizer",
+  "version": "3.0.0",
+  "updated_at": "2026-09-28T20:55:00Z",
+  "active_task_id": "TASK-001",
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Rediseño de Modelos y Capa de Datos para Packs Unificados",
+      "description": "Adaptar models.py y profile_service.py para soportar packs con acciones duales (apagar/encender), estado de favorito y el pack Gaming protegido por defecto.",
+      "complexity": 4,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [],
+      "module": "docs/ai/data-models.md"
+    },
+    {
+      "id": "TASK-002",
+      "title": "Implementar Ventana de Gestor de Procesos",
+      "description": "Crear UI con lista de procesos en tiempo real (psutil), checkboxes de selección y desplegable para agregar procesos seleccionados a un pack existente.",
+      "complexity": 5,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": ["TASK-001"],
+      "module": "docs/ai/ui-design-system.md"
+    },
+    {
+      "id": "TASK-003",
+      "title": "Implementar Ventana de Gestor de Packs (CRUD + Acciones)",
+      "description": "Crear UI que liste todos los packs, permita crear/borrar (Gaming bloqueado), editar procesos incluidos, alternar favorito y botones de 'Cerrar Apps' y 'Arrancar Apps'.",
+      "complexity": 7,
+      "priority": "critical",
+      "status": "pending",
+      "dependencies": ["TASK-001"],
+      "module": "docs/ai/ui-design-system.md"
+    },
+    {
+      "id": "TASK-004",
+      "title": "Implementar Ventana Principal (Portada con Favoritos)",
+      "description": "Crear pantalla de inicio limpia con botones gigantes para packs favoritos (Gaming por defecto), y accesos a 'Gestor de Packs' y 'Gestor de Procesos'.",
+      "complexity": 4,
+      "priority": "critical",
+      "status": "pending",
+      "dependencies": ["TASK-002", "TASK-003"],
+      "module": "docs/ai/ui-design-system.md"
+    },
+    {
+      "id": "TASK-005",
+      "title": "Pruebas de Integración y Validación de la Suite UI",
+      "description": "Ejecutar suite de tests unitarios de modelos y verificación estática de la interfaz sin colgar el runner.",
+      "complexity": 3,
+      "priority": "medium",
+      "status": "pending",
+      "dependencies": ["TASK-004"],
+      "module": "docs/ai/testing-guide.md"
+    },
+    {
+      "id": "TASK-006",
+      "title": "Compilación y Empaquetado de woptimizer.exe v3.0.0",
+      "description": "Generar el ejecutable standalone mediante el builder nativo e integrarlo en dist/.",
+      "complexity": 4,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": ["TASK-005"],
+      "module": "docs/ai/sandbox-rules.md"
+    }
+  ]
+}

@@ -64,6 +64,38 @@ python test_harness.py
 
 Más lento pero valida el ciclo completo.
 
+### `smoke_check.py`
+
+Valida sintaxis AST rápida, presencia del helper `_app_dir()` (Trampa #17 para frozen mode) y versión esperada en `process_manager.py`.
+
+```bash
+python smoke_check.py
+```
+
+### `validate_docs.py`
+
+Verifica cumplimiento del formato `llms.txt` (Answer.AI v2), completitud de `llms-full.txt`, estructura canónica de `openspec/` y reglas SDD en `AGENTS.md`.
+
+```bash
+python validate_docs.py
+```
+
+### `test_gaming_profile.py`
+
+Suite de tests para el perfil de sistema Gaming (`__system_gaming__`): creación en primer arranque, persistencia de keepers, toggle de `kill_low_chat`, reset a fábrica, protección contra borrado y auto-recuperación de `profiles.json` corrupto.
+
+```bash
+python test_gaming_profile.py
+```
+
+### `verify_exe.py`
+
+Verifica la integridad del ejecutable `dist\woptimizer.exe`: tamaño mínimo, cabecera PE válida, PyInstaller >=5.13, manifest `requireAdministrator` embebido y auto-elevación vía UAC en Windows.
+
+```bash
+python verify_exe.py
+```
+
 ---
 
 ## Patrón de validación para cambios

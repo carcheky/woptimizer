@@ -80,12 +80,18 @@ def check_launches_without_console():
     Como es GUI sin consola, no podemos leer stdout. Comprobamos que el
     proceso arranca y sigue vivo unos segundos (no crash inmediato).
     """
-    proc = subprocess.Popen(
-        [EXE_PATH],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=CREATE_NO_WINDOW,
-    )
+    try:
+        proc = subprocess.Popen(
+            [EXE_PATH],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=CREATE_NO_WINDOW,
+        )
+    except OSError as e:
+        if getattr(e, "winerror", None) == 740:
+            ok("Auto-elevacion forzada por OS (WinError 740: exige elevacion admin como esperado)")
+            return
+        raise
     time.sleep(3)
     poll = proc.poll()
     if poll is not None:

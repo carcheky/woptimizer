@@ -1,44 +1,31 @@
-# woptimizer
+# woptimizer v3 (AI Context Map)
 
-> Process Manager con foco gamer para Windows. Lista procesos en ejecución, los cierra por categoría o por PID, persiste listas, relanza perfiles y prepara el PC para gaming matando distracciones. Stack: Python 3.13 + tkinter GUI + PowerShell 5.1 embebido. Standalone: `dist\woptimizer.exe` (~10 MB, auto-eleva admin).
+> Gestor de procesos gaming para Windows. Permite crear "Packs" de aplicaciones para cerrarlas o abrirlas en masa, con preset Gaming optimizado y modo oscuro en CustomTkinter. Motor backend: psutil + Pydantic. Standalone: `dist/woptimizer.exe`.
 
-Notas clave para agentes:
-- Solo Windows 10/11 con PowerShell 5.1+.
-- Toda acción destructiva usa doble tap en el mismo botón — NUNCA `messagebox.askyesno` (Trampa #14).
-- Kill usa `taskkill /F /T /PID <pid>` siempre, no `proc.kill()` solo (Trampas #10/#11).
-- Documentación loadable: leer `llms.txt` primero, abrir docs específicos solo si son necesarios.
-- 17 anti-patrones catalogados en `docs/known-issues.md` antes de tocar PowerShell/subprocess/kill.
+## 🤖 Protocolo de Carga Selectiva de Contexto
+Para evitar saturar la ventana de contexto y prevenir alucinaciones:
+1. **NO leas toda la documentación junta.**
+2. Consulta la tarea activa en [Taskmaster](.taskmaster/tasks.md) (`python .taskmaster/tm.py next`).
+3. Carga **únicamente** el módulo de `docs/ai/` que coincida con tu tarea actual:
 
-## Specs
+## 📚 Módulos de Documentación (docs/ai/)
+- [Índice Maestro](docs/ai/INDEX.md): Descripción detallada del sistema modular.
+- [Arquitectura y Capas](docs/ai/architecture.md): Invariante de 3 capas, backend `psutil`, flujo de dependencias.
+- [Modelos de Datos y JSON](docs/ai/data-models.md): Esquemas Pydantic `Pack`, `ProcessInfo`, estructura de `profiles.json`.
+- [Sistema de Diseño UI](docs/ai/ui-design-system.md): Especificación de las 3 ventanas (Portada, Packs, Procesos) y reglas CustomTkinter.
+- [Reglas de Sandbox y Windows](docs/ai/sandbox-rules.md): Permisos EPERM, bypass de scripts puente y compilación con PyInstaller.
+- [Guía de Pruebas](docs/ai/testing-guide.md): Validación estática e inicialización headless sin monitor.
 
-- [Spec raíz del producto](openspec/specs/woptimizer/spec.md): requisitos canónicos en formato `SHALL` (procesos, kill, perfiles, gaming, ejecutable, SDD).
+## 🎯 Orquestación de Tareas (Taskmaster)
+- [Tablero Taskmaster Markdown](.taskmaster/tasks.md): Tabla de tareas pendientes, complejidades y dependencias.
+- [Base de Datos Taskmaster](.taskmaster/tasks.json): Formato máquina para agentes y scripts (`tm.py`).
 
-## Change proposals
+## 📋 Especificaciones Activas (OpenSpec)
+- [Propuesta de Rediseño UI v3](openspec/changes/2026-09-28-v3-ui-redesign/proposal.md): Contrato formal de las 3 ventanas acordadas con el usuario.
+- [Diseño Técnico](openspec/changes/2026-09-28-v3-ui-redesign/design.md): Wireframes y arquitectura de componentes UI.
+- [Checklist de Tareas](openspec/changes/2026-09-28-v3-ui-redesign/tasks.md): Tareas de implementación OpenSpec.
 
-_(vacío — no hay propuestas activas en este momento. Para iniciar una, crear `openspec/changes/<change-id>/proposal.md` siguiendo el flujo SDD en `AGENTS.md`.)_
-
-## Change archive (cerrados, NO borrar)
-
-- [Inicializar flujo SDD + llms.txt (rev 11)](openspec/changes/archive/2026-09-24-init-sdd-workflow/proposal.md): introduce el patrón OpenSpec, crea `openspec/`, `llms.txt`, `llms-full.txt` y `mkdocs.yml`.
-- [Ejecutable Windows standalone (v2.1.0)](openspec/changes/archive/2026-09-24-standalone-exe/proposal.md): PyInstaller `--onefile --noconsole --uac-admin` → `dist\woptimizer.exe`. Bug #1 resuelto de paso.
-
-## Docs
-
-- [Architecture](docs/architecture.md): flujo de datos, capas (listado → categorías → kill → persistencia → relaunch), decisiones clave.
-- [API reference](docs/api.md): firmas exactas de funciones públicas, retornos, efectos secundarios.
-- [Known issues (17 trampas)](docs/known-issues.md): **leer antes** de tocar scripts PowerShell, subprocess, kill, o si "algo no funciona".
-- [Testing](docs/testing.md): inventario de tests, patrones de debug, test_harness E2E.
-- [Extending](docs/extending.md): cómo añadir categorías, botones, atajos, sin romper nada.
-- [Mini App status](docs/mini-app-status.md): estado del intento Mini App y bloqueo EACCES del sandbox.
-- [Index](docs/index.md): portal de la documentación mkdocs.
-
-## Build y entry points
-
-- `dist\woptimizer.exe` (recomendado, 10 MB, auto-eleva admin).
-- `process_manager.pyw` (dev mode, requiere Python 3.13 + tkinter).
-- `build.bat` (regenera el .exe con `pyinstaller`).
-
-## Optional
-
-- [Trampa #17 path handling en frozen mode](docs/known-issues.md#trampa-17-path-relativo-osfile-en-frozen-mode): referencia técnica útil para forkeadores del .exe.
-- [AGENTS.md](AGENTS.md): spec operativa completa con comandos, three-tier boundaries, trampas y changelog. Lectura obligatoria para agentes IA que trabajen en el proyecto.
+## 🚀 Entry Points
+- Dev Mode: `python run.py` (agrega automáticamente `src/` a `sys.path`).
+- Standalone EXE: `dist/woptimizer.exe` (autoeleva permisos UAC).
+- Build: `python force_build.py` o doble clic en `build.bat`.

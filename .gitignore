@@ -1,7 +1,6 @@
 # =============================================================================
 # woptimizer .gitignore
-# Excluye datos del usuario y artefactos generados. Versionado: solo codigo
-# y documentacion.
+# Excluye datos del usuario, artefactos generados y archivos temporales.
 # =============================================================================
 
 # Datos de usuario (perfiles, sesiones, lista de procesos matados)
@@ -17,6 +16,15 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+
+# PyInstaller — artefactos de build (regenerar con build.bat)
+build/
+dist/
+*.spec
+
+# MkDocs — output generado (regenerar con mkdocs build)
+site/
 
 # Editores / IDEs
 .vscode/
@@ -41,5 +49,13 @@ tmp/
 # Backups de tests (pueden contener datos de usuario reales: profiles.json.testbak*)
 *.testbak*
 
-# Dependencias instaladas (miniapps)
+# Dependencias instaladas
 node_modules/
+
+# Archivos legacy eliminados (para que git no los re-trackee si se recrean)
+process_manager.pyw
+ProcessManager.vbs
+ProcessManager.bat
+ProcessManager.ps1
+sync_pyw.py
+miniapps/
