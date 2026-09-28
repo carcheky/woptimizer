@@ -4,6 +4,7 @@ from typing import Dict, List
 from woptimizer.services.process_service import ProcessService
 from woptimizer.services.pack_service import PackService
 from woptimizer.models import ProcessInfo
+from woptimizer.config import get_safety_badge
 
 class ProcessManagerView(ctk.CTkFrame):
     def __init__(self, master, process_service: ProcessService, pack_service: PackService):
@@ -63,9 +64,14 @@ class ProcessManagerView(ctk.CTkFrame):
         self.update_idletasks()
         
         if not getattr(self.process_service, 'is_db_loaded', False):
-            self.process_service.load_csv_db_async(callback=lambda: self.master.after(0, self._do_load))
+            self.process_service.load_db_async(callback=lambda: self.master.after(0, self._do_load))
         else:
             self._do_load()
+
+    def _force_update_db(self):
+        self.status_label.configure(text="⏳ Descargando DB JSON desde GitLab...")
+        self.update_idletasks()
+        self.process_service.load_db_async(callback=lambda: self.master.after(0, self._do_load))
 
     def _do_load(self):
         def _load():
@@ -85,7 +91,7 @@ class ProcessManagerView(ctk.CTkFrame):
             self.grouped_processes[key].append(p)
 
     def _update_pack_dropdown(self):
-        packs = self.pack_service.get_user_packs()
+        packs = self.pack_service.get_all_packs()
         values = [p.name for p in packs.values()]
         if not values:
             values = ["Sin packs disponibles"]
@@ -132,6 +138,9 @@ class ProcessManagerView(ctk.CTkFrame):
         actual_expanded = self.expanded_categories.get(cat, is_expanded)
         state = {"expanded": actual_expanded}
         
+        cat_badge = get_safety_badge(cat)
+        header_color = cat_badge["text_color"]
+        
         def toggle():
             state["expanded"] = not state["expanded"]
             self.expanded_categories[cat] = state["expanded"]
@@ -146,7 +155,7 @@ class ProcessManagerView(ctk.CTkFrame):
             cat_container, 
             text=f"▼ {cat}" if actual_expanded else f"▶ {cat}", 
             font=("Segoe UI", 14, "bold"), 
-            text_color="#3a7ebf",
+            text_color=header_color,
             fg_color="transparent", 
             hover_color="#2b2b2b",
             anchor="w",
@@ -161,15 +170,53 @@ class ProcessManagerView(ctk.CTkFrame):
             count = len(procs)
             exe_name = procs[0].full_name if procs[0].full_name else name_key
             desc = getattr(procs[0], 'description', 'Sin descripción')
-            label_text = f"{exe_name} ({count} proceso{'s' if count > 1 else ''}) - {desc}"
+            prio = getattr(procs[0], 'priority', 'none')
+            badge_info = get_safety_badge(cat, prio)
             
-            cb = ctk.CTkCheckBox(content_frame, text=label_text, font=("Segoe UI", 12))
-            cb.pack(anchor="w", padx=20, pady=2)
+            row_frame = ctk.CTkFrame(content_frame, fg_color="#181818", corner_radius=6)
+            row_frame.pack(fill="x", padx=10, pady=2)
             
+            cb = ctk.CTkCheckBox(row_frame, text="", width=24)
+            cb.pack(side="left", padx=(10, 5), pady=6)
             if name_key in previously_selected:
                 cb.select()
-                
             self.checkboxes[name_key] = cb
+            
+            badge_lbl = ctk.CTkLabel(
+                row_frame,
+                text=badge_info["text"],
+                fg_color=badge_info["fg_color"],
+                text_color=badge_info["text_color"],
+                corner_radius=4,
+                font=("Segoe UI", 11, "bold"),
+                width=110,
+                height=22
+            )
+            badge_lbl.pack(side="left", padx=5)
+            
+            name_text = f"{exe_name} ({count})"
+            name_lbl = ctk.CTkLabel(
+                row_frame,
+                text=name_text,
+                font=("Segoe UI", 12, "bold"),
+                text_color="#ffffff"
+            )
+            name_lbl.pack(side="left", padx=5)
+            
+            desc_text = f"• {desc}" if desc and desc != "Sin descripción" else f"• {badge_info['recommendation']}"
+            desc_lbl = ctk.CTkLabel(
+                row_frame,
+                text=desc_text,
+                font=("Segoe UI", 11),
+                text_color="#a0a0a0" if desc and desc != "Sin descripción" else badge_info["text_color"]
+            )
+            desc_lbl.pack(side="left", padx=5)
+            
+            def make_toggle(c_box):
+                return lambda event: c_box.toggle()
+            row_frame.bind("<Button-1>", make_toggle(cb))
+            name_lbl.bind("<Button-1>", make_toggle(cb))
+            desc_lbl.bind("<Button-1>", make_toggle(cb))
 
     def on_kill_selected(self):
         selected_keys = [k for k, cb in self.checkboxes.items() if cb.get()]
@@ -203,7 +250,7 @@ class ProcessManagerView(ctk.CTkFrame):
             self.status_label.configure(text="⚠️ Selecciona procesos primero.")
             return
             
-        packs = self.pack_service.get_user_packs()
+        packs = self.pack_service.get_all_packs()
         target_pack = next((p for p in packs.values() if p.name == pack_name), None)
         
         if not target_pack:

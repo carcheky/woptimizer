@@ -11,7 +11,16 @@ def _app_dir() -> str:
 def _data_dir() -> str:
     if getattr(sys, 'frozen', False):
         return sys._MEIPASS
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+import logging
+
+logging.basicConfig(
+    filename=os.path.join(_app_dir(), 'woptimizer.log'),
+    level=logging.WARNING,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('woptimizer')
 
 PROCESS_LIST_FILE = os.path.join(_app_dir(), 'saved_processes.json')
 PROFILES_FILE = os.path.join(_app_dir(), 'profiles.json')
@@ -74,3 +83,46 @@ SIMPLE_MODE_CATEGORIES = [
 ]
 
 CATEGORY_ORDER = list(PROCESS_CATEGORIES.keys()) + ['⚪ Otros']
+
+
+def get_safety_badge(category: str, priority: str = "none") -> dict:
+    """Devuelve la recomendación, colores y texto intuitivo para la UI."""
+    cat_lower = (category or "").lower()
+    prio_lower = (priority or "").lower()
+    
+    # Verde: Seguro de cerrar para gaming (Browsers, Sync, Productividad)
+    if "🟢" in category or prio_lower == "high" or any(k in cat_lower for k in ["sincroniz", "navegador", "productiv"]):
+        return {
+            "text": "🟢 SEGURO",
+            "recommendation": "Cierre recomendado (libera RAM/CPU)",
+            "fg_color": "#163820",       # Verde oscuro fondo
+            "text_color": "#40c057",     # Verde brillante
+            "tier": "safe"
+        }
+    # Amarillo: Precaución / Útil para gaming (Launchers, Chat, Media)
+    elif "🟡" in category or prio_lower in ["medium", "low"] or any(k in cat_lower for k in ["chat", "launcher", "media"]):
+        return {
+            "text": "🟡 PRECAUCIÓN",
+            "recommendation": "Cerrar sólo si no lo usas para jugar",
+            "fg_color": "#3d3711",       # Amarillo oscuro fondo
+            "text_color": "#fcc419",     # Amarillo brillante
+            "tier": "caution"
+        }
+    # Rojo: Peligro / Sistema / Periféricos (Windows, Antivirus, Overlays/Hardware)
+    elif "🔴" in category or any(k in cat_lower for k in ["sistema", "antivirus", "overlay"]):
+        return {
+            "text": "🔴 NO CERRAR",
+            "recommendation": "Crítico del sistema o hardware",
+            "fg_color": "#401616",       # Rojo oscuro fondo
+            "text_color": "#ff6b6b",     # Rojo brillante
+            "tier": "danger"
+        }
+    # Desconocido
+    else:
+        return {
+            "text": "⚪ OTROS",
+            "recommendation": "Sin clasificar",
+            "fg_color": "#2b2b2b",
+            "text_color": "#adb5bd",
+            "tier": "unknown"
+        }

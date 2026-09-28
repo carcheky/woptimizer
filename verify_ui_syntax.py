@@ -12,13 +12,19 @@ files_to_check = [
     'src/woptimizer/__main__.py'
 ]
 
+import ast
+
 errors = 0
 for f in files_to_check:
     try:
-        py_compile.compile(f, doraise=True)
+        with open(f, 'r', encoding='utf-8') as src_file:
+            ast.parse(src_file.read(), filename=f)
         print(f"OK: {f} compila perfectamente.")
-    except py_compile.PyCompileError as e:
+    except SyntaxError as e:
         print(f"ERROR SINTAXIS en {f}:\n{e}")
+        errors += 1
+    except Exception as e:
+        print(f"ERROR al verificar {f}:\n{e}")
         errors += 1
         
 if errors == 0:

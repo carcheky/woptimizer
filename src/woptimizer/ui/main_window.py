@@ -23,8 +23,8 @@ class MainWindow(ctk.CTkFrame):
         self.content_frame.pack(fill="both", expand=True, padx=10, pady=(10, 0))
         
         # Barra de navegación inferior
-        self.nav_frame = ctk.CTkFrame(self, height=50)
-        self.nav_frame.pack(fill="x", side="bottom", padx=10, pady=10)
+        self.nav_frame = ctk.CTkFrame(self, height=40)
+        self.nav_frame.pack(fill="x", side="bottom", padx=8, pady=(4, 8))
         
         self.btn_nav_home = ctk.CTkButton(self.nav_frame, text="🏠 Portada", command=self._show_home, fg_color="transparent", border_width=1, text_color=("gray10", "#DCE4EE"))
         self.btn_nav_home.pack(side="left", expand=True, padx=5)
