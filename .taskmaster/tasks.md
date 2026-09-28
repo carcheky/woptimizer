@@ -17,6 +17,9 @@
 | **TASK-007** | Categorización Automática de Procesos y Filtro de Seguridad | 6/10 | High | PENDING | TASK-002, TASK-004 | docs/ai/architecture.md |
 | **TASK-005** | Pruebas de Integración y Validación de la Suite UI | 3/10 | Medium | `PENDING` | TASK-004 | `docs/ai/testing-guide.md` |
 | **TASK-006** | Compilación y Empaquetado de woptimizer.exe v3.0.0 | 4/10 | High | `PENDING` | TASK-005 | `docs/ai/sandbox-rules.md` |
+| **TASK-008** | Migración de DB a JSON y Endpoint de GitLab | 3/10 | High | `PENDING` | - | `openspec/changes/2026-09-29-v3-ux-polish/tasks.md` |
+| **TASK-009** | Evolución Dinámica del Pack Gaming | 6/10 | Critical | `PENDING` | TASK-008 | `openspec/changes/2026-09-29-v3-ux-polish/tasks.md` |
+| **TASK-010** | Feedback Visual en el Gestor de Procesos | 4/10 | Medium | `PENDING` | TASK-008 | `openspec/changes/2026-09-29-v3-ux-polish/tasks.md` |
 
 ---
 
