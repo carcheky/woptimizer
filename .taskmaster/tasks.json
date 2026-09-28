@@ -7,7 +7,7 @@
     {
       "id": "TASK-001",
       "title": "Rediseño de Modelos y Capa de Datos para Packs Unificados",
-      "description": "Refactorizar PackService. ATENCIÓN: El pack Gaming ya no mata 'todo'. Es un pack normal precargado con navegadores, chats y sync en su lista 'apps'. Se debe poder resetear a valores de fábrica. Reabrir esta tarea para ajustar pack_service.",
+      "description": "Ajustar pack_service.py (los modelos ya cumplen OpenSpec). Asegurar que capture JSONDecodeError, restaure el JSON con el preset 'Gaming' automáticamente, y que el borrado lance excepción si is_gaming=True. ATENCIÓN: El pack Gaming ya no mata 'todo'.",
       "complexity": 4,
       "priority": "high",
       "status": "pending",
@@ -29,7 +29,7 @@
     {
       "id": "TASK-003",
       "title": "Implementar Ventana de Gestor de Packs (CRUD + Acciones)",
-      "description": "Crear UI Gestor de Packs. ATENCIÓN: 1) Ampliar ProcessService con start_by_names y kill_by_names primero. 2) El arranque de apps usará solo el nombre (ej: discord.exe), si falla, lo hará en silencio.",
+      "description": "Crear UI Gestor de Packs. ATENCIÓN: 1) Ampliar ProcessService con start_by_names y kill_by_names manejando estrictamente excepciones psutil.AccessDenied y psutil.NoSuchProcess para no crashear sin UAC. 2) El arranque fallará en silencio.",
       "complexity": 7,
       "priority": "critical",
       "status": "pending",
@@ -54,7 +54,7 @@
     {
       "id": "TASK-007",
       "title": "Categorización Automática de Procesos y Filtro de Seguridad",
-      "description": "Descargar CSV asíncronamente con fallback a CSV pre-empaquetado offline. Actualizar ProcessInfo con safety_level. Implementar checkbox en Gestor de Procesos para ocultar procesos rojos.",
+      "description": "Descargar CSV asíncronamente en hilo separado (threading.Thread) con fallback offline. Actualizar ProcessInfo. Implementar checkbox en UI asegurando que toda actualización a CustomTkinter use EXCLUSIVAMENTE .after() para evitar bloqueos.",
       "complexity": 6,
       "priority": "high",
       "status": "pending",
