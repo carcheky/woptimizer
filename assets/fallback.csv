@@ -23,3 +23,9 @@ megasync,🔴 Sincronización,high,Cliente de sincronización de MEGA.
 rslsync,🔴 Sincronización,high,Cliente P2P Resilio Sync.
 syncthing,🔴 Sincronización,high,Sincronizador de archivos P2P libre.
 icloud,🔴 Sincronización,high,Sincronizador en la nube de Apple.
+ts3client,🟡 Chat y Comunicación,low,Cliente de voz TeamSpeak.
+mumble,🟡 Chat y Comunicación,low,Cliente de voz Mumble.
+skype,🟡 Chat y Comunicación,low,Cliente de videollamadas Skype.
+telegram,🟡 Chat y Comunicación,low,App de mensajería Telegram.
+whatsapp,🟡 Chat y Comunicación,low,App de mensajería WhatsApp.
+zoom,🟡 Chat y Comunicación,low,Cliente de videollamadas Zoom.
