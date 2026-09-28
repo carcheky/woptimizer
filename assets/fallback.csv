@@ -18,3 +18,8 @@ onedrive,🔴 Sincronización,high,Sincronizador de nube Microsoft.
 dropbox,🔴 Sincronización,high,Sincronizador de nube.
 epicgameslauncher,🟢 Launchers Gaming,none,Launcher de Epic Games.
 lghub,🟢 Overlays e Info,none,Software de Logitech G HUB (Perfiles y Macros).
+googledrivefs,🔴 Sincronización,high,Sincronizador de nube de Google.
+megasync,🔴 Sincronización,high,Cliente de sincronización de MEGA.
+rslsync,🔴 Sincronización,high,Cliente P2P Resilio Sync.
+syncthing,🔴 Sincronización,high,Sincronizador de archivos P2P libre.
+icloud,🔴 Sincronización,high,Sincronizador en la nube de Apple.
