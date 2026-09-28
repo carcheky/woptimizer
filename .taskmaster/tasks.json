@@ -7,10 +7,10 @@
     {
       "id": "TASK-001",
       "title": "Rediseño de Modelos y Capa de Datos para Packs Unificados",
-      "description": "Adaptar models.py y profile_service.py para soportar packs con acciones duales (apagar/encender), estado de favorito y el pack Gaming protegido por defecto.",
+      "description": "Refactorizar PackService. ATENCIÓN: El pack Gaming ya no mata 'todo'. Es un pack normal precargado con navegadores, chats y sync en su lista 'apps'. Se debe poder resetear a valores de fábrica. Reabrir esta tarea para ajustar pack_service.",
       "complexity": 4,
       "priority": "high",
-      "status": "completed",
+      "status": "pending",
       "dependencies": [],
       "module": "docs/ai/data-models.md"
     },
@@ -29,7 +29,7 @@
     {
       "id": "TASK-003",
       "title": "Implementar Ventana de Gestor de Packs (CRUD + Acciones)",
-      "description": "Crear UI que liste todos los packs, permita crear/borrar (Gaming bloqueado), editar procesos incluidos, alternar favorito y botones de 'Cerrar Apps' y 'Arrancar Apps'.",
+      "description": "Crear UI Gestor de Packs. ATENCIÓN: 1) Ampliar ProcessService con start_by_names y kill_by_names primero. 2) El arranque de apps usará solo el nombre (ej: discord.exe), si falla, lo hará en silencio.",
       "complexity": 7,
       "priority": "critical",
       "status": "pending",
@@ -54,7 +54,7 @@
     {
       "id": "TASK-007",
       "title": "Categorización Automática de Procesos y Filtro de Seguridad",
-      "description": "Descargar CSV del repositorio (o usar caché), actualizar el modelo ProcessInfo con safety_level, e implementar checkbox en Gestor de Procesos para ocultar los procesos del sistema (rojos).",
+      "description": "Descargar CSV asíncronamente con fallback a CSV pre-empaquetado offline. Actualizar ProcessInfo con safety_level. Implementar checkbox en Gestor de Procesos para ocultar procesos rojos.",
       "complexity": 6,
       "priority": "high",
       "status": "pending",
