@@ -70,7 +70,7 @@
       "description": "Ejecutar suite de tests unitarios de modelos y verificación estática de la interfaz sin colgar el runner.",
       "complexity": 3,
       "priority": "medium",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-004",
         "TASK-007"
@@ -83,7 +83,7 @@
       "description": "Generar el ejecutable standalone mediante el builder nativo e integrarlo en dist/. IMPORTANTE: Modificar el script de compilación (force_build.py / .spec) para incluir la carpeta 'assets/' de manera que el fallback.csv quede incrustado en el binario final (sys._MEIPASS).",
       "complexity": 4,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-005"
       ],
