@@ -8,6 +8,7 @@ class ProcessInfo(BaseModel):
     exe_path: str = ""
     category: str = "⚪ Otros"
     priority: str = "none"
+    description: str = "Sin descripción"
 
 class Pack(BaseModel):
     id: str

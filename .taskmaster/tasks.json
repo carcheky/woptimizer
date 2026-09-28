@@ -57,7 +57,7 @@
       "description": "Descargar CSV asíncronamente en hilo separado (threading.Thread). Proveer el archivo offline fallback inicial en assets/fallback.csv. Asegurar que toda actualización a CustomTkinter use EXCLUSIVAMENTE .after().",
       "complexity": 6,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-002",
         "TASK-004"

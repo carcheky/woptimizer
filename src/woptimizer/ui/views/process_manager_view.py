@@ -62,6 +62,12 @@ class ProcessManagerView(ctk.CTkFrame):
         self.status_label.configure(text="⏳ Cargando...")
         self.update_idletasks()
         
+        if not getattr(self.process_service, 'is_db_loaded', False):
+            self.process_service.load_csv_db_async(callback=lambda: self.master.after(0, self._do_load))
+        else:
+            self._do_load()
+
+    def _do_load(self):
         def _load():
             self.processes = self.process_service.get_running_processes()
             self._group_processes()
@@ -154,7 +160,8 @@ class ProcessManagerView(ctk.CTkFrame):
         for name_key, procs in items:
             count = len(procs)
             exe_name = procs[0].full_name if procs[0].full_name else name_key
-            label_text = f"{exe_name} ({count} proceso{'s' if count > 1 else ''})"
+            desc = getattr(procs[0], 'description', 'Sin descripción')
+            label_text = f"{exe_name} ({count} proceso{'s' if count > 1 else ''}) - {desc}"
             
             cb = ctk.CTkCheckBox(content_frame, text=label_text, font=("Segoe UI", 12))
             cb.pack(anchor="w", padx=20, pady=2)

@@ -1,0 +1,12 @@
+pattern,category,priority,description
+chrome,🔴 Navegadores,high,Navegador de Google. Alto consumo de RAM.
+firefox,🔴 Navegadores,high,Navegador libre.
+msedge,🔴 Navegadores,high,Navegador de Microsoft.
+discord,🟡 Chat y Comunicación,low,Cliente de voz y texto.
+steam,🟢 Launchers Gaming,none,Plataforma de Valve.
+spotify,🟡 Media y Streaming,medium,Reproductor de música.
+obs32,🟡 Media y Streaming,medium,Software de streaming y grabación.
+obs64,🟡 Media y Streaming,medium,Software de streaming y grabación.
+nextcloud,🔴 Sincronización,high,Sincronizador en la nube.
+svchost,⚫ Sistema de Windows,none,Proceso principal de servicios Windows.
+explorer,⚫ Sistema de Windows,none,Explorador de archivos de Windows.

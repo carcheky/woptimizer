@@ -4,16 +4,69 @@ from woptimizer.models import ProcessInfo
 from woptimizer.config import PROCESS_CATEGORIES, CATEGORY_ORDER
 
 class ProcessService:
+    def __init__(self):
+        self.process_db = []
+        self.is_db_loaded = False
+        
+    def load_csv_db_async(self, callback=None):
+        def _download():
+            import csv, urllib.request, os, threading
+            url = "https://raw.githubusercontent.com/carch/woptimizer/main/assets/fallback.csv"
+            # _app_dir is better, but since it's in services, we use relative to __file__
+            try:
+                from woptimizer.config import _app_dir
+                assets_dir = os.path.join(_app_dir(), "assets")
+            except Exception:
+                assets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
+            
+            fallback_path = os.path.join(assets_dir, "fallback.csv")
+            
+            db_temp = []
+            try:
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    lines = [l.decode('utf-8') for l in response.readlines()]
+                    reader = csv.DictReader(lines)
+                    for row in reader:
+                        db_temp.append(row)
+            except Exception:
+                if os.path.exists(fallback_path):
+                    try:
+                        with open(fallback_path, 'r', encoding='utf-8') as f:
+                            reader = csv.DictReader(f)
+                            for row in reader:
+                                db_temp.append(row)
+                    except Exception:
+                        pass
+                        
+            self.process_db = db_temp
+            self.is_db_loaded = True
+            
+            if callback:
+                callback()
+                
+        import threading
+        threading.Thread(target=_download, daemon=True).start()
+
+    def _get_process_meta(self, name: str) -> Tuple[str, str, str]:
+        name_lower = name.lower()
+        for row in self.process_db:
+            if row.get('pattern', '').lower() in name_lower:
+                return row.get('category', '⚪ Otros'), row.get('priority', 'none'), row.get('description', 'Sin descripción')
+                
+        for cat, data in PROCESS_CATEGORIES.items():
+            for pattern in data['patterns']:
+                if pattern in name_lower:
+                    return cat, data.get('priority', 'none'), data.get('description', 'Sin descripción')
+                    
+        return "⚪ Otros", "none", "Sin descripción"
+
     def _get_priority(self, category: str) -> str:
         return PROCESS_CATEGORIES.get(category, {}).get('priority', 'none')
 
     def _categorize(self, name: str) -> str:
-        name_lower = name.lower()
-        for cat, data in PROCESS_CATEGORIES.items():
-            for pattern in data['patterns']:
-                if pattern in name_lower:
-                    return cat
-        return "⚪ Otros"
+        cat, _, _ = self._get_process_meta(name)
+        return cat
 
     def get_running_processes(self) -> List[ProcessInfo]:
         """Lista todos los procesos activos usando psutil, ordenados por categoría."""
@@ -37,7 +90,7 @@ class ProcessService:
                 seen.add((name_lower, pid))
 
                 clean_name = name.replace('.exe', '')
-                cat = self._categorize(clean_name)
+                cat, priority, desc = self._get_process_meta(clean_name)
                 
                 result.append(ProcessInfo(
                     name=clean_name,
@@ -45,7 +98,8 @@ class ProcessService:
                     pid=pid,
                     exe_path=info['exe'] or "",
                     category=cat,
-                    priority=self._get_priority(cat)
+                    priority=priority,
+                    description=desc
                 ))
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
