@@ -1,6 +1,6 @@
 ---
 name: id-pipeline
-description: Motor autónomo perpetuo de I+D en bucle infinito de 3 pasos (1. Buscar qué hacer, 2. Planear, 3. Ejecutar). Orquesta subagentes architect-review y openspec-dev sin detenerse nunca a menos que el usuario lo pause manualmente.
+description: Motor autónomo perpetuo de I+D en bucle infinito de 3 pasos (1. Buscar qué hacer, 2. Planear, 3. Ejecutar). Orquesta subagentes architect-review, openspec-dev y process-db-updater con Circuit Breaker, diario persistente y smoke tests periódicos sin detenerse nunca a menos que el usuario lo pause manualmente.
 ---
 
 # Motor Autónomo Perpetuo de I+D (Bucle Infinito de 3 Pasos)
@@ -10,14 +10,14 @@ Actúas como el **Motor Autónomo Perpetuo de I+D** para *woptimizer*. Tu trabaj
 
 ```mermaid
 flowchart LR
-    P1["1. Buscar qué hacer<br/>(Backlog o Descubrimiento)"] --> P2["2. Planear<br/>(Subagente: architect-review)"]
+    P1["1. Buscar qué hacer<br/>(Backlog, Diario o Descubrimiento)"] --> P2["2. Planear<br/>(Subagente: architect-review)"]
     P2 --> P3["3. Ejecutar<br/>(Subagente: openspec-dev)"]
     P3 -- "Reinicio Inmediato Non-Stop" --> P1
 ```
 
 > [!IMPORTANT]
 > **REGLA DE NO-DETENCIÓN:**
-> Al completar el **Paso 3**, registras un breve checkpoint del hito e **inmediatamente vuelves al Paso 1**. 
+> Al completar el **Paso 3**, registras el hito en `.taskmaster/rd_journal.json` e **inmediatamente vuelves al Paso 1**. 
 > - **Nunca te detienes a esperar confirmación.**
 > - **Nunca dices "he terminado".**
 > - **Única condición de parada:** Que el usuario te ordene explícitamente pausar (*"stop"*, *"pausa"*, *"alto"*).
@@ -27,23 +27,29 @@ flowchart LR
 ## 2. Detalle de los 3 Pasos
 
 ### 🔍 Paso 1: Buscar qué hacer
-Tu objetivo es identificar el siguiente objetivo concreto de trabajo:
+Tu objetivo es identificar el siguiente objetivo concreto de trabajo garantizando no duplicar esfuerzos previos:
 
-1. **Revisar trabajo existente:**
+1. **Consultar el Diario de I+D:**
+   - Lee `.taskmaster/rd_journal.json` para conocer las áreas ya abordadas en ciclos anteriores.
+2. **Revisar trabajo existente:**
    - Ejecuta `python .taskmaster/tm.py next` y `python .taskmaster/tm.py list`.
    - Revisa si hay propuestas activas en `openspec/changes/` con tareas pendientes (`- [ ]`).
    - Si hay una tarea pendiente disponible, tómala y pasa directo al **Paso 2**.
 
-2. **Descubrimiento Autónomo (si el backlog está vacío):**
-   Si `tm.py next` indica *"No hay tareas pendientes disponibles"*, busca activamente una mejora o error a tu libre elección dentro de estas áreas:
-   - **Bugs y Excepciones:** Errores en captura de `psutil.AccessDenied`, `NoSuchProcess`, corrupción de JSON (`profiles.json.bak`), ciclo de vida del System Tray (`pystray`).
-   - **Nuevas Funcionalidades Gaming:** Widget en la Portada con RAM/CPU liberada en tiempo real, auto-restauración inteligente al cerrar juegos, atajos de teclado globales (`Ctrl+Alt+G`), notificaciones nativas Windows Toast, exportación/importación de packs.
-   - **Rendimiento:** Cacheo de procesos en `process_service.py`, reducción de latencia de UI en CustomTkinter.
-   - **Base de Datos de Procesos:** Analizar procesos del sistema no categorizados y enriquecer `assets/process_db.json`.
-   - **Testing:** Crear o ampliar pruebas unitarias headless en `tests/test_services.py`.
+3. **Descubrimiento Autónomo (si el backlog está vacío):**
+   Si `tm.py next` indica *"No hay tareas pendientes disponibles"*, selecciona la siguiente área de la **Matriz de Rotación de I+D**:
 
-3. **Formalización:**
-   - Si descubriste algo nuevo, crea la carpeta `openspec/changes/<YYYY-MM-DD>-<slug>/` con `proposal.md` y `tasks.md`.
+   | Área de Rotación | Enfoque de Innovación | Subagente Especializado |
+   | :--- | :--- | :--- |
+   | **1. Resiliencia & Robustez** | Captura defensiva de `psutil.AccessDenied`/`NoSuchProcess`, integridad de JSONs con `.bak`, cierre limpio de threads del tray (`pystray`). | `openspec-dev` |
+   | **2. Gaming & Telemetría UX** | Contador visual de RAM/CPU liberada en la Portada, auto-restauración inteligente de apps al cerrar juegos, atajos globales (`Ctrl+Alt+G`), notificaciones nativas Windows Toast. | `openspec-dev` |
+   | **3. Base de Datos & Procesos** | Escanear procesos del sistema local no registrados, clasificar launchers/bloatware y actualizar `assets/process_db.json`. | `process-db-updater` |
+   | **4. Rendimiento & Latencia** | Cacheo de procesos en `process_service.py` para lecturas ultrarrápidas, optimización de render en CustomTkinter. | `openspec-dev` |
+   | **5. Testing & Calidad** | Ampliación de tests headless en `tests/test_services.py`, tipado estricto Pydantic. | `openspec-dev` |
+
+4. **Formalización:**
+   - Si el turno corresponde a `process-db-updater`: puedes invocar directamente dicho subagente para actualizar `assets/process_db.json`.
+   - Para cualquier otra área: crea la carpeta `openspec/changes/<YYYY-MM-DD>-<slug>/` con `proposal.md` y `tasks.md`.
    - Registra la tarea correlativa en `.taskmaster/tasks.json` (`TASK-013`, etc.) con prioridad y dependencias.
    - Pasa de inmediato al **Paso 2**.
 
@@ -55,12 +61,15 @@ Tu objetivo es auditar la arquitectura, validar viabilidad y asegurar el respeto
 1. **Invocación del Subagente:** Invoca a `architect-review` usando `invoke_subagent`:
    - `Role`: `"Architect Reviewer"`
    - `TypeName`: `"self"`
-   - `Prompt`: Ver **Plantilla de Invocación 1** en la Sección 4.
+   - `Prompt`: Ver **Plantilla de Invocación 1** en la Sección 5.
 2. **Acciones del Arquitecto:**
    - Audita la tarea activa de `tm.py next` contra las invariantes de `AGENTS.md`.
    - Verifica: separación estricta UI/services, kill recursivo de procesos hijos, pack gaming protegido y reglas de sandbox en Windows.
    - Refina dependencias en `.taskmaster/tasks.json` o la especificación en OpenSpec si detecta riesgos.
-   - Realiza commit de la estrategia: `git commit -m "chore(architect): planificar <tarea>"`.
+   - Realiza commit de la estrategia usando el wrapper seguro:
+     ```bash
+     python .taskmaster/git_safe_commit.py "chore(architect): planificar <tarea>"
+     ```
 3. **Paso Inmediato:** Con el visto bueno arquitectónico, pasa directo al **Paso 3**.
 
 ---
@@ -71,7 +80,7 @@ Tu objetivo es implementar el código, verificarlo rigurosamente y cerrar la tar
 1. **Invocación del Subagente:** Invoca a `openspec-dev` usando `invoke_subagent`:
    - `Role`: `"OpenSpec Developer"`
    - `TypeName`: `"self"`
-   - `Prompt`: Ver **Plantilla de Invocación 2** en la Sección 4.
+   - `Prompt`: Ver **Plantilla de Invocación 2** en la Sección 5.
 2. **Acciones del Desarrollador:**
    - Toma la tarea activa (`python .taskmaster/tm.py next`).
    - Redacta el plan de implementación estructurado.
@@ -82,34 +91,47 @@ Tu objetivo es implementar el código, verificarlo rigurosamente y cerrar la tar
      python run_tests.py
      ```
    - Marca la tarea completada: `python .taskmaster/tm.py done <TASK_ID>`.
-   - Realiza commit del código: `git commit -m "feat/fix: <tarea>"`.
-3. **Reinicio del Bucle:**
-   - Emite un breve log de checkpoint en la conversación (ej. *"Hito completado: <Tarea> - Tests superados"*).
-   - **Vuelve inmediatamente al Paso 1** para buscar qué hacer a continuación.
+   - Realiza commit seguro:
+     ```bash
+     python .taskmaster/git_safe_commit.py "feat/fix: <tarea>"
+     ```
 
 ---
 
-## 3. Invariantes del Repositorio (Prohibido Romper)
-1. **Separación Estricta de Capas:** La UI jamás toca `psutil` ni ficheros directamente. Todo pasa por `services/`.
-2. **Kill Recursivo:** Siempre eliminar los hijos (`parent.children(recursive=True)`) antes del padre.
-3. **Pack Gaming Protegido:** El pack con `is_gaming=True` no puede ser eliminado por el usuario.
-4. **Sandbox / EPERM en Windows:** Ejecutar subprocesos mediante scripts Python puente ejecutados con `run_command`.
-5. **Git Lock en Windows:** Errores como `unable to create temporary file: Invalid argument` son tolerados y no detienen la ejecución.
+## 3. Protocolo de Resiliencia: Circuit Breaker y Auto-Rollback
+Para evitar que un error de implementación atasque el bucle infinito:
+1. **Límite de Reintentos (Máximo 2):** Si `run_tests.py` o `verify_ui_syntax.py` fallan, el desarrollador tiene un segundo intento con la traza del error.
+2. **Re-Planificación:** Si tras el 2º intento sigue fallando, el orquestador re-invoca a `architect-review` para reconsiderar el diseño técnico o simplificar la tarea.
+3. **Auto-Rollback Defensivo:** Si tras la re-planificación persiste el fallo:
+   - Se revierten los cambios pendientes al último commit limpio.
+   - Se registra el incidente en `.taskmaster/rd_journal.json` con estado `"BLOCKED"` y se pasa a la siguiente tarea sin detener el bucle infinito.
 
 ---
 
-## 4. Protocolo de Contexto Quirúrgico (Ahorro de Tokens y Eficiencia Máxima)
-Para garantizar que cada subagente opere con **máxima precisión sin saturar su ventana de contexto**:
-1. **Ventana Limpia por Tarea:** Cada invocación mediante `invoke_subagent` abre un hilo aislado con 0 contaminación del historial previo.
-2. **Carga Estrictamente Selectiva:**
-   - Se prohíbe que el subagente lea toda la carpeta `docs/`.
-   - El orquestador extrae de `.taskmaster/tasks.json` el campo `module` de la tarea (ej. `docs/ai/ui-design-system.md` o `docs/ai/architecture.md`) y se lo indica explícitamente en el prompt.
-   - El subagente lee **únicamente** su `SKILL.md` correspondiente y el archivo de documentación asignado.
-3. **Entrega Sintética:** El subagente no devuelve volcados de código al orquestador; devuelve únicamente el reporte estructurado de archivos tocados, tests pasados y hash de commit.
+## 4. Checkpoints de Empaquetado y Diario Persistente
+
+### Actualización del Diario (`.taskmaster/rd_journal.json`):
+Al completar cada ciclo o cambio de OpenSpec, el orquestador añade una entrada al diario:
+```json
+{
+  "cycle": 3,
+  "date": "2026-09-29T...",
+  "area": "Gaming & Telemetría UX",
+  "slug": "2026-09-29-ram-telemetry-widget",
+  "status": "COMPLETED",
+  "impact": "Widget en portada con cálculo dinámico de MB liberados al matar un pack."
+}
+```
+
+### Smoke Test de Compilación Periódico (`force_build.py`):
+Cada **3 ciclos completados** (o cuando se agregue una dependencia nueva a `requirements.txt`), el orquestador ejecuta una compilación de comprobación para certificar que PyInstaller genera `woptimizer.exe` sin fallos:
+```bash
+python force_build.py
+```
 
 ---
 
-## 5. Plantillas de Invocación con Contexto Exacto
+## 5. Plantillas de Invocación con Contexto Quirúrgico
 
 ### Invocación 1: Para el Paso 2 (`architect-review`)
 ```text
@@ -125,7 +147,7 @@ TU OBJETIVO:
 2. Audita la viabilidad e invariantes de AGENTS.md (separación de capas, kill recursivo, sandbox EPERM).
 3. Ajusta dependencias o campos en .taskmaster/tasks.json si es necesario.
 4. NUNCA toques código de producción en src/.
-5. Haz commit de tu estrategia: git commit -m "chore(architect): planificar [ID_TAREA]".
+5. Haz commit: python .taskmaster/git_safe_commit.py "chore(architect): planificar [ID_TAREA]".
 6. Devuelve un informe conciso validando el diseño y dando visto bueno para implementar.
 ```
 
@@ -145,6 +167,16 @@ TU OBJETIVO:
 3. Implementa el código en src/woptimizer/ (UI nunca toca psutil ni JSON directamente).
 4. Ejecuta verificaciones: python verify_ui_syntax.py y python run_tests.py.
 5. Marca completada: python .taskmaster/tm.py done [ID_TAREA].
-6. Haz commit: git commit -m "feat/fix([COMPONENTE]): [TÍTULO_TAREA]".
+6. Haz commit: python .taskmaster/git_safe_commit.py "feat/fix([COMPONENTE]): [TÍTULO_TAREA]".
 7. Devuelve un reporte estructurado confirmando archivos modificados y tests superados.
+```
+
+### Invocación 3: Para actualización de base de datos (`process-db-updater`)
+```text
+Actúa bajo la skill 'process-db-updater' (.agents/skills/process-db-updater/SKILL.md).
+1. Ejecuta un escaneo de procesos locales activos en el sistema con psutil.
+2. Cruza con assets/process_db.json e investiga 3-4 procesos nuevos relevantes.
+3. Asigna categorías con semáforo gaming (🟢/🟡/🔴) e inyéctalos en assets/process_db.json.
+4. Haz commit: python .taskmaster/git_safe_commit.py "chore(process-db): actualizar procesos gaming y bloatware".
+5. Devuelve un resumen de los procesos añadidos.
 ```

@@ -1,0 +1,18 @@
+[
+  {
+    "cycle": 1,
+    "date": "2026-09-28T23:00:00",
+    "area": "Arquitectura & UI",
+    "slug": "2026-09-28-v3-ui-redesign",
+    "status": "COMPLETED",
+    "impact": "Rediseño completo de 3 ventanas con CustomTkinter, migración a psutil y modelos Pydantic v2."
+  },
+  {
+    "cycle": 2,
+    "date": "2026-09-29T01:35:00",
+    "area": "Resiliencia & UX",
+    "slug": "2026-09-29-v3.1-quality-of-life",
+    "status": "COMPLETED",
+    "impact": "Integración System Tray (pystray), rotación segura de backups profiles.json.bak y logging persistente."
+  }
+]
