@@ -9,19 +9,14 @@ class ProcessInfo(BaseModel):
     category: str = "⚪ Otros"
     priority: str = "none"
 
-class GamingProfile(BaseModel):
-    kind: str = "system"
-    label: str = "🚀 Preparar para Gaming"
-    keepers: List[str] = Field(default_factory=lambda: ["discord"])
-    kill_low_chat: bool = True
-
-class UserProfile(BaseModel):
-    name: str = ""
-    kind: str = "user"
-    label: str
+class Pack(BaseModel):
+    id: str
+    name: str
     apps: List[str] = Field(default_factory=list)
     is_favorite: bool = False
+    is_gaming: bool = False
+    keepers: List[str] = Field(default_factory=list)
 
 class AppData(BaseModel):
     """Estructura raíz de persistencia (profiles.json)"""
-    profiles: Dict[str, dict] = Field(default_factory=dict)
+    packs: Dict[str, Pack] = Field(default_factory=dict)

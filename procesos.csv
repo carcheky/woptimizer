@@ -1,0 +1,132 @@
+Proceso,Descripción,Seguridad
+Aac3572DramHal_x86,Componente de ASUS Aura Sync para controlar la iluminación RGB de la memoria RAM.,Verde
+AacKingstonDramHal_x86,Componente de ASUS Aura Sync para la memoria RAM Kingston (control RGB).,Verde
+AcPowerNotification,Componente de ASUS Armoury Crate que muestra notificaciones sobre el estado de la batería y la conexión a la corriente.,Verde
+AdjustService,Servicio de GIGABYTE App Center usado para controlar ventiladores y RGB de la placa base.,Verde
+AdobeCollabSync,Proceso de Adobe Acrobat que sincroniza archivos y funciones de colaboración en la nube.,Verde
+AggregatorHost,Proceso de Windows (Defender/Insider) que recopila y agrega datos de diagnóstico.,Verde
+Antigravity,Agente de inteligencia artificial para programación.,Verde
+Antigravity IDE,Entorno de desarrollo del asistente Antigravity.,Verde
+ApCent,Proceso principal de la utilidad GIGABYTE App Center.,Verde
+ApplicationFrameHost,Muestra aplicaciones universales (UWP) de Windows en ventanas redimensionables.,Verde
+ArmouryCrate,Software de ASUS para gestionar hardware, iluminación RGB y perfiles de rendimiento.,Verde
+ArmouryCrate.Service,Servicio en segundo plano del software ASUS Armoury Crate.,Verde
+ArmouryCrate.UserSessionHelper,Proceso de ayuda para la sesión de usuario en ASUS Armoury Crate.,Verde
+ArmouryHtmlDebugServer,Servidor de depuración para la interfaz web de ASUS Armoury Crate.,Verde
+ArmourySocketServer,Servicio de comunicación de red interna para ASUS Armoury Crate.,Verde
+ArmourySwAgent,Agente encargado de las actualizaciones de software de ASUS Armoury Crate.,Verde
+armsvc,Servicio de actualización de Adobe Acrobat.,Verde
+asus_framework,Servicio subyacente que da soporte a varias utilidades de hardware de ASUS.,Verde
+AsusCertService,Servicio de certificados de ASUS que valida las firmas digitales de su software.,Verde
+atkexComSvc,Servicio de atajos de teclado (hotkeys) para placas base y portátiles ASUS.,Verde
+audiodg,Aislamiento de gráficos de dispositivos de audio de Windows (gestiona efectos de sonido).,Verde
+AuraWallpaperService,Servicio de ASUS que sincroniza fondos de pantalla con la iluminación RGB (Aura).,Verde
+CalendarApp.Gui.Win10,Interfaz gráfica de la aplicación nativa de Calendario de Windows.,Verde
+collector_service,Recopilador de datos de diagnóstico (usualmente de Visual Studio o de Intel).,Verde
+conhost,Host de ventana de consola; muestra interfaces de línea de comandos (como CMD).,Rojo
+cowork-svc,Servicio en segundo plano de Claude Desktop para gestionar su máquina virtual aislada.,Amarillo
+crashhelper,Componente de Mozilla Firefox encargado de reportar errores cuando el navegador falla.,Verde
+CrossDeviceResume,Servicio de Windows para reanudar actividades entre dispositivos vinculados.,Verde
+CrossDeviceService,Servicio de Windows para conectar y coordinar experiencias entre PC y móvil.,Verde
+csrss,Proceso del subsistema cliente-servidor; un componente crítico y esencial de Windows.,Rojo
+ctfmon,Cargador CTF; controla el soporte de entrada de texto (teclado, dictado, reconocimiento).,Verde
+dasHost,Host proveedor del framework de asociación; vincula dispositivos (Bluetooth/USB) a Windows.,Verde
+DefenderAiPlatformHost,Plataforma de IA de Microsoft Defender para detectar malware avanzado.,Verde
+DefenderSessionHelper,Proceso de asistencia para el antivirus Microsoft Defender.,Verde
+dllhost,COM Surrogate; ejecuta archivos DLL por separado para evitar que Windows se bloquee.,Rojo
+DSAService,Servicio principal del Asistente de controladores y soporte técnico de Intel.,Verde
+DSATray,Icono en la barra de tareas del Asistente de controladores de Intel.,Verde
+DSAUpdateService,Servicio que busca actualizaciones de drivers de Intel.,Verde
+DtsApo4Service,Servicio de procesamiento y mejora de sonido de DTS.,Verde
+dwm,Administrador de ventanas del escritorio; renderiza la interfaz y efectos visuales de Windows.,Rojo
+EdgeGameAssist,Función de Microsoft Edge que ofrece superposiciones y asistencia mientras juegas.,Amarillo
+esrv,Servicio de informes de uso de Intel; monitorea el rendimiento y energía del sistema.,Verde
+esrv_svc,Servicio en segundo plano complementario para los informes de uso de Intel.,Verde
+explorer,El Explorador de Windows; gestiona el escritorio, la barra de tareas y las carpetas.,Rojo
+extensionCardHal_x86,Componente de ASUS Aura Sync para controlar el RGB de tarjetas de expansión.,Verde
+FileSyncHelper,"Ayudante de Microsoft OneDrive para sincronizar archivos y proteger el ""Almacén personal"".",Amarillo
+firefox,Proceso principal del navegador web Mozilla Firefox.,Verde
+fontdrvhost,Host del controlador de fuentes; carga tipografías de forma segura en Windows.,Rojo
+GameInputRedistService,Servicio de Microsoft para gestionar la entrada de mandos y periféricos en juegos.,Amarillo
+GameSDK,Proceso en segundo plano usado por tiendas o launchers de juegos para ofrecer funciones extra.,Amarillo
+gamingservices,Servicios de juego de Microsoft, necesarios para jugar títulos de Xbox/Windows Store.,Amarillo
+gamingservicesnet,Componente de red de los Servicios de juego de Microsoft.,Amarillo
+GigabyteUpdateService,Servicio que busca e instala actualizaciones para el software de GIGABYTE.,Verde
+HASS.Agent,Integra el PC Windows con el sistema domótico Home Assistant.,Verde
+HASS.Agent.Satellite.Service,Servicio satélite de HASS.Agent para enviar métricas en segundo plano.,Verde
+HerculesDJControlMP3,Controlador/utilidad para las mesas de mezclas Hercules DJ Control MP3.,Verde
+Idle,Proceso inactivo del sistema; representa el porcentaje de CPU que NO se está usando.,Rojo
+jhi_service,Interfaz de host del cargador dinámico de Intel; gestiona tareas seguras a nivel de firmware.,Verde
+KeePassXC,Gestor de contraseñas de código abierto KeePassXC.,Amarillo
+keepassxc-proxy,Proxy que permite a KeePassXC comunicarse con las extensiones del navegador.,Amarillo
+language_server,Proceso usado por editores de código para autocompletado y análisis de sintaxis.,Verde
+language_server_windows_x64,Versión de 64 bits de un language server (para Antigravity IDE o VS Code).,Verde
+LightingService,Servicio principal de ASUS Aura Sync para controlar todas las luces RGB.,Verde
+LsaIso,Guardia de credenciales de Windows; aísla las contraseñas usando virtualización.,Rojo
+lsass,Autoridad de seguridad local; gestiona el inicio de sesión y políticas de seguridad de Windows.,Rojo
+Memory Compression,Proceso de Windows que comprime datos en la RAM para evitar usar el disco duro.,Rojo
+MidiSrv,Servicio de Windows que gestiona dispositivos MIDI e instrumentos musicales.,Verde
+MpDefenderCoreService,Servicio central del antivirus Microsoft Defender.,Verde
+msedge,Proceso del navegador web Microsoft Edge.,Verde
+msedgewebview2,Permite a programas de escritorio mostrar contenido web como si fueran páginas de Edge.,Verde
+MsMpEng,Motor de escaneo principal de Microsoft Defender Antivirus.,Rojo
+msrdc,Cliente del Escritorio Remoto de Microsoft.,Verde
+nextcloud,Cliente de escritorio de Nextcloud para sincronizar archivos en la nube.,Verde
+NgcIso,Servicio aislado para Windows Hello; protege datos biométricos y pines de inicio de sesión.,Rojo
+NisSrv,Servicio de inspección de red de Microsoft Defender; bloquea malware transmitido por red.,Rojo
+NVDisplay.Container,Contenedor de NVIDIA; gestiona el panel de control y configuraciones de pantalla.,Verde
+OpenConsole,Proceso en segundo plano que da soporte a la Terminal de Windows.,Verde
+powershell,Consola de automatización y administración PowerShell de Windows.,Verde
+PowerToys,Conjunto de herramientas de productividad de Microsoft para usuarios avanzados.,Verde
+PowerToys.MouseWithoutBorders,Herramienta de PowerToys para usar un ratón/teclado en varios PCs.,Verde
+PowerToys.MouseWithoutBordersHelper,Ayudante de la herramienta Mouse Without Borders de PowerToys.,Verde
+PresentMonService,Servicio de telemetría de Intel que mide los fotogramas por segundo (FPS) en juegos.,Verde
+pwsh,Versión moderna, multiplataforma y de código abierto de PowerShell.,Verde
+python,Intérprete de Python ejecutando algún script.,Verde
+Registry,Proceso del sistema que mantiene datos del Registro en la memoria RAM para agilizar lecturas.,Rojo
+ROGLiveService,Servicio de ASUS Republic of Gamers que gestiona funciones online y actualizaciones.,Verde
+RstMwService,Servicio de gestión de almacenamiento Intel Rapid Storage Technology.,Verde
+RtkAudUService64,Servicio universal de Realtek que controla los drivers y ajustes de audio.,Verde
+RuntimeBroker,Proceso que gestiona los permisos (como acceso a cámara/micrófono) de las apps UWP de Windows.,Rojo
+SearchFilterHost,Extrae texto y metadatos de archivos para que Windows Search pueda indexarlos.,Rojo
+SearchHost,Proceso de la interfaz gráfica del buscador de Windows (la barra de búsqueda).,Rojo
+SearchIndexer,Indexador de Windows; cataloga los archivos para que las búsquedas sean instantáneas.,Rojo
+SearchProtocolHost,Obtiene información de ubicaciones de archivos para el indexador de Windows.,Rojo
+Secure System,Entorno hiperseguro del sistema (VBS) que ejecuta código crítico de forma aislada.,Rojo
+SecurityHealthService,Servicio que monitorea y reporta el estado de salud de la seguridad de Windows.,Rojo
+SecurityHealthSystray,Icono del escudo de Windows Security en la barra de tareas.,Rojo
+services,Administrador de control de servicios; se encarga de iniciar y detener los demás servicios.,Rojo
+ShareX,Herramienta avanzada para capturas de pantalla y grabación.,Amarillo
+ShellExperienceHost,Maneja elementos visuales de Windows, como el menú Inicio, calendario y notificaciones.,Rojo
+ShellHost,Componente interno de Windows que asiste en la gestión de interfaces gráficas y menús.,Rojo
+sihost,Host de infraestructura; controla funciones de la barra de tareas, menú inicio y fondos.,Rojo
+smss,Subsistema del gestor de sesiones; un proceso vital que inicializa Windows al encender el PC.,Rojo
+spd,Servicio de cFosSpeed, un software de priorización de tráfico de red para reducir el lag (ping).,Verde
+spoolsv,Cola de impresión de Windows; gestiona los documentos enviados a la impresora.,Verde
+StartMenuExperienceHost,Proceso dedicado exclusivamente a mostrar y gestionar el Menú Inicio moderno.,Verde
+SurSvc,Servicio de Intel que recopila estadísticas anónimas sobre el uso y fallos del sistema.,Verde
+svchost,Proceso anfitrión (muy común) bajo el cual se ejecutan multitud de servicios de Windows.,Rojo
+System,Proceso que contiene hilos en modo kernel y maneja tareas críticas a bajo nivel del sistema.,Rojo
+SystemSettings,"Proceso principal de la aplicación ""Configuración"" de Windows.",Rojo
+TabTip,Proceso que controla el panel de escritura a mano y el teclado táctil en pantalla de Windows.,Rojo
+taskhostw,Proceso anfitrión que ejecuta tareas programadas a través del Programador de Tareas.,Rojo
+telemetry_agent,Agente de telemetría; envía datos de rendimiento y uso.,Verde
+TextInputHost,Administra paneles de entrada de texto (selector de emojis, historial del portapapeles).,Rojo
+UniGetUI,Interfaz gráfica para gestores de paquetes como Winget, Scoop o Chocolatey.,Verde
+vmcompute,Servicio de Hyper-V que gestiona contenedores y máquinas virtuales a nivel de host.,Rojo
+vmmemWSL,Representa la cantidad de CPU/RAM que está consumiendo el Subsistema de Windows para Linux (WSL).,Rojo
+vmms,Servicio de administración de máquinas virtuales de Microsoft Hyper-V.,Rojo
+vmwp,Proceso de trabajo de Hyper-V; hay uno de estos por cada máquina virtual en ejecución.,Rojo
+WidgetBoard,Panel de Widgets de Windows 11.,Verde
+WidgetService,Servicio en segundo plano que mantiene actualizados los Widgets de Windows 11.,Verde
+WindowsPackageManagerServer,Servidor en segundo plano del gestor de paquetes de Windows (winget).,Verde
+WindowsTerminal,Aplicación Terminal de Windows que permite usar CMD, PowerShell y WSL en pestañas.,Verde
+wininit,Proceso de inicialización vital de Windows; se ejecuta durante el arranque y debe estar activo.,Rojo
+winlogon,Gestor de inicio de sesión; maneja las pantallas de login y la combinación Ctrl+Alt+Supr.,Rojo
+WmiPrvSE,Proveedor de Instrumental de Administración de Windows (WMI); recopila y ofrece datos del sistema.,Rojo
+WMIRegistrationService,Servicio que registra proveedores WMI en el sistema.,Rojo
+wsl,Ejecutable principal de línea de comandos para el Subsistema de Windows para Linux (WSL).,Verde
+wslhost,Proceso anfitrión que permite la comunicación entre Windows y el entorno Linux (WSL).,Verde
+wslrelay,Servicio de puente (relay) de WSL encargado de ciertas comunicaciones de red/sockets.,Verde
+wslservice,Servicio principal en segundo plano que administra las instancias de Linux en Windows.,Verde
+XboxPcAppFT,Proceso principal de la aplicación de Xbox para PC.,Amarillo

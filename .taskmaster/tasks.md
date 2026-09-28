@@ -14,6 +14,7 @@
 | **TASK-002** | Implementar Ventana de Gestor de Procesos | 5/10 | High | `PENDING` | TASK-001 | `docs/ai/ui-design-system.md` |
 | **TASK-003** | Implementar Ventana de Gestor de Packs (CRUD + Acciones) | 7/10 | Critical | `PENDING` | TASK-001 | `docs/ai/ui-design-system.md` |
 | **TASK-004** | Implementar Ventana Principal (Portada con Favoritos) | 4/10 | Critical | `PENDING` | TASK-002, TASK-003 | `docs/ai/ui-design-system.md` |
+| **TASK-007** | Categorización Automática de Procesos y Filtro de Seguridad | 6/10 | High | PENDING | TASK-002, TASK-004 | docs/ai/architecture.md |
 | **TASK-005** | Pruebas de Integración y Validación de la Suite UI | 3/10 | Medium | `PENDING` | TASK-004 | `docs/ai/testing-guide.md` |
 | **TASK-006** | Compilación y Empaquetado de woptimizer.exe v3.0.0 | 4/10 | High | `PENDING` | TASK-005 | `docs/ai/sandbox-rules.md` |
 

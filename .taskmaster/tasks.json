@@ -10,7 +10,7 @@
       "description": "Adaptar models.py y profile_service.py para soportar packs con acciones duales (apagar/encender), estado de favorito y el pack Gaming protegido por defecto.",
       "complexity": 4,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "docs/ai/data-models.md"
     },
@@ -20,8 +20,10 @@
       "description": "Crear UI con lista de procesos en tiempo real (psutil), checkboxes de selección y desplegable para agregar procesos seleccionados a un pack existente.",
       "complexity": 5,
       "priority": "high",
-      "status": "pending",
-      "dependencies": ["TASK-001"],
+      "status": "completed",
+      "dependencies": [
+        "TASK-001"
+      ],
       "module": "docs/ai/ui-design-system.md"
     },
     {
@@ -31,7 +33,9 @@
       "complexity": 7,
       "priority": "critical",
       "status": "pending",
-      "dependencies": ["TASK-001"],
+      "dependencies": [
+        "TASK-001"
+      ],
       "module": "docs/ai/ui-design-system.md"
     },
     {
@@ -41,8 +45,24 @@
       "complexity": 4,
       "priority": "critical",
       "status": "pending",
-      "dependencies": ["TASK-002", "TASK-003"],
+      "dependencies": [
+        "TASK-002",
+        "TASK-003"
+      ],
       "module": "docs/ai/ui-design-system.md"
+    },
+    {
+      "id": "TASK-007",
+      "title": "Categorización Automática de Procesos y Filtro de Seguridad",
+      "description": "Descargar CSV del repositorio (o usar caché), actualizar el modelo ProcessInfo con safety_level, e implementar checkbox en Gestor de Procesos para ocultar los procesos del sistema (rojos).",
+      "complexity": 6,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [
+        "TASK-002",
+        "TASK-004"
+      ],
+      "module": "docs/ai/architecture.md"
     },
     {
       "id": "TASK-005",
@@ -51,7 +71,10 @@
       "complexity": 3,
       "priority": "medium",
       "status": "pending",
-      "dependencies": ["TASK-004"],
+      "dependencies": [
+        "TASK-004",
+        "TASK-007"
+      ],
       "module": "docs/ai/testing-guide.md"
     },
     {
@@ -61,7 +84,9 @@
       "complexity": 4,
       "priority": "high",
       "status": "pending",
-      "dependencies": ["TASK-005"],
+      "dependencies": [
+        "TASK-005"
+      ],
       "module": "docs/ai/sandbox-rules.md"
     }
   ]

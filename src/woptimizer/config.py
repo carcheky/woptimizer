@@ -11,13 +11,6 @@ def _app_dir() -> str:
 PROCESS_LIST_FILE = os.path.join(_app_dir(), 'saved_processes.json')
 PROFILES_FILE = os.path.join(_app_dir(), 'profiles.json')
 
-SYSTEM_GAMING_PROFILE_KEY = "__system_gaming__"
-SYSTEM_GAMING_FACTORY = {
-    "kind": "system",
-    "label": "🚀 Preparar para Gaming",
-    "keepers": ["discord"],
-    "kill_low_chat": True,
-}
 
 PROCESS_CATEGORIES: Dict[str, Dict[str, Any]] = {
     '🔴 Navegadores': {

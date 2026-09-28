@@ -47,4 +47,4 @@ class AppData(BaseModel):
 1. `app.py`: Coordinador de navegación entre vistas (usando contenedores/frames intercambiables o ventanas modales de CustomTkinter `CTkToplevel`).
 2. `views/dashboard_view.py`: Portada con widgets de favoritos y botones a los otros 2 paneles.
 3. `views/pack_manager_view.py`: Gestión CRUD de packs, lista expandible y botones de acción (apagar/encender).
-4. `views/process_manager_view.py`: Tabla con scroll virtual/frame de procesos activos con checkboxes y agregador a packs.
+4. `views/process_manager_view.py`: Lista con scroll de procesos activos (agrupados por nombre y PID), buscador en tiempo real, categorías plegables para UX mejorada, y agregador directo a packs.
