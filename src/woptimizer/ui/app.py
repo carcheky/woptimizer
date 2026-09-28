@@ -14,7 +14,7 @@ class WOptimizerApp:
         self.root.title("🎮 woptimizer v3")
         self.root.geometry("860x560")
         self.root.minsize(720, 460)
-        self.root.protocol('WM_DELETE_WINDOW', self.hide_window)
+        self.root.protocol('WM_DELETE_WINDOW', self.on_window_close)
         
         self.process_service = process_service
         self.pack_service = pack_service
@@ -27,6 +27,25 @@ class WOptimizerApp:
             gaming_service=gaming_service
         )
         self.main_window.pack(fill="both", expand=True, padx=10, pady=10)
+
+    def on_window_close(self):
+        if getattr(sys, 'frozen', False):
+            self.hide_window()
+        else:
+            self.quit_app()
+
+    def quit_app(self):
+        try:
+            if hasattr(self, 'tray_icon') and self.tray_icon:
+                self.tray_icon.stop()
+        except Exception:
+            pass
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
+        import sys
+        sys.exit(0)
 
     def hide_window(self):
         self.root.withdraw()
@@ -45,10 +64,7 @@ class WOptimizerApp:
             self.root.after(0, self.root.deiconify)
             
         def quit_action(icon, item):
-            icon.stop()
-            self.root.destroy()
-            import sys
-            sys.exit(0)
+            self.quit_app()
             
         def gaming_action(icon, item):
             gaming_pack = self.pack_service.get_all_packs().get("gaming")
@@ -66,4 +82,7 @@ class WOptimizerApp:
         threading.Thread(target=icon.run, daemon=True).start()
 
     def run(self):
-        self.root.mainloop()
+        try:
+            self.root.mainloop()
+        except KeyboardInterrupt:
+            self.quit_app()

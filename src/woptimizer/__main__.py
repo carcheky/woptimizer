@@ -12,17 +12,20 @@ from woptimizer.services.gaming_service import GamingService
 from woptimizer.ui.app import WOptimizerApp
 
 def main():
-    # Inicializar capa de servicios
-    process_service = ProcessService()
-    pack_service = PackService()
-    gaming_service = GamingService(process_service, pack_service)
+    try:
+        # Inicializar capa de servicios
+        process_service = ProcessService()
+        pack_service = PackService()
+        gaming_service = GamingService(process_service, pack_service)
 
-    # Inicializar e inyectar UI
-    app = WOptimizerApp(process_service, pack_service, gaming_service)
-    
-    # Arrancar bucle principal
-    app.run()
-    return 0
+        # Inicializar e inyectar UI
+        app = WOptimizerApp(process_service, pack_service, gaming_service)
+        
+        # Arrancar bucle principal
+        app.run()
+        return 0
+    except KeyboardInterrupt:
+        return 0
 
 if __name__ == "__main__":
     sys.exit(main())
