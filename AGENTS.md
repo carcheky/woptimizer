@@ -68,7 +68,7 @@ python verify_ui_syntax.py      # Verificar sintaxis estática de la UI
 ```
 
 ## 🛠️ Skills Disponibles (.agents/skills/)
-- `id-pipeline`: Motor autónomo de I+D. Busca trabajo o crea nuevas propuestas y orquesta `architect-review` y `openspec-dev` en bucle mediante subagentes.
+- `id-pipeline`: Motor autónomo de I+D en bucle infinito de 3 pasos (1. Buscar qué hacer, 2. Planear, 3. Ejecutar). No se detiene nunca a menos que el usuario lo pause manualmente.
 - `architect-review`: Arquitectura, auditoría de invariantes y planificación de Taskmaster / OpenSpec.
 - `openspec-dev`: Tech Lead e implementación con validación estática y headless.
 - `process-db-updater`: Analista de procesos y actualización de `assets/process_db.json`.
