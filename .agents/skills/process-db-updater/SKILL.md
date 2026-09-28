@@ -24,17 +24,19 @@ Cuando se te pida analizar un nuevo proceso o actualizar la base de datos, debes
    - **Bloatware o Sync:** (Ej. OneDrive, DropBox, Chrome). Se deben cerrar durante el gaming.
    - **Comunicaciones:** (Ej. Discord, Teams). 
 
-### Paso 2: Asignación de Categoría y Prioridad
+### Paso 2: Asignación de Categoría y Prioridad (Semáforo de Cierre)
+Aplica la siguiente lógica visual para los nombres de las categorías. **Verde (🟢)** significa seguro para matar. **Amarillo (🟡)** significa seguro para el OS pero podría cerrar cosas útiles para jugar. **Rojo (🔴)** significa peligro (rompe el OS o periféricos gaming vitales).
+
 Mapea el proceso a las siguientes reglas (Invariantes del sistema):
-- `⚫ Sistema de Windows` -> `none`
-- `⚫ Antivirus y Seguridad` -> `none`
-- `🟢 Launchers Gaming` -> `none`
-- `🟢 Overlays e Info` -> `none`
-- `🟡 Media y Streaming` -> `medium`
-- `🟡 Productividad` -> `medium`
-- `🟡 Chat y Comunicación` -> `low`
-- `🔴 Sincronización` -> `high`
-- `🔴 Navegadores` -> `high`
+- `🔴 Sistema de Windows` -> `none` (Nunca cerrar, rompe el PC)
+- `🔴 Antivirus y Seguridad` -> `none` (Peligro)
+- `🔴 Overlays e Info` -> `none` (Cerrarlos rompe perfiles de ventilación/macros útiles para jugar)
+- `🟡 Launchers Gaming` -> `none` o `low` (Seguro matarlos, pero útiles para lanzar juegos)
+- `🟡 Media y Streaming` -> `medium` (Seguro, pero útil para grabar/jugar)
+- `🟡 Chat y Comunicación` -> `low` o `medium` (Discord es útil, Slack no)
+- `🟢 Sincronización` -> `high` (Completamente seguro de matar)
+- `🟢 Navegadores` -> `high` (Completamente seguro de matar)
+- `🟢 Productividad` -> `high` (Completamente seguro de matar)
 
 ### Paso 3: Edición del CSV
 1. Lee el contenido actual de `assets/fallback.csv`.
