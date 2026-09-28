@@ -1,127 +1,149 @@
 {
-    "project": "woptimizer",
-    "version": "3.0.0",
-    "updated_at": "2026-09-28T20:55:00Z",
-    "active_task_id": "TASK-001",
-    "tasks": [
-        {
-            "id": "TASK-001",
-            "title": "Rediseño de Modelos y Capa de Datos para Packs Unificados",
-            "description": "Ajustar pack_service.py y models.py. El modelo Pack debe incluir 'default_action' (start/kill). El array 'apps' será mixto: guardará rutas absolutas (añadidas por el usuario) o nombres simples (ej. 'chrome.exe', para el pack Gaming pre-poblado). Eliminar el campo 'keepers'. Asegurar que capture JSONDecodeError, restaure el JSON con el Gaming pack y que el borrado lance excepción si is_gaming=True.",
-            "complexity": 4,
-            "priority": "high",
-            "status": "completed",
-            "dependencies": [],
-            "module": "docs/ai/data-models.md"
-        },
-        {
-            "id": "TASK-002",
-            "title": "Implementar Ventana de Gestor de Procesos",
-            "description": "Crear UI con lista de procesos. Carga inicial + Botón manual 'Refrescar'. Llamadas a process_service deben ir en Background Thread usando .after(). Usar CSV para añadir descripciones (con un fallback offline empaquetado en assets). Procesos sin CSV reciben placeholder 'Sin descripción'. Al añadir a un pack, guardar la ruta absoluta en el array 'apps'.",
-            "complexity": 5,
-            "priority": "high",
-            "status": "completed",
-            "dependencies": [
-                "TASK-001"
-            ],
-            "module": "docs/ai/ui-design-system.md"
-        },
-        {
-            "id": "TASK-003",
-            "title": "Implementar Ventana de Gestor de Packs (CRUD + Acciones)",
-            "description": "Crear UI Gestor de Packs. Añadir botón 'Restaurar por defecto' (solo Gaming pack). UI para elegir 'default_action'. ProcessService debe manejar el array 'apps' de forma inteligente (matar/arrancar por nombre o ruta absoluta). Las acciones de arranque y apagado deben usar hilos secundarios. Ignorar errores en silencio.",
-            "complexity": 7,
-            "priority": "critical",
-            "status": "completed",
-            "dependencies": [
-                "TASK-001"
-            ],
-            "module": "docs/ai/ui-design-system.md"
-        },
-        {
-            "id": "TASK-004",
-            "title": "Implementar Ventana Principal (Portada con Favoritos)",
-            "description": "Crear pantalla de inicio limpia con botones gigantes para packs favoritos (Gaming por defecto). El clic principal ejecuta la acción definida en 'default_action'. Accesos a 'Gestor de Packs' y 'Gestor de Procesos'.",
-            "complexity": 4,
-            "priority": "critical",
-            "status": "completed",
-            "dependencies": [
-                "TASK-002",
-                "TASK-003"
-            ],
-            "module": "docs/ai/ui-design-system.md"
-        },
-        {
-            "id": "TASK-007",
-            "title": "Categorización Automática de Procesos y Filtro de Seguridad",
-            "description": "Descargar CSV asíncronamente en hilo separado (threading.Thread). Proveer el archivo offline fallback inicial en assets/fallback.csv. Asegurar que toda actualización a CustomTkinter use EXCLUSIVAMENTE .after().",
-            "complexity": 6,
-            "priority": "high",
-            "status": "completed",
-            "dependencies": [
-                "TASK-002",
-                "TASK-004"
-            ],
-            "module": "docs/ai/architecture.md"
-        },
-        {
-            "id": "TASK-005",
-            "title": "Pruebas de Integración y Validación de la Suite UI",
-            "description": "Ejecutar suite de tests unitarios de modelos y verificación estática de la interfaz sin colgar el runner.",
-            "complexity": 3,
-            "priority": "medium",
-            "status": "completed",
-            "dependencies": [
-                "TASK-004",
-                "TASK-007"
-            ],
-            "module": "docs/ai/testing-guide.md"
-        },
-        {
-            "id": "TASK-006",
-            "title": "Compilación y Empaquetado de woptimizer.exe v3.0.0",
-            "description": "Generar el ejecutable standalone mediante el builder nativo e integrarlo en dist/. IMPORTANTE: Modificar el script de compilación (force_build.py / .spec) para incluir la carpeta 'assets/' de manera que el fallback.csv quede incrustado en el binario final (sys._MEIPASS).",
-            "complexity": 4,
-            "priority": "high",
-            "status": "completed",
-            "dependencies": [
-                "TASK-005"
-            ],
-            "module": "docs/ai/sandbox-rules.md"
-        },
-        {
-            "id": "TASK-008",
-            "title": "Migración de DB a JSON y Endpoint de GitLab",
-            "description": "Convertir fallback.csv a process_db.json, adaptar el ProcessService para leer JSON, y apuntar la URL remota a GitLab.",
-            "complexity": 3,
-            "priority": "high",
-            "status": "pending",
-            "module": "openspec/changes/2026-09-29-v3-ux-polish/tasks.md",
-            "dependencies": []
-        },
-        {
-            "id": "TASK-009",
-            "title": "Evolución Dinámica del Pack Gaming",
-            "description": "Ampliar el modelo Pack con target_categories, permitir edición de estas categorías en el UI del Pack Gaming, y adaptar el GamingService para respetarlas.",
-            "complexity": 6,
-            "priority": "critical",
-            "status": "pending",
-            "module": "openspec/changes/2026-09-29-v3-ux-polish/tasks.md",
-            "dependencies": [
-                "TASK-008"
-            ]
-        },
-        {
-            "id": "TASK-010",
-            "title": "Feedback Visual en el Gestor de Procesos",
-            "description": "Mostrar semáforo y descripciones en cada fila del Gestor de Procesos, y añadir botón manual de actualizar DB.",
-            "complexity": 4,
-            "priority": "medium",
-            "status": "pending",
-            "module": "openspec/changes/2026-09-29-v3-ux-polish/tasks.md",
-            "dependencies": [
-                "TASK-008"
-            ]
-        }
-    ]
+  "project": "woptimizer",
+  "version": "3.0.0",
+  "updated_at": "2026-09-28T20:55:00Z",
+  "active_task_id": "TASK-001",
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Rediseño de Modelos y Capa de Datos para Packs Unificados",
+      "description": "Ajustar pack_service.py y models.py. El modelo Pack debe incluir 'default_action' (start/kill). El array 'apps' será mixto: guardará rutas absolutas (añadidas por el usuario) o nombres simples (ej. 'chrome.exe', para el pack Gaming pre-poblado). Eliminar el campo 'keepers'. Asegurar que capture JSONDecodeError, restaure el JSON con el Gaming pack y que el borrado lance excepción si is_gaming=True.",
+      "complexity": 4,
+      "priority": "high",
+      "status": "completed",
+      "dependencies": [],
+      "module": "docs/ai/data-models.md"
+    },
+    {
+      "id": "TASK-002",
+      "title": "Implementar Ventana de Gestor de Procesos",
+      "description": "Crear UI con lista de procesos. Carga inicial + Botón manual 'Refrescar'. Llamadas a process_service deben ir en Background Thread usando .after(). Usar CSV para añadir descripciones (con un fallback offline empaquetado en assets). Procesos sin CSV reciben placeholder 'Sin descripción'. Al añadir a un pack, guardar la ruta absoluta en el array 'apps'.",
+      "complexity": 5,
+      "priority": "high",
+      "status": "completed",
+      "dependencies": [
+        "TASK-001"
+      ],
+      "module": "docs/ai/ui-design-system.md"
+    },
+    {
+      "id": "TASK-003",
+      "title": "Implementar Ventana de Gestor de Packs (CRUD + Acciones)",
+      "description": "Crear UI Gestor de Packs. Añadir botón 'Restaurar por defecto' (solo Gaming pack). UI para elegir 'default_action'. ProcessService debe manejar el array 'apps' de forma inteligente (matar/arrancar por nombre o ruta absoluta). Las acciones de arranque y apagado deben usar hilos secundarios. Ignorar errores en silencio.",
+      "complexity": 7,
+      "priority": "critical",
+      "status": "completed",
+      "dependencies": [
+        "TASK-001"
+      ],
+      "module": "docs/ai/ui-design-system.md"
+    },
+    {
+      "id": "TASK-004",
+      "title": "Implementar Ventana Principal (Portada con Favoritos)",
+      "description": "Crear pantalla de inicio limpia con botones gigantes para packs favoritos (Gaming por defecto). El clic principal ejecuta la acción definida en 'default_action'. Accesos a 'Gestor de Packs' y 'Gestor de Procesos'.",
+      "complexity": 4,
+      "priority": "critical",
+      "status": "completed",
+      "dependencies": [
+        "TASK-002",
+        "TASK-003"
+      ],
+      "module": "docs/ai/ui-design-system.md"
+    },
+    {
+      "id": "TASK-007",
+      "title": "Categorización Automática de Procesos y Filtro de Seguridad",
+      "description": "Descargar CSV asíncronamente en hilo separado (threading.Thread). Proveer el archivo offline fallback inicial en assets/fallback.csv. Asegurar que toda actualización a CustomTkinter use EXCLUSIVAMENTE .after().",
+      "complexity": 6,
+      "priority": "high",
+      "status": "completed",
+      "dependencies": [
+        "TASK-002",
+        "TASK-004"
+      ],
+      "module": "docs/ai/architecture.md"
+    },
+    {
+      "id": "TASK-005",
+      "title": "Pruebas de Integración y Validación de la Suite UI",
+      "description": "Ejecutar suite de tests unitarios de modelos y verificación estática de la interfaz sin colgar el runner.",
+      "complexity": 3,
+      "priority": "medium",
+      "status": "completed",
+      "dependencies": [
+        "TASK-004",
+        "TASK-007"
+      ],
+      "module": "docs/ai/testing-guide.md"
+    },
+    {
+      "id": "TASK-006",
+      "title": "Compilación y Empaquetado de woptimizer.exe v3.0.0",
+      "description": "Generar el ejecutable standalone mediante el builder nativo e integrarlo en dist/. IMPORTANTE: Modificar el script de compilación (force_build.py / .spec) para incluir la carpeta 'assets/' de manera que el fallback.csv quede incrustado en el binario final (sys._MEIPASS).",
+      "complexity": 4,
+      "priority": "high",
+      "status": "completed",
+      "dependencies": [
+        "TASK-005"
+      ],
+      "module": "docs/ai/sandbox-rules.md"
+    },
+    {
+      "id": "TASK-008",
+      "title": "Migración de DB a JSON y Endpoint de GitLab",
+      "description": "Convertir fallback.csv a process_db.json, adaptar el ProcessService para leer JSON, y apuntar la URL remota a GitLab.",
+      "complexity": 3,
+      "priority": "high",
+      "status": "completed",
+      "module": "openspec/changes/2026-09-29-v3-ux-polish/tasks.md",
+      "dependencies": []
+    },
+    {
+      "id": "TASK-009",
+      "title": "Evolución Dinámica del Pack Gaming",
+      "description": "Ampliar el modelo Pack con target_categories, permitir edición de estas categorías en el UI del Pack Gaming, y adaptar el GamingService para respetarlas.",
+      "complexity": 6,
+      "priority": "critical",
+      "status": "completed",
+      "module": "openspec/changes/2026-09-29-v3-ux-polish/tasks.md",
+      "dependencies": [
+        "TASK-008"
+      ]
+    },
+    {
+      "id": "TASK-010",
+      "title": "Feedback Visual en el Gestor de Procesos",
+      "description": "Mostrar semáforo y descripciones en cada fila del Gestor de Procesos, y añadir botón manual de actualizar DB.",
+      "complexity": 4,
+      "priority": "medium",
+      "status": "completed",
+      "module": "openspec/changes/2026-09-29-v3-ux-polish/tasks.md",
+      "dependencies": [
+        "TASK-008"
+      ]
+    },
+    {
+      "id": "TASK-011",
+      "title": "Logging y Backups Automáticos",
+      "description": "Implementar rotación de logs en archivo local y auto-backup de perfiles al guardar.",
+      "complexity": 2,
+      "dependencies": [],
+      "priority": "medium",
+      "status": "completed",
+      "module": "openspec/changes/2026-09-29-v3.1-quality-of-life/tasks.md"
+    },
+    {
+      "id": "TASK-012",
+      "title": "Integración System Tray y Menú Rápido",
+      "description": "Interceptar el cierre para minimizar al tray, usar pystray, e inyectar un menú rápido para el modo Gaming.",
+      "complexity": 6,
+      "dependencies": [
+        "TASK-011"
+      ],
+      "priority": "high",
+      "status": "completed",
+      "module": "openspec/changes/2026-09-29-v3.1-quality-of-life/tasks.md"
+    }
+  ]
 }
