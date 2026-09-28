@@ -21,8 +21,13 @@ Realiza un análisis crítico (Chain of Thought) buscando:
 *   **Permisos y Sandbox (Windows):** ¿Se están contemplando los problemas de EPERM o UAC al intentar matar procesos del sistema?
 *   **Casos Límite (Edge Cases):** ¿Qué pasa si no hay internet? ¿Qué pasa si el JSON se corrompe? ¿Están estas defensas documentadas en las tareas?
 
-## 4. Entregable
-Genera un reporte detallado al usuario detallando:
-- **Estado de Salud:** Evaluación general del plan actual.
-- **Puntos Ciegos Encontrados:** Explicación técnica de los fallos lógicos detectados.
-- **Plan de Acción:** Instrucciones precisas sobre cómo modificar `.taskmaster/tasks.json` para cerrar esas brechas antes de que el equipo de programación comience.
+## 4. Modo de Interacción y Entregable
+Si durante la auditoría detectas dudas, puntos ciegos o decisiones de diseño ambiguas, **NO generes un reporte final masivo ni asumas la respuesta.** 
+
+Debes seguir este proceso interactivo:
+1. **Pregunta una a una:** Plantea tu primera duda al usuario de forma clara y espera su respuesta.
+2. **Iteración:** Una vez que el usuario responda, procesa su decisión y plantéale la siguiente duda (si la hay).
+3. **Reporte Final:** Solo cuando hayas resuelto todas tus dudas de forma secuencial con el usuario, generarás el reporte final detallando:
+   - **Estado de Salud:** Evaluación general.
+   - **Resoluciones Acordadas:** Cómo se solucionaron los puntos ciegos durante la entrevista.
+   - **Plan de Acción:** Instrucciones precisas sobre cómo modificar `.taskmaster/tasks.json` antes de programar.
