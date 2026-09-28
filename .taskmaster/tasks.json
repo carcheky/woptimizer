@@ -7,7 +7,7 @@
     {
       "id": "TASK-001",
       "title": "Rediseño de Modelos y Capa de Datos para Packs Unificados",
-      "description": "Ajustar pack_service.py (los modelos ya cumplen OpenSpec). Asegurar que capture JSONDecodeError, restaure el JSON con el preset 'Gaming' automáticamente, y que el borrado lance excepción si is_gaming=True. ATENCIÓN: El pack Gaming ya no mata 'todo'.",
+      "description": "Ajustar pack_service.py y models.py. El modelo Pack debe incluir 'default_action' (start/kill). El array 'apps' será mixto: guardará rutas absolutas (añadidas por el usuario) o nombres simples (ej. 'chrome.exe', para el pack Gaming pre-poblado). Eliminar el campo 'keepers'. Asegurar que capture JSONDecodeError, restaure el JSON con el Gaming pack y que el borrado lance excepción si is_gaming=True.",
       "complexity": 4,
       "priority": "high",
       "status": "pending",
@@ -17,7 +17,7 @@
     {
       "id": "TASK-002",
       "title": "Implementar Ventana de Gestor de Procesos",
-      "description": "Crear UI con lista de procesos en tiempo real (psutil), checkboxes de selección y desplegable para agregar procesos seleccionados a un pack existente.",
+      "description": "Crear UI con lista de procesos. Carga inicial + Botón manual 'Refrescar'. Llamadas a process_service deben ir en Background Thread usando .after(). Usar CSV para añadir descripciones (con un fallback offline empaquetado en assets). Procesos sin CSV reciben placeholder 'Sin descripción'. Al añadir a un pack, guardar la ruta absoluta en el array 'apps'.",
       "complexity": 5,
       "priority": "high",
       "status": "completed",
@@ -29,7 +29,7 @@
     {
       "id": "TASK-003",
       "title": "Implementar Ventana de Gestor de Packs (CRUD + Acciones)",
-      "description": "Crear UI Gestor de Packs. ATENCIÓN: 1) Ampliar ProcessService con start_by_names y kill_by_names manejando estrictamente excepciones psutil.AccessDenied y psutil.NoSuchProcess para no crashear sin UAC. 2) El arranque fallará en silencio.",
+      "description": "Crear UI Gestor de Packs. Añadir botón 'Restaurar por defecto' (solo Gaming pack). UI para elegir 'default_action'. ProcessService debe manejar el array 'apps' de forma inteligente (matar/arrancar por nombre o ruta absoluta). Las acciones de arranque y apagado deben usar hilos secundarios. Ignorar errores en silencio.",
       "complexity": 7,
       "priority": "critical",
       "status": "pending",
@@ -41,7 +41,7 @@
     {
       "id": "TASK-004",
       "title": "Implementar Ventana Principal (Portada con Favoritos)",
-      "description": "Crear pantalla de inicio limpia con botones gigantes para packs favoritos (Gaming por defecto), y accesos a 'Gestor de Packs' y 'Gestor de Procesos'.",
+      "description": "Crear pantalla de inicio limpia con botones gigantes para packs favoritos (Gaming por defecto). El clic principal ejecuta la acción definida en 'default_action'. Accesos a 'Gestor de Packs' y 'Gestor de Procesos'.",
       "complexity": 4,
       "priority": "critical",
       "status": "pending",
@@ -54,7 +54,7 @@
     {
       "id": "TASK-007",
       "title": "Categorización Automática de Procesos y Filtro de Seguridad",
-      "description": "Descargar CSV asíncronamente en hilo separado (threading.Thread) con fallback offline. Actualizar ProcessInfo. Implementar checkbox en UI asegurando que toda actualización a CustomTkinter use EXCLUSIVAMENTE .after() para evitar bloqueos.",
+      "description": "Descargar CSV asíncronamente en hilo separado (threading.Thread). Proveer el archivo offline fallback inicial en assets/fallback.csv. Asegurar que toda actualización a CustomTkinter use EXCLUSIVAMENTE .after().",
       "complexity": 6,
       "priority": "high",
       "status": "pending",
@@ -80,7 +80,7 @@
     {
       "id": "TASK-006",
       "title": "Compilación y Empaquetado de woptimizer.exe v3.0.0",
-      "description": "Generar el ejecutable standalone mediante el builder nativo e integrarlo en dist/.",
+      "description": "Generar el ejecutable standalone mediante el builder nativo e integrarlo en dist/. IMPORTANTE: Modificar el script de compilación (force_build.py / .spec) para incluir la carpeta 'assets/' de manera que el fallback.csv quede incrustado en el binario final (sys._MEIPASS).",
       "complexity": 4,
       "priority": "high",
       "status": "pending",
