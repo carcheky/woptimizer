@@ -32,7 +32,7 @@
       "description": "Crear UI Gestor de Packs. Añadir botón 'Restaurar por defecto' (solo Gaming pack). UI para elegir 'default_action'. ProcessService debe manejar el array 'apps' de forma inteligente (matar/arrancar por nombre o ruta absoluta). Las acciones de arranque y apagado deben usar hilos secundarios. Ignorar errores en silencio.",
       "complexity": 7,
       "priority": "critical",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-001"
       ],

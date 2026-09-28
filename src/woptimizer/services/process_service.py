@@ -89,3 +89,35 @@ class ProcessService:
                 
         return killed, failed, skipped
 
+    def kill_pack_apps(self, apps: List[str]) -> None:
+        """Mata todos los procesos cuyos nombres o rutas coincidan con la lista apps."""
+        if not apps:
+            return
+            
+        apps_lower = [a.lower() for a in apps]
+        for proc in psutil.process_iter(['name', 'exe']):
+            try:
+                info = proc.info
+                name = (info.get('name') or '').lower()
+                exe = (info.get('exe') or '').lower()
+                
+                if name in apps_lower or exe in apps_lower:
+                    for child in proc.children(recursive=True):
+                        try:
+                            child.kill()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                    proc.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+
+    def start_pack_apps(self, apps: List[str]) -> None:
+        """Inicia todas las apps de la lista de forma asíncrona."""
+        import subprocess
+        for app in apps:
+            try:
+                subprocess.Popen(app, shell=True)
+            except Exception:
+                pass
+
+

@@ -1,0 +1,14 @@
+{
+    "packs": {
+        "gaming": {
+            "id": "gaming",
+            "name": "🚀 Preparar para Gaming",
+            "apps": [
+                "chrome.exe"
+            ],
+            "is_favorite": true,
+            "is_gaming": true,
+            "default_action": "kill"
+        }
+    }
+}
