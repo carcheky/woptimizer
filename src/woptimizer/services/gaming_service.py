@@ -12,26 +12,26 @@ class GamingService:
         Evalúa si un proceso debe morir al preparar el Gaming Mode.
         Reglas:
         1. Si está en keepers -> False
-        2. Si prioridad es high/medium -> True
-        3. Si prioridad es low (chat) -> True (se simplifica ya que no hay kill_low_chat)
+        2. Si está explícitamente en apps (extra kills) -> True
+        3. Si la categoría del proceso está en target_categories -> True
         4. Resto -> False
         """
         name_lower = process_name.lower()
         
-        # 1. Verificar keepers
+        # 1. Verificar keepers (protegidos)
         for keeper in gaming_pack.keepers:
             if keeper.lower() in name_lower:
                 return False
                 
+        # 2. Verificar apps a matar explícitas
+        for extra_app in gaming_pack.apps:
+            if extra_app.lower() in name_lower:
+                return True
+                
         cat = self.process_service._categorize(name_lower)
-        priority = self.process_service._get_priority(cat)
         
-        # 2 y 3. Evaluar prioridades
-        if priority in ('high', 'medium'):
+        # 3. Evaluar si la categoría está en el target
+        if cat in gaming_pack.target_categories:
             return True
             
-        if priority == 'low' and cat == '🟡 Chat y Comunicación':
-            return True
-            
-        # 4. Resto
         return False

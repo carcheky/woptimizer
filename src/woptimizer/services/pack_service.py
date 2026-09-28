@@ -10,7 +10,9 @@ DEFAULT_GAMING_PACK = Pack(
     is_favorite=True,
     is_gaming=True,
     default_action="kill",
-    apps=["chrome.exe"]
+    apps=["chrome.exe"],
+    keepers=["steam.exe", "discord.exe"],
+    target_categories=["🟢 Sincronización", "🟢 Navegadores", "🟢 Productividad", "🟡 Chat y Comunicación", "🟡 Launchers Gaming"]
 )
 
 class PackService:
