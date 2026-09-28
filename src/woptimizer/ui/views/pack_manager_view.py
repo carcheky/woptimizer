@@ -1,5 +1,6 @@
 import customtkinter as ctk
 import threading
+import uuid
 from typing import Dict, List
 from woptimizer.services.process_service import ProcessService
 from woptimizer.services.pack_service import PackService
@@ -78,6 +79,21 @@ class PackManagerView(ctk.CTkFrame):
             btn_del = ctk.CTkButton(card, text="🗑️ Borrar", width=80, fg_color="gray", command=lambda p=pack.id: self.delete_pack(p))
             btn_del.pack(side="right", padx=5, pady=10)
 
+        # Edit apps list below header
+        apps_frame = ctk.CTkFrame(card, fg_color="transparent")
+        apps_frame.pack(fill="x", padx=10, pady=5)
+        
+        if not pack.apps:
+            ctk.CTkLabel(apps_frame, text="Sin aplicaciones. Añade desde el Gestor de Procesos.", text_color="gray").pack(anchor="w")
+        else:
+            for app in pack.apps:
+                app_row = ctk.CTkFrame(apps_frame, fg_color="transparent")
+                app_row.pack(fill="x", pady=2)
+                ctk.CTkLabel(app_row, text=app).pack(side="left")
+                btn_remove = ctk.CTkButton(app_row, text="❌", width=30, height=20, fg_color="transparent", text_color="#c22d2d", 
+                                           command=lambda p=pack.id, a=app: self.remove_app_from_pack(p, a))
+                btn_remove.pack(side="right")
+
     def toggle_favorite(self, pack_id: str):
         self.pack_service.set_favorite(pack_id)
         self.refresh_packs()
@@ -94,7 +110,19 @@ class PackManagerView(ctk.CTkFrame):
             pass
 
     def on_new_pack(self):
-        pass
+        dialog = ctk.CTkInputDialog(text="Introduce el nombre del nuevo Pack:", title="Nuevo Pack")
+        name = dialog.get_input()
+        if name and name.strip():
+            pack_id = str(uuid.uuid4())[:8]
+            self.pack_service.create_user_pack(pack_id, name.strip(), [])
+            self.refresh_packs()
+
+    def remove_app_from_pack(self, pack_id: str, app_name: str):
+        pack = self.pack_service.get_all_packs().get(pack_id)
+        if pack and app_name in pack.apps:
+            pack.apps.remove(app_name)
+            self.pack_service.save()
+            self.refresh_packs()
 
     def kill_pack(self, pack: Pack):
         if not pack.apps: return

@@ -13,6 +13,7 @@ try:
         "--uac-admin",
         "--name", "woptimizer",
         "--clean",
+        "--add-data", "assets;assets",
         "src/woptimizer/__main__.py"
     ])
     

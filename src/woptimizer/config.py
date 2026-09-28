@@ -8,6 +8,11 @@ def _app_dir() -> str:
         return os.path.dirname(os.path.abspath(sys.executable))
     return os.path.dirname(os.path.abspath(__file__))
 
+def _data_dir() -> str:
+    if getattr(sys, 'frozen', False):
+        return sys._MEIPASS
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 PROCESS_LIST_FILE = os.path.join(_app_dir(), 'saved_processes.json')
 PROFILES_FILE = os.path.join(_app_dir(), 'profiles.json')
 

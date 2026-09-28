@@ -12,10 +12,9 @@ class ProcessService:
         def _download():
             import csv, urllib.request, os, threading
             url = "https://raw.githubusercontent.com/carch/woptimizer/main/assets/fallback.csv"
-            # _app_dir is better, but since it's in services, we use relative to __file__
             try:
-                from woptimizer.config import _app_dir
-                assets_dir = os.path.join(_app_dir(), "assets")
+                from woptimizer.config import _data_dir
+                assets_dir = os.path.join(_data_dir(), "assets")
             except Exception:
                 assets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
             
@@ -143,12 +142,14 @@ class ProcessService:
                 
         return killed, failed, skipped
 
-    def kill_pack_apps(self, apps: List[str]) -> None:
+    def kill_pack_apps(self, apps: List[str]) -> Tuple[int, int, int]:
         """Mata todos los procesos cuyos nombres o rutas coincidan con la lista apps."""
         if not apps:
-            return
+            return 0, 0, 0
             
+        killed, failed, skipped = 0, 0, 0
         apps_lower = [a.lower() for a in apps]
+        
         for proc in psutil.process_iter(['name', 'exe']):
             try:
                 info = proc.info
@@ -162,16 +163,24 @@ class ProcessService:
                         except (psutil.NoSuchProcess, psutil.AccessDenied):
                             pass
                     proc.kill()
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                continue
+                    killed += 1
+            except psutil.AccessDenied:
+                failed += 1
+            except (psutil.NoSuchProcess, psutil.ZombieProcess):
+                skipped += 1
+                
+        return killed, failed, skipped
 
-    def start_pack_apps(self, apps: List[str]) -> None:
+    def start_pack_apps(self, apps: List[str]) -> Tuple[int, int]:
         """Inicia todas las apps de la lista de forma asíncrona."""
         import subprocess
+        started, failed = 0, 0
         for app in apps:
             try:
                 subprocess.Popen(app, shell=True)
+                started += 1
             except Exception:
-                pass
+                failed += 1
+        return started, failed
 
 
