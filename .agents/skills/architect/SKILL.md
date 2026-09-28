@@ -23,7 +23,7 @@ Si durante tu análisis detectas cuellos de botella, puntos ciegos arquitectóni
 
 ## 4. Entregable y Control de Versiones
 Cuando hayas finalizado tu análisis, aplicado los arreglos autónomos y resuelto dudas (si las hubo), debes persistir tu trabajo:
-1. **Commit de la Estrategia:** Ejecuta automáticamente un comando de git (`git add .`, `git commit -m "chore(architect): ..."`) para guardar los cambios estructurales, nuevos planes o skills que hayas modificado. No pidas permiso para esto.
+1. **Commit de la Estrategia:** Ejecuta automáticamente un comando de git (`git add .`, `git commit -m "chore(architect): ..."`) para guardar los cambios estructurales, nuevos planes o skills que hayas modificado. No pidas permiso para esto. *(Nota: En Windows puede fallar con `unable to create temporary file`. Si ocurre, ignóralo, los archivos están seguros en disco).*
 2. **Reporte Final:** Entrega tu reporte al usuario detallando:
    - **Estado Estratégico:** Evaluación global del proyecto y la viabilidad del diseño.
    - **Acciones Ejecutadas:** Resumen de los archivos, tareas, planes o skills modificados (y su respectivo commit).

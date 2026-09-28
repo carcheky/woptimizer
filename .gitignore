@@ -59,3 +59,6 @@ ProcessManager.bat
 ProcessManager.ps1
 sync_pyw.py
 miniapps/
+
+scratch/
+*.bak

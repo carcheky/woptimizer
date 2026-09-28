@@ -48,7 +48,11 @@ No declares la tarea terminada sin una prueba objetiva.
 ### Paso 5: Cierre y Persistencia
 1. Ejecuta `python .taskmaster/tm.py done <TASK_ID>`.
 2. Opcional: Haz commit de tu trabajo (`git add .`, `git commit -m "feat/fix: ..."`) para asegurar los avances.
+   - *Aviso Windows Git Lock:* Es frecuente el error `unable to create temporary file: Invalid argument`. Si falla, ignóralo; los archivos están a salvo en disco.
 3. Informa al usuario de los resultados o invócate recursivamente para la siguiente tarea si el usuario lo solicita.
+
+## 3. Mejores Prácticas de Edición de Código
+- **Evita comandos inline complejos:** Para reemplazar bloques grandes de código, **no** uses strings multilínea directamente en la terminal (fallan por comillas o saltos de línea). En su lugar, usa `write_to_file` para crear un script temporal `scratch_fix.py` que haga el reemplazo usando Python, ejecútalo y luego elimínalo. Esto ahorra tokens y errores de sintaxis.
 
 ## 3. Modo de Interacción
 - **Autonomía:** Aplica soluciones obvias sin preguntar. 

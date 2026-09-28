@@ -20,7 +20,9 @@ class Pack(BaseModel):
     apps: List[str] = Field(default_factory=list) # Lista de ejecutables (ej: ['chrome.exe'])
     is_favorite: bool = False                # Si se muestra en la portada
     is_gaming: bool = False                  # Si es el preset protegido del sistema
-    keepers: List[str] = Field(default_factory=list) # Apps protegidas en gaming (ej: ['discord'])
+    default_action: str = "kill"             # Acción rápida por defecto ('kill' o 'start')
+    keepers: List[str] = Field(default_factory=list) # Apps protegidas en gaming (ej: ['discord.exe'])
+    target_categories: List[str] = Field(default_factory=list) # Categorías a cerrar dinámicamente en Gaming
 ```
 
 ### 3. `AppData` (Estructura de `profiles.json`)
@@ -39,3 +41,6 @@ class AppData(BaseModel):
   - `keepers`: `["discord"]`
   - `apps`: `[]`
 - El pack con `is_gaming = True` **NUNCA** puede ser eliminado por el usuario.
+
+### 4. Respaldo Preventivo (Backups)
+- En cada guardado exitoso de `profiles.json`, se crea de forma atómica una copia de seguridad `profiles.json.bak` mediante `shutil.copy` para prevenir corrupciones.
