@@ -21,8 +21,10 @@ Si durante tu análisis detectas cuellos de botella, puntos ciegos arquitectóni
 - **Autonomía Ejecutiva:** Si hay una única solución lógica (ej. añadir un hilo en background para no congelar la UI, o corregir un formato obvio), **asume la solución, modifícalo en los planes/skills correspondientes inmediatamente y no preguntes.**
 - **Pregunta Selectiva:** Pregunta al usuario **ÚNICAMENTE** si existen múltiples opciones válidas (trade-offs) y necesitas alinear la dirección del proyecto. Plantea las opciones claras y espera la decisión.
 
-## 4. Entregable (Reporte Final)
-Cuando hayas finalizado tu análisis, aplicado los arreglos autónomos y resuelto dudas (si las hubo), entrega tu reporte:
-- **Estado Estratégico:** Evaluación global del proyecto y la viabilidad del diseño.
-- **Acciones Ejecutadas:** Resumen conciso de los archivos, tareas, planes o skills que ya modificaste por tu cuenta.
-- **Próximos Pasos:** El plan sugerido para iniciar la ejecución del código (ej. indicar cuál es la próxima tarea activa).
+## 4. Entregable y Control de Versiones
+Cuando hayas finalizado tu análisis, aplicado los arreglos autónomos y resuelto dudas (si las hubo), debes persistir tu trabajo:
+1. **Commit de la Estrategia:** Ejecuta automáticamente un comando de git (`git add .`, `git commit -m "chore(architect): ..."`) para guardar los cambios estructurales, nuevos planes o skills que hayas modificado. No pidas permiso para esto.
+2. **Reporte Final:** Entrega tu reporte al usuario detallando:
+   - **Estado Estratégico:** Evaluación global del proyecto y la viabilidad del diseño.
+   - **Acciones Ejecutadas:** Resumen de los archivos, tareas, planes o skills modificados (y su respectivo commit).
+   - **Próximos Pasos:** El plan sugerido para iniciar la ejecución del código (ej. indicar cuál es la próxima tarea activa).
