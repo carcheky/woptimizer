@@ -10,3 +10,9 @@ obs64,🟡 Media y Streaming,medium,Software de streaming y grabación.
 nextcloud,🔴 Sincronización,high,Sincronizador en la nube.
 svchost,⚫ Sistema de Windows,none,Proceso principal de servicios Windows.
 explorer,⚫ Sistema de Windows,none,Explorador de archivos de Windows.
+icue,🟢 Overlays e Info,none,Software de periféricos Corsair (Mantener por perfiles).
+razer,🟢 Overlays e Info,none,Software de periféricos Razer.
+slack,🟡 Chat y Comunicación,low,App de mensajería empresarial.
+teams,🟡 Chat y Comunicación,low,App de comunicación de Microsoft.
+onedrive,🔴 Sincronización,high,Sincronizador de nube Microsoft.
+dropbox,🔴 Sincronización,high,Sincronizador de nube.
