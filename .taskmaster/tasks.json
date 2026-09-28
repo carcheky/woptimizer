@@ -44,7 +44,7 @@
       "description": "Crear pantalla de inicio limpia con botones gigantes para packs favoritos (Gaming por defecto). El clic principal ejecuta la acción definida en 'default_action'. Accesos a 'Gestor de Packs' y 'Gestor de Procesos'.",
       "complexity": 4,
       "priority": "critical",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-002",
         "TASK-003"
