@@ -24,5 +24,15 @@
     "status": "COMPLETED",
     "commits": ["617eef8 (architect)", "dc7c30c (feat)"],
     "impact": "Banner dinámico de telemetría en DashboardView: muestra procesos cerrados y MB liberados tras activar packs. Thread-safe via self.after(0,...). Auto-hide a 5s. Colores gaming (#1DB954) vs kill (#4a9fd4)."
+  },
+  {
+    "cycle": 4,
+    "date": "2026-09-29T02:18:00",
+    "area": "Base de Datos & Procesos",
+    "slug": "2026-09-29-process-db-update",
+    "task": "TASK-015",
+    "status": "COMPLETED",
+    "commits": ["c362eda"],
+    "impact": "4 procesos nuevos añadidos a process_db.json (34 total): sharex, crossdeviceservice, esrv_svc, dsaservice. Todos 🟢 high — bloatware/telemetría seguro de cerrar durante gaming."
   }
 ]
