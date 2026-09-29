@@ -46,7 +46,9 @@ def test_headless_ui():
     pack_s = PackService()
     gs = GamingService(ps, pack_s)
     
-    app = WOptimizerApp(ps, pack_s, gs)
+    # autostart_tray=False: en tests no levantamos pystray (evita hilos y
+    # dependencia de un shell de escritorio en runners headless).
+    app = WOptimizerApp(ps, pack_s, gs, autostart_tray=False)
     
     # After 1.5 seconds, destroy the root to stop mainloop
     app.root.after(1500, app.root.destroy)
@@ -137,6 +139,119 @@ def test_corrupted_json_recovery():
         os.unlink(tmp.name)
 
 
+class _FakeTrayIcon:
+    """Doble de prueba para pystray.Icon: no toca el sistema operativo."""
+    HAS_NOTIFICATION = True
+
+    def __init__(self):
+        self.calls = []
+
+    def notify(self, message, title=None):
+        self.calls.append((title, message))
+
+
+class _ExplodingTrayIcon:
+    """Emula un backend que falla: el servicio no debe propagar la excepcion."""
+    HAS_NOTIFICATION = True
+
+    def notify(self, message, title=None):
+        raise RuntimeError("backend de notificaciones caido")
+
+
+def test_notification_without_tray_degrades():
+    """TASK-019: sin bandeja adjunta, notify() retorna False y NO lanza."""
+    print("Testing NotificationService sin tray...")
+    from woptimizer.services.notification_service import NotificationService
+
+    ns = NotificationService()
+    assert ns.has_tray is False, "Sin attach, has_tray debe ser False"
+
+    # No debe lanzar excepcion
+    assert ns.notify("titulo", "mensaje") is False
+    assert ns.notify_kill_result(3, 0, 120.5) is False
+    assert ns.notify_pack_activated("Gaming Mode", 5, 200.0) is False
+    assert ns.notify_apps_launched("Trabajo", 2, 0) is False
+
+    stats = ns.stats
+    assert stats["dropped"] == 4, f"Esperaba 4 descartadas, obtuve {stats}"
+    assert stats["sent"] == 0
+    print("NotificationService sin tray OK.")
+
+
+def test_notification_attach_detach():
+    """TASK-019: attach habilita, detach deshabilita; los helpers delegan bien."""
+    print("Testing NotificationService attach/detach...")
+    from woptimizer.services.notification_service import NotificationService
+
+    ns = NotificationService()
+    fake = _FakeTrayIcon()
+
+    ns.attach_tray(fake)
+    assert ns.has_tray is True
+    assert ns.notify("Titulo X", "Cuerpo Y") is True
+    assert fake.calls == [("Titulo X", "Cuerpo Y")], f"Llamada inesperada: {fake.calls}"
+
+    # attach es idempotente (re-asignar no rompe nada)
+    ns.attach_tray(fake)
+    assert ns.notify("Segundo", "Cuerpo") is True
+    assert len(fake.calls) == 2
+
+    ns.detach_tray()
+    assert ns.has_tray is False
+    assert ns.notify("Tercero", "Cuerpo") is False
+    assert len(fake.calls) == 2, "Tras detach no debe emitir nuevas notificaciones"
+
+    stats = ns.stats
+    assert stats["sent"] == 2 and stats["dropped"] == 1, f"Contadores inesperados: {stats}"
+    print("NotificationService attach/detach OK.")
+
+
+def test_notification_never_raises():
+    """TASK-019: un backend que explota se degrada a log, nunca rompe la UI."""
+    print("Testing NotificationService resiliencia...")
+    from woptimizer.services.notification_service import NotificationService
+
+    ns = NotificationService()
+    ns.attach_tray(_ExplodingTrayIcon())
+
+    # No debe propagar la excepcion
+    assert ns.notify("titulo", "mensaje") is False
+    assert ns.notify_kill_result(1, 0, 0.0) is False
+    assert ns.stats["dropped"] == 2, f"Esperaba 2 descartadas, obtive {ns.stats}"
+    print("NotificationService resiliencia OK.")
+
+
+def test_notification_message_formatting():
+    """TASK-019: los helpers formatean mensajes en español, con plurales correctos."""
+    print("Testing NotificationService message formatting...")
+    from woptimizer.services.notification_service import (
+        NotificationService, format_kill_result
+    )
+
+    # Singular
+    assert format_kill_result(1, 0) == "1 cerrada"
+    # Plural
+    assert format_kill_result(5, 0) == "5 cerradas"
+    # Con MB
+    assert "150.5 MB liberados" in format_kill_result(3, 0, 150.5)
+    # Sin MB si freed_mb es 0
+    assert "MB liberados" not in format_kill_result(3, 0, 0.0)
+    # Fallos incluidos
+    assert "2 fallidas" in format_kill_result(3, 2)
+    assert "1 fallida" in format_kill_result(3, 1)
+
+    # El nombre del pack viaja en el cuerpo del toast
+    ns = NotificationService()
+    fake = _FakeTrayIcon()
+    ns.attach_tray(fake)
+    ns.notify_apps_launched("Pack Trabajo", 2, 1)
+    title, body = fake.calls[0]
+    assert "Pack Trabajo" in body
+    assert "2 apps iniciadas" in body
+    assert "1 fallaron" in body
+    print("NotificationService message formatting OK.")
+
+
 if __name__ == "__main__":
     print("--- Running Backend Tests ---")
     test_models()
@@ -144,6 +259,10 @@ if __name__ == "__main__":
     test_freed_mb_return_type()
     test_gaming_pack_protected()
     test_corrupted_json_recovery()
+    test_notification_without_tray_degrades()
+    test_notification_attach_detach()
+    test_notification_never_raises()
+    test_notification_message_formatting()
     print("\n--- Running Headless UI Test ---")
     test_headless_ui()
     print("\nALL TESTS PASSED.")

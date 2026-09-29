@@ -4,13 +4,15 @@ import uuid
 from typing import Dict, List
 from woptimizer.services.process_service import ProcessService
 from woptimizer.services.pack_service import PackService
+from woptimizer.services.notification_service import NotificationService
 from woptimizer.models import Pack
 
 class PackManagerView(ctk.CTkFrame):
-    def __init__(self, master, process_service: ProcessService, pack_service: PackService):
+    def __init__(self, master, process_service: ProcessService, pack_service: PackService, notification_service: NotificationService = None):
         super().__init__(master, fg_color="transparent")
         self.process_service = process_service
         self.pack_service = pack_service
+        self.notification_service = notification_service or NotificationService()
         self._build_ui()
         self.refresh_packs()
 
@@ -209,8 +211,16 @@ class PackManagerView(ctk.CTkFrame):
 
     def kill_pack(self, pack: Pack):
         if not pack.apps: return
-        threading.Thread(target=self.process_service.kill_pack_apps, args=(pack.apps,), daemon=True).start()
+        def _run():
+            killed, _failed, _skipped, freed_mb = self.process_service.kill_pack_apps(pack.apps)
+            # TASK-019: toast nativo con el resumen del cierre
+            self.notification_service.notify_pack_activated(pack.name, killed, freed_mb)
+        threading.Thread(target=_run, daemon=True).start()
 
     def start_pack(self, pack: Pack):
         if not pack.apps: return
-        threading.Thread(target=self.process_service.start_pack_apps, args=(pack.apps,), daemon=True).start()
+        def _run():
+            started, failed = self.process_service.start_pack_apps(pack.apps)
+            # TASK-019: toast nativo con el resumen del arranque
+            self.notification_service.notify_apps_launched(pack.name, started, failed)
+        threading.Thread(target=_run, daemon=True).start()

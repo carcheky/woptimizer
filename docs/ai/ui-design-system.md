@@ -93,4 +93,40 @@ def _show_banner(self, killed: int, freed_mb: float, is_gaming: bool):
 - La UI **nunca** llama a `psutil` directamente; `freed_mb` llega exclusivamente como argumento del callback.
 - Toda manipulación de widgets ocurre en el hilo principal vía `self.after(0, ...)`.
 - El pack gaming (`is_gaming=True`) puede activarse (acción kill/start) pero **no** puede borrarse.
+
+## Notificaciones Nativas (Toast) — TASK-019
+
+### Inyección del Servicio
+`WOptimizerApp` crea un `NotificationService` y lo inyecta por parámetro de constructor. `MainWindow` lo recibe y lo reenvía a las tres vistas:
+
+```python
+# app.py -> MainWindow
+MainWindow(master, process_service, pack_service, gaming_service, notification_service)
+
+# MainWindow -> cada vista
+DashboardView(self.content_frame, self.process_service, self.pack_service, self.notification_service)
+PackManagerView(self.content_frame, self.process_service, self.pack_service, self.notification_service)
+ProcessManagerView(self.content_frame, self.process_service, self.pack_service, self.notification_service)
+```
+
+Todas las vistas aceptan `notification_service=None` y crean un local si no se les pasa, de modo que los constructores antiguos y los tests headless siguen funcionando.
+
+### API que Consume la UI (no llamar a `pystray` nunca)
+| Helper | Cuándo usarlo |
+|--------|---------------|
+| `notify_pack_activated(pack.name, killed, freed_mb)` | Tras ejecutar un pack con `default_action="kill"` |
+| `notify_apps_launched(pack.name, started, failed)` | Tras ejecutar un pack con `default_action="start"` |
+| `notify_kill_result(killed, failed, freed_mb)` | Tras un cierre manual en el Gestor de Procesos |
+
+### Puntos de Emisión
+- `DashboardView.execute_pack()` → ambos helpers según `default_action`.
+- `PackManagerView.kill_pack()` / `.start_pack()` → ambos helpers.
+- `ProcessManagerView.on_kill_selected()` → `notify_kill_result`.
+- `WOptimizerApp` menú del tray (`gaming_action`) → `notify_pack_activated`.
+
+### Invariantes a Respetar
+- La UI **nunca** importa `pystray`; solo conoce los tres helpers.
+- Las notificaciones se emiten **desde el hilo secundario** ya que no tocan widgets: son llamadas al sistema operativo, no manipulación de la UI.
+- `notify()` nunca lanza excepciones: si no hay bandeja o el backend falla, degrada al log (`woptimizer.log`).
+- Los mensajes se formatean en español con plurales correctos (`1 cerrada` / `5 cerradas`) vía la función pura `format_kill_result()`, testeable sin sistema operativo.
 - `auto-hide` a los 5 s con `self.after(5000, self._hide_banner)` para no saturar la UI.

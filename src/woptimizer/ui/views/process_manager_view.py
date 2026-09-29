@@ -3,14 +3,16 @@ import threading
 from typing import Dict, List
 from woptimizer.services.process_service import ProcessService
 from woptimizer.services.pack_service import PackService
+from woptimizer.services.notification_service import NotificationService
 from woptimizer.models import ProcessInfo
 from woptimizer.config import get_safety_badge
 
 class ProcessManagerView(ctk.CTkFrame):
-    def __init__(self, master, process_service: ProcessService, pack_service: PackService):
+    def __init__(self, master, process_service: ProcessService, pack_service: PackService, notification_service: NotificationService = None):
         super().__init__(master, fg_color="transparent")
         self.process_service = process_service
         self.pack_service = pack_service
+        self.notification_service = notification_service or NotificationService()
         
         self.processes: List[ProcessInfo] = []
         self.grouped_processes: Dict[str, List[ProcessInfo]] = {}
@@ -242,6 +244,8 @@ class ProcessManagerView(ctk.CTkFrame):
                     self.status_label.configure(text=f"✅ {killed} cerrados, {failed} fallidos.")
                 self.master.after(1000, self.refresh_processes)
             self.master.after(0, _done)
+            # TASK-019: toast nativo con el resumen del cierre manual
+            self.notification_service.notify_kill_result(killed, failed, freed_mb)
             
         threading.Thread(target=_kill, daemon=True).start()
 

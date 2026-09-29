@@ -12,6 +12,7 @@ files_to_check = [
     'src/woptimizer/ui/views/dashboard_view.py',
     'src/woptimizer/ui/views/pack_manager_view.py',
     'src/woptimizer/ui/views/process_manager_view.py',
+    'src/woptimizer/services/notification_service.py',
     'src/woptimizer/__main__.py'
 ]
 

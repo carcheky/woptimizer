@@ -236,7 +236,7 @@
         "TASK-012"
       ],
       "module": "docs/ai/architecture.md",
-      "status": "pending",
+      "status": "completed",
       "acceptance_criteria": [
         "src/woptimizer/services/notification_service.py existe con clase NotificationService",
         "Metodos: attach_tray(icon), detach_tray(), notify(title, message) -> bool, notify_kill_result(killed, failed, freed_mb), notify_pack_activated(name, killed, freed_mb), notify_apps_launched(name, launched, failed)",

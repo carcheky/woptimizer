@@ -2,13 +2,15 @@ import customtkinter as ctk
 import threading
 from woptimizer.services.process_service import ProcessService
 from woptimizer.services.pack_service import PackService
+from woptimizer.services.notification_service import NotificationService
 from woptimizer.models import Pack
 
 class DashboardView(ctk.CTkFrame):
-    def __init__(self, master, process_service: ProcessService, pack_service: PackService):
+    def __init__(self, master, process_service: ProcessService, pack_service: PackService, notification_service: NotificationService = None):
         super().__init__(master, fg_color="transparent")
         self.process_service = process_service
         self.pack_service = pack_service
+        self.notification_service = notification_service or NotificationService()
         self._build_ui()
         self.refresh_dashboard()
 
@@ -105,7 +107,13 @@ class DashboardView(ctk.CTkFrame):
                 killed, _failed, _skipped, freed_mb = self.process_service.kill_pack_apps(p.apps)
                 # Actualizar UI en el hilo principal — nunca tocar widgets desde un hilo secundario
                 self.after(0, self._show_banner, killed, freed_mb, p.is_gaming)
+                # TASK-019: toast nativo del sistema (visible con la ventana oculta)
+                self.notification_service.notify_pack_activated(p.name, killed, freed_mb)
 
             threading.Thread(target=_run_kill, args=(pack,), daemon=True).start()
         else:
-            threading.Thread(target=self.process_service.start_pack_apps, args=(pack.apps,), daemon=True).start()
+            def _run_start(p: Pack):
+                launched, failed = self.process_service.start_pack_apps(p.apps)
+                self.notification_service.notify_apps_launched(p.name, launched, failed)
+
+            threading.Thread(target=_run_start, args=(pack,), daemon=True).start()

@@ -43,4 +43,12 @@
    - **Cache TTL (2s):** `get_running_processes()` retorna un snapshot cacheado si se llama de nuevo dentro de 2 segundos. Pasar `force_refresh=True` ignora el cache. Las operaciones de kill invalidan el cache automáticamente.
    - **Impacto:** Lectura cacheada en ~0.003 ms vs ~15 ms del cold scan (~5000x speedup). Permite a la UI hacer refresh agresivo sin penalización.
    - **Propiedad `process_db`:** Existe como `@property` de compatibilidad que reconstruye la lista de `ProcessInfo` bajo demanda desde `_db_map`.
+8. **Notificaciones Nativas del Sistema (TASK-019):**
+   - `NotificationService` (`src/woptimizer/services/notification_service.py`) envuelve `pystray.Icon.notify()` para emitir toasts/balloons nativos de Windows. **No es una dependencia nueva**: reutiliza `pystray`, ya presente por TASK-012.
+   - **La UI nunca importa `pystray` directamente.** Las vistas reciben el servicio por inyección (ver `ui-design-system.md`) y solo consumen la API `notify_kill_result()`, `notify_pack_activated()` y `notify_apps_launched()`.
+   - **Ciclo de vida del icono:** `WOptimizerApp.show_tray()` llama `attach_tray(icon)` tras crear el icono; `show_action()` llama `detach_tray()` al restaurar la ventana. El intercambio de la referencia está protegido por `threading.Lock`.
+   - **Degradación segura:** `notify()` **nunca propaga excepciones**. Sin bandeja adjunta registra en el log y retorna `False`; si el backend lanza, captura y registra `warning`. También consulta `Icon.HAS_NOTIFICATION` para no llamar a backends que no soporten la API.
+   - **Autostart del tray:** el icono se levanta en `WOptimizerApp.__init__` (no solo al cerrar la ventana) para que las notificaciones funcionen con la ventana visible. Se puede desactivar con `autostart_tray=False` (lo usan los tests headless). `show_tray()` es **idempotente** mediante un guard, porque se invoca desde dos puntos.
+   - **Dependencias declaradas:** `pystray` y `Pillow` están en `pyproject.toml` para que PyInstaller las empaquete.
+
 

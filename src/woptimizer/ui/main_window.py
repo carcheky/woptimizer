@@ -2,16 +2,20 @@ import customtkinter as ctk
 from woptimizer.services.process_service import ProcessService
 from woptimizer.services.pack_service import PackService
 from woptimizer.services.gaming_service import GamingService
+from woptimizer.services.notification_service import NotificationService
 from woptimizer.ui.views.process_manager_view import ProcessManagerView
 from woptimizer.ui.views.pack_manager_view import PackManagerView
 from woptimizer.ui.views.dashboard_view import DashboardView
 
 class MainWindow(ctk.CTkFrame):
-    def __init__(self, master, process_service: ProcessService, pack_service: PackService, gaming_service: GamingService):
+    def __init__(self, master, process_service: ProcessService, pack_service: PackService, gaming_service: GamingService, notification_service: NotificationService = None):
         super().__init__(master)
         self.process_service = process_service
         self.pack_service = pack_service
         self.gaming_service = gaming_service
+        # TASK-019: si no se inyecta, se crea uno local (singleton por ventana)
+        # para no romper constructores antiguos ni tests que omitan el param.
+        self.notification_service = notification_service or NotificationService()
         
         self.current_view = None
         self._build_sidebar()
@@ -51,7 +55,8 @@ class MainWindow(ctk.CTkFrame):
         self.current_view = DashboardView(
             self.content_frame,
             self.process_service,
-            self.pack_service
+            self.pack_service,
+            self.notification_service
         )
         self.current_view.pack(fill="both", expand=True)
 
@@ -61,7 +66,8 @@ class MainWindow(ctk.CTkFrame):
         self.current_view = PackManagerView(
             self.content_frame,
             self.process_service,
-            self.pack_service
+            self.pack_service,
+            self.notification_service
         )
         self.current_view.pack(fill="both", expand=True)
 
@@ -71,6 +77,7 @@ class MainWindow(ctk.CTkFrame):
         self.current_view = ProcessManagerView(
             self.content_frame, 
             self.process_service, 
-            self.pack_service
+            self.pack_service,
+            self.notification_service
         )
         self.current_view.pack(fill="both", expand=True)
