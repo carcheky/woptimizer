@@ -589,6 +589,62 @@ def test_pack_service_reset_gaming():
     print("PackService reset_gaming_pack OK.")
 
 
+def test_gaming_pack_lists_isolated_from_global():
+    """TASK-021: las listas del pack gaming NO deben compartir objeto con el
+    global DEFAULT_GAMING_PACK.
+
+    Regresion de un bug real: `model_copy()` de Pydantic v2 es shallow, asi que
+    `apps`/`keepers`/`target_categories` se compartian con el global de modulo.
+    La UI muta en sitio (`process_manager_view.on_add_to_pack` hace
+    `target_pack.apps.append(...)`), lo que contaminaba el global y hacia que
+    `reset_gaming_pack()` fuese un no-op silencioso: el boton "Restaurar por
+    defecto" no restauraba nada.
+    """
+    print("Testing gaming pack list isolation from global...")
+    from woptimizer.services.pack_service import DEFAULT_GAMING_PACK
+
+    # Snapshot limpio del global para poder detectar contaminacion.
+    apps_esperadas = list(DEFAULT_GAMING_PACK.apps)
+    cats_esperadas = list(DEFAULT_GAMING_PACK.target_categories)
+
+    pack_s, tmp_path = _pack_service_temporal()
+    try:
+        gaming = pack_s.get_gaming_pack()
+        # Identidad de objeto: deben ser copias, no el mismo objeto.
+        assert gaming.apps is not DEFAULT_GAMING_PACK.apps, (
+            "apps del pack gaming comparte objeto con el global (shallow copy)"
+        )
+        assert gaming.target_categories is not DEFAULT_GAMING_PACK.target_categories, (
+            "target_categories comparte objeto con el global (shallow copy)"
+        )
+
+        # Mutacion IN SITU, exactamente como hace la UI al anadir a un pack.
+        gaming.apps.append("app_falsa_tarea021.exe")
+        gaming.target_categories.remove(cats_esperadas[0])
+
+        # El global no debe haberse contaminado.
+        assert DEFAULT_GAMING_PACK.apps == apps_esperadas, (
+            f"El global fue contaminado por mutacion in situ: {DEFAULT_GAMING_PACK.apps}"
+        )
+        assert DEFAULT_GAMING_PACK.target_categories == cats_esperadas, (
+            f"target_categories global contaminado: {DEFAULT_GAMING_PACK.target_categories}"
+        )
+
+        # Y el reset debe devolver el pack a los valores de fabrica.
+        pack_s.reset_gaming_pack()
+        restaurado = pack_s.get_gaming_pack()
+        assert "app_falsa_tarea021.exe" not in restaurado.apps, (
+            f"reset no deshizo la mutacion in situ: {restaurado.apps}"
+        )
+        assert restaurado.apps == apps_esperadas, f"Apps no restauradas: {restaurado.apps}"
+        assert restaurado.target_categories == cats_esperadas, (
+            f"Categorias no restauradas: {restaurado.target_categories}"
+        )
+    finally:
+        os.unlink(tmp_path)
+    print("Gaming pack list isolation OK.")
+
+
 def test_cache_ttl_and_invalidation():
     """TASK-021: get_running_processes respeta el TTL; invalidate_cache y
     force_refresh obligan a re-escanear (y por tanto a un objeto nuevo)."""
@@ -737,6 +793,7 @@ if __name__ == "__main__":
     test_pack_service_delete()
     test_pack_service_favorite_exclusive()
     test_pack_service_reset_gaming()
+    test_gaming_pack_lists_isolated_from_global()
     test_cache_ttl_and_invalidation()
     test_kill_recursive()
     print("\n--- Running Headless UI Test ---")

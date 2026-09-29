@@ -274,6 +274,33 @@
         "Commit: chore(process-db): actualizar procesos gaming, navegadores e IA"
       ],
       "notes": "Ciclo 9 - Area 3 Matriz Rotacion ID: Base de Datos y Procesos. Subagente: process-db-updater (flash)."
+    },
+    {
+      "id": "TASK-021",
+      "title": "Suite de Cobertura de Invariantes Criticas: GamingService, PackService CRUD, Cache TTL y Kill Recursivo",
+      "description": "Cubrir en run_tests.py las invariantes hoy sin test tras la migracion v2->v3. Los 10 test_*.py heredados de la raiz estan MUERTOS: importan `process_manager` (modulo v2 inexistente) y ninguno se ejecuta. Consecuencia: la migracion porto `GamingService.should_kill_for_gaming` pero no sus tests, dejando sin cobertura la decision de que procesos mueren al pulsar Preparar Gaming Mode. Anadir tests para (1) GamingService.should_kill_for_gaming con las 4 reglas: keepers, apps explicitas, target_categories, resto, (2) PackService CRUD: create_user_pack rechaza duplicados y el id reservado gaming, delete_pack devuelve False si no existe y lanza ValueError si is_gaming, set_favorite es excluyente, get_user_packs excluye gaming, reset_gaming_pack restaura defaults, (3) Cache TTL: get_running_processes devuelve el mismo objeto dentro del TTL, invalidate_cache fuerza re-escaneo, force_refresh=True ignora cache, (4) Kill recursivo: espawnear un arbol de procesos python propio, matar el padre y verificar que los hijos mueren. Ademas actualizar docs/ai/testing-guide.md que dice 7 tests cuando hay 11. NO borrar los 10 ficheros heredados: documentarlos como deuda tecnica legacy.",
+      "complexity": 5,
+      "priority": "high",
+      "dependencies": [
+        "TASK-020"
+      ],
+      "module": "docs/ai/testing-guide.md",
+      "status": "completed",
+      "acceptance_criteria": [
+        "test_gaming_service_should_kill: keepers mandan sobre todo, apps explicitas matan, target_categories matan, resto no mata",
+        "test_pack_service_crud: create_user_pack con id duplicado o 'gaming' retorna False",
+        "test_pack_service_delete: gaming lanza ValueError, inexistente retorna False, usuario retorna True y desaparece",
+        "test_pack_service_favorite_exclusive: set_favorite deja exactamente un favorito",
+        "test_pack_service_reset_gaming: restaura DEFAULT_GAMING_PACK tras modificarlo",
+        "test_get_user_packs_excludes_gaming: el pack gaming nunca aparece como pack de usuario",
+        "test_cache_ttl_and_invalidation: mismo objeto dentro del TTL, invalidate_cache fuerza re-escaneo, force_refresh ignora cache",
+        "test_kill_recursive: proceso padre con hijo propio, al matar el padre el hijo tambien muere",
+        "Todos los tests usan tempfile o procesos propios: NO tocan profiles.json real ni procesos del sistema",
+        "run_tests.py sube a 19+ tests y todos pasan",
+        "docs/ai/testing-guide.md actualizado con la suite real y la nota de deuda legacy",
+        "verify_ui_syntax.py sigue pasando"
+      ],
+      "notes": "Ciclo 10 - Area 5 Matriz Rotacion ID: Testing y Calidad. Descubierto en el analisis previo: los 10 test_*.py de la raiz importan process_manager (v2) y estan todos muertos. NO se borran por regla del usuario (nunca eliminar entregables); se documentan como legacy."
     }
   ]
 }

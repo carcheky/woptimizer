@@ -26,7 +26,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 ## Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **19 tests**: 18 de backend + 1 headless de UI.
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **20 tests**: 19 de backend + 1 headless de UI.
 
 | # | Test | Qué valida |
 |---|------|-----------|
@@ -46,9 +46,10 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 14 | `test_pack_service_delete` | `delete_pack`: `ValueError` en gaming, `False` si no existe, `True` en pack propio |
 | 15 | `test_pack_service_favorite_exclusive` | `set_favorite` deja como máximo 1 favorito; `set_favorite(None)` deja 0 |
 | 16 | `test_pack_service_reset_gaming` | `reset_gaming_pack` restaura apps y `target_categories` de `DEFAULT_GAMING_PACK` |
-| 17 | `test_cache_ttl_and_invalidation` | Dentro del TTL se devuelve el **mismo objeto**; `invalidate_cache()` y `force_refresh=True` re-escanean |
-| 18 | `test_kill_recursive` | Kill recursivo: el nieto Python muere junto al padre (invariante de AGENTS.md) |
-| 19 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
+| 17 | `test_gaming_pack_lists_isolated_from_global` | Las listas del pack gaming **no** comparten objeto con `DEFAULT_GAMING_PACK` (regresión de `model_copy()` shallow) |
+| 18 | `test_cache_ttl_and_invalidation` | Dentro del TTL se devuelve el **mismo objeto**; `invalidate_cache()` y `force_refresh=True` re-escanean |
+| 19 | `test_kill_recursive` | Kill recursivo: el nieto Python muere junto al padre (invariante de AGENTS.md) |
+| 20 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
 
 ### Notas de Aislamiento
 - Los tests de `PackService` usan `tempfile.NamedTemporaryFile` (helper `_pack_service_temporal()`) para no modificar `profiles.json` real.

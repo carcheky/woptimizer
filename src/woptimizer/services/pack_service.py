@@ -66,7 +66,13 @@ class PackService:
 
     def _ensure_gaming_pack(self) -> None:
         if "gaming" not in self._data.packs:
-            self._data.packs["gaming"] = DEFAULT_GAMING_PACK.model_copy()
+            # TASK-021: model_copy() de Pydantic v2 es SHALLOW por defecto, asi
+            # que las listas (apps/keepers/target_categories) se COMPARTE con el
+            # global de modulo. Si la UI hace `pack.apps.append(...)` sobre el
+            # pack gaming (process_manager_view.on_add_to_pack), contaminaba el
+            # global y reset_gaming_pack() se convertia en un no-op silencioso.
+            # deep=True clona tambien las listas.
+            self._data.packs["gaming"] = DEFAULT_GAMING_PACK.model_copy(deep=True)
             self.save()
         else:
             self._data.packs["gaming"].is_gaming = True
@@ -83,7 +89,9 @@ class PackService:
         self.save()
 
     def reset_gaming_pack(self) -> None:
-        self._data.packs["gaming"] = DEFAULT_GAMING_PACK.model_copy()
+        # deep=True: sin esto las listas se comparten con el global de modulo y
+        # el reset no desharia cambios hechos in situ. Ver _ensure_gaming_pack.
+        self._data.packs["gaming"] = DEFAULT_GAMING_PACK.model_copy(deep=True)
         self.save()
 
     def get_user_packs(self) -> Dict[str, Pack]:

@@ -59,5 +59,10 @@
    - **Bug corregido:** `config.py` tenía `🔴` en navegadores/sincronización y `🟢` en overlays, invertido frente al JSON. 6 de 8 categorías estaban huérfanas.
    - **Prioridad de evaluación en `get_safety_badge()`:** la **categoría manda sobre la prioridad**. Antes `priority in [medium, low]` se evaluaba antes que el emoji de categoría, así que una categoría 🔴 con prioridad `low` se pintaba 🟡 PRECAUCIÓN. Ahora: (1) emoji de categoría, (2) palabras clave, (3) prioridad como desempate.
    - **Test de regresión:** `test_category_emoji_alignment` falla si alguna categoría del JSON no existe en `config.py`. `test_safety_badge_category_priority_order` cubre el orden de ramas.
+10. **Invariante Crítico: Aislamiento de Listas del Pack Gaming (TASK-021):**
+   - **Regla:** usar siempre `DEFAULT_GAMING_PACK.model_copy(deep=True)`, nunca `model_copy()` a secas, en `_ensure_gaming_pack()` y `reset_gaming_pack()` (`pack_service.py`).
+   - **Por qué importa:** `model_copy()` de Pydantic v2 es **shallow** por defecto, así que `apps`, `keepers` y `target_categories` **comparten el mismo objeto de lista** con el global de módulo. La UI muta esas listas in situ (`process_manager_view.on_add_to_pack` hace `target_pack.apps.append(...)`), lo que contaminaba el global de forma permanente.
+   - **Bug corregido:** al añadir una app al pack Gaming desde el Gestor de Procesos y pulsar luego "Restaurar por defecto", el reset **no restauraba nada** (no-op silencioso) porque `DEFAULT_GAMING_PACK` ya estaba contaminado.
+   - **Test de regresión:** `test_gaming_pack_lists_isolated_from_global` comprueba la identidad de objeto (`is not`), muta in situ como hace la UI, y valida que el global queda intacto y que el reset restaura los valores de fábrica. Verificado que **falla** si se revierte el fix a `model_copy()` shallow.
 
 
