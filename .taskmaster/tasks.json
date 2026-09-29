@@ -164,7 +164,7 @@
         "TASK-013"
       ],
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "module": "src/woptimizer/ui/views/dashboard_view.py",
       "acceptance_criteria": [
         "status_banner es un CTkFrame con CTkLabel interior, colocado entre header y buttons_frame (_build_ui, después de línea 23)",
