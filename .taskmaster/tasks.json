@@ -165,7 +165,17 @@
       ],
       "priority": "high",
       "status": "pending",
-      "module": "docs/ai/ui-design-system.md"
+      "module": "src/woptimizer/ui/views/dashboard_view.py",
+      "acceptance_criteria": [
+        "status_banner es un CTkFrame con CTkLabel interior, colocado entre header y buttons_frame (_build_ui, después de línea 23)",
+        "execute_pack captura (killed, failed, skipped, freed_mb) en el hilo secundario y llama self.after(0, self._show_banner, killed, freed_mb)",
+        "Texto del banner: f'⚡ {killed} procesos cerrados · {freed_mb:.1f} MB liberados'",
+        "Pack gaming (is_gaming=True): color acento #1DB954. Otros packs: color #4a9fd4",
+        "La UI NUNCA llama a psutil directamente; freed_mb llega como argumento de callback",
+        "Auto-hide del banner tras 5 segundos via self.after(5000, self._hide_banner)",
+        "wraplength=600 en el CTkLabel para evitar desbordamiento horizontal"
+      ],
+      "notes": "TASK-013 completada: kill_processes y kill_pack_apps devuelven (killed, failed, skipped, freed_mb: float). dashboard_view.py actual tiene 76 líneas; insertar status_banner entre líneas 22-23 (_build_ui). Capturar retorno en execute_pack línea 73. Ver openspec/changes/2026-09-29-ram-telemetry-widget/proposal.md."
     }
   ]
 }

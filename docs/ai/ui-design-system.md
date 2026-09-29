@@ -50,3 +50,47 @@
 - **Gestor de Packs Compacto:**
   - Toolbar de acciones en tarjetas de pack limitada a ~270px para evitar colisiones con el título.
   - Acordeón plegable para configurar categorías automáticas en el Pack Gaming.
+
+## Banner de Telemetría de RAM (`status_banner`) — TASK-014
+
+### Ubicación en `DashboardView._build_ui()`
+Insertado como tercer bloque, **después** del `header` y **antes** del `buttons_frame` (actualmente líneas 22-23 de `dashboard_view.py`):
+
+```
+header (fill=x, pady=(0,20))
+status_banner  ← NUEVO  (fill=x, pady=(0,8))
+buttons_frame  (fill=both, expand=True)
+```
+
+### Estructura de Widgets
+```
+status_banner_frame  CTkFrame  fg_color=transparent  (oculto por defecto: pack_forget)
+  └─ status_label    CTkLabel  wraplength=600, font=("Segoe UI", 13, "bold")
+```
+
+### Colores de Acento por Tipo de Pack
+| Condición | Color de fondo | Color de texto |
+|-----------|---------------|----------------|
+| `pack.is_gaming == True` | `#1B4332` (verde oscuro) | `#1DB954` (verde gaming) |
+| Otros packs (kill) | `#1a2a3a` (azul oscuro) | `#4a9fd4` (azul) |
+
+### Wiring Thread-Safe del Callback
+```python
+# En execute_pack, hilo secundario:
+def _run_kill(p):
+    killed, failed, skipped, freed_mb = process_service.kill_pack_apps(p.apps)
+    self.after(0, self._show_banner, killed, freed_mb, p.is_gaming)
+
+threading.Thread(target=_run_kill, args=(pack,), daemon=True).start()
+
+# En el hilo principal (after callback):
+def _show_banner(self, killed: int, freed_mb: float, is_gaming: bool):
+    # … actualizar status_label y hacer pack() del frame …
+    self.after(5000, self._hide_banner)
+```
+
+### Invariantes a Respetar
+- La UI **nunca** llama a `psutil` directamente; `freed_mb` llega exclusivamente como argumento del callback.
+- Toda manipulación de widgets ocurre en el hilo principal vía `self.after(0, ...)`.
+- El pack gaming (`is_gaming=True`) puede activarse (acción kill/start) pero **no** puede borrarse.
+- `auto-hide` a los 5 s con `self.after(5000, self._hide_banner)` para no saturar la UI.
