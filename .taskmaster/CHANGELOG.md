@@ -357,4 +357,38 @@ El pipeline deja de poder "completar" ciclos sin versionar nada. Antes, un fallo
 ### Impact
 Se recupera una proteccion que el usuario pidio expresamente y que la reescritura borro sin dejar rastro. El patron es ahora una norma documentada con su porque, asi que la siguiente reescritura ya no lo pierde. Y el riesgo mayor que se cierra es el peor de todos en esta app: matar por error los procesos equivocados, sin aviso y sin vuelta atras.
 
+---
+
+## [CYCLE-013] 2026-09-29 11:00 - 2026-09-29-real-bloatware-scan
+**Área**: Base de Datos & Procesos (matriz área 3)
+**Change**: openspec/changes/2026-09-29-real-bloatware-scan/
+**Estado**: COMPLETED
+**Models**:
+- Paso 1 (Buscar): `inherit` (escaneo real con psutil, no un lookup)
+- Paso 2 (Planear): `inherit` (la propuesta se auto-revisó durante la ejecución)
+- Paso 3 (Ejecutar): `flash` (subagente `worker` + skill process-db-updater: escaneo + append a JSON, sin creatividad)
+
+### What
+- **Escaneo real**: 131 nombres de proceso únicos en el sistema, 48 registrados, **122 sin registrar**. Se clasificaron en tres familias con consecuencias opuestas, y confundirlas es el peor defecto posible en esta app.
+- **Familia A (procesos de sistema)**: NO se registró ninguno. Matar `csrss`, `lsass` o `winlogon` deja Windows inservible.
+- **Familia B (bloatware real)**: **25 entradas añadidas** (48 → 73). PowerToys, el consumo de Armoury Crate de ASUS (telemetría, fondo dinámico, sockets, debug web), language servers, actualizadores, audio enhance y varios servicios de terceros.
+- **BLINDAJE ANTI-BRICK** (la mitad del trabajo): `SYSTEM_PROTECTED_PROCESSES` con 34 nombres de nivel sistema, coincidencia **exacta** sobre el nombre normalizado —nunca por subcadena, que bloquearía procesos legítimos—, aplicado en **tres puntos y por las tres vías**: saneado al cargar la DB (también protege contra `load_db_async()`, que descarga el JSON de GitLab por encima), en `_get_process_meta()` **antes** que la DB y que el fuzzy match, y en `kill_processes()` / `kill_pack_apps()`, porque el pack lo escribe el usuario a mano: un `lsass.exe` en un pack se cuenta como `skipped` y no mata nada.
+- **Desviaciones deliberadas del subagente respecto a la propuesta, todas a mejor**:
+  - Servicios de audio (`atkexcomsvc`, `dtsapo4service`) a **🟡 medium** en vez de 🟢 high: tocan la ruta de audio y un verde prometería audio espacial durante la partida. Además 🟡 Media no está en las `target_categories` del pack gaming, así que nunca se auto-cierran.
+  - La pila de control de Armoury Crate (`armourycrate`, `armsvc`, `asus_framework`, ...) a **🔴 none** en vez de verde: es el equivalente a `icue`/`razer`/`lghub`, que en esta misma base ya están en 🔴 por perfiles de ventilación y RGB. Cerrarlos deja el equipo sin perfil de juego. Los 4 de consumo sí van en verde, que es donde está el bloatware real.
+  - `mpdefendercoreservice` a 🔴 none: el proposal lo listaba como utilidad de terceros, pero el nombre es la plataforma Defender.
+  - Descartados 9: `keepassxc` (matarlo con la base sin cifrar en disco la puede corromper), `lightingservice`/`telemetry_agent`/`nodoze-1.1` (origen no verificable: la descripción habría sido inventada), redundantes por fuzzy match, y `calendarapp.gui.win10` (recortado para no pasar de 25).
+- **Ambigüedad resuelta**: `sihost` estaba en las listas A y C del proposal a la vez. Se resuelve como **Familia A**: es infraestructura del shell de Windows, no del entorno de trabajo. Es la lectura segura.
+
+### Outcome
+- Commit: `0ad23bb`
+- Tests: 22 -> 24 (`run_tests.py`), 0 fallos; `verify_ui_syntax.py` EXITO
+- Docs: `docs/ai/data-models.md` con la sección de blindaje
+- **Verificacion independiente del orquestador**: 73 entradas, 34 nombres protegidos, **0 procesos de sistema registrados como cerrables** y **0 coincidencias exactas** con nombres de sistema. Un "services" que saltó en la primera comprobación resultó ser `riotclientservices` (launcher legítimo, `priority: none`) por la imprecisión de mi propio grep por subcadena, no un fallo.
+- El test discrimina: con el blindaje desactivado falla.
+
+### Impact
+Se cierra la via por la que la app mas(score Real peligro: no es solo lo que la lista ofrece, sino lo que el usuario puede escribir a mano en un pack. Ademas se documenta el criterio de NO registrar procesos de sistema, que no estaba escrito en ninguna parte y que la proxima expansion de la base iba a reevaluar sin saberlo.
+
+
 

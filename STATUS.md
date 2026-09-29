@@ -6,19 +6,19 @@
 
 ## 🟢 Salud General del Sistema
 - **Sintaxis Estática UI:** 🟢 Pasa al 100% (`verify_ui_syntax.py`, 7 módulos)
-- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **22 tests**: 21 backend + 1 headless UI)
+- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **24 tests**: 23 backend + 1 headless UI)
 - **Micro-Benchmark Base:** 182 ms (Init) | 16.4 ms (Escaneo 326 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
 - **Compilación PyInstaller:** 🟢 Listo y **al día** (`dist/woptimizer.exe`, 25.65 MB, incluye los fixes de los ciclos #9, #10 y #11)
-- **Base de Datos de Procesos:** 48 entradas | 8 categorías | 0 categorías huérfanas
+- **Base de Datos de Procesos:** 73 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
 - **Versionado:** 🟢 El repo desacoplado en `%LOCALAPPDATA%\woptimizer_git\.git` está sano. **El `.git` dentro del árbol de trabajo está corrupto por el VFS de Nextcloud** — nunca uses `git` a pelo, solo `git_safe_commit.py`.
 
 ---
 
 ## 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 12 (`rd_journal.json` actualizado).
-- **Ciclo Actual #13:** Listo para Paso 1 — Descubrimiento autónomo.
-- **Última Acción:** Ciclo #12 TASK-023 — commits `fcd4f73` y `30c0f11`.
+- **Ciclos Completados:** 13 (`rd_journal.json` actualizado).
+- **Ciclo Actual #14:** Listo para Paso 1 — Descubrimiento autónomo.
+- **Última Acción:** Ciclo #13 TASK-024 — commit `0ad23bb`.
 
 ---
 
@@ -35,6 +35,7 @@
 10. **[Ciclo #10 - Testing & Calidad]:** 🔴 **Segundo bug real corregido** — `model_copy()` de Pydantic v2 es *shallow*, así que las listas del pack Gaming se compartían con el global `DEFAULT_GAMING_PACK`. La UI muta in situ (`on_add_to_pack`), contaminando el global y volviendo **"Restaurar por defecto" un no-op silencioso**. Fix: `model_copy(deep=True)`. +8 tests para invariantes sin cobertura tras la migración v2→v3: `GamingService.should_kill_for_gaming`, CRUD de `PackService`, cache TTL y kill recursivo.
 11. **[Ciclo #11 - Resiliencia & Robustez]:** 🔴 **El pipeline podía "completar" ciclos sin versionar nada** — `git_safe_commit.py`, la única puerta de versionado, salía con **código 0 ante cualquier fallo de commit**. El CHANGELOG MANDATORY registraba hashes que podían no existir y `validate_docs.py` no podía detectarlo. Rehecho con contrato de 4 códigos de salida y líneas canónicas `WOPT_*`, validación real del repo (sin fallback al `.git` corrupto del VFS) y flag `--verify`. El arquitecto corrigió 3 errores de la propuesta, el más grave: decidir "nada que comitear" buscando `"nothing to commit"` depende de `LANG` y **en un Windows en español ese texto nunca aparece**, lo que habría convertido un árbol limpio en un fallo → ahora se decide con `git diff --cached --quiet`. Checkpoint de empaquetado cerrado: `dist/woptimizer.exe` regenerado (25.65 MB) con los fixes de los ciclos #9 y #10.
 12. **[Ciclo #12 - Gaming & Telemetría UX]:** 🔴 **Regresión silenciosa de la reescritura v2→v3** — el patrón de doble pulsación para acciones destructivas (nacido de un incidente real: un `messagebox` que se abría *detrás* de la ventana) se perdió al reescribir, y **5 acciones destructivas quedaron sin confirmar nada**. La grave: "Cerrar Seleccionados" mata N procesos de un solo clic, agravada porque `refresh_dashboard` coloca los packs de dos en dos en la misma fila, así que el botón Gaming tenía un pack vecino pegado. Implementado **en un solo sitio**: `ui/confirmation.py` con `DoubleTapGuard` (máquina de estado pura, testeable headless) y `Confirmable` (mixin). `PackManagerView` recibió su `status_label`, que no tenía. Documentada la **Trampa #14**, que cierra la laguna #13 → #14.
+13. **[Ciclo #13 - Base de Datos & Procesos]:** 🛡️ **Blindaje anti-brick** — el escaneo real encontró 122 procesos sin registrar de 131. Se clasificaron en tres familias: los de sistema (prohibidos), el bloatware real (**+25 entradas**, 48 → 73: PowerToys, Armoury Crate, language servers, audio) y los del usuario (fuera). Añadido `SYSTEM_PROTECTED_PROCESSES` (34 nombres) aplicado por **tres vías**: al cargar la DB, al resolver metadatos, y en el propio kill —porque un `lsass.exe` escrito a mano en un pack también debe ser indestructible—. **Verificado: 0 procesos de sistema registrados como cerrables.**
 
 ---
 
@@ -43,11 +44,11 @@
 |---|------|:---:|---|
 | 1 | Resiliencia & Robustez | **#11** | `openspec-dev` |
 | 2 | Gaming & Telemetría UX | **#12** | `openspec-dev` |
-| 3 | Base de Datos & Procesos | #9 | `process-db-updater` |
+| 3 | Base de Datos & Procesos | **#13** | `process-db-updater` |
 | 4 | Rendimiento & Latencia | #7 | `openspec-dev` |
 | 5 | Testing & Calidad | #10 | `openspec-dev` |
 
-> **Siguiente en rotación:** Área 3 (Base de Datos & Procesos) — subagente `process-db-updater`.
+> **Siguiente en rotación:** Área 4 (Rendimiento & Latencia) — la más rezagada, sin tocar desde el ciclo #7. Subagente `openspec-dev`, modelo `pro` en pasos 2 y 3 por el riesgo de regresión.
 
 ---
 
