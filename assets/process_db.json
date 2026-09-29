@@ -168,5 +168,75 @@
         "category": "🟢 Productividad",
         "priority": "high",
         "description": "Intel Driver & Support Assistant (actualizador). Bloatware que causa lag en juegos, seguro cerrar."
+    },
+    "brave": {
+        "category": "🟢 Navegadores",
+        "priority": "high",
+        "description": "Navegador Brave. Alto consumo de RAM."
+    },
+    "opera": {
+        "category": "🟢 Navegadores",
+        "priority": "high",
+        "description": "Navegador Opera con herramientas integradas."
+    },
+    "vivaldi": {
+        "category": "🟢 Navegadores",
+        "priority": "high",
+        "description": "Navegador Vivaldi basado en Chromium."
+    },
+    "waterfox": {
+        "category": "🟢 Navegadores",
+        "priority": "high",
+        "description": "Navegador Waterfox, variante de Firefox."
+    },
+    "battle.net": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Launcher de Blizzard Battle.net."
+    },
+    "riotclientservices": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Riot Client Services (League y Valorant)."
+    },
+    "ubisoftconnect": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Ubisoft Connect, launcher de Ubisoft."
+    },
+    "eadesktop": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "EA Desktop, launcher de Origin y EA App."
+    },
+    "chatgpt": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "App de escritorio ChatGPT. Consume mucha RAM, seguro cerrar."
+    },
+    "claude": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Claude Desktop. Asistente de IA, pesado en RAM."
+    },
+    "copilot": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Microsoft Copilot. Asistente de IA del sistema."
+    },
+    "cursor": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Editor de codigo Cursor con IA integrada."
+    },
+    "windsurf": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "IDE Windsurf con IA. Consume recursos en segundo plano."
+    },
+    "ollama": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Servidor local de modelos de IA. Ocupa RAM y CPU en segundo plano."
     }
 }
