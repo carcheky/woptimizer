@@ -130,3 +130,64 @@ Todas las vistas aceptan `notification_service=None` y crean un local si no se l
 - `notify()` nunca lanza excepciones: si no hay bandeja o el backend falla, degrada al log (`woptimizer.log`).
 - Los mensajes se formatean en español con plurales correctos (`1 cerrada` / `5 cerradas`) vía la función pura `format_kill_result()`, testeable sin sistema operativo.
 - `auto-hide` a los 5 s con `self.after(5000, self._hide_banner)` para no saturar la UI.
+
+## Acciones Destructivas: Doble Pulsación — TASK-023
+
+### Por qué (y por qué no un `messagebox`)
+En la v2 las acciones destructivas exigían una segunda pulsación. Se perdió en la reescritura v3 y volvió como regresión silenciosa. El patrón nació de un incidente real: un `messagebox.askyesno` se abría **por detrás** de la ventana principal, el usuario pulsaba "Cerrar", no veía nada y reportó "la app está rota, no mata procesos". **Regla dura: nunca `messagebox` en la ventana principal**; la seguridad se consigue con la segunda pulsación y el feedback va al `status_label` inline.
+
+### Las dos capas de `ui/confirmation.py` (helper único)
+| Capa | Qué es | Regla |
+|------|--------|-------|
+| `DoubleTapGuard` | Máquina de estados ** pura: `arm` / `consume` / `reset` / `is_pending` / `cancel_on_destroy`, con `scheduler` inyectable | No importa `customtkinter` ni `tkinter`; se testea headless con un doble |
+| `Confirmable` | Mixin fino de las vistas: `_require_double_tap(...)` arma o devuelve `True`, `_cancel_confirm()`, `cancel_on_destroy()`, `_inline_status()` | Solo configura widgets; no decide nada de negocio |
+
+El mixin **no** es clase base de las vistas: instanciar un `CTkFrame` exigiría un root Tk y la máquina de estado tiene que poder probarse sin ventana.
+
+### Uso en una vista
+```python
+class MiVista(Confirmable, ctk.CTkFrame):
+    def __init__(self, master, ...):
+        super().__init__(master, fg_color="transparent")
+        self._build_ui()          # crea self.status_label y los botones
+        self._init_confirmable(self.status_label)   # DESPUÉS de crear el label
+
+    def destroy(self):
+        self.cancel_on_destroy()  # mata el `after` vivo ANTES de destruir
+        super().destroy()
+
+    def accion_destructiva(self, pack_id, button=None):
+        if not self._require_double_tap(f"mi_accion:{pack_id}", button, "⚠️ Segunda pulsación para ..."):
+            return                   # 1ª pulsación: solo queda armada
+        ...                          # 2ª pulsación: se ejecuta
+```
+
+### Los 3 estados del botón
+| Estado | `text` | `fg_color` | `hover_color` |
+|--------|--------|-----------|---------------|
+| Reposo | el literal propio del botón (se recuerda solo, no se hardcodea) | el propio | el propio |
+| Pendiente | `"⚠️ ¿SEGURO? PULSA OTRA VEZ"` | `#b8860b` | `#8a6508` |
+| Tras confirmar | reposo, `state="disabled"` 300 ms y se rehabilita solo | — | — |
+
+Mensajes al `status_label`: rojo `#c22d2d` para los `⛔` de bloqueo, ámbar `#b8860b` para los `⚠️`, verde `#1DB954` para los `✅`.
+
+### Las 5 acciones cubiertas
+| Vista | Handler | Token | Ventana |
+|-------|---------|-------|---------|
+| `ProcessManagerView` | `on_kill_selected()` | tupla de claves marcadas | 3000 ms |
+| `PackManagerView` | `kill_pack(pack_id, button)` | `pack_kill:{id}` | 3000 ms |
+| `PackManagerView` | `delete_pack(pack_id, button)` | `pack_del:{id}` | 3000 ms |
+| `PackManagerView` | `remove_app_from_pack(pack_id, app, button)` | `pack_app:{id}:{app}` | 3000 ms |
+| `DashboardView` | `execute_pack(pack, button)` | `dashboard:{id}` | **2000 ms** |
+
+`execute_pack` confirma **solo** en la rama `default_action == "kill"`. Arrancar apps no es destructivo y no pide nada.
+
+### Invariantes a Respetar
+- **Se congela la INTENCIÓN, se recalculan los DATOS.** El token de `on_kill_selected` es el conjunto de claves marcadas; los `ProcessInfo` se recalculan en la segunda pulsación. Entre pulsaciones el PID se recicla: matar un `ProcessInfo` congelado es matar a un inocente.
+- **Cambiar la selección invalida y re-arma** (mensaje "⚠️ Selección cambiada. Vuelve a pulsar para confirmar."), no ejecuta con la intención vieja. Se usa `changed_text=` para ese mensaje.
+- **El token es el `id` del pack, nunca el objeto `Pack`**: `reset_gaming_pack()` re-empaqueta con `model_copy(deep=True)` y una referencia capturada puede quedar obsoleta. Re-fetch por `id` al confirmar.
+- **`self.after(...)`, nunca `self.master.after(...)`.** Toda navegación destruye la vista y crea otra; `master` es `content_frame`, que sobrevive, y el callback huérfano reconfigura widgets destruidos.
+- **Se cancela en `destroy()`, en `refresh_packs()`/`refresh_dashboard()` y ANTES de ejecutar la acción confirmada** (la propia acción puede destruir el botón, caso `remove_app_from_pack`).
+- Solo hay una pendiente viva por vista: pulsar otra acción distinta la descarta.
+- `ui/confirmation.py` solo importa `typing`; prohibido `psutil`, `json`, `services` y `models` (§7.4 de la OpenSpec). El guard de imports vive en `run_tests.py::test_double_tap_guard`.
+- **Nada se traga en silencio:** los fallos de `delete_pack` (pack de sistema / inexistente) se muestran en el `status_label`, nunca `except: pass`.

@@ -279,6 +279,34 @@ killed, failed, skipped = kill_processes(
 
 **Test de regresión:** `python test_kill_expansion.py` valida la lógica del helper y la integración.
 
+## Trampa #14: la reescritura v3 perdio la doble pulsacion (y con ella, la seguridad)
+
+**Síntoma:** Un clic de más y se cierran 40 pestañas del navegador. En la v3 las 5 acciones destructivas (`on_kill_selected`, `kill_pack`, `delete_pack`, `remove_app_from_pack` y `execute_pack` en rama `kill`) ejecutan **a pelo**, sin pedir nada.
+
+**Causa:** Regresión silenciosa de la reescritura v2 -> v3, no una decisión de diseño. El patrón existía en `process_manager.py` v2.0.2 con los helpers `_request_confirm` / `_reset_pending_action`, y se había instaurado tras un incidente concreto: un `messagebox.askyesno` se abría **por detrás** de la ventana principal, el usuario pulsaba "Cerrar", no veía nada y reportó "se ha roto, no mata procesos". Conclusión registrada: **nunca `messagebox` en la ventana principal**; la seguridad se consigue exigiendo una segunda pulsación, no con un diálogo. Al reescribir la UI se copiaron los botones y no el patrón, y como la v2 ya no está en el repo, nadie lo notó.
+
+**Cómo se comprueba que sigue ahí** (si algún día vuelve a dar cero, se ha perdido otra vez):
+
+```
+messagebox | askyesno | showinfo | showwarning | _request_confirm | "OTRA VEZ" | confirm
+```
+
+Debe seguir dando cero en `src/`. Si aparece un `messagebox`, es que alguien ha resuelto el problema por la puerta prohibida.
+
+**Fix en woptimizer (v3.1, TASK-023):** toda la lógica vive **una sola vez** en `src/woptimizer/ui/confirmation.py`, en dos capas:
+1. `DoubleTapGuard` — máquina de estados ** pura, sin `customtkinter` ni `tkinter`, con un `scheduler` inyectable. Es la que se testea headless en `run_tests.py::test_double_tap_guard`.
+2. `Confirmable` — mixin fino que solo configura widgets (estado ámbar del botón) y escribe en el `status_label`.
+
+Las tres vistas la usan y sobrescriben `destroy()` para matar el `after` vivo.
+
+**Reglas que no se pueden romper:**
+- **Congelar la INTENCIÓN, recalcular los DATOS.** En `on_kill_selected` el token es el conjunto de claves marcadas; los `ProcessInfo` se recalculan en la segunda pulsación. Congelar la lista sería un fallo de seguridad: entre pulsaciones el **PID se recicla** y matarías a un inocente.
+- **Programar con `self.after(...)`, nunca con `self.master.after(...)`.** `master` es `content_frame`, que sobrevive al cambio de pestaña, y toda navegación destruye la vista y crea una instancia nueva: el callback huérfano reconfigura widgets ya destruidos.
+- **Nada se traga en silencio.** `delete_pack` devolvía `False` cuando el pack no existía y la vista ignoraba el retorno; ahora los tres estados (armado, error, éxito) salen por el `status_label` inline.
+- La portada **solo** confirma en la rama `default_action == "kill"`, con ventana de 2000 ms; arrancar apps no pide nada.
+
+**Trampa dentro de la trampa:** `PackManagerView` no tenía ningún `status_label` (solo header y `scroll_frame`). Sin él, el requisito de "feedback inline" es literalmente inimplementable. Si añades una vista nueva y quieres usar el patrón, primero créale el label.
+
 ## Resumen de reglas para IA que modifique este proyecto
 
 1. **NUNCA uses `$pid` en scripts PowerShell** — usa `$procId` u otro nombre

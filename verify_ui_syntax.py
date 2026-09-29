@@ -9,6 +9,7 @@ print("Validando sintaxis estatica de la Fase 3...")
 files_to_check = [
     'src/woptimizer/ui/app.py',
     'src/woptimizer/ui/main_window.py',
+    'src/woptimizer/ui/confirmation.py',
     'src/woptimizer/ui/views/dashboard_view.py',
     'src/woptimizer/ui/views/pack_manager_view.py',
     'src/woptimizer/ui/views/process_manager_view.py',

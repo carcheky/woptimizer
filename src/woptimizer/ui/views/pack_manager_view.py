@@ -6,8 +6,9 @@ from woptimizer.services.process_service import ProcessService
 from woptimizer.services.pack_service import PackService
 from woptimizer.services.notification_service import NotificationService
 from woptimizer.models import Pack
+from woptimizer.ui.confirmation import AMBAR, ROJO, VERDE, MSG_PACK_INEXISTENTE, Confirmable
 
-class PackManagerView(ctk.CTkFrame):
+class PackManagerView(Confirmable, ctk.CTkFrame):
     def __init__(self, master, process_service: ProcessService, pack_service: PackService, notification_service: NotificationService = None):
         super().__init__(master, fg_color="transparent")
         self.process_service = process_service
@@ -26,10 +27,27 @@ class PackManagerView(ctk.CTkFrame):
         self.btn_new = ctk.CTkButton(self.header, text="➕ Nuevo Pack", command=self.on_new_pack, width=120)
         self.btn_new.pack(side="right")
         
+        # TASK-023: la vista no tenia ningun `status_label` y sin el no hay forma de
+        # dar el feedback inline de la doble pulsacion.
+        self.status_label = ctk.CTkLabel(self, text="", text_color="gray", anchor="w", wraplength=700)
+        self.status_label.pack(fill="x", pady=(0, 6))
+        
         self.scroll_frame = ctk.CTkScrollableFrame(self)
         self.scroll_frame.pack(fill="both", expand=True)
+        
+        # TASK-023: doble pulsacion para apagar / borrar / quitar apps
+        self._init_confirmable(self.status_label)
+
+    def destroy(self):
+        # Sin esto, el `after` de la pendiente sobrevive al cambio de pestaña y
+        # reconfigura botones ya destruidos (regla §6.1).
+        self.cancel_on_destroy()
+        super().destroy()
 
     def refresh_packs(self):
+        # Los botones de tarjeta se recrean: una pendiente sobre ellos no tiene a que
+        # reconfigurarse, asi que se cancela antes de destruirlos.
+        self._forget_buttons()
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
             
@@ -83,9 +101,11 @@ class PackManagerView(ctk.CTkFrame):
         combo_action.pack(side="left", padx=3)
         
         btn_kill = ctk.CTkButton(right_box, text="⛔ Apagar", fg_color="#c22d2d", hover_color="#a12525",
-                                 width=75, height=26, font=("Segoe UI", 11, "bold"),
-                                 command=lambda p=pack: self.kill_pack(p))
+                                 width=75, height=26, font=("Segoe UI", 11, "bold"))
         btn_kill.pack(side="left", padx=3)
+        # El pack se re-obtiene por id al confirmar: `reset_gaming_pack` clona el objeto
+        # y una referencia capturada puede quedar obsoleta (TASK-023).
+        btn_kill.configure(command=lambda p=pack.id: self.kill_pack(p, btn_kill))
         
         btn_start = ctk.CTkButton(right_box, text="🚀 Iniciar", width=75, height=26,
                                   font=("Segoe UI", 11, "bold"), command=lambda p=pack: self.start_pack(p))
@@ -98,9 +118,9 @@ class PackManagerView(ctk.CTkFrame):
             btn_restore.pack(side="left", padx=(3, 0))
         else:
             btn_del = ctk.CTkButton(right_box, text="🗑️", width=28, height=26,
-                                    fg_color="#333333", hover_color="#552222",
-                                    command=lambda p=pack.id: self.delete_pack(p))
+                                    fg_color="#333333", hover_color="#552222")
             btn_del.pack(side="left", padx=(3, 0))
+            btn_del.configure(command=lambda p=pack.id: self.delete_pack(p, btn_del))
 
         # --- SECCIÓN APPS (COMPACTA) ---
         apps_frame = ctk.CTkFrame(card, fg_color="#151515", corner_radius=6)
@@ -115,9 +135,9 @@ class PackManagerView(ctk.CTkFrame):
                 app_row.pack(fill="x", padx=8, pady=1)
                 ctk.CTkLabel(app_row, text=f"• {app}", font=("Segoe UI", 11)).pack(side="left")
                 btn_remove = ctk.CTkButton(app_row, text="❌", width=20, height=18, fg_color="transparent",
-                                           text_color="#c22d2d", hover_color="#2b1515",
-                                           command=lambda p=pack.id, a=app: self.remove_app_from_pack(p, a))
+                                           text_color="#c22d2d", hover_color="#2b1515")
                 btn_remove.pack(side="right")
+                btn_remove.configure(command=lambda p=pack.id, a=app: self.remove_app_from_pack(p, a, btn_remove))
                 
         # --- SECCIÓN ACORDEÓN CATEGORÍAS (SÓLO GAMING) ---
         if pack.is_gaming:
@@ -187,12 +207,29 @@ class PackManagerView(ctk.CTkFrame):
         self.pack_service.reset_gaming_pack()
         self.refresh_packs()
         
-    def delete_pack(self, pack_id: str):
+    def delete_pack(self, pack_id: str, button=None):
+        pack = self.pack_service.get_all_packs().get(pack_id)
+        if pack is None:
+            self._cancel_confirm()
+            self._inline_status(MSG_PACK_INEXISTENTE, AMBAR)
+            return
+        if not self._require_double_tap(f"pack_del:{pack_id}", button,
+                                        f"⚠️ Segunda pulsación para borrar el pack '{pack.name}'."):
+            return
         try:
-            self.pack_service.delete_pack(pack_id)
-            self.refresh_packs()
+            borrado = self.pack_service.delete_pack(pack_id)
         except ValueError:
-            pass
+            # El boton 🗑️ no se crea en el pack de sistema, pero el guard no puede ser
+            # el unico que protege: si llegase aqui, el usuario tiene que enterarse.
+            self._inline_status(f"⛔ El pack '{pack.name}' es de sistema y no se puede borrar.", ROJO)
+            return
+        if not borrado:
+            # Fallo silencioso real: `delete_pack` devuelve False si el pack ya no existe
+            # y antes la vista se lo tragaba sin decir nada (TASK-023).
+            self._inline_status(MSG_PACK_INEXISTENTE, AMBAR)
+            return
+        self.refresh_packs()
+        self._inline_status(f"✅ Pack '{pack.name}' borrado.", VERDE)
 
     def on_new_pack(self):
         dialog = ctk.CTkInputDialog(text="Introduce el nombre del nuevo Pack:", title="Nuevo Pack")
@@ -202,22 +239,58 @@ class PackManagerView(ctk.CTkFrame):
             self.pack_service.create_user_pack(pack_id, name.strip(), [])
             self.refresh_packs()
 
-    def remove_app_from_pack(self, pack_id: str, app_name: str):
+    def remove_app_from_pack(self, pack_id: str, app_name: str, button=None):
         pack = self.pack_service.get_all_packs().get(pack_id)
-        if pack and app_name in pack.apps:
-            pack.apps.remove(app_name)
-            self.pack_service.save()
-            self.refresh_packs()
+        if pack is None:
+            self._cancel_confirm()
+            self._inline_status(MSG_PACK_INEXISTENTE, AMBAR)
+            return
+        if not self._require_double_tap(f"pack_app:{pack_id}:{app_name}", button,
+                                        f"⚠️ Segunda pulsación para quitar '{app_name}' de '{pack.name}'."):
+            return
+        pack = self.pack_service.get_all_packs().get(pack_id)  # re-fetch, el objeto pudo clonarse
+        if pack is None:
+            self._inline_status(MSG_PACK_INEXISTENTE, AMBAR)
+            return
+        if app_name not in pack.apps:
+            self._inline_status(f"⚠️ '{app_name}' ya no está en '{pack.name}'.", AMBAR)
+            return
+        pack.apps.remove(app_name)
+        self.pack_service.save()
+        self.refresh_packs()
+        self._inline_status(f"✅ '{app_name}' quitada de '{pack.name}'.", VERDE)
 
-    def kill_pack(self, pack: Pack):
-        if not pack.apps: return
+    def kill_pack(self, pack_id: str, button=None):
+        pack = self.pack_service.get_all_packs().get(pack_id)
+        if pack is None:
+            self._cancel_confirm()
+            self._inline_status(MSG_PACK_INEXISTENTE, AMBAR)
+            return
+        if not pack.apps:
+            self._cancel_confirm()
+            self._inline_status(f"⚠️ '{pack.name}' no tiene apps que apagar.", AMBAR)
+            return
+        if not self._require_double_tap(f"pack_kill:{pack_id}", button,
+                                        f"⚠️ Segunda pulsación para apagar {len(pack.apps)} apps de '{pack.name}'."):
+            return
+        # Re-fetch en el instante de la confirmacion: el `pack` de la 1a pulsacion pudo
+        # quedar obsoleto (`reset_gaming_pack` devuelve un `model_copy`).
+        pack = self.pack_service.get_all_packs().get(pack_id)
+        if pack is None or not pack.apps:
+            self._inline_status(MSG_PACK_INEXISTENTE, AMBAR)
+            return
+        apps = list(pack.apps)
+        nombre = pack.name
         def _run():
-            killed, _failed, _skipped, freed_mb = self.process_service.kill_pack_apps(pack.apps)
+            killed, _failed, _skipped, freed_mb = self.process_service.kill_pack_apps(apps)
             # TASK-019: toast nativo con el resumen del cierre
-            self.notification_service.notify_pack_activated(pack.name, killed, freed_mb)
+            self.notification_service.notify_pack_activated(nombre, killed, freed_mb)
         threading.Thread(target=_run, daemon=True).start()
 
     def start_pack(self, pack: Pack):
+        # Arrancar no es destructivo, pero pulsar otra accion resetea la pendiente
+        # anterior: si no, el boton ⛔ se queda en ambar sin nadie que lo confirme.
+        self._cancel_confirm()
         if not pack.apps: return
         def _run():
             started, failed = self.process_service.start_pack_apps(pack.apps)

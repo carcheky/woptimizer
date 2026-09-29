@@ -6,8 +6,15 @@ from woptimizer.services.pack_service import PackService
 from woptimizer.services.notification_service import NotificationService
 from woptimizer.models import ProcessInfo
 from woptimizer.config import get_safety_badge
+from woptimizer.ui.confirmation import (
+    AMBAR,
+    MSG_SELECCION_CAMBIADA,
+    MSG_SIN_PROCESOS,
+    MSG_SIN_SELECCION,
+    Confirmable,
+)
 
-class ProcessManagerView(ctk.CTkFrame):
+class ProcessManagerView(Confirmable, ctk.CTkFrame):
     def __init__(self, master, process_service: ProcessService, pack_service: PackService, notification_service: NotificationService = None):
         super().__init__(master, fg_color="transparent")
         self.process_service = process_service
@@ -61,26 +68,36 @@ class ProcessManagerView(ctk.CTkFrame):
         self.status_label = ctk.CTkLabel(self.footer, text="", text_color="gray")
         self.status_label.pack(side="right", padx=20)
 
+        # TASK-023: doble pulsacion para cerrar procesos
+        self._init_confirmable(self.status_label)
+
+    def destroy(self):
+        # El `after` de la pendiente vive en la vista: si no se mata aqui, el callback
+        # sobrevive al cambio de pestaña y reconfigura widgets ya destruidos.
+        self.cancel_on_destroy()
+        super().destroy()
+
     def refresh_processes(self):
+        self._cancel_confirm()
         self.status_label.configure(text="⏳ Cargando...")
         self.update_idletasks()
         
         if not getattr(self.process_service, 'is_db_loaded', False):
-            self.process_service.load_db_async(callback=lambda: self.master.after(0, self._do_load))
+            self.process_service.load_db_async(callback=lambda: self.after(0, self._do_load))
         else:
             self._do_load()
 
     def _force_update_db(self):
         self.status_label.configure(text="⏳ Descargando DB JSON desde GitLab...")
         self.update_idletasks()
-        self.process_service.load_db_async(callback=lambda: self.master.after(0, self._do_load))
+        self.process_service.load_db_async(callback=lambda: self.after(0, self._do_load))
 
     def _do_load(self):
         def _load():
             self.processes = self.process_service.get_running_processes()
             self._group_processes()
-            self.master.after(0, self._render_list)
-            self.master.after(0, self._update_pack_dropdown)
+            self.after(0, self._render_list)
+            self.after(0, self._update_pack_dropdown)
             
         threading.Thread(target=_load, daemon=True).start()
 
@@ -105,6 +122,9 @@ class ProcessManagerView(ctk.CTkFrame):
         self._render_list(search_query=self.search_var.get().lower())
 
     def _render_list(self, search_query=""):
+        # La lista se recrea entera: una pendiente sobre las casillas viejas no tiene
+        # a que reconfigurarse, asi que se invalida (TASK-023).
+        self._cancel_confirm()
         # Guardar estado de selección
         previously_selected = {k for k, cb in self.checkboxes.items() if cb.get()}
         
@@ -221,20 +241,34 @@ class ProcessManagerView(ctk.CTkFrame):
             desc_lbl.bind("<Button-1>", make_toggle(cb))
 
     def on_kill_selected(self):
-        selected_keys = [k for k, cb in self.checkboxes.items() if cb.get()]
+        # TASK-023: se congela la INTENCION (claves marcadas) y se RECALCULAN los datos
+        # en la segunda pulsacion. Congelar los ProcessInfo seria un fallo de seguridad:
+        # entre pulsaciones el PID puede reciclarse y matarias a un proceso inocente.
+        selected_keys = tuple(sorted(k for k, cb in self.checkboxes.items() if cb.get()))
         if not selected_keys:
+            self._cancel_confirm()
+            self._inline_status(MSG_SIN_SELECCION, AMBAR)
             return
-            
+
+        if not self._require_double_tap(
+            selected_keys,
+            self.btn_kill,
+            f"⚠️ Segunda pulsación para cerrar {len(selected_keys)} apps seleccionadas.",
+            changed_text=MSG_SELECCION_CAMBIADA,
+        ):
+            return
+
         to_kill = []
         for k in selected_keys:
-            to_kill.extend(self.grouped_processes[k])
-            
+            to_kill.extend(self.grouped_processes.get(k, []))
+
         if not to_kill:
+            self._inline_status(MSG_SIN_PROCESOS, AMBAR)
             return
-            
+
         self.status_label.configure(text="⏳ Cerrando...")
         self.update_idletasks()
-        
+
         def _kill():
             killed, failed, skipped, freed_mb = self.process_service.kill_processes(to_kill)
             def _done():
@@ -242,8 +276,8 @@ class ProcessManagerView(ctk.CTkFrame):
                     self.status_label.configure(text=f"✅ {killed} cerrados ({freed_mb:.1f} MB liberados), {failed} fallidos.")
                 else:
                     self.status_label.configure(text=f"✅ {killed} cerrados, {failed} fallidos.")
-                self.master.after(1000, self.refresh_processes)
-            self.master.after(0, _done)
+                self.after(1000, self.refresh_processes)
+            self.after(0, _done)
             # TASK-019: toast nativo con el resumen del cierre manual
             self.notification_service.notify_kill_result(killed, failed, freed_mb)
             

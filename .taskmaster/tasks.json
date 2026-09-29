@@ -343,7 +343,7 @@
         "TASK-022"
       ],
       "module": "docs/ai/ui-design-system.md",
-      "status": "in_progress",
+      "status": "completed",
       "acceptance_criteria": [
         "Las 5 acciones destructivas (on_kill_selected, kill_pack, delete_pack, remove_app_from_pack, execute_pack rama kill) exigen doble pulsacion",
         "El helper de doble pulsacion esta en src/woptimizer/ui/confirmation.py, definido UNA SOLA VEZ, y lo reutilizan las 3 vistas (NO hay una cuarta vista)",

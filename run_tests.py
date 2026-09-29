@@ -925,6 +925,151 @@ def test_git_safe_commit_fail_safe():
     print("git_safe_commit fail-safe OK.")
 
 
+class _FakeScheduler:
+    """Doble de `TkScheduler`: guarda los jobs y dispara el auto-reset sin ventana.
+
+    Es lo que hace testeable la maquina de estados: sin root de Tk, sin `after` real y
+    sin esperar 3 s. `fire_due(ms)` hace avanzar el reloj.
+    """
+
+    def __init__(self):
+        self.jobs = []          # [{"id", "delay", "cb", "cancelled"}]
+        self._contador = 0
+
+    def schedule(self, delay_ms, callback):
+        self._contador += 1
+        handle = f"job{self._contador}"
+        self.jobs.append({"id": handle, "delay": delay_ms, "cb": callback, "cancelled": False})
+        return handle
+
+    def cancel(self, handle):
+        for job in self.jobs:
+            if job["id"] == handle:
+                job["cancelled"] = True
+                return
+        raise AssertionError(f"Se cancelo un handle que no existe: {handle!r}")
+
+    def vivos(self):
+        return [j for j in self.jobs if not j["cancelled"]]
+
+    def fire_due(self, elapsed_ms):
+        """Dispara los jobs de un solo disparo cuyo plazo ya vencio. Devuelve sus ids."""
+        vencidos = [j for j in self.jobs if not j["cancelled"] and j["delay"] <= elapsed_ms]
+        for job in vencidos:
+            job["cancelled"] = True
+        for job in vencidos:
+            job["cb"]()
+        return [j["id"] for j in vencidos]
+
+
+def test_double_tap_guard():
+    """TASK-023: `DoubleTapGuard` exige una segunda pulsacion para ejecutar.
+
+    Sin esto, las 5 acciones destructivas de la v3 matan apps con un solo clic (la
+    regresion que elimino el patron `_request_confirm` de la v2). El test discrimina:
+    si alguien borra o neutraliza `arm` / `consume` / el auto-reset, falla.
+    """
+    print("Testing DoubleTapGuard (doble pulsacion, headless)...")
+    from woptimizer.ui.confirmation import (
+        AMBAR,
+        PENDIENTE_FG,
+        PENDIENTE_HOVER,
+        PENDIENTE_TEXT,
+        VENTANA_MS,
+        VENTANA_MS_PORTADA,
+        Confirmable,
+        DoubleTapGuard,
+    )
+
+    assert PENDIENTE_TEXT == "⚠️ ¿SEGURO? PULSA OTRA VEZ", (
+        f"El estado pendiente debe ser compartido por las 5 acciones: {PENDIENTE_TEXT!r}"
+    )
+    assert (PENDIENTE_FG, PENDIENTE_HOVER) == ("#b8860b", "#8a6508")
+    assert AMBAR == "#b8860b"
+    assert VENTANA_MS == 3000 and VENTANA_MS_PORTADA == 2000
+    assert Confirmable.__init__ is object.__init__, (
+        "El mixin no puede definir __init__: romperia el cooperative __init__ de las vistas"
+    )
+
+    # 1) Primera pulsacion arma, la segunda ejecuta.
+    sched = _FakeScheduler()
+    expiradas = []
+    guard = DoubleTapGuard(scheduler=sched, window_ms=VENTANA_MS)
+    assert guard.arm("pack_kill:abc", "⚠️ Segunda pulsación para apagar 3 apps de 'Gaming'.",
+                     on_expire=lambda: expiradas.append("expirada")) is True, (
+        "La primera pulsacion debe armar la pendiente"
+    )
+    assert guard.is_pending() is True
+    assert guard.is_pending("pack_kill:abc") is True
+    assert guard.arm("pack_kill:abc", "otra vez") is False, (
+        "Un segundo arm() del mismo token sin consumir NO debe re-armar: eso seria "
+        "confirmar sin la segunda pulsacion del usuario"
+    )
+    assert len(sched.vivos()) == 1, "Solo puede haber una ventana viva"
+    assert guard.consume("pack_kill:abc") is not None, (
+        "La segunda pulsacion debe confirmar y devolver el label"
+    )
+    assert guard.is_pending() is False
+    assert sched.vivos() == [], "Confirmar debe cancelar el after de la ventana"
+    assert guard.consume("pack_kill:abc") is None, "La tercera pulsacion no ejecuta nada"
+    assert expiradas == [], "Confirmar no es expirar"
+
+    # 2) Auto-revert: la ventana expira sola y ejecuta el on_expire.
+    sched = _FakeScheduler()
+    expiradas = []
+    guard = DoubleTapGuard(scheduler=sched, window_ms=VENTANA_MS)
+    guard.arm("a", "x", on_expire=lambda: expiradas.append("expirada"))
+    assert sched.fire_due(2999) == [], "La ventana no puede expirar antes de tiempo"
+    assert guard.is_pending() is True
+    assert sched.fire_due(3000) == ["job1"], "A los 3000 ms debe dispararse el reset"
+    assert guard.is_pending() is False, "Tras expirar el guard queda limpio"
+    assert expiradas == ["expirada"], "La expiracion debe avisar a la vista"
+    assert guard.consume("a") is None, "Expirada la ventana, la pulsacion ya no confirma"
+
+    # 3) Cambiar la intencion entre pulsaciones invalida (y no ejecuta con la vieja).
+    sched = _FakeScheduler()
+    guard = DoubleTapGuard(scheduler=sched)
+    vieja = ("chrome.exe", "steam.exe")
+    nueva = ("chrome.exe", "discord.exe")
+    guard.arm(vieja, "⚠️ Segunda pulsación para cerrar 2 apps seleccionadas.")
+    assert guard.consume(nueva) is None, "Con la seleccion cambiada NO se puede confirmar"
+    assert guard.is_pending() is False, "La pendiente vieja se descarta, no se arrastra"
+    assert sched.vivos() == []
+    # Y la nueva intencion se arma de cero, con su propia ventana.
+    assert guard.arm(nueva, "otra") is True
+    assert guard.is_pending(nueva) is True
+
+    # 4) destroy() mata el after vivo (si no, sobrevive al cambio de pestaña).
+    sched = _FakeScheduler()
+    guard = DoubleTapGuard(scheduler=sched)
+    guard.arm("dashboard:xyz", "x")
+    assert len(sched.vivos()) == 1
+    guard.cancel_on_destroy()
+    assert sched.vivos() == [], "cancel_on_destroy debe dejar el scheduler sin jobs"
+    assert guard.is_pending() is False
+
+    # 5) Frontera de capas: el helper no puede tocar el SO ni el JSON.
+    root = os.path.dirname(os.path.abspath(__file__))
+    helper = os.path.join(root, "src", "woptimizer", "ui", "confirmation.py")
+    assert os.path.exists(helper), f"No se encuentra el helper: {helper}"
+    with open(helper, "r", encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read(), filename=helper)
+    importados = set()
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.Import):
+            importados.update(a.name.split(".")[0] for a in nodo.names)
+        elif isinstance(nodo, ast.ImportFrom) and nodo.module:
+            importados.add(nodo.module.split(".")[0])
+    prohibido = importados & {"psutil", "json", "subprocess", "services", "models", "woptimizer",
+                              "customtkinter", "tkinter"}
+    assert not prohibido, (
+        f"ui/confirmation.py viola la frontera de capas: importa {sorted(prohibido)}. "
+        f"La maquina de estado tiene que importarse sin Tk."
+    )
+    assert "typing" in importados, "Se esperaba al menos el import de typing"
+    print("DoubleTapGuard OK.")
+
+
 if __name__ == "__main__":
     print("--- Running Backend Tests ---")
     test_models()
@@ -947,6 +1092,7 @@ if __name__ == "__main__":
     test_cache_ttl_and_invalidation()
     test_kill_recursive()
     test_git_safe_commit_fail_safe()
+    test_double_tap_guard()
     print("\n--- Running Headless UI Test ---")
     test_headless_ui()
     print("\nALL TESTS PASSED.")
