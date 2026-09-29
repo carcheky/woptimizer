@@ -144,6 +144,28 @@
       "priority": "high",
       "status": "completed",
       "module": "openspec/changes/2026-09-29-v3.1-quality-of-life/tasks.md"
+    },
+    {
+      "id": "TASK-013",
+      "title": "Medición y Retorno de RAM Liberada en ProcessService",
+      "description": "Modificar kill_processes y kill_pack_apps para registrar la memoria física RSS liberada y retornar (killed, failed, skipped, freed_mb).",
+      "complexity": 4,
+      "dependencies": [],
+      "priority": "high",
+      "status": "pending",
+      "module": "docs/ai/architecture.md"
+    },
+    {
+      "id": "TASK-014",
+      "title": "Widget de Telemetría y Feedback de RAM en DashboardView",
+      "description": "Añadir banner dinámico en la portada que muestre los MB de RAM liberados al activar Modo Gaming o ejecutar packs.",
+      "complexity": 5,
+      "dependencies": [
+        "TASK-013"
+      ],
+      "priority": "high",
+      "status": "pending",
+      "module": "docs/ai/ui-design-system.md"
     }
   ]
 }
