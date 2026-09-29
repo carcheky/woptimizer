@@ -44,5 +44,15 @@
     "status": "COMPLETED",
     "commits": ["786a551"],
     "impact": "3 tests nuevos en run_tests.py (7 total): freed_mb return type, gaming pack protected, corrupted JSON recovery. Docs testing-guide.md actualizado."
+  },
+  {
+    "cycle": 6,
+    "date": "2026-09-29T02:23:00",
+    "area": "Resiliencia & Robustez",
+    "slug": "2026-09-29-resilience-tray-logging",
+    "task": "TASK-017",
+    "status": "COMPLETED",
+    "commits": ["60c713d"],
+    "impact": "Fix tray_icon no guardada en self (cierre limpio imposible), gaming_action con try/except+logging, start_pack_apps con logger.info/warning individual."
   }
 ]
