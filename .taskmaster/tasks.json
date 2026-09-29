@@ -301,6 +301,37 @@
         "verify_ui_syntax.py sigue pasando"
       ],
       "notes": "Ciclo 10 - Area 5 Matriz Rotacion ID: Testing y Calidad. Descubierto en el analisis previo: los 10 test_*.py de la raiz importan process_manager (v2) y estan todos muertos. NO se borran por regla del usuario (nunca eliminar entregables); se documentan como legacy."
+    },
+    {
+      "id": "TASK-022",
+      "title": "Resiliencia del Tooling Git: git_safe_commit.py fail-safe (deja de perder commits en silencio)",
+      "description": "AGENTS.md obliga a cerrar cada bloque con .taskmaster/git_safe_commit.py, asi que su codigo de salida es la unica senal de exito del versionado. Hoy el wrapper captura CUALQUIER fallo de commit, imprime 'AVISO GIT' y sale con codigo 0 (lineas 71-77). El pipeline lo interpreta como commit correcto, avanza, y la entrada MANDATORY de CHANGELOG.md registra un hash que puede no existir. validate_docs.py no puede detectarlo porque solo comprueba que el CHANGELOG exista. Encima, 'git add -A' fallido es solo un warning y el commit se ejecuta igual (staging parcial silencioso), y get_env() activa el GIT_DIR desacoplado de LOCALAPPDATA con un simple os.path.exists, sin validar que sea un repositorio real: si esa carpeta se corrompe o es otro clon, TODOS los commits se escriben en otra historia y el arbol real nunca se versiona. Evidencia ciclo 11: el .git del arbol de trabajo esta corrupto por el VFS de Nextcloud ('fatal: bad object HEAD') y el historial solo sobrevive gracias al repo desacoplado, luego el punto ciego no es hipotetico, es la condicion real del proyecto. Solucion: wrapper fail-safe con codigos de salida honestos, validacion del repo desacoplado, hash real en exito y flag --verify de solo lectura.",
+      "complexity": 3,
+      "priority": "high",
+      "dependencies": [
+        "TASK-021"
+      ],
+      "module": "docs/ai/sandbox-rules.md",
+      "status": "in_progress",
+      "acceptance_criteria": [
+        "Contrato de salida EXACTO: 0 = commit creado (imprime WOPT_COMMIT_OK <hash-short>) o nada que comitear (imprime WOPT_NOOP, SIN hash); 1 = fallo de git (add o commit); 2 = uso incorrecto; 3 = repo no verificable. Ningun otro desenlace devuelve 0",
+        "git status --porcelain fallido es fatal: NO se interpreta como arbol con cambios (hoy lineas 54-55 lo hacen)",
+        "git add -A fallido devuelve 1 y ABORTA: nunca ejecuta commit despues (nada de staging parcial silencioso)",
+        "La decision nada-que-comitear se toma con git diff --cached --quiet (rc 0=noop, rc 1=commitear, rc>1=fallo); NUNCA parseando el texto de stderr, porque git localiza sus mensajes segun locale",
+        "Un exito imprime el hash real obtenido con git rev-parse --short HEAD, y ese hash existe en el historial; si el hash no resuelve, el resultado es 1",
+        "GIT_DIR preexistente en el entorno se respeta y no se sobrescribe; si no existe, se usa %LOCALAPPDATA%\\woptimizer_git\\.git. GIT_WORK_TREE siempre = REPO_ROOT",
+        "Si el repo no es valido (no existe, no es git dir, HEAD no resuelve, is-inside-work-tree != true, o git no ejecutable): WOPT_REPO_INVALIDO y salida 3, sin escribir nada y NUNCA fallback al .git corrupto del VFS",
+        "La linea canonica WOPT_* va siempre a stdout; el pipeline debe leerla para el CHANGELOG",
+        "Flag --verify: reutiliza exactamente la misma validacion del camino principal (sin ruta de codigo propia), no escribe nada, y devuelve 0 si sano / 3 si invalido",
+        "Todas las cadenas de print() del wrapper son ASCII puro: sin acentos, flechas, checks ni emoji (trampa #16, consola cp1252)",
+        "Test headless en run_tests.py (funcion registrada en el __main__): wrapper como subproceso con GIT_DIR a una ruta temporal no-repo exige returncode 3, y sin mensaje exige 2",
+        "El test DISCRIMINA: hoy el wrapper devuelve 0 con un repo invalido, asi que revertir el fix rompe el test",
+        "El test no toca el repositorio real ni su historial (GIT_DIR se sobreescribe en el subproceso; nada escribe en %LOCALAPPDATA%)",
+        "python verify_ui_syntax.py, python run_tests.py y python validate_docs.py siguen en verde",
+        "docs/ai/sandbox-rules.md recibe una SECCION NUEVA de aislamiento Git (hoy no tiene ninguna) con el contrato de codigos de salida y --verify; AGENTS.md y docs/ai/architecture.md apuntan a ella",
+        "Cierre limpio: arbol de git con 0 cambios pendientes"
+      ],
+      "notes": "Ciclo 11 - Area 1 Matriz Rotacion ID: Resiliencia & Robustez. NO toca src/woptimizer/ (es tooling, no producto), asi que las invariantes de producto (separacion UI/services, kill recursivo, pack gaming protegido) NO aplican. Diseno revisado por architect-review: el contrato de 5 codigos de proposal.md seccion 3.4 es NORMATIVO; se descarto la comprobacion de identidad repo==proyecto por sobre-ingenieria y se mantuvo --verify como reutilizacion de la validacion normal, no como ruta de codigo propia. Recupera ademas los ficheros que el ciclo 10 dejo sin comitear, precisamente porque el wrapper reportaba exito en falso. Ver openspec/changes/2026-09-29-git-tooling-resilience/proposal.md."
     }
   ]
 }

@@ -19,6 +19,7 @@ Para evitar saturar la ventana de contexto y prevenir alucinaciones:
 ## 🎯 Orquestación de Tareas (Taskmaster)
 - [Tablero Taskmaster Markdown](.taskmaster/tasks.md): Tabla de tareas pendientes, complejidades y dependencias.
 - [Base de Datos Taskmaster](.taskmaster/tasks.json): Formato máquina para agentes y scripts (`tm.py`).
+- [Changelog por pase (MANDATORY)](.taskmaster/CHANGELOG.md): Narrativa humano-legible de cada ciclo del motor `id-pipeline`. Una entrada por pase con modelos usados, commits, tests e impacto.
 
 ## 📋 Especificaciones Activas (OpenSpec)
 - [Propuesta de Rediseño UI v3](openspec/changes/2026-09-28-v3-ui-redesign/proposal.md): Contrato formal de las 3 ventanas acordadas con el usuario.

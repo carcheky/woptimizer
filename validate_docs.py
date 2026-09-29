@@ -26,15 +26,10 @@ def main():
     else:
         errors.append("llms.txt: falta blockquote summary")
 
-    if re.search(r"^## Specs", llms, re.MULTILINE):
-        ok.append("llms.txt: seccion ## Specs presente")
+    if re.search(r"^## ", llms, re.MULTILINE):
+        ok.append("llms.txt: tiene secciones H2 (formato v3)")
     else:
-        errors.append("llms.txt: falta seccion ## Specs")
-
-    if re.search(r"^## Docs", llms, re.MULTILINE):
-        ok.append("llms.txt: seccion ## Docs presente")
-    else:
-        errors.append("llms.txt: falta seccion ## Docs")
+        errors.append("llms.txt: sin secciones H2")
 
     # 2. llms-full.txt debe existir y concatenar todos los docs/*.md
     full_path = os.path.join(root, "llms-full.txt")
@@ -76,12 +71,16 @@ def main():
             and d not in ("archive",)
         ]
         for cid in active:
-            for fn in ("proposal.md", "tasks.md"):
-                full = os.path.join(active_changes_dir, cid, fn)
-                if os.path.exists(full):
-                    ok.append(f"openspec/changes/{cid}/{fn}: existe ({os.path.getsize(full)} bytes)")
-                else:
-                    errors.append(f"openspec/changes/{cid}/{fn}: NO EXISTE")
+            # proposal.md es obligatorio
+            proposal = os.path.join(active_changes_dir, cid, "proposal.md")
+            if os.path.exists(proposal):
+                ok.append(f"openspec/changes/{cid}/proposal.md: existe ({os.path.getsize(proposal)} bytes)")
+            else:
+                errors.append(f"openspec/changes/{cid}/proposal.md: NO EXISTE")
+            # tasks.md es opcional (per decision matrix del SDD: cambios triviales/pequeños pueden no tenerlo)
+            tasks = os.path.join(active_changes_dir, cid, "tasks.md")
+            if os.path.exists(tasks):
+                ok.append(f"openspec/changes/{cid}/tasks.md: existe ({os.path.getsize(tasks)} bytes)")
 
     # Archive debe existir y tener al menos un cambio
     archive_dir = os.path.join(openspec, "changes", "archive")
@@ -102,31 +101,43 @@ def main():
     else:
         errors.append("openspec/changes/archive/: NO EXISTE")
 
-    # 4. AGENTS.md menciona la seccion SDD y refinamientos
+    # 4. AGENTS.md estructura v3 (Stack + Invariantes + Skills Disponibles)
     with open(os.path.join(root, "AGENTS.md"), encoding="utf-8") as f:
         agents = f.read()
-    if "Spec-Driven Development" in agents and "OBLIGATORIO" in agents:
-        ok.append("AGENTS.md: seccion SDD OBLIGATORIO presente")
+    v3_sections = ["Stack", "Invariantes", "Skills Disponibles"]
+    missing_sections = [s for s in v3_sections if s not in agents]
+    if not missing_sections:
+        ok.append(f"AGENTS.md: secciones v3 presentes ({', '.join(v3_sections)})")
     else:
-        errors.append("AGENTS.md: falta seccion SDD obligatoria")
-    if "Decision matrix" in agents and "Anti-burocracia" in agents:
-        ok.append("AGENTS.md: decision matrix + anti-burocracia presentes (rev 12)")
+        errors.append(f"AGENTS.md: faltan secciones v3: {missing_sections}")
+    if "CHANGELOG" in agents and "MANDATORY" in agents:
+        ok.append("AGENTS.md: menciona CHANGELOG.md como obligatorio")
     else:
-        errors.append("AGENTS.md: faltan refinamientos de rev 12 (decision matrix / anti-burocracia)")
-    if "Spec delta" in agents and "ADDED Requirements" in agents:
-        ok.append("AGENTS.md: spec delta documentado (ADDED/MODIFIED/REMOVED)")
-    else:
-        errors.append("AGENTS.md: falta documentacion de spec delta")
-    if "todowrite" in agents and "tasks.md" in agents and "sincronizaci" in agents:
-        ok.append("AGENTS.md: todowrite <-> tasks.md binding documentado")
-    else:
-        errors.append("AGENTS.md: falta binding todowrite <-> tasks.md")
-    if re.search(r"Spec rev:\*\*\s*12\b", agents):
-        ok.append("AGENTS.md: spec rev 12")
-    else:
-        errors.append("AGENTS.md: spec rev != 12")
+        errors.append("AGENTS.md: no menciona CHANGELOG.md como mandatory")
 
-    # 5. mkdocs.yml existe y tiene nav
+    # 5. .taskmaster/CHANGELOG.md existe y tiene formato valido (MANDATORY desde ciclo 11)
+    changelog = os.path.join(root, ".taskmaster", "CHANGELOG.md")
+    if not os.path.exists(changelog):
+        errors.append(".taskmaster/CHANGELOG.md: NO EXISTE (MANDATORY desde ciclo #11)")
+    else:
+        with open(changelog, encoding="utf-8") as f:
+            ch = f.read()
+        size = os.path.getsize(changelog)
+        if "Changelog de pases" not in ch:
+            errors.append(".taskmaster/CHANGELOG.md: falta encabezado 'Changelog de pases'")
+        else:
+            ok.append(f".taskmaster/CHANGELOG.md: existe ({size} bytes) con encabezado correcto")
+        cycle_count = len(re.findall(r"\[CYCLE-\d{3}\]", ch))
+        if cycle_count == 0:
+            errors.append(".taskmaster/CHANGELOG.md: ninguna entrada [CYCLE-NNN] encontrada")
+        else:
+            ok.append(f".taskmaster/CHANGELOG.md: {cycle_count} entradas [CYCLE-NNN]")
+        if "MANDATORY" in ch:
+            ok.append(".taskmaster/CHANGELOG.md: marca MANDATORY presente")
+        else:
+            errors.append(".taskmaster/CHANGELOG.md: no marca la convencion como MANDATORY")
+
+    # 6. mkdocs.yml existe y tiene nav
     if os.path.exists(os.path.join(root, "mkdocs.yml")):
         with open(os.path.join(root, "mkdocs.yml"), encoding="utf-8") as f:
             mk = f.read()

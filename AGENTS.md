@@ -68,8 +68,19 @@ python verify_ui_syntax.py      # Verificar sintaxis estática de la UI
 ```
 
 ## 🛠️ Skills Disponibles (.agents/skills/)
-- `id-pipeline`: Motor autónomo de I+D en bucle infinito de 3 pasos (1. Buscar qué hacer, 2. Planear, 3. Ejecutar). No se detiene nunca a menos que el usuario lo pause manualmente.
+- `id-pipeline`: Motor autónomo de I+D en bucle infinito de 3 pasos (1. Buscar qué hacer, 2. Planear, 3. Ejecutar). No se detiene nunca a menos que el usuario lo pause manualmente. **Cada pase DEBE registrarse en `.taskmaster/CHANGELOG.md`** (ver Sección 6 de la skill). Alterna modelos por paso × área (ver Sección 7).
 - `architect-review`: Arquitectura, auditoría de invariantes y planificación de Taskmaster / OpenSpec.
 - `openspec-dev`: Tech Lead e implementación con validación estática y headless.
 - `process-db-updater`: Analista de procesos y actualización de `assets/process_db.json`.
+
+## 🔄 Artefactos del Motor de I+D (`id-pipeline`)
+
+| Artefacto | Path | Rol |
+|---|---|---|
+| Propuestas activas | `openspec/changes/<id>/` | Contrato de cada cambio. |
+| Cambios cerrados | `openspec/changes/archive/<id>/` | Historial inmutable. |
+| Tasks pendientes | `.taskmaster/tasks.md` (`.taskmaster/tasks.json`) | Tablero de tareas para el orquestador. |
+| Journal por ciclo | `.taskmaster/rd_journal.json` | Machine-readable, datos estructurados. |
+| **Changelog por pase** | **`.taskmaster/CHANGELOG.md`** | **Narrativa humano-legible de cada ciclo (MANDATORY)**. |
+| Dashboard | `STATUS.md` | Salud del sistema + resumen de hitos. |
 

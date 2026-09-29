@@ -183,3 +183,112 @@ Actúa bajo la skill 'process-db-updater' (.agents/skills/process-db-updater/SKI
 4. Haz commit: python .taskmaster/git_safe_commit.py "chore(process-db): actualizar procesos gaming y bloatware".
 5. Devuelve un resumen de los procesos añadidos.
 ```
+
+---
+
+## 6. Changelog Obligatorio por Pase — 🔴 **MANDATORY**
+
+> **REGLA:** al final de **cada Paso 3** (incluso si termina en `BLOCKED` o `ROLLED-BACK`), antes de retornar al Paso 1, el orquestador **DEBE** añadir una entrada a `.taskmaster/CHANGELOG.md`. Sin esta entrada, el ciclo se considera incompleto y el bucle NO continúa.
+
+### Por qué es mandatory
+
+- **Trazabilidad humana**: `rd_journal.json` es machine-readable pero no narrativo; `STATUS.md` resume hitos, no cada pase. El changelog es el único registro per-pass humano-legible.
+- **Cost 0 audit**: ante un bug reportado, se revisa el CHANGELOG.md para entender qué cambió en el pase anterior.
+- **Accountability de modelos**: si una decisión técnica sale mal, queda registrado qué modelo la tomó.
+
+### Formato de entrada
+
+```markdown
+## [CYCLE-NNN] YYYY-MM-DD HH:MM — <slug>
+**Área**: <de la matriz de rotación>
+**Change**: openspec/changes/<slug>/
+**Estado**: COMPLETED | BLOCKED | ROLLED-BACK
+**Models**:
+- Paso 1 (Buscar): <modelo>
+- Paso 2 (Planear): <modelo>
+- Paso 3 (Ejecutar): <modelo>
+
+### What
+- <bullets cortos concretos, 1 frase cada uno>
+
+### Outcome
+- Commits: `<hash1>`, `<hash2>`
+- Tests: <n>/<total> PASS
+- Docs: <qué docs/ai/ se actualizó>
+
+### Impact
+<1-2 frases>
+```
+
+### Cuándo se escribe
+
+1. Tras el `git_safe_commit.py` del Paso 3 (para tener el hash).
+2. Tras actualizar `rd_journal.json` (para mantener orden: journal → changelog → STATUS).
+3. **Antes** de actualizar `STATUS.md` (el dashboard referencia los pases nuevos).
+4. **Antes** de retornar al Paso 1.
+
+### Reglas duras
+
+- ❌ **Nunca** se borran o reescriben entradas antiguas (es append-only; historial inmutable).
+- ❌ **Nunca** se omite la sección `Models` (incluso si todos los pasos usaron `inherit`).
+- ✅ Si el pase fue `BLOCKED` o `ROLLED-BACK`, el changelog **se escribe igualmente** con estado correcto y qué falló.
+- ✅ `validate_docs.py` falla si `.taskmaster/CHANGELOG.md` falta o no tiene ≥1 entrada `[CYCLE-NNN]`.
+
+### Relación con otros artefactos
+
+```
+.rd_journal.json   ─→  datos estructurados (machine, by tm.py)
+CHANGELOG.md        ─→  narrativa per-pass (human, by orchestrator)
+STATUS.md           ─→  dashboard agregado (human, by orchestrator)
+openspec/changes/   ─→  contrato del cambio (formal, by proposer)
+```
+
+---
+
+## 7. Matriz de Modelos Consolidada — Alternancia por Paso × Área
+
+> **REGLA:** el orquestador DEBE alternar modelos según la combinación Paso × Área. `inherit` es el default seguro; se sube a `pro` cuando hay riesgo de regresión o creatividad requerida; se baja a `flash` cuando la tarea es trivial o de búsqueda.
+
+### Modelos disponibles
+
+| Modelo | Cuándo | Coste | Capacidad |
+|---|---|---|---|
+| `flash` | Búsquedas, lookups, escaneos, DB updates, formatting | Bajo | Baja |
+| `inherit` | Default seguro: implementación, refactors acotados | Medio | Media |
+| `pro` | Planning complejo, debugging de bugs críticos, refactors con riesgo | Alto | Alta |
+
+### Matriz Paso × Área
+
+| Paso \ Área | Resiliencia & Robustez | Gaming & Telemetría UX | Base de Datos & Procesos | Rendimiento & Latencia | Testing & Calidad |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **1. Buscar** | `flash` | `flash` | `flash` | `flash` | `flash` |
+| **2. Planear** | `pro` | `inherit` | `inherit` | `pro` | `pro` |
+| **3. Ejecutar** | `inherit` | `inherit` | `flash` | `pro` | `inherit` |
+
+**Justificación por overrides**:
+- Resiliencia + pro en planear → requiere diseñar tests defensivos.
+- Rendimiento + pro en planear y ejecutar → benchmarking antes/después, análisis de cuellos de botella.
+- DB updates + flash en ejecutar → escaneo + append a JSON, sin creatividad.
+- Testing + pro en planear → diseñar tests que DISCRIMINEN bugs reales.
+
+### Reglas de override
+
+- **Subir de `inherit` a `pro`** cuando: hay un bug crítico (como Trampa #19 Pydantic shallow copy), o un refactor toca >3 archivos en `src/`, o el área es nueva (sin precedente en `rd_journal.json`).
+- **Bajar de `inherit` a `flash`** cuando: el cambio es <30 LOC, no toca lógica de negocio, o es update rutinario de `process_db.json`.
+- **Default siempre**: si dudas, usa `inherit`. Es el modelo más equilibrado y nunca rompe el bucle.
+
+### Override explícito del usuario
+
+El usuario puede pedir un modelo concreto en cualquier momento (ej: *"usa `flash` para todo el ciclo 11"*). Esa instrucción sobrescribe la matriz para ese ciclo, y debe quedar reflejada en el changelog (`Paso N: <modelo> (override usuario)`).
+
+### Validación
+
+`validate_docs.py` verifica:
+1. `.taskmaster/CHANGELOG.md` existe.
+2. Encabezado `# Changelog de pases — Motor id-pipeline` presente.
+3. Al menos 1 entrada con formato `[CYCLE-NNN]`.
+4. Sección `Models` con 3 líneas (Paso 1, 2, 3) en cada entrada nueva.
+
+Si cualquiera falla, el orquestador NO inicia el siguiente ciclo hasta corregir.
+
+---
