@@ -44,4 +44,4 @@
 | **TASK-018** | Cache TTL + Hashmap O(1) en ProcessService | 6/10 | High | ✅ DONE | `perf-cache-hashmap` |
 | **TASK-019** | Notificaciones Nativas Windows (Toast Balloon) | 4/10 | Medium | ✅ DONE | ✅ `2026-09-29-native-toast-notifications` |
 | **TASK-020** | Ampliar DB + fix emojis de categoría vs config.py | 3/10 | Medium | ✅ DONE | `assets/process_db.json` + `config.py` |
-| **TASK-021** | Cobertura de invariantes: GamingService, PackService, Cache TTL, Kill Recursivo | 5/10 | High | 🔵 PENDING | `docs/ai/testing-guide.md` |
+| **TASK-021** | Cobertura de invariantes: GamingService, PackService, Cache TTL, Kill Recursivo | 5/10 | High | ✅ DONE | `docs/ai/testing-guide.md` |

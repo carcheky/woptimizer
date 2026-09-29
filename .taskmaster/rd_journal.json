@@ -88,5 +88,16 @@
     "commits": ["31906e7 (process-db)", "4977b00 (fix config)"],
     "tests": {"before": "9 backend", "after": "11 backend, 0 fallos"},
     "impact": "BUG CRITICO: 6 de 8 categorias de process_db.json no existian en config.py por emojis invertidos, dejando todos esos procesos en '? Otros' sin semaforo. Segundo bug: get_safety_badge evaluaba priority antes que categoria, pintando 🔴 como 🟡. Fix ambos + 2 tests de regresion. Ademas 14 procesos nuevos (navegadores, launchers, herramientas de IA) = 48 total."
+  },
+  {
+    "cycle": 10,
+    "date": "2026-09-29T02:52:00",
+    "area": "Testing y Calidad",
+    "slug": "2026-09-29-critical-invariant-coverage",
+    "task": "TASK-021",
+    "status": "COMPLETED",
+    "commits": ["705e5f9 (tests)", "1a0faa9 (fix)"],
+    "tests": {"before": "11 backend", "after": "19 backend + 1 headless, 0 fallos"},
+    "impact": "BUG REAL CORREGIDO: model_copy() de Pydantic v2 es shallow, asi que las listas del pack Gaming se compartian con DEFAULT_GAMING_PACK. La UI muta in situ (on_add_to_pack), contaminando el global y volviendo reset_gaming_pack() un no-op silencioso. Fix: model_copy(deep=True). Test verificado que DISCRIMINA (falla sin el fix). Ademas 8 tests nuevos para invariantes sin cobertura tras la migracion v2->v3: GamingService.should_kill_for_gaming, PackService CRUD, cache TTL y kill recursivo. Hallazgo: los 11 test_*.py de la raiz estan muertos (importan process_manager de v2). Documentados como deuda, NO borrados."
   }
 ]
