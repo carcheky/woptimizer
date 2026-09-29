@@ -1,7 +1,7 @@
 {
   "project": "woptimizer",
   "version": "3.0.0",
-  "updated_at": "2026-09-28T20:55:00Z",
+  "updated_at": "2026-09-29T00:13:26Z",
   "active_task_id": "TASK-001",
   "tasks": [
     {
@@ -176,6 +176,17 @@
         "wraplength=600 en el CTkLabel para evitar desbordamiento horizontal"
       ],
       "notes": "TASK-013 completada: kill_processes y kill_pack_apps devuelven (killed, failed, skipped, freed_mb: float). dashboard_view.py actual tiene 76 líneas; insertar status_banner entre líneas 22-23 (_build_ui). Capturar retorno en execute_pack línea 73. Ver openspec/changes/2026-09-29-ram-telemetry-widget/proposal.md."
+    },
+    {
+      "id": "TASK-015",
+      "title": "Actualizacion Base de Datos de Procesos Gaming",
+      "description": "Escanear procesos activos del sistema, cruzar con assets/process_db.json e investigar 3-4 procesos nuevos relevantes (launchers, bloatware, herramientas gaming). Asignar categorias con semaforo gaming e inyectarlos en el JSON.",
+      "complexity": 3,
+      "priority": "medium",
+      "status": "completed",
+      "dependencies": [],
+      "module": "assets/process_db.json",
+      "notes": "Ciclo 4 - Area 3 Matriz Rotacion ID. Subagente: process-db-updater (flash)."
     }
   ]
 }

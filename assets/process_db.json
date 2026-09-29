@@ -148,5 +148,25 @@
         "category": "🟡 Chat y Comunicación",
         "priority": "low",
         "description": "Cliente de videollamadas Zoom."
+    },
+    "sharex": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Herramienta de capturas de pantalla. Consume 50-200 MB RAM, seguro cerrar durante gaming."
+    },
+    "crossdeviceservice": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "Servicio Microsoft Cross Device (Phone Link). No esencial, consume ~200 MB RAM."
+    },
+    "esrv_svc": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Intel Driver & Support Assistant (telemetría). Puede causar picos de latencia en juegos online."
+    },
+    "dsaservice": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Intel Driver & Support Assistant (actualizador). Bloatware que causa lag en juegos, seguro cerrar."
     }
 }
