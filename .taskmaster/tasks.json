@@ -430,7 +430,7 @@
     {
       "id": "TASK-027",
       "title": "Robustez de UI, inicio seguro de apps y orden de categorías (FIX-003, FIX-004, FIX-006)",
-      "description": "Corregir deficiencias de UI y ejecución de aplicaciones: (1) FIX-003: start_pack_apps en process_service.py debe prescindir de shell=True, validar rutas absolutas y emplear os.startfile en Windows; process_manager_view.py debe guardar exe_path; (2) FIX-004: process_manager_view.py debe ordenar categorías según CATEGORY_ORDER y no con sorted() alfabético; (3) FIX-006: PackService y UI deben permitir alternar favoritos de manera no excluyente (toggle multi-favorito).",
+      "description": "Corregir deficiencias de UI y ejecución de aplicaciones: (1) FIX-003: start_pack_apps en process_service.py debe prescindir de shell=True, validar rutas absolutas y emplear os.startfile en Windows; process_manager_view.py debe guardar exe_path; (2) FIX-004: process_manager_view.py debe ordenar categorías según CATEGORY_ORDER y no con sorted() alfabético; (3) FIX-006: toggle_favorite en UI debe permitir desmarcar un favorito pasando None a set_favorite, preservando el contrato exclusivo de PackService y el test de regresión test_pack_service_favorite_exclusive.",
       "complexity": 5,
       "priority": "high",
       "status": "pending",
@@ -442,7 +442,8 @@
       "acceptance_criteria": [
         "start_pack_apps ejecuta aplicaciones sin shell=True y maneja fallos con logging adecuado",
         "Las secciones en el Gestor de Procesos siguen el orden semántico 🟢 -> 🟡 -> 🔴 -> ⚪",
-        "Es posible activar o desactivar favoritos individualmente sin resetear el resto a False",
+        "Hacer click en la estrella de un pack ya favorito lo desmarca llamando a set_favorite(None)",
+        "test_pack_service_favorite_exclusive() sigue pasando sin modificaciones",
         "python verify_ui_syntax.py y tests pasan"
       ],
       "notes": "Derivado de la auditoría Opus 4.6 (FIX-003, FIX-004, FIX-006) en openspec/changes/2026-09-29-bugfix-audit-v3/."
@@ -450,7 +451,7 @@
     {
       "id": "TASK-028",
       "title": "Saneamiento de deuda técnica, migración de procesos y estructura de tests (FIX-010 al FIX-020)",
-      "description": "Limpieza general y consolidación del repositorio: (1) FIX-010: mover logging.basicConfig a función explícita setup_logging en __main__.py; (2) FIX-011: eliminar constante PROCESS_LIST_FILE y fichero saved_processes.json obsoleto; (3) FIX-012: limpiar is_expanded; (4) FIX-013: migrar procesos útiles de procesos.csv a assets/process_db.json respetando blindaje anti-brick; (5) FIX-014: crear directorio tests/ y consolidar suite de pytest; (6) FIX-015: limpiar json de perfiles legacy del root; (7) FIX-016 a FIX-020: eliminar imports redundantes, sincronizar docs y unificar versión 3.0.1.",
+      "description": "Limpieza general y consolidación del repositorio: (1) FIX-010: mover logging.basicConfig a función explícita setup_logging en __main__.py; (2) FIX-011: eliminar constante PROCESS_LIST_FILE y fichero saved_processes.json obsoleto; (3) FIX-012: limpiar is_expanded; (4) FIX-013: migrar procesos útiles de procesos.csv a assets/process_db.json respetando blindaje anti-brick; (5) FIX-014: PRESERVAR los 11 test_*.py del root por norma del propietario; consolidar suite viva en run_tests.py; (6) FIX-015: limpiar json de perfiles legacy del root; (7) FIX-016 a FIX-020: eliminar imports redundantes, sincronizar docs y unificar versión 3.0.1.",
       "complexity": 5,
       "priority": "medium",
       "status": "pending",
@@ -461,8 +462,8 @@
       "acceptance_criteria": [
         "config.py no ejecuta basicConfig al nivel de módulo",
         "assets/process_db.json enriquecido y blindado contra procesos de sistema",
-        "Directorio tests/ operativo ejecutable mediante pytest",
-        "Archivos legacy del root archivados o eliminados",
+        "Los 11 ficheros test_*.py históricos del root se conservan intactos",
+        "Archivos legacy del root (saved_processes.json, profiles.json v2) archivados o eliminados",
         "Documentación viva (data-models.md, architecture.md) 100% sincronizada",
         "Versión unificada en 3.0.1"
       ],
