@@ -99,5 +99,17 @@
     "commits": ["705e5f9 (tests)", "1a0faa9 (fix)"],
     "tests": {"before": "11 backend", "after": "19 backend + 1 headless, 0 fallos"},
     "impact": "BUG REAL CORREGIDO: model_copy() de Pydantic v2 es shallow, asi que las listas del pack Gaming se compartian con DEFAULT_GAMING_PACK. La UI muta in situ (on_add_to_pack), contaminando el global y volviendo reset_gaming_pack() un no-op silencioso. Fix: model_copy(deep=True). Test verificado que DISCRIMINA (falla sin el fix). Ademas 8 tests nuevos para invariantes sin cobertura tras la migracion v2->v3: GamingService.should_kill_for_gaming, PackService CRUD, cache TTL y kill recursivo. Hallazgo: los 11 test_*.py de la raiz estan muertos (importan process_manager de v2). Documentados como deuda, NO borrados."
+  },
+  {
+    "cycle": 11,
+    "date": "2026-09-29T09:50:00",
+    "area": "Resiliencia & Robustez",
+    "slug": "2026-09-29-git-tooling-resilience",
+    "task": "TASK-022",
+    "status": "COMPLETED",
+    "commits": ["6048f6f (architect)", "b9a31fa (fix)"],
+    "tests": {"before": "20", "after": "21, 0 fallos"},
+    "checkpoint": {"force_build": "OK", "exe_mb": 25.65, "note": "dist/woptimizer.exe regenerado con los fixes de los ciclos #9 y #10"},
+    "impact": "Fallo de integridad del pipeline: git_safe_commit.py (unica puerta de versionado) salia con codigo 0 ante CUALQUIER fallo de commit, asi que el pipeline registraba hashes que podian no existir y validate_docs.py no podia detectarlo. Evidencia real, no hipotetica: el .git del arbol de trabajo esta corrupto por el VFS de Nextcloud (fatal: bad object HEAD). Rehecho con contrato de 4 codigos de salida (0/1/2/3) y lineas WOPT_*, validacion real del repo sin fallback, y flag --verify. El arquitecto corrigio 3 errores de la propuesta: el match de 'nothing to commit' es locale-dependiente (nunca aparece en Windows en espanol) y se sustituyo por git diff --cached --quiet; un status fallido se tomaba por 'hay cambios'; y run_git confundia excepcion de Python con fallo de git. Ademas cerro el checkpoint de empaquetado (3 ciclos desde el #8) y recupero los 7 ficheros que el ciclo #10 dejo sin comitear."
   }
 ]

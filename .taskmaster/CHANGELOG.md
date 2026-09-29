@@ -297,3 +297,32 @@ Notificaciones nativas Windows al activar packs. Bug colateral resuelto: builds 
 Bug latente invisible durante meses corregido. El usuario podría añadir apps al Gaming pack, cerrar la app, reabrir, y pensar que se habían perdido: era el DEFAULT_GAMING_PACK contaminado en memoria.
 
 ---
+
+## [CYCLE-011] 2026-09-29 09:50 - 2026-09-29-git-tooling-resilience
+**Área**: Resiliencia & Robustez (matriz área 1, sin tocar desde el ciclo #6)
+**Change**: openspec/changes/2026-09-29-git-tooling-resilience/
+**Estado**: COMPLETED
+**Models**:
+- Paso 1 (Buscar): `inherit` (el modelo de la sesión; la matriz pide `flash`, se subió porque la búsqueda fue de código real, no un lookup)
+- Paso 2 (Planear): `inherit` (subagente `worker` + skill architect-review; la matriz pedía `pro`, se quedó en `inherit` porque el subagente no resolvió modelo explícito)
+- Paso 3 (Ejecutar): `inherit` (subagente `worker` + skill openspec-dev; coherente con la matriz)
+
+### What
+- **Fallo de integridad del pipeline, no de la app**: `git_safe_commit.py` —la unica puerta de versionado y la que AGENTS.md obliga a usar en cada cierre— capturaba CUALQUIER fallo de commit, imprimia `AVISO GIT` y salia con **codigo 0**. El pipeline lo leia como exito y el CHANGELOG (MANDATORY) registraba hashes que podian no existir.
+- Ademas `git add -A` fallido era solo un warning (staging parcial silencioso) y `get_env()` activaba el repo desacoplado con un simple `os.path.exists`, sin validarlo.
+- **Evidencia de que no era hipotetico**: el `.git` del arbol de trabajo esta corrupto por el VFS de Nextcloud (`fatal: bad object HEAD`); el historial solo sobrevive por el repo desacoplado en LOCALAPPDATA.
+- Rehecho: contrato de 4 codigos de salida (`0/1/2/3`) con lineas canonicas `WOPT_*`, validacion real del repo (`validar_repo`), sin fallback al `.git` corrupto, y flag `--verify` de solo lectura.
+- **El arquitecto corrigio 3 errores de la propuesta original**, el mas grave: decidir "nada que comitear" buscando `"nothing to commit"` en stderr depende de `LANG`/`LC_ALL` y en un Windows en espanol NO aparece nunca, lo que habria convertido un arbol limpio en un fallo. Ahora se decide con `git diff --cached --quiet` (locale-independiente).
+- Tambien cerro un agujero en la linea 55: un `status --porcelain` fallido se trataba como "hay cambios" en vez de como error.
+- Checkpoint de empaquetado (3 ciclos desde el #8): `force_build.py` OK, `dist/woptimizer.exe` regenerado (25.65 MB) ya con los fixes de los ciclos #9 y #10.
+- Recuperados 5 ficheros modificados + 2 sin seguimiento que el ciclo #10 dejo sin comitear: precisamente porque el wrapper reportaba exito en falso.
+
+### Outcome
+- Commits: `6048f6f` (architect), `b9a31fa` (fix)
+- Tests: 20 -> 21 (`run_tests.py`), 0 fallos; las 3 puertas en `rc=0` (`verify_ui_syntax.py`, `run_tests.py`, `validate_docs.py` 34 OK)
+- Docs: `docs/ai/sandbox-rules.md` (seccion NUEVA "Aislamiento Git en Entornos Cloud (VFS)"), `AGENTS.md` §3, `docs/ai/architecture.md` linea 39
+- **Verificacion independiente del orquestador**: los 5 comportamientos del contrato comprobados en vivo (repo sano=0, GIT_DIR inexistente=3, directorio no-repo=3, sin args=2, arbol limpio=0 con `WOPT_NOOP`), y **prueba de mutacion propia**: revirtiendo el fix el test falla con `AssertionError: ... debe salir con 3, salio con 0`, con restauracion byte-identica (SHA256 `C248F694...`).
+
+### Impact
+El pipeline deja de poder "completar" ciclos sin versionar nada. Antes, un fallo de commit era indistinguible de un commit correcto para todo el sistema; ahora es un `!= 0` que detiene el ciclo. Defecto de clase: un wrapper de seguridad que miente en su codigo de salida desactiva todas las validaciones que dependen de el (`validate_docs.py` nunca habria podido detectar un hash fantasma).
+
