@@ -66,5 +66,16 @@
     "benchmark_before": {"cold_scan_ms": 16.0, "cached_read_ms": "N/A"},
     "benchmark_after": {"cold_scan_ms": 15.0, "cached_read_ms": 0.003, "speedup": "~5000x"},
     "impact": "Rewrite de ProcessService: hashmap O(1) para lookup de DB, meta-cache memoizado (129 entries), cache TTL 2s para get_running_processes. Lecturas cacheadas en 0.003ms vs 15ms. Kill invalida cache."
+  },
+  {
+    "cycle": 8,
+    "date": "2026-09-29T02:41:00",
+    "area": "Gaming & Telemetria UX",
+    "slug": "2026-09-29-native-toast-notifications",
+    "task": "TASK-019",
+    "status": "COMPLETED",
+    "commits": ["283bc16 (architect)", "4797d6a (feat)"],
+    "tests": {"before": "5 backend", "after": "9 backend, 0 fallos"},
+    "impact": "NotificationService nuevo (envuelve pystray.Icon.notify, sin dependencias nuevas). Inyectado en MainWindow + 3 vistas. Autostart del tray en __init__ con guard idempotente. 4 tests headless nuevos. Fix colateral: pystray y Pillow declarados en pyproject.toml (faltaban, rompian builds PyInstaller)."
   }
 ]
