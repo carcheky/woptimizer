@@ -61,25 +61,36 @@ class WOptimizerApp:
         
         def show_action(icon, item):
             icon.stop()
+            self.tray_icon = None
             self.root.after(0, self.root.deiconify)
             
         def quit_action(icon, item):
             self.quit_app()
             
         def gaming_action(icon, item):
-            gaming_pack = self.pack_service.get_all_packs().get("gaming")
-            if gaming_pack:
-                import threading
-                threading.Thread(target=self.process_service.kill_pack_apps, args=(gaming_pack.apps,), daemon=True).start()
+            from woptimizer.config import logger
+            try:
+                gaming_pack = self.pack_service.get_all_packs().get("gaming")
+                if gaming_pack:
+                    import threading
+                    def _run():
+                        try:
+                            killed, failed, skipped, freed_mb = self.process_service.kill_pack_apps(gaming_pack.apps)
+                            logger.info(f"Tray Gaming Mode: {killed} killed, {failed} failed, {freed_mb:.1f} MB freed")
+                        except Exception as e:
+                            logger.error(f"Tray Gaming Mode error: {e}")
+                    threading.Thread(target=_run, daemon=True).start()
+            except Exception as e:
+                logger.error(f"Tray gaming_action error: {e}")
                 
         menu = (
             pystray.MenuItem('Mostrar App', show_action, default=True),
             pystray.MenuItem('🚀 Preparar Gaming Mode', gaming_action),
             pystray.MenuItem('Salir', quit_action)
         )
-        icon = pystray.Icon("woptimizer", image, "woptimizer v3", menu)
+        self.tray_icon = pystray.Icon("woptimizer", image, "woptimizer v3", menu)
         import threading
-        threading.Thread(target=icon.run, daemon=True).start()
+        threading.Thread(target=self.tray_icon.run, daemon=True).start()
 
     def run(self):
         try:

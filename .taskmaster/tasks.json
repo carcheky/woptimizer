@@ -1,7 +1,7 @@
 {
   "project": "woptimizer",
   "version": "3.0.0",
-  "updated_at": "2026-09-29T00:19:24Z",
+  "updated_at": "2026-09-29T00:23:00Z",
   "active_task_id": "TASK-001",
   "tasks": [
     {
@@ -201,6 +201,19 @@
       ],
       "module": "docs/ai/testing-guide.md",
       "notes": "Ciclo 5 - Area 5 Matriz Rotacion ID: Testing y Calidad."
+    },
+    {
+      "id": "TASK-017",
+      "title": "Robustez System Tray y Logging en start_pack_apps",
+      "description": "Guardar referencia al tray_icon en self para cierre limpio. Anadir logging en start_pack_apps para registrar fallos individuales. Mejorar gaming_action del tray para manejar errores.",
+      "complexity": 3,
+      "priority": "high",
+      "status": "completed",
+      "dependencies": [
+        "TASK-012"
+      ],
+      "module": "docs/ai/architecture.md",
+      "notes": "Ciclo 6 - Area 1 Matriz Rotacion ID: Resiliencia y Robustez."
     }
   ]
 }

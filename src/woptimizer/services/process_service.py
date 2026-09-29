@@ -244,8 +244,10 @@ class ProcessService:
             try:
                 subprocess.Popen(app, shell=True)
                 started += 1
-            except Exception:
+                logger.info(f"Launched app: {app}")
+            except Exception as e:
                 failed += 1
+                logger.warning(f"Failed to launch app '{app}': {e}")
         return started, failed
 
 
