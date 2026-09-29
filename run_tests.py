@@ -252,6 +252,55 @@ def test_notification_message_formatting():
     print("NotificationService message formatting OK.")
 
 
+def test_category_emoji_alignment():
+    """TASK-020: cada categoría del JSON DEBE existir literalmente en config.py.
+
+    Si un emoji no coincide exactamente, el lookup por categoría falla y el
+    proceso cae en "? Otros", perdiendo su semáforo de seguridad.
+    """
+    print("Testing category emoji alignment...")
+    import json
+    from woptimizer.config import PROCESS_CATEGORIES
+
+    with open("assets/process_db.json", encoding="utf-8") as fh:
+        db = json.load(fh)
+
+    db_cats = {meta.get("category") for meta in db.values()}
+    cfg_cats = set(PROCESS_CATEGORIES.keys())
+
+    orphans = db_cats - cfg_cats
+    assert not orphans, f"Categorias del JSON ausentes en config.py: {orphans}"
+
+    # Toda categoría de config.py usada por el JSON debe tener badge coherente
+    print(f"Category emoji alignment OK ({len(db_cats)} categorias, 0 huerfanas).")
+
+
+def test_safety_badge_category_priority_order():
+    """TASK-020: la categoría manda sobre la prioridad en get_safety_badge.
+
+    Regresión del bug donde `priority in [medium, low]` se evaluaba antes que
+    el emoji de categoría, pintando 🔴 como 🟡 PRECAUCIÓN.
+    """
+    print("Testing safety badge category/priority order...")
+    from woptimizer.config import get_safety_badge
+
+    # 🔴 debe ganar a cualquier prioridad
+    for prio in ("low", "medium", "high", "none"):
+        r = get_safety_badge("\U0001F534 Overlays e Info", prio)
+        assert r["text"].startswith("\U0001F534"), f"Overlays prio={prio} -> {r['text']}"
+        r = get_safety_badge("\U0001F534 Sistema de Windows", prio)
+        assert r["text"].startswith("\U0001F534"), f"Sistema prio={prio} -> {r['text']}"
+
+    # 🟢 y 🟡 con sus prioridades esperadas
+    assert "SEGURO" in get_safety_badge("\U0001F7E2 Navegadores", "high")["text"]
+    assert "SEGURO" in get_safety_badge("\U0001F7E2 Sincronización", "high")["text"]
+    assert "SEGURO" in get_safety_badge("\U0001F7E2 Productividad", "medium")["text"]
+    assert "PRECAUCI" in get_safety_badge("\U0001F7E1 Chat y Comunicación", "low")["text"]
+    assert "PRECAUCI" in get_safety_badge("\U0001F7E1 Media y Streaming", "medium")["text"]
+    assert "PRECAUCI" in get_safety_badge("\U0001F7E1 Launchers Gaming", "none")["text"]
+    print("Safety badge category/priority order OK.")
+
+
 if __name__ == "__main__":
     print("--- Running Backend Tests ---")
     test_models()
@@ -263,6 +312,8 @@ if __name__ == "__main__":
     test_notification_attach_detach()
     test_notification_never_raises()
     test_notification_message_formatting()
+    test_category_emoji_alignment()
+    test_safety_badge_category_priority_order()
     print("\n--- Running Headless UI Test ---")
     test_headless_ui()
     print("\nALL TESTS PASSED.")

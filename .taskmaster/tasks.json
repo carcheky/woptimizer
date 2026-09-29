@@ -254,6 +254,26 @@
         "tests/test_services.py incluye 2-3 tests headless para NotificationService"
       ],
       "notes": "Ciclo 8 - Area 2 Matriz Rotacion ID: Gaming & Telemetria UX. Ver openspec/changes/2026-09-29-native-toast-notifications/proposal.md."
+    },
+    {
+      "id": "TASK-020",
+      "title": "Ampliar Base de Datos de Procesos: Navegadores, Launchers y Herramientas de IA",
+      "description": "Escanear procesos activos del sistema local y cruzar con assets/process_db.json. Huecos detectados en ciclo 9: (1) Solo 3 navegadores (chrome/firefox/msedge) faltan Brave, Opera, Vivaldi, Yandex, Arc. (2) Solo 2 launchers (steam/epicgameslauncher) faltan Battle.net, RiotClient, UbisoftConnect, EA Desktop, Bethesda. (3) CERO entradas de herramientas de IA (ChatGPT, Claude Desktop, Copilot, Cursor) que son el mayor consumidor de RAM en 2026. (4) Solo 3 entradas en Overlays e Info.",
+      "complexity": 3,
+      "priority": "medium",
+      "dependencies": [],
+      "module": "assets/process_db.json",
+      "status": "pending",
+      "acceptance_criteria": [
+        "Escaneo de procesos activos con psutil para identificar los no registrados",
+        "Anadir 8-14 procesos nuevos relevantes a assets/process_db.json",
+        "Cada entrada con category, priority y description en espanol",
+        "Prioridades coherentes: navegadores=high, IA=high, launchers=none, overlays=low",
+        "El esquema sigue siendo dict[str, dict] con claves en minusculas sin extension",
+        "El JSON permanece valido y parseable tras la edicion",
+        "Commit: chore(process-db): actualizar procesos gaming, navegadores e IA"
+      ],
+      "notes": "Ciclo 9 - Area 3 Matriz Rotacion ID: Base de Datos y Procesos. Subagente: process-db-updater (flash)."
     }
   ]
 }

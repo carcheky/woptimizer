@@ -42,4 +42,5 @@
 | **TASK-016** | Ampliación Tests Headless + Tipado Pydantic | 4/10 | Medium | ✅ DONE | `testing-quality` |
 | **TASK-017** | Robustez System Tray + Logging start_pack_apps | 3/10 | High | ✅ DONE | `resilience-tray-logging` |
 | **TASK-018** | Cache TTL + Hashmap O(1) en ProcessService | 6/10 | High | ✅ DONE | `perf-cache-hashmap` |
-| **TASK-019** | Notificaciones Nativas Windows (Toast Balloon) | 4/10 | Medium | 🔵 PENDING | ✅ `2026-09-29-native-toast-notifications` |
+| **TASK-019** | Notificaciones Nativas Windows (Toast Balloon) | 4/10 | Medium | ✅ DONE | ✅ `2026-09-29-native-toast-notifications` |
+| **TASK-020** | Ampliar DB: Navegadores, Launchers y Herramientas de IA | 3/10 | Medium | 🔵 PENDING | `assets/process_db.json` |
