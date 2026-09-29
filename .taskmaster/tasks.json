@@ -357,7 +357,7 @@
         "PackManagerView recibe un status_label nuevo: hoy no tiene ninguno y kill_pack/delete_pack/remove_app_from_pack no dan feedback visible",
         "delete_pack da feedback INLINE en los dos fallos reales: pack protegido (ValueError) y pack inexistente (return False ignorado hoy)",
         "El token de confirmacion en PackManagerView es el pack.id, no el objeto Pack: reset_gaming_pack() lo reemplaza por un model_copy y dejaria la referencia obsoleta",
-        "Cero messagebox en src/ (verificable con grep)",
+        "Cero messagebox en src/ (verificable con el grep `messagebox|askyesno|showinfo|showwarning`, que NO puede dar cero: `confirm` ahora matchea por diseño porque el modulo se llama ui/confirmation.py y PENDIENTE_TEXT contiene 'PULSA OTRA VEZ')",
         "verify_ui_syntax.py incluye src/woptimizer/ui/confirmation.py en files_to_check (hoy es una lista fija y daria verde en falso)",
         "Test headless del helper puro, sin abrir ventana, que DISCRIMINE (falla sin el fix)",
         "python verify_ui_syntax.py y python run_tests.py en verde",

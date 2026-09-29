@@ -22,7 +22,10 @@
     "slug": "2026-09-29-ram-telemetry-widget",
     "task": "TASK-014",
     "status": "COMPLETED",
-    "commits": ["617eef8 (architect)", "dc7c30c (feat)"],
+    "commits": [
+      "617eef8 (architect)",
+      "dc7c30c (feat)"
+    ],
     "impact": "Banner dinámico de telemetría en DashboardView: muestra procesos cerrados y MB liberados tras activar packs. Thread-safe via self.after(0,...). Auto-hide a 5s. Colores gaming (#1DB954) vs kill (#4a9fd4)."
   },
   {
@@ -32,7 +35,9 @@
     "slug": "2026-09-29-process-db-update",
     "task": "TASK-015",
     "status": "COMPLETED",
-    "commits": ["c362eda"],
+    "commits": [
+      "c362eda"
+    ],
     "impact": "4 procesos nuevos añadidos a process_db.json (34 total): sharex, crossdeviceservice, esrv_svc, dsaservice. Todos 🟢 high — bloatware/telemetría seguro de cerrar durante gaming."
   },
   {
@@ -42,7 +47,9 @@
     "slug": "2026-09-29-testing-quality",
     "task": "TASK-016",
     "status": "COMPLETED",
-    "commits": ["786a551"],
+    "commits": [
+      "786a551"
+    ],
     "impact": "3 tests nuevos en run_tests.py (7 total): freed_mb return type, gaming pack protected, corrupted JSON recovery. Docs testing-guide.md actualizado."
   },
   {
@@ -52,7 +59,9 @@
     "slug": "2026-09-29-resilience-tray-logging",
     "task": "TASK-017",
     "status": "COMPLETED",
-    "commits": ["60c713d"],
+    "commits": [
+      "60c713d"
+    ],
     "impact": "Fix tray_icon no guardada en self (cierre limpio imposible), gaming_action con try/except+logging, start_pack_apps con logger.info/warning individual."
   },
   {
@@ -62,9 +71,18 @@
     "slug": "2026-09-29-perf-cache-hashmap",
     "task": "TASK-018",
     "status": "COMPLETED",
-    "commits": ["2fc51c3"],
-    "benchmark_before": {"cold_scan_ms": 16.0, "cached_read_ms": "N/A"},
-    "benchmark_after": {"cold_scan_ms": 15.0, "cached_read_ms": 0.003, "speedup": "~5000x"},
+    "commits": [
+      "2fc51c3"
+    ],
+    "benchmark_before": {
+      "cold_scan_ms": 16.0,
+      "cached_read_ms": "N/A"
+    },
+    "benchmark_after": {
+      "cold_scan_ms": 15.0,
+      "cached_read_ms": 0.003,
+      "speedup": "~5000x"
+    },
     "impact": "Rewrite de ProcessService: hashmap O(1) para lookup de DB, meta-cache memoizado (129 entries), cache TTL 2s para get_running_processes. Lecturas cacheadas en 0.003ms vs 15ms. Kill invalida cache."
   },
   {
@@ -74,8 +92,14 @@
     "slug": "2026-09-29-native-toast-notifications",
     "task": "TASK-019",
     "status": "COMPLETED",
-    "commits": ["283bc16 (architect)", "4797d6a (feat)"],
-    "tests": {"before": "5 backend", "after": "9 backend, 0 fallos"},
+    "commits": [
+      "283bc16 (architect)",
+      "4797d6a (feat)"
+    ],
+    "tests": {
+      "before": "5 backend",
+      "after": "9 backend, 0 fallos"
+    },
     "impact": "NotificationService nuevo (envuelve pystray.Icon.notify, sin dependencias nuevas). Inyectado en MainWindow + 3 vistas. Autostart del tray en __init__ con guard idempotente. 4 tests headless nuevos. Fix colateral: pystray y Pillow declarados en pyproject.toml (faltaban, rompian builds PyInstaller)."
   },
   {
@@ -85,8 +109,14 @@
     "slug": "2026-09-29-config-category-emoji-alignment",
     "task": "TASK-020",
     "status": "COMPLETED",
-    "commits": ["31906e7 (process-db)", "4977b00 (fix config)"],
-    "tests": {"before": "9 backend", "after": "11 backend, 0 fallos"},
+    "commits": [
+      "31906e7 (process-db)",
+      "4977b00 (fix config)"
+    ],
+    "tests": {
+      "before": "9 backend",
+      "after": "11 backend, 0 fallos"
+    },
     "impact": "BUG CRITICO: 6 de 8 categorias de process_db.json no existian en config.py por emojis invertidos, dejando todos esos procesos en '? Otros' sin semaforo. Segundo bug: get_safety_badge evaluaba priority antes que categoria, pintando 🔴 como 🟡. Fix ambos + 2 tests de regresion. Ademas 14 procesos nuevos (navegadores, launchers, herramientas de IA) = 48 total."
   },
   {
@@ -96,8 +126,14 @@
     "slug": "2026-09-29-critical-invariant-coverage",
     "task": "TASK-021",
     "status": "COMPLETED",
-    "commits": ["705e5f9 (tests)", "1a0faa9 (fix)"],
-    "tests": {"before": "11 backend", "after": "19 backend + 1 headless, 0 fallos"},
+    "commits": [
+      "705e5f9 (tests)",
+      "1a0faa9 (fix)"
+    ],
+    "tests": {
+      "before": "11 backend",
+      "after": "19 backend + 1 headless, 0 fallos"
+    },
     "impact": "BUG REAL CORREGIDO: model_copy() de Pydantic v2 es shallow, asi que las listas del pack Gaming se compartian con DEFAULT_GAMING_PACK. La UI muta in situ (on_add_to_pack), contaminando el global y volviendo reset_gaming_pack() un no-op silencioso. Fix: model_copy(deep=True). Test verificado que DISCRIMINA (falla sin el fix). Ademas 8 tests nuevos para invariantes sin cobertura tras la migracion v2->v3: GamingService.should_kill_for_gaming, PackService CRUD, cache TTL y kill recursivo. Hallazgo: los 11 test_*.py de la raiz estan muertos (importan process_manager de v2). Documentados como deuda, NO borrados."
   },
   {
@@ -107,9 +143,36 @@
     "slug": "2026-09-29-git-tooling-resilience",
     "task": "TASK-022",
     "status": "COMPLETED",
-    "commits": ["6048f6f (architect)", "b9a31fa (fix)"],
-    "tests": {"before": "20", "after": "21, 0 fallos"},
-    "checkpoint": {"force_build": "OK", "exe_mb": 25.65, "note": "dist/woptimizer.exe regenerado con los fixes de los ciclos #9 y #10"},
+    "commits": [
+      "6048f6f (architect)",
+      "b9a31fa (fix)"
+    ],
+    "tests": {
+      "before": "20",
+      "after": "21, 0 fallos"
+    },
+    "checkpoint": {
+      "force_build": "OK",
+      "exe_mb": 25.65,
+      "note": "dist/woptimizer.exe regenerado con los fixes de los ciclos #9 y #10"
+    },
     "impact": "Fallo de integridad del pipeline: git_safe_commit.py (unica puerta de versionado) salia con codigo 0 ante CUALQUIER fallo de commit, asi que el pipeline registraba hashes que podian no existir y validate_docs.py no podia detectarlo. Evidencia real, no hipotetica: el .git del arbol de trabajo esta corrupto por el VFS de Nextcloud (fatal: bad object HEAD). Rehecho con contrato de 4 codigos de salida (0/1/2/3) y lineas WOPT_*, validacion real del repo sin fallback, y flag --verify. El arquitecto corrigio 3 errores de la propuesta: el match de 'nothing to commit' es locale-dependiente (nunca aparece en Windows en espanol) y se sustituyo por git diff --cached --quiet; un status fallido se tomaba por 'hay cambios'; y run_git confundia excepcion de Python con fallo de git. Ademas cerro el checkpoint de empaquetado (3 ciclos desde el #8) y recupero los 7 ficheros que el ciclo #10 dejo sin comitear."
+  },
+  {
+    "cycle": 12,
+    "date": "2026-09-29T10:30:00",
+    "area": "Gaming & Telemetria UX",
+    "slug": "2026-09-29-double-tap-confirmation",
+    "task": "TASK-023",
+    "status": "COMPLETED",
+    "commits": [
+      "fcd4f73 (architect)",
+      "30c0f11 (fix)"
+    ],
+    "tests": {
+      "before": "21",
+      "after": "22, 0 fallos"
+    },
+    "impact": "REGRESION SILENCIOSA DE LA REESCRITURA v2->v3: el patron de doble pulsacion para acciones destructivas (nacido de un incidente real: un messagebox que se abria detras de la ventana) se perdio al reescribir, y 5 acciones destructivas quedaron sin confirmar nada. La grave es Cerrar Seleccionados, que mata N procesos de un clic, agravada porque refresh_dashboard coloca los packs de dos en dos en la misma fila y el boton Gaming tenia un pack vecino pegado. Implementado en un solo sitio: ui/confirmation.py con DoubleTapGuard (maquina de estado pura, testeable headless, scheduler inyectable) y Confirmable (mixin). Auto-revert ~3s, invalidacion al cambiar la seleccion y destroy() en las 3 vistas para matar el after vivo. PackManagerView recibio su status_label, que no tenia, para poder dar feedback inline. Trampa #14 documentada. El arquitecto hallo 3 errores criticos en la propuesta: el boton de la portada no era Modo Gaming y ademas arranca apps (confirmar a ciegas habria metido confirmacion en el arranque), el except ValueError: pass era inalcanzable desde la UI y el fallo real era ignorar el retorno False, y PackManagerView no tenia status_label; ademas congelar los ProcessInfo habria sido un fallo de seguridad por reciclaje de PIDs."
   }
 ]

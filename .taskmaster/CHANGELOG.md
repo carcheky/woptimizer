@@ -326,3 +326,35 @@ Bug latente invisible durante meses corregido. El usuario podría añadir apps a
 ### Impact
 El pipeline deja de poder "completar" ciclos sin versionar nada. Antes, un fallo de commit era indistinguible de un commit correcto para todo el sistema; ahora es un `!= 0` que detiene el ciclo. Defecto de clase: un wrapper de seguridad que miente en su codigo de salida desactiva todas las validaciones que dependen de el (`validate_docs.py` nunca habria podido detectar un hash fantasma).
 
+---
+
+## [CYCLE-012] 2026-09-29 10:30 - 2026-09-29-double-tap-confirmation
+**Área**: Gaming & Telemetría UX (matriz área 2, sin tocar desde el ciclo #8)
+**Change**: openspec/changes/2026-09-29-double-tap-confirmation/
+**Estado**: COMPLETED
+**Models**:
+- Paso 1 (Buscar): `inherit`
+- Paso 2 (Planear): `inherit` (subagente `worker` + skill architect-review)
+- Paso 3 (Ejecutar): `inherit` (subagente `worker` + skill openspec-dev)
+
+### What
+- **REGRESION SILENCIOSA DE LA REESCRITURA v2->v3**: la v2 tenia doble pulsacion para confirmar acciones destructivas, introducida tras un incidente real (un `messagebox.askyesno` se abria POR DETRAS de la ventana, el usuario pulsaba, no veia nada y reporto "se ha roto, no mata procesos"). El patron se perdio al reescribir: grep de `messagebox|askyesno|showinfo|showwarning|_request_confirm|confirm` sobre `src/` daba **cero coincidencias**. 5 acciones destructivas-operaban sin confirmar nada.
+- La mas grave: **"Cerrar Seleccionados" mata N procesos a pelo** con un solo clic; y en la portada, `refresh_dashboard` coloca los favoritos **de dos en dos** en la misma fila, asi que el boton Gaming tenia un pack vecino pegado y un dedo gordo podia matar los procesos del pack equivocado.
+- Segundo fallo: `PackManagerView` **no tenia `status_label`**, o sea que sus acciones no podian dar feedback inline. Se creo.
+- Implementado en **un solo sitio**: `ui/confirmation.py` con dos capas — `DoubleTapGuard` (maquina de estado pura, sin `customtkinter`, con `scheduler` inyectable, testeable headless) y `Confirmable` (mixin fino que solo toca widgets).
+- Auto-revert a los ~3 s, invalidacion si cambia la seleccion entre pulsaciones, y `destroy()` en las 3 vistas para matar el `after` vivo.
+- `on_kill_selected` dejo de hacer `return` mudo sin seleccion (el usuario iba a pensar que el boton estaba roto).
+- Documentada la **Trampa #14** en `docs/known-issues.md`, que cierra la laguna #13 -> #14: el porque del patron ya no se pierde en la proxima reescritura.
+- **El arquitecto encontro 3 errores CRITICOS en la propuesta, y 6 mas**: el boton de la portada no se llamaba "Modo Gaming" (era `f"{pack.name}\\n(...)"` y ademas *arranca* apps si la accion no es `kill`, asi que confirmar a ciegas habria metido confirmacion en acciones de arranque); el `except ValueError: pass` era **inalcanzable** desde la UI y el fallo silencioso real era que se ignoraba el retorno `False`; y `PackManagerView` no tenia `status_label`. Ademas: congelar los `ProcessInfo` habria sido un fallo de seguridad (los PIDs se reciclan en 3 s), y habia "4 vistas" cuando son 3.
+
+### Outcome
+- Commits: `fcd4f73` (architect), `30c0f11` (fix)
+- Tests: 21 -> 22 (`run_tests.py`), 0 fallos; gates: `verify_ui_syntax.py` EXITO (8/8, incluido el modulo nuevo), `run_tests.py` ALL TESTS PASSED, `validate_docs.py` 35 OK / 0 FAIL
+- Docs: `docs/known-issues.md` (Trampa #14), `docs/ai/ui-design-system.md` (seccion nueva), `verify_ui_syntax.py` (el helper nuevo estaba en su lista fija, si no daba verde en falso)
+- **Verificacion independiente del orquestador**: commit y arbol limpios, cero `messagebox` en `src/`, Trampa #14 en la linea 282, y **prueba de mutacion propia**: anulando `arm()` el test revienta con `AssertionError` y `rc=1`, con restauracion byte-identica (SHA256 `3BAE03FB...`).
+- Criterio de aceptacion corregido: "cero `confirm` en `src/`" era imposible de cumplir (el modulo se llama `confirmation.py`); acotado al grep real `messagebox|askyesno|showinfo|showwarning`.
+
+### Impact
+Se recupera una proteccion que el usuario pidio expresamente y que la reescritura borro sin dejar rastro. El patron es ahora una norma documentada con su porque, asi que la siguiente reescritura ya no lo pierde. Y el riesgo mayor que se cierra es el peor de todos en esta app: matar por error los procesos equivocados, sin aviso y sin vuelta atras.
+
+
