@@ -58,6 +58,7 @@ src/woptimizer/
    $env:GIT_DIR = "$env:LOCALAPPDATA\woptimizer_git\.git"
    $env:GIT_WORK_TREE = "C:\Users\carch\Nextcloud\Scripts\woptimizer"
    ```
+   **Nunca comitear a pelo:** usa siempre `python .taskmaster/git_safe_commit.py "..."`. Su código de salida es un contrato normativo (`0` commit o no-op, `1` fallo de git, `2` uso incorrecto, `3` repo no verificable, con línea canónica `WOPT_*` en stdout) documentado en `docs/ai/sandbox-rules.md`; `--verify` diagnostica el repo sin escribir nada.
 
 ## Comandos Rápidos
 ```bash

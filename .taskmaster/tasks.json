@@ -312,7 +312,7 @@
         "TASK-021"
       ],
       "module": "docs/ai/sandbox-rules.md",
-      "status": "in_progress",
+      "status": "completed",
       "acceptance_criteria": [
         "Contrato de salida EXACTO: 0 = commit creado (imprime WOPT_COMMIT_OK <hash-short>) o nada que comitear (imprime WOPT_NOOP, SIN hash); 1 = fallo de git (add o commit); 2 = uso incorrecto; 3 = repo no verificable. Ningun otro desenlace devuelve 0",
         "git status --porcelain fallido es fatal: NO se interpreta como arbol con cambios (hoy lineas 54-55 lo hacen)",

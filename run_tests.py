@@ -1,5 +1,6 @@
 import sys
 import os
+import ast
 import io
 import time
 
@@ -775,6 +776,155 @@ def test_kill_recursive():
     print("Kill recursivo OK.")
 
 
+class _SinDocstrings(ast.NodeTransformer):
+    """Elimina las docstrings de un arbol AST (no son codigo ejecutable)."""
+
+    def _strip(self, node):
+        self.generic_visit(node)
+        if (node.body and isinstance(node.body[0], ast.Expr)
+                and isinstance(node.body[0].value, ast.Constant)
+                and isinstance(node.body[0].value.value, str)):
+            node.body.pop(0)
+        return node
+
+    visit_Module = _strip
+    visit_FunctionDef = _strip
+    visit_AsyncFunctionDef = _strip
+    visit_ClassDef = _strip
+
+
+def _codigo_ejecutable(fuente):
+    """Reconstruye el codigo real de un fuente: sin comentarios ni docstrings.
+
+    `ast.unparse` descarta los comentarios, y el transformer quita las
+    docstrings. Asi el guard anti-regresion solo puede dispararse por codigo que
+    se EJECUTA, nunca por un texto que explica la regla.
+    """
+    arbol = _SinDocstrings().visit(ast.parse(fuente))
+    ast.fix_missing_locations(arbol)
+    return ast.unparse(arbol)
+
+
+def test_git_safe_commit_fail_safe():
+    """TASK-022: `.taskmaster/git_safe_commit.py` es fail-safe.
+
+    El wrapper es la unica puerta de salida del versionado, asi que su codigo de
+    salida DEBE ser honesto: 0 solo si hubo commit o no habia nada que comitear.
+    Antes de TASK-022 devolvia 0 ante cualquier fallo (repo invalido incluido), de
+    modo que este test discrimina de verdad: revierte el fix y falla.
+
+    Se invoca como subproceso con `GIT_DIR` apuntado a rutas temporales invalidas
+    (la precedencia de `GIT_DIR` del entorno es la via documentada en AGENTS.md y
+    el hook que permite tests hermeticos). NO se toca el repo real ni su
+    historial: el wrapper nunca llega a escribir con un repo invalido.
+    """
+    print("Testing git_safe_commit fail-safe (codigos de salida)...")
+    import subprocess
+    import sys as _sys
+    import tempfile
+
+    root = os.path.dirname(os.path.abspath(__file__))
+    wrapper = os.path.join(root, ".taskmaster", "git_safe_commit.py")
+    assert os.path.exists(wrapper), f"No se encuentra el wrapper: {wrapper}"
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t022_")
+    # Dos formas de repo invalido, porque el contrato exige que NO baste con
+    # os.path.exists(): (a) ruta inexistente, (b) directorio que no es un repo.
+    git_dir_inexistente = os.path.join(tmp, "no_existe_este_git_dir")
+    git_dir_no_repo = os.path.join(tmp, "directorio_sin_repo")
+    os.makedirs(git_dir_no_repo)
+
+    def invocar(args, git_dir):
+        env = os.environ.copy()
+        env["GIT_DIR"] = git_dir
+        env["GIT_WORK_TREE"] = root
+        return subprocess.run(
+            [_sys.executable, wrapper] + args,
+            cwd=root,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+        )
+
+    try:
+        # 1) GIT_DIR inexistente -> 3 (NO 0, NO 1: no pude ni comprobar).
+        r = invocar(["test(t022): este mensaje no debe llegar a comitear"], git_dir_inexistente)
+        assert r.returncode == 3, (
+            f"Un GIT_DIR inexistente debe salir con 3, salio con {r.returncode}. "
+            f"stdout={r.stdout!r} stderr={r.stderr!r}"
+        )
+        assert "WOPT_REPO_INVALIDO" in r.stdout, (
+            f"Falta la linea canonica WOPT_REPO_INVALIDO en stdout: {r.stdout!r}"
+        )
+        assert "WOPT_COMMIT_OK" not in r.stdout, (
+            f"Un repo invalido NUNCA puede reportar commit creado: {r.stdout!r}"
+        )
+
+        # 2) GIT_DIR que existe pero no es un repo -> 3 tambien. Este caso
+        #    discrimina una implementacion que solo compruebe os.path.exists().
+        r2 = invocar(["--verify"], git_dir_no_repo)
+        assert r2.returncode == 3, (
+            f"Un directorio que no es repo debe salir con 3, salio con {r2.returncode}. "
+            f"stdout={r2.stdout!r}"
+        )
+        assert "WOPT_REPO_INVALIDO" in r2.stdout, (
+            f"--verify debe emitir WOPT_REPO_INVALIDO: {r2.stdout!r}"
+        )
+
+        # 3) El camino de commit con un directorio no-repo tambien es 3, no 0.
+        r3 = invocar(["test(t022): sigue sin comitear"], git_dir_no_repo)
+        assert r3.returncode == 3, (
+            f"Un directorio que no es repo debe salir con 3, salio con {r3.returncode}. "
+            f"stdout={r3.stdout!r}"
+        )
+
+        # 4) Uso incorrecto -> 2 (sin mensaje, mensaje vacio, flag desconocido).
+        for args, etiqueta in (
+            ([], "sin argumentos"),
+            (["   "], "mensaje vacio"),
+            (["--flag-inventado"], "flag desconocido"),
+        ):
+            ru = invocar(args, git_dir_inexistente)
+            assert ru.returncode == 2, (
+                f"Uso incorrecto ({etiqueta}) debe salir con 2, salio con "
+                f"{ru.returncode}. stdout={ru.stdout!r}"
+            )
+            assert "WOPT_USAGE" in ru.stdout, (
+                f"Falta WOPT_USAGE ({etiqueta}): {ru.stdout!r}"
+            )
+
+        # 5) El wrapper no debe "arreglar" ni crear el GIT_DIR que se le dio, ni
+        #    dejar rastro de escritura cuando el repo no valida.
+        assert not os.path.exists(git_dir_inexistente), (
+            f"El wrapper no debe crear el GIT_DIR invalido: {git_dir_inexistente}"
+        )
+        assert os.listdir(git_dir_no_repo) == [], (
+            f"--verify es de solo lectura: {git_dir_no_repo} no debe recibir escrituras, "
+            f"contiene {os.listdir(git_dir_no_repo)}"
+        )
+
+        # 6) Guarda estatica anti-regresion de la correccion de arquitectura:
+        #    "nada que comitear" NO puede decidirse parseando el texto de git
+        #    (git lo traduce segun LANG/LC_ALL y en un Windows en espanol la
+        #    cadena literal nunca aparece).
+        with open(wrapper, "r", encoding="utf-8") as fh:
+            fuente = fh.read()
+        codigo = _codigo_ejecutable(fuente).lower()
+        for prohibido in ("nothing to commit", "working tree clean"):
+            assert prohibido not in codigo, (
+                f"El wrapper no debe decidir nada que comitear con el texto "
+                f"{prohibido!r}: se traduce segun el locale. Usa "
+                f"'git diff --cached --quiet'."
+            )
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("git_safe_commit fail-safe OK.")
+
+
 if __name__ == "__main__":
     print("--- Running Backend Tests ---")
     test_models()
@@ -796,6 +946,7 @@ if __name__ == "__main__":
     test_gaming_pack_lists_isolated_from_global()
     test_cache_ttl_and_invalidation()
     test_kill_recursive()
+    test_git_safe_commit_fail_safe()
     print("\n--- Running Headless UI Test ---")
     test_headless_ui()
     print("\nALL TESTS PASSED.")
