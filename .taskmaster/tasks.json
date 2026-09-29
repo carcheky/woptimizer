@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.0",
   "updated_at": "2026-09-29T10:45:00Z",
-  "active_task_id": "TASK-001",
+  "active_task_id": "TASK-025",
   "tasks": [
     {
       "id": "TASK-001",
@@ -390,6 +390,83 @@
         "Cierre limpio: arbol de git con 0 cambios pendientes"
       ],
       "notes": "Ciclo 13 - Area 3 Matriz Rotacion ID: Base de Datos y Procesos. Subagente: process-db-updater. El riesgo dominante es de seguridad, no tecnico: un nombre mal escrito o un emoji de categoria desalineado puede hacer que la app ofrezca matar procesos del sistema. Por eso el blindaje y su test son la mitad del trabajo, no una mejora. Ver openspec/changes/2026-09-29-real-bloatware-scan/proposal.md."
+    },
+    {
+      "id": "TASK-025",
+      "title": "Conectar GamingService al runtime de ejecución de Gaming Mode (FIX-002 + FIX-008)",
+      "description": "Actualmente GamingService.should_kill_for_gaming() nunca es invocado en tiempo de ejecución; las acciones de Gaming Mode en app.py, dashboard_view.py y pack_manager_view.py solo llaman a kill_pack_apps(pack.apps), ignorando target_categories. Implementar execute_gaming_pack(gaming_pack) en GamingService para escanear procesos activos, filtrar con should_kill_for_gaming y terminarlos con kill_processes. Inyectar gaming_service en DashboardView y PackManagerView. Conectar el menú del tray para invocar execute_gaming_pack. Agregar test headless de integración que valide el cierre automático por categoría respetando keepers.",
+      "complexity": 6,
+      "priority": "critical",
+      "status": "pending",
+      "dependencies": [],
+      "module": "docs/ai/architecture.md",
+      "acceptance_criteria": [
+        "GamingService cuenta con método execute_gaming_pack(pack: Pack) -> Tuple[int, int, int, float]",
+        "El tray y las vistas DashboardView y PackManagerView invocan execute_gaming_pack al preparar o apagar el pack Gaming",
+        "Los procesos pertenecientes a target_categories son evaluados y terminados según las reglas de gaming",
+        "Los procesos en keepers nunca son terminados",
+        "python verify_ui_syntax.py y python run_tests.py pasan sin errores"
+      ],
+      "notes": "Derivado de la auditoría Opus 4.6 (FIX-002, FIX-008) en openspec/changes/2026-09-29-bugfix-audit-v3/."
+    },
+    {
+      "id": "TASK-026",
+      "title": "Integridad de datos, copia profunda y resiliencia de servicios (FIX-001, FIX-005, FIX-007, FIX-009)",
+      "description": "Corregir 4 fallas críticas de datos y servicios: (1) FIX-001: get_gaming_pack() en pack_service.py debe usar DEFAULT_GAMING_PACK.model_copy(deep=True) en su fallback para evitar contaminación del global; (2) FIX-005: _DEFAULT_META en process_service.py debe ser ('⚪ Otros', 'none', 'Sin descripción') para coincidir con CATEGORY_ORDER y models.py; (3) FIX-007: eliminar race condition en process_manager_view.py _do_load calculando en variables locales del thread y aplicando en el main thread; (4) FIX-009: PackService.save() debe crear backup preventivo profiles.json.bak antes de sobrescribir el archivo.",
+      "complexity": 4,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [],
+      "module": "docs/ai/data-models.md",
+      "acceptance_criteria": [
+        "get_gaming_pack() retorna copia profunda cuando utiliza el fallback predeterminado",
+        "_DEFAULT_META utiliza el emoji ⚪ Otros alineado con config y models",
+        "No se mutan self.processes ni self.grouped_processes fuera del hilo de Tkinter",
+        "Cada guardado de perfiles genera una copia de respaldo .bak",
+        "Tests headless de validación para las 4 condiciones"
+      ],
+      "notes": "Derivado de la auditoría Opus 4.6 (FIX-001, FIX-005, FIX-007, FIX-009) en openspec/changes/2026-09-29-bugfix-audit-v3/."
+    },
+    {
+      "id": "TASK-027",
+      "title": "Robustez de UI, inicio seguro de apps y orden de categorías (FIX-003, FIX-004, FIX-006)",
+      "description": "Corregir deficiencias de UI y ejecución de aplicaciones: (1) FIX-003: start_pack_apps en process_service.py debe prescindir de shell=True, validar rutas absolutas y emplear os.startfile en Windows; process_manager_view.py debe guardar exe_path; (2) FIX-004: process_manager_view.py debe ordenar categorías según CATEGORY_ORDER y no con sorted() alfabético; (3) FIX-006: PackService y UI deben permitir alternar favoritos de manera no excluyente (toggle multi-favorito).",
+      "complexity": 5,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [
+        "TASK-025",
+        "TASK-026"
+      ],
+      "module": "docs/ai/ui-design-system.md",
+      "acceptance_criteria": [
+        "start_pack_apps ejecuta aplicaciones sin shell=True y maneja fallos con logging adecuado",
+        "Las secciones en el Gestor de Procesos siguen el orden semántico 🟢 -> 🟡 -> 🔴 -> ⚪",
+        "Es posible activar o desactivar favoritos individualmente sin resetear el resto a False",
+        "python verify_ui_syntax.py y tests pasan"
+      ],
+      "notes": "Derivado de la auditoría Opus 4.6 (FIX-003, FIX-004, FIX-006) en openspec/changes/2026-09-29-bugfix-audit-v3/."
+    },
+    {
+      "id": "TASK-028",
+      "title": "Saneamiento de deuda técnica, migración de procesos y estructura de tests (FIX-010 al FIX-020)",
+      "description": "Limpieza general y consolidación del repositorio: (1) FIX-010: mover logging.basicConfig a función explícita setup_logging en __main__.py; (2) FIX-011: eliminar constante PROCESS_LIST_FILE y fichero saved_processes.json obsoleto; (3) FIX-012: limpiar is_expanded; (4) FIX-013: migrar procesos útiles de procesos.csv a assets/process_db.json respetando blindaje anti-brick; (5) FIX-014: crear directorio tests/ y consolidar suite de pytest; (6) FIX-015: limpiar json de perfiles legacy del root; (7) FIX-016 a FIX-020: eliminar imports redundantes, sincronizar docs y unificar versión 3.0.1.",
+      "complexity": 5,
+      "priority": "medium",
+      "status": "pending",
+      "dependencies": [
+        "TASK-027"
+      ],
+      "module": "docs/ai/architecture.md",
+      "acceptance_criteria": [
+        "config.py no ejecuta basicConfig al nivel de módulo",
+        "assets/process_db.json enriquecido y blindado contra procesos de sistema",
+        "Directorio tests/ operativo ejecutable mediante pytest",
+        "Archivos legacy del root archivados o eliminados",
+        "Documentación viva (data-models.md, architecture.md) 100% sincronizada",
+        "Versión unificada en 3.0.1"
+      ],
+      "notes": "Derivado de la auditoría Opus 4.6 (FIX-010 al FIX-020) en openspec/changes/2026-09-29-bugfix-audit-v3/."
     }
   ]
 }

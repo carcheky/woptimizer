@@ -45,3 +45,11 @@
 | **TASK-019** | Notificaciones Nativas Windows (Toast Balloon) | 4/10 | Medium | ✅ DONE | ✅ `2026-09-29-native-toast-notifications` |
 | **TASK-020** | Ampliar DB + fix emojis de categoría vs config.py | 3/10 | Medium | ✅ DONE | `assets/process_db.json` + `config.py` |
 | **TASK-021** | Cobertura de invariantes: GamingService, PackService, Cache TTL, Kill Recursivo | 5/10 | High | ✅ DONE | `docs/ai/testing-guide.md` |
+| **TASK-022** | Resiliencia del Tooling Git: git_safe_commit.py fail-safe | 3/10 | High | ✅ DONE | `git-tooling-resilience` |
+| **TASK-023** | Restaurar doble pulsación en las 5 acciones destructivas | 5/10 | High | ✅ DONE | `double-tap-confirmation` |
+| **TASK-024** | Bloatware real del sistema con blindaje anti-brick | 4/10 | High | ✅ DONE | `real-bloatware-scan` |
+| **TASK-025** | Conectar GamingService al runtime de Gaming Mode (FIX-002 + FIX-008) | 6/10 | Critical | ⏳ PENDING | `2026-09-29-bugfix-audit-v3` |
+| **TASK-026** | Integridad de datos, copia profunda y resiliencia de servicios (FIX-001, 005, 007, 009) | 4/10 | High | ⏳ PENDING | `2026-09-29-bugfix-audit-v3` |
+| **TASK-027** | Robustez de UI, inicio seguro de apps y orden de categorías (FIX-003, 004, 006) | 5/10 | High | ⏳ PENDING | `2026-09-29-bugfix-audit-v3` |
+| **TASK-028** | Saneamiento de deuda técnica, migración de procesos y tests (FIX-010 a 020) | 5/10 | Medium | ⏳ PENDING | `2026-09-29-bugfix-audit-v3` |
+
