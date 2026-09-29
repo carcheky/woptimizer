@@ -54,5 +54,17 @@
     "status": "COMPLETED",
     "commits": ["60c713d"],
     "impact": "Fix tray_icon no guardada en self (cierre limpio imposible), gaming_action con try/except+logging, start_pack_apps con logger.info/warning individual."
+  },
+  {
+    "cycle": 7,
+    "date": "2026-09-29T02:27:00",
+    "area": "Rendimiento & Latencia",
+    "slug": "2026-09-29-perf-cache-hashmap",
+    "task": "TASK-018",
+    "status": "COMPLETED",
+    "commits": ["2fc51c3"],
+    "benchmark_before": {"cold_scan_ms": 16.0, "cached_read_ms": "N/A"},
+    "benchmark_after": {"cold_scan_ms": 15.0, "cached_read_ms": 0.003, "speedup": "~5000x"},
+    "impact": "Rewrite de ProcessService: hashmap O(1) para lookup de DB, meta-cache memoizado (129 entries), cache TTL 2s para get_running_processes. Lecturas cacheadas en 0.003ms vs 15ms. Kill invalida cache."
   }
 ]

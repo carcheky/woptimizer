@@ -225,6 +225,35 @@
       "dependencies": [],
       "module": "docs/ai/architecture.md",
       "notes": "Ciclo 7 - Area 4 Rendimiento y Latencia. Benchmark antes/despues obligatorio."
+    },
+    {
+      "id": "TASK-019",
+      "title": "Notificaciones Nativas Windows (Toast Balloon via System Tray)",
+      "description": "Crear NotificationService que envuelve pystray.Icon.notify(). Inyectar en MainWindow y vistas. Auto-arrancar tray siempre (incluso en dev) para que notify() funcione. Helpers semanticos: notify_kill_result, notify_pack_activated, notify_apps_launched. Sin nuevas dependencias (pystray ya presente). Tests headless: sin tray -> log only, attach/detach idempotente, helpers formatean mensajes.",
+      "complexity": 4,
+      "priority": "medium",
+      "dependencies": [
+        "TASK-012"
+      ],
+      "module": "docs/ai/architecture.md",
+      "status": "pending",
+      "acceptance_criteria": [
+        "src/woptimizer/services/notification_service.py existe con clase NotificationService",
+        "Metodos: attach_tray(icon), detach_tray(), notify(title, message) -> bool, notify_kill_result(killed, failed, freed_mb), notify_pack_activated(name, killed, freed_mb), notify_apps_launched(name, launched, failed)",
+        "notify() envuelto en try/except: nunca lanza excepcion, solo logger.warning",
+        "Sin tray: notify() retorna False y solo escribe logger.info al log",
+        "WOptimizerApp instancia self.notification_service y la inyecta a MainWindow",
+        "Tray se auto-arranca en __init__ (no solo on_window_close) para que notify() funcione en dev",
+        "show_tray() llama notification_service.attach_tray(self.tray_icon) tras crear el icono",
+        "show_action() llama notification_service.detach_tray() antes de poner tray_icon = None",
+        "DashboardView.execute_pack notifica tras kill_pack_apps con notify_pack_activated",
+        "ProcessManagerView.kill_selected notifica con notify_kill_result",
+        "PackManagerView ejecuta pack -> notifica con notify_pack_activated o notify_apps_launched",
+        "UI nunca importa pystray directamente: solo recibe la API del servicio",
+        "docs/ai/architecture.md actualizado con regla #8 sobre NotificationService",
+        "tests/test_services.py incluye 2-3 tests headless para NotificationService"
+      ],
+      "notes": "Ciclo 8 - Area 2 Matriz Rotacion ID: Gaming & Telemetria UX. Ver openspec/changes/2026-09-29-native-toast-notifications/proposal.md."
     }
   ]
 }

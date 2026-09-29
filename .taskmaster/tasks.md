@@ -28,3 +28,18 @@
 2. Cargar **únicamente** la documentación indicada en la columna `Documentación Asociada` para no gastar tokens.
 3. Completar la tarea respetando las invariantes.
 4. Marcar la tarea como completada usando `python .taskmaster/tm.py done <ID>`.
+
+---
+
+## 🆕 Tareas del Motor de I+D (Ciclos 4+)
+
+> Estas tareas son las que el motor autónomo `id-pipeline` va cerrando en bucle infinito.
+> Cada entrada se corresponde con una fila en `.taskmaster/tasks.json` y un commit dedicado.
+
+| ID | Tarea | Complejidad | Prioridad | Estado | Spec |
+|---|---|:---:|:---:|:---:|---|
+| **TASK-015** | Actualización Base de Datos de Procesos Gaming | 3/10 | Medium | ✅ DONE | `process-db-update` |
+| **TASK-016** | Ampliación Tests Headless + Tipado Pydantic | 4/10 | Medium | ✅ DONE | `testing-quality` |
+| **TASK-017** | Robustez System Tray + Logging start_pack_apps | 3/10 | High | ✅ DONE | `resilience-tray-logging` |
+| **TASK-018** | Cache TTL + Hashmap O(1) en ProcessService | 6/10 | High | ✅ DONE | `perf-cache-hashmap` |
+| **TASK-019** | Notificaciones Nativas Windows (Toast Balloon) | 4/10 | Medium | 🔵 PENDING | ✅ `2026-09-29-native-toast-notifications` |
