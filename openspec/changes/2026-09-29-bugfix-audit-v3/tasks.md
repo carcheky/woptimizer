@@ -21,8 +21,8 @@
   - [ ] FIX-001: En `pack_service.py:get_gaming_pack`, cambiar fallback a `DEFAULT_GAMING_PACK.model_copy(deep=True)`.
   - [ ] FIX-005: En `process_service.py`, corregir `_DEFAULT_META = ("⚪ Otros", "none", "Sin descripción")`.
   - [ ] FIX-007: En `process_manager_view.py:_do_load`, procesar en variables locales en el hilo de fondo y publicar a `self.processes` y `self.grouped_processes` solo dentro de `self.master.after(0, _apply)`.
-  - [ ] FIX-009: En `pack_service.py:save`, crear backup preventivo con `shutil.copy` a `.bak` si el archivo existe antes de sobrescribir.
-  - [ ] Añadir tests unitarios en `run_tests.py` para deep copy en fallback, categoría por defecto y backup preventivo.
+  - [ ] FIX-009: En `pack_service.py:save`, crear backup preventivo con `shutil.copy` a `.bak` si el archivo existe antes de sobrescribir. En `load()`, si el JSON principal está corrupto, intentar cargar `.bak` antes de regenerar con pack gaming por defecto.
+  - [ ] Añadir tests unitarios en `run_tests.py` para deep copy en fallback, categoría por defecto y backup preventivo (incluyendo auto-recuperación desde `.bak`).
 
 - [ ] **3. Correcciones de Comportamiento y UX (TASK-027 - Alto)**
   - [ ] FIX-003: En `process_service.py:start_pack_apps`, eliminar `shell=True`. Soportar ejecución de `exe_path` vía `subprocess.Popen` y fallback seguro con `os.startfile` en Windows. En `process_manager_view.py:on_add_to_pack`, guardar `exe_path`.
