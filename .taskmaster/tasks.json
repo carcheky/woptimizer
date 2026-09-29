@@ -332,6 +332,40 @@
         "Cierre limpio: arbol de git con 0 cambios pendientes"
       ],
       "notes": "Ciclo 11 - Area 1 Matriz Rotacion ID: Resiliencia & Robustez. NO toca src/woptimizer/ (es tooling, no producto), asi que las invariantes de producto (separacion UI/services, kill recursivo, pack gaming protegido) NO aplican. Diseno revisado por architect-review: el contrato de 5 codigos de proposal.md seccion 3.4 es NORMATIVO; se descarto la comprobacion de identidad repo==proyecto por sobre-ingenieria y se mantuvo --verify como reutilizacion de la validacion normal, no como ruta de codigo propia. Recupera ademas los ficheros que el ciclo 10 dejo sin comitear, precisamente porque el wrapper reportaba exito en falso. Ver openspec/changes/2026-09-29-git-tooling-resilience/proposal.md."
+    },
+    {
+      "id": "TASK-023",
+      "title": "Restaurar doble pulsacion en las 5 acciones destructivas de la v3 (regresion perdida en la reescritura)",
+      "description": "La v2 tenia doble pulsacion para confirmar acciones destructivas (helpers _request_confirm y _reset_pending_action en process_manager.py v2.0.2), introducida tras un incidente real: un messagebox.askyesno se abria POR DETRAS de la ventana principal, el usuario pulsaba, no veia nada y reporto 'se ha roto, no mata procesos'. Conclusion registrada: nunca messagebox en la ventana principal; la seguridad se consigue con la segunda pulsacion, no con un dialogo. Ese patron se perdio en la reescritura v3: grep de messagebox|askyesno|showinfo|showwarning|_request_confirm|'OTRA VEZ'|confirm sobre src/ devuelve CERO coincidencias. Hoy 5 acciones destructivas no piden nada: (1) process_manager_view.py:58 on_kill_selected mata N procesos a pelo, (2) pack_manager_view.py:85 kill_pack apaga todo un pack, (3) pack_manager_view.py:100 delete_pack borra el pack Y traga el ValueError con pass, dejando al usuario sin NINGUN feedback al intentar borrar el pack Gaming protegido, (4) pack_manager_view.py:117 remove_app_from_pack, (5) dashboard_view.py execute_pack, el boton Gaming de la portada que mata decenas. Ademas docs/known-issues.md se quedo en la Trampa #13, asi que el porque ni se documento y la siguiente reescritura volvera a perderlo. Implementar el patron completo: primera pulsacion pasa el boton a estado de aviso y el status_label inline explica que va a pasar y cuantos procesos son; segunda pulsacion ejecuta; after(~3s) revierte solo; cambiar la seleccion entre pulsaciones invalida la pendiente; pulsar otra accion resetea la anterior. El helper debe existir UNA SOLA VEZ y ser reutilizado por las 4 vistas. Prohibido reintroducir messagebox en cualquier forma.",
+      "complexity": 5,
+      "priority": "high",
+      "dependencies": [
+        "TASK-022"
+      ],
+      "module": "docs/ai/ui-design-system.md",
+      "status": "in_progress",
+      "acceptance_criteria": [
+        "Las 5 acciones destructivas (on_kill_selected, kill_pack, delete_pack, remove_app_from_pack, execute_pack rama kill) exigen doble pulsacion",
+        "El helper de doble pulsacion esta en src/woptimizer/ui/confirmation.py, definido UNA SOLA VEZ, y lo reutilizan las 3 vistas (NO hay una cuarta vista)",
+        "La maquina de estado del helper NO importa customtkinter y se testea con un scheduler falso; el mixin de widgets es una capa fina encima",
+        "El estado de confirmacion se revierte solo con after(3000ms) si el usuario no confirma; 2000ms en la portada",
+        "Cada vista sobrescribe destroy() para cancelar el after pendiente, y el callback de reset comprueba winfo_exists() antes de tocar widgets",
+        "Se programa con self.after(), NUNCA con self.master.after(): main_window.py:42-45 destruye la vista en TODA navegacion y master (content_frame) sobrevive",
+        "on_kill_selected congela la INTENCION (claves marcadas) y RECALCULA los ProcessInfo en la segunda pulsacion, para no matar un PID reciclado",
+        "Cambiar la seleccion entre la primera y la segunda pulsacion invalida la confirmacion pendiente y rearma con la seleccion nueva",
+        "Pulsar una accion distinta resetea la pendiente anterior en vez de ejecutar la vieja",
+        "PackManagerView recibe un status_label nuevo: hoy no tiene ninguno y kill_pack/delete_pack/remove_app_from_pack no dan feedback visible",
+        "delete_pack da feedback INLINE en los dos fallos reales: pack protegido (ValueError) y pack inexistente (return False ignorado hoy)",
+        "El token de confirmacion en PackManagerView es el pack.id, no el objeto Pack: reset_gaming_pack() lo reemplaza por un model_copy y dejaria la referencia obsoleta",
+        "Cero messagebox en src/ (verificable con grep)",
+        "verify_ui_syntax.py incluye src/woptimizer/ui/confirmation.py en files_to_check (hoy es una lista fija y daria verde en falso)",
+        "Test headless del helper puro, sin abrir ventana, que DISCRIMINE (falla sin el fix)",
+        "python verify_ui_syntax.py y python run_tests.py en verde",
+        "docs/known-issues.md con la Trampa #14 (dialogo modal detras de la ventana y regla de doble pulsacion)",
+        "docs/ai/ui-design-system.md documenta el patron como norma de UI",
+        "Cierre limpio: arbol de git con 0 cambios pendientes"
+      ],
+      "notes": "Ciclo 12 - Area 2 Matriz Rotacion ID: Gaming & Telemetria UX (sin tocar desde el ciclo 8). A diferencia del ciclo 11, SI toca src/woptimizer/ui/ (UI pura; services/ intocables y verificado que nunca importa ui/). Hallazgo del analisis de codigo, no hipotesis. AUDITADO por architect-review con 9 hallazgos; los tres criticos invalidan premisas del briefing original: (1) el boton de la portada NO es un 'boton Gaming', es el boton generico de pack favorito (dashboard_view.py:83) y execute_pack arranca apps si default_action != kill, asi que la confirmacion va SOLO en la rama kill; (2) el except ValueError: pass de delete_pack es INALCANZABLE desde la UI porque btn_del solo se crea cuando NOT is_gaming (pack_manager_view.py:94-103) y pack_service solo lanza para is_gaming (pack_service.py:117-118); el fallo silencioso real es que se IGNORA el return False de pack inexistente; (3) PackManagerView NO TIENE status_label (_build_ui, pack_manager_view.py:19-30), asi que el feedback inline exige anadirlo antes. Ademas: toda navegacion destruye la vista y crea una instancia nueva (main_window.py:42-45), lo que convierte el after() huerfano en el flujo normal y no en un riesgo teorico; y hay 3 vistas, no 4. Ver openspec/changes/2026-09-29-double-tap-confirmation/proposal.md secciones 5, 6 y 9."
     }
   ]
 }
