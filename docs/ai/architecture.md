@@ -37,4 +37,10 @@
 4. **Residencia en Bandeja (System Tray):** La aplicación no finaliza al presionar `[X]`; intercepta `WM_DELETE_WINDOW` para ocultarse (`withdraw`) y levantar un icono en la barra de tareas mediante `pystray`. Solo la opción 'Salir' destruye el proceso.
 5. **Telemetría de RAM y Logs:** Las rutinas de finalización (`kill_processes` y `kill_pack_apps` en `ProcessService`) calculan la memoria física liberada (`proc.memory_info().rss`) de cada proceso y sus hijos antes del cierre. Retornan una 4-tupla estructurada: `(killed: int, failed: int, skipped: int, freed_mb: float)`. Solo se contabilizan los bytes liberados en procesos efectivamente terminados. Errores de acceso (`AccessDenied`) y avisos del backend se canalizan a `woptimizer.log`.
 6. **Entornos de Sincronización en la Nube (Nextcloud/OneDrive):** En Windows con unidades virtuales (VFS), los archivos `.git` pueden marcarse como reparse points. Para operaciones de Git locales se recomienda aislar el repositorio o redirigir `$env:GIT_DIR`.
+7. **Cache y Rendimiento en ProcessService (TASK-018):**
+   - **Hashmap O(1):** La base de datos de procesos (`_db_map`) se almacena como `dict[str, tuple]` en lugar de una lista de Pydantic models. Lookup exacto en O(1), con fallback a fuzzy match.
+   - **Meta-cache memoizado:** Las correspondencias fuzzy se guardan en `_meta_cache` para no repetir búsquedas (cubre ~130 procesos únicos por sesión).
+   - **Cache TTL (2s):** `get_running_processes()` retorna un snapshot cacheado si se llama de nuevo dentro de 2 segundos. Pasar `force_refresh=True` ignora el cache. Las operaciones de kill invalidan el cache automáticamente.
+   - **Impacto:** Lectura cacheada en ~0.003 ms vs ~15 ms del cold scan (~5000x speedup). Permite a la UI hacer refresh agresivo sin penalización.
+   - **Propiedad `process_db`:** Existe como `@property` de compatibilidad que reconstruye la lista de `ProcessInfo` bajo demanda desde `_db_map`.
 

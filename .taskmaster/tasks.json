@@ -1,7 +1,7 @@
 {
   "project": "woptimizer",
   "version": "3.0.0",
-  "updated_at": "2026-09-29T00:23:00Z",
+  "updated_at": "2026-09-29T00:24:59Z",
   "active_task_id": "TASK-001",
   "tasks": [
     {
@@ -214,6 +214,17 @@
       ],
       "module": "docs/ai/architecture.md",
       "notes": "Ciclo 6 - Area 1 Matriz Rotacion ID: Resiliencia y Robustez."
+    },
+    {
+      "id": "TASK-018",
+      "title": "Cache con TTL y Hashmap de Lookup en ProcessService",
+      "description": "Tres optimizaciones: (1) Reemplazar lista lineal process_db por dict hashmap O(1), (2) Cache con TTL de 2s para get_running_processes evitando re-scans, (3) Eliminar overhead Pydantic en DB interna usando dicts nativos.",
+      "complexity": 6,
+      "priority": "high",
+      "status": "completed",
+      "dependencies": [],
+      "module": "docs/ai/architecture.md",
+      "notes": "Ciclo 7 - Area 4 Rendimiento y Latencia. Benchmark antes/despues obligatorio."
     }
   ]
 }
