@@ -55,10 +55,95 @@ def test_headless_ui():
     app.run()
     print("Headless UI test OK.")
 
+def test_freed_mb_return_type():
+    """TASK-013/014: kill_pack_apps y kill_processes deben retornar freed_mb como float >= 0."""
+    print("Testing freed_mb return type...")
+    from woptimizer.services.process_service import ProcessService
+    ps = ProcessService()
+    
+    # Con lista vacía
+    k, f, s, mb = ps.kill_pack_apps([])
+    assert isinstance(mb, float), f"freed_mb debe ser float, got {type(mb)}"
+    assert mb >= 0.0, f"freed_mb debe ser >= 0, got {mb}"
+    
+    # Con proceso inexistente
+    k2, f2, s2, mb2 = ps.kill_pack_apps(["__completamente_inexistente_xyzzy_42.exe"])
+    assert isinstance(mb2, float), f"freed_mb debe ser float, got {type(mb2)}"
+    assert mb2 == 0.0, f"freed_mb para proc inexistente debe ser 0.0, got {mb2}"
+    
+    # kill_processes con lista vacía también
+    k3, f3, s3, mb3 = ps.kill_processes([])
+    assert isinstance(mb3, float)
+    assert mb3 == 0.0
+    print("freed_mb return type OK.")
+
+
+def test_gaming_pack_protected():
+    """Invariante: el pack con is_gaming=True NO puede ser eliminado."""
+    print("Testing gaming pack deletion protection...")
+    import tempfile, os
+    from woptimizer.services.pack_service import PackService
+    
+    # Usar un archivo temporal para no tocar profiles.json real
+    tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode='w', encoding='utf-8')
+    tmp.write('{}')
+    tmp.close()
+    
+    try:
+        ps = PackService(data_path=tmp.name)
+        
+        # Verificar que el gaming pack existe
+        gaming = ps.get_gaming_pack()
+        assert gaming.is_gaming is True, "Gaming pack debe tener is_gaming=True"
+        
+        # Intentar eliminar debe lanzar ValueError
+        raised = False
+        try:
+            ps.delete_pack("gaming")
+        except ValueError as e:
+            raised = True
+            assert "Gaming" in str(e) or "gaming" in str(e).lower()
+        
+        assert raised, "delete_pack('gaming') debe lanzar ValueError"
+        
+        # Verificar que sigue existiendo
+        assert "gaming" in ps.get_all_packs(), "Gaming pack debe seguir existiendo tras intento de borrado"
+        print("Gaming pack protection OK.")
+    finally:
+        os.unlink(tmp.name)
+
+
+def test_corrupted_json_recovery():
+    """Resiliencia: profiles.json corrupto debe auto-recuperarse con el pack Gaming."""
+    print("Testing corrupted JSON recovery...")
+    import tempfile, os
+    from woptimizer.services.pack_service import PackService
+    
+    # Crear un archivo con JSON corrupto
+    tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode='w', encoding='utf-8')
+    tmp.write('{ESTO NO ES JSON VALIDO!!!')
+    tmp.close()
+    
+    try:
+        # PackService debe recuperarse sin explotar
+        ps = PackService(data_path=tmp.name)
+        
+        # Debe tener al menos el gaming pack restaurado
+        packs = ps.get_all_packs()
+        assert "gaming" in packs, "Tras JSON corrupto, gaming pack debe regenerarse"
+        assert packs["gaming"].is_gaming is True
+        print("Corrupted JSON recovery OK.")
+    finally:
+        os.unlink(tmp.name)
+
+
 if __name__ == "__main__":
     print("--- Running Backend Tests ---")
     test_models()
     test_process_service_signatures()
+    test_freed_mb_return_type()
+    test_gaming_pack_protected()
+    test_corrupted_json_recovery()
     print("\n--- Running Headless UI Test ---")
     test_headless_ui()
     print("\nALL TESTS PASSED.")

@@ -1,7 +1,7 @@
 {
   "project": "woptimizer",
   "version": "3.0.0",
-  "updated_at": "2026-09-29T00:13:26Z",
+  "updated_at": "2026-09-29T00:19:24Z",
   "active_task_id": "TASK-001",
   "tasks": [
     {
@@ -187,6 +187,20 @@
       "dependencies": [],
       "module": "assets/process_db.json",
       "notes": "Ciclo 4 - Area 3 Matriz Rotacion ID. Subagente: process-db-updater (flash)."
+    },
+    {
+      "id": "TASK-016",
+      "title": "Ampliacion Tests Headless y Tipado Estricto Pydantic",
+      "description": "Ampliar tests en tests/test_services.py para cubrir: (1) kill_pack_apps retorna freed_mb correcto, (2) pack gaming no eliminable, (3) auto-restauracion de profiles.json corrupto. Verificar tipado estricto Pydantic v2 en models.py.",
+      "complexity": 4,
+      "priority": "medium",
+      "status": "completed",
+      "dependencies": [
+        "TASK-013",
+        "TASK-014"
+      ],
+      "module": "docs/ai/testing-guide.md",
+      "notes": "Ciclo 5 - Area 5 Matriz Rotacion ID: Testing y Calidad."
     }
   ]
 }
