@@ -7,10 +7,15 @@
     - Matar procesos seleccionados con `process_service.kill_processes(to_kill)`.
     - Retornar tupla `(killed, failed, skipped, freed_mb)`.
   - [ ] Inyectar `gaming_service` en `DashboardView` y `PackManagerView` desde `MainWindow`.
-  - [ ] Actualizar `DashboardView.execute_pack`: si `pack.is_gaming`, llamar a `gaming_service.execute_gaming_pack(pack)` (respetando `DoubleTapGuard`).
-  - [ ] Actualizar `PackManagerView.kill_pack`: si `pack.is_gaming`, llamar a `gaming_service.execute_gaming_pack(pack)` (respetando `DoubleTapGuard`).
+  - [ ] Actualizar `DashboardView.execute_pack`:
+    - Permitir ejecución si `pack.is_gaming` aunque `pack.apps` esté vacío (`if not pack.is_gaming and not pack.apps: return`), ya que Gaming Mode actúa sobre `target_categories`.
+    - Si `pack.is_gaming`, llamar a `gaming_service.execute_gaming_pack(pack)` en segundo plano y adaptar el texto de `_require_double_tap` a "⚠️ Segunda pulsación para preparar Gaming Mode."
+  - [ ] Actualizar `PackManagerView.kill_pack`:
+    - Permitir ejecución si `pack.is_gaming` aunque `pack.apps` esté vacío.
+    - Si `pack.is_gaming`, llamar a `gaming_service.execute_gaming_pack(pack)` en segundo plano y adaptar el texto de `_require_double_tap` a "⚠️ Segunda pulsación para apagar apps del Pack Gaming."
   - [ ] Actualizar `WOptimizerApp.show_tray -> gaming_action`: llamar a `gaming_service.execute_gaming_pack(gaming_pack)`.
   - [ ] Añadir test de regresión en `run_tests.py` validando que `execute_gaming_pack` mata apps y categorías configuradas respetando keepers y procesos protegidos de sistema.
+
 
 - [ ] **2. Integridad de Datos, Servicios y Concurrencia (TASK-026 - Crítico/Alto)**
   - [ ] FIX-001: En `pack_service.py:get_gaming_pack`, cambiar fallback a `DEFAULT_GAMING_PACK.model_copy(deep=True)`.
