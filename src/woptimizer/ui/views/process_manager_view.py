@@ -234,9 +234,12 @@ class ProcessManagerView(ctk.CTkFrame):
         self.update_idletasks()
         
         def _kill():
-            killed, failed, skipped = self.process_service.kill_processes(to_kill)
+            killed, failed, skipped, freed_mb = self.process_service.kill_processes(to_kill)
             def _done():
-                self.status_label.configure(text=f"✅ {killed} cerrados, {failed} fallidos.")
+                if freed_mb > 0:
+                    self.status_label.configure(text=f"✅ {killed} cerrados ({freed_mb:.1f} MB liberados), {failed} fallidos.")
+                else:
+                    self.status_label.configure(text=f"✅ {killed} cerrados, {failed} fallidos.")
                 self.master.after(1000, self.refresh_processes)
             self.master.after(0, _done)
             

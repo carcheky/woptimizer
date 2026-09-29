@@ -127,28 +127,49 @@ class ProcessService:
         
         return result
 
-    def kill_processes(self, processes: List[ProcessInfo]) -> Tuple[int, int, int]:
+    def kill_processes(self, processes: List[ProcessInfo]) -> Tuple[int, int, int, float]:
         """
         Mata una lista de procesos (y sus hijos).
-        Retorna (killed, failed, skipped).
+        Retorna (killed, failed, skipped, freed_mb).
         """
         killed = 0
         failed = 0
         skipped = 0
+        freed_bytes = 0
         
         for pinfo in processes:
             try:
                 parent = psutil.Process(pinfo.pid)
                 
+                # Capturar memoria del padre ANTES de matar
+                try:
+                    parent_rss = parent.memory_info().rss
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    parent_rss = 0
+                
+                # Obtener hijos y capturar memoria física ANTES de matar
+                children_data = []
+                try:
+                    for child in parent.children(recursive=True):
+                        try:
+                            c_rss = child.memory_info().rss
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            c_rss = 0
+                        children_data.append((child, c_rss))
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    children_data = []
+
                 # Matar hijos recursivamente primero (evita procesos huérfanos)
-                for child in parent.children(recursive=True):
+                for child, c_rss in children_data:
                     try:
                         child.kill()
+                        freed_bytes += c_rss
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass
                 
                 # Matar el padre
                 parent.kill()
+                freed_bytes += parent_rss
                 killed += 1
                 
             except psutil.NoSuchProcess:
@@ -158,14 +179,16 @@ class ProcessService:
                 logger.warning(f"Access denied killing {pinfo.name}")
                 failed += 1
                 
-        return killed, failed, skipped
+        freed_mb = round(freed_bytes / (1024 * 1024), 2)
+        return killed, failed, skipped, freed_mb
 
-    def kill_pack_apps(self, apps: List[str]) -> Tuple[int, int, int]:
+    def kill_pack_apps(self, apps: List[str]) -> Tuple[int, int, int, float]:
         """Mata todos los procesos cuyos nombres o rutas coincidan con la lista apps."""
         if not apps:
-            return 0, 0, 0
+            return 0, 0, 0, 0.0
             
         killed, failed, skipped = 0, 0, 0
+        freed_bytes = 0
         apps_lower = [a.lower() for a in apps]
         
         for proc in psutil.process_iter(['name', 'exe']):
@@ -175,19 +198,43 @@ class ProcessService:
                 exe = (info.get('exe') or '').lower()
                 
                 if name in apps_lower or exe in apps_lower:
-                    for child in proc.children(recursive=True):
+                    # Capturar memoria del padre ANTES de matar
+                    try:
+                        proc_rss = proc.memory_info().rss
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        proc_rss = 0
+
+                    # Capturar hijos y su memoria ANTES de matar
+                    children_data = []
+                    try:
+                        for child in proc.children(recursive=True):
+                            try:
+                                c_rss = child.memory_info().rss
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                c_rss = 0
+                            children_data.append((child, c_rss))
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        children_data = []
+
+                    # Matar hijos recursivamente primero
+                    for child, c_rss in children_data:
                         try:
                             child.kill()
+                            freed_bytes += c_rss
                         except (psutil.NoSuchProcess, psutil.AccessDenied):
                             pass
+
+                    # Matar el padre
                     proc.kill()
+                    freed_bytes += proc_rss
                     killed += 1
             except psutil.AccessDenied:
                 failed += 1
             except (psutil.NoSuchProcess, psutil.ZombieProcess):
                 skipped += 1
                 
-        return killed, failed, skipped
+        freed_mb = round(freed_bytes / (1024 * 1024), 2)
+        return killed, failed, skipped, freed_mb
 
     def start_pack_apps(self, apps: List[str]) -> Tuple[int, int]:
         """Inicia todas las apps de la lista de forma asíncrona."""
