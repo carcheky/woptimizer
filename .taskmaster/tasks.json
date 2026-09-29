@@ -1,7 +1,7 @@
 {
   "project": "woptimizer",
   "version": "3.0.0",
-  "updated_at": "2026-09-29T00:24:59Z",
+  "updated_at": "2026-09-29T10:45:00Z",
   "active_task_id": "TASK-001",
   "tasks": [
     {
@@ -366,6 +366,30 @@
         "Cierre limpio: arbol de git con 0 cambios pendientes"
       ],
       "notes": "Ciclo 12 - Area 2 Matriz Rotacion ID: Gaming & Telemetria UX (sin tocar desde el ciclo 8). A diferencia del ciclo 11, SI toca src/woptimizer/ui/ (UI pura; services/ intocables y verificado que nunca importa ui/). Hallazgo del analisis de codigo, no hipotesis. AUDITADO por architect-review con 9 hallazgos; los tres criticos invalidan premisas del briefing original: (1) el boton de la portada NO es un 'boton Gaming', es el boton generico de pack favorito (dashboard_view.py:83) y execute_pack arranca apps si default_action != kill, asi que la confirmacion va SOLO en la rama kill; (2) el except ValueError: pass de delete_pack es INALCANZABLE desde la UI porque btn_del solo se crea cuando NOT is_gaming (pack_manager_view.py:94-103) y pack_service solo lanza para is_gaming (pack_service.py:117-118); el fallo silencioso real es que se IGNORA el return False de pack inexistente; (3) PackManagerView NO TIENE status_label (_build_ui, pack_manager_view.py:19-30), asi que el feedback inline exige anadirlo antes. Ademas: toda navegacion destruye la vista y crea una instancia nueva (main_window.py:42-45), lo que convierte el after() huerfano en el flujo normal y no en un riesgo teorico; y hay 3 vistas, no 4. Ver openspec/changes/2026-09-29-double-tap-confirmation/proposal.md secciones 5, 6 y 9."
+    },
+    {
+      "id": "TASK-024",
+      "title": "Bloatware real del sistema (PowerToys, Armoury Crate, audio, language servers) con blindaje anti-brick",
+      "description": "Escaneo real con psutil: 131 nombres de proceso unicos en el sistema, 48 registrados, 122 NO registrados. Se dividen en tres familias con consecuencias opuestas y confundirlas es el peor defecto posible en esta app. FAMILIA A (PROHIBIDO registrar como cerrable, matarlos deja Windows inservible): csrss, lsass, winlogon, smss, services, wininit, dwm, sihost, fontdrvhost, ctfmon, spoolsv, lsaiso, ngciso, memcompression, Registry, System, System Idle Process, conhost, openconsole, dllhost, shellexperiencehost, searchhost, searchindexer, startmenuexperiencehost, RuntimeBroker, taskhostw, audiodg, SecurityHealthService, TextInputHost, SystemSettings. FAMILIA B (el objetivo): PowerToys (powertoys, powertoys.mousewithoutborders, powertoys.mousewithoutbordershelper, herculesdjcontrolmp3, cowork-svc, lightingservice, dsatray), Armoury Crate de ASUS (armourycrate, armsvc, armouryhtmldebugserver, armourysocketserver, armouryswagent, armourycrate.service, armourycrate.usersessionhelper, asus_framework, asuscertservice, aurawallpaperservice: el bloatware gaming por excelencia, ~10 procesos residentes), audio enhance (atkexcomsvc, dtsapo4service), editores (antigravity, antigravity ide, language_server, language_server_windows_x64, de los mayores devoradores de RAM) y terceros (keepassxc, keepassxc-proxy, crashhelper, calendarapp.gui.win10, unigetui, dsaupdateservice, crossdeviceresume, gigabyteupdateservice, rogliveservice, mpdefendercoreservice, acpowernotification, telemetry_agent). FAMILIA C (fuera de alcance, del usuario o del entorno de trabajo): vmmemwsl, wsl*, vmcompute, vmwp, windowsterminal, pwsh, powershell, python, minimax code. Ademas hay que implementar el BLINDAJE ANTI-BRICK, que es la mitad del trabajo: nombres prohibidos de nivel sistema comprobados ANTES de construir la lista de matables, forzando semaforo ROJO y priority none aunque se registren por error, cubierto por test de regresion. Ojo al bug ya corregido en el ciclo 9: los emojis de categoria deben coincidir EXACTAMENTE entre config.py y process_db.json.",
+      "complexity": 4,
+      "priority": "high",
+      "dependencies": [
+        "TASK-023"
+      ],
+      "module": "docs/ai/data-models.md",
+      "status": "completed",
+      "acceptance_criteria": [
+        "Entre 15 y 25 entradas nuevas de la Familia B, cada una con category, priority y description en espanol",
+        "NADA de la Familia A (procesos de sistema) ni de la Familia C se registra como cerrable",
+        "Todas las categorias usadas existen EXACTAMENTE en PROCESS_CATEGORIES de config.py, sin emojis desalineados",
+        "El blindaje anti-sistema se comprueba ANTES de construir la lista de matables y fuerza semaforo ROJO y priority none",
+        "Test de regresion que falle si alguien anade csrss, lsass, winlogon, wininit, services, smss, dwm o System como cerrable",
+        "assets/process_db.json sigue siendo JSON valido con el esquema dict[str, dict] y claves en minusculas sin extension",
+        "python run_tests.py y python verify_ui_syntax.py en verde",
+        "docs/ai/data-models.md documenta el blindaje anti-sistema",
+        "Cierre limpio: arbol de git con 0 cambios pendientes"
+      ],
+      "notes": "Ciclo 13 - Area 3 Matriz Rotacion ID: Base de Datos y Procesos. Subagente: process-db-updater. El riesgo dominante es de seguridad, no tecnico: un nombre mal escrito o un emoji de categoria desalineado puede hacer que la app ofrezca matar procesos del sistema. Por eso el blindaje y su test son la mitad del trabajo, no una mejora. Ver openspec/changes/2026-09-29-real-bloatware-scan/proposal.md."
     }
   ]
 }

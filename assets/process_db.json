@@ -238,5 +238,130 @@
         "category": "🟢 Productividad",
         "priority": "high",
         "description": "Servidor local de modelos de IA. Ocupa RAM y CPU en segundo plano."
+    },
+    "powertoys": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "PowerToys de Microsoft. Reconstruye unos 20 procesos al iniciar sesion y consume RAM de forma permanente sin aportar nada durante el juego."
+    },
+    "powertoys.mousewithoutborders": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Mouse Without Borders de PowerToys. Comparte el raton y el teclado entre  varios equipos. Solo se usa si juegas en red local."
+    },
+    "herculesdjcontrolmp3": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Audio Switch de PowerToys. Remapea el dispositivo de salida de audio por aplicacion; queda residente aunque no se cambie nada."
+    },
+    "cowork-svc": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Servicio de PowerToys en segundo plano (ventanas y zonas). No trabaja salvo que se usen las utilidades de organizacion de ventanas."
+    },
+    "armouryhtmldebugserver": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Servidor web de depuracion de la interfaz de Armoury Crate. Proceso de desarrollo que se instala en el equipo del usuario y no aporta en juego."
+    },
+    "armourysocketserver": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Servidor de sockets de Armoury Crate.escucha en segundo plano para la interfaz y sus notificaciones."
+    },
+    "armouryswagent": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Agente de software de Armoury Crate. Sincroniza ajustes con la nube de ASUS y consume recursos sin aportar durante la partida."
+    },
+    "aurawallpaperservice": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Servicio de fondos de pantalla dinamicos de ASUS. Descarga y aplica imagenes en segundo plano."
+    },
+    "antigravity": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Editor Antigravity con IA. IDE completo cargado en segundo plano aunque no se este programando."
+    },
+    "language_server": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Language server del editor. Analiza el codigo en segundo plano de forma permanente; es de los procesos que mas RAM devoran del equipo."
+    },
+    "language_server_windows_x64": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Language server nativo de Windows x64. Igual que el anterior, con su propia copia en memoria."
+    },
+    "unigetui": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "UniGetUI, interfaz grafica de los gestores de paquetes. Mantiene actualizaciones descargadas en segundo plano."
+    },
+    "dsaupdateservice": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Intel Driver and Support Assistant (descargas). Descarga drivers en segundo plano y puede provocar picos de latencia en partidas online."
+    },
+    "dsatray": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Intel Driver and Support Assistant (bandeja del icono). Se queda residente comprobando actualizaciones de Intel."
+    },
+    "gigabyteupdateservice": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Servicio de actualizacion de GIGABYTE (App Center). Telemetria de arranque que busca BIOS y drivers sin parar."
+    },
+    "crashhelper": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Proceso auxiliar que envia informes de fallo de alguna aplicacion. Solo trabaja cuando hay un fallo, pero queda cargado en memoria."
+    },
+    "atkexcomsvc": {
+        "category": "🟡 Media y Streaming",
+        "priority": "medium",
+        "description": "Servicio de Realtek (ATK) para las mejoras de audio. Cerrarlo no corta el sonido, pero se pierden los efectos y el audio espacial configurados."
+    },
+    "dtsapo4service": {
+        "category": "🟡 Media y Streaming",
+        "priority": "medium",
+        "description": "Servicio de DTS (Audio Processing). Igual que el de Realtek: el juego sigue sonando, pero se pierde el perfil de efectos."
+    },
+    "armourycrate": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Interfaz de Armoury Crate (ASUS). Controla perfiles de ventilacion, RGB y modos de juego: mantener, igual que iCUE, Razer o G HUB."
+    },
+    "armsvc": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Servicio de control de Armoury Crate. Aplica las curvas de ventilacion de la placa; cerrarlo deja el equipo sin perfil de juego."
+    },
+    "asus_framework": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Marco de servicios de ASUS (SDK de Armoury Crate). Da soporte a la gestion termica y de periféricos."
+    },
+    "armourycrate.service": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Servicio de Windows de Armoury Crate. Necesario para cambiar perfiles de ventilacion y RGB desde la interfaz."
+    },
+    "armourycrate.usersessionhelper": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Puente entre la sesion de usuario y el servicio de Armoury Crate. Sin el no se aplican los perfiles de la placa."
+    },
+    "rogliveservice": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "ROG Live Service de ASUS. Monitorizacion de CPU y GPU en segundo plano; se mantiene como el resto de herramientas de monitorizacion."
+    },
+    "mpdefendercoreservice": {
+        "category": "🔴 Antivirus y Seguridad",
+        "priority": "none",
+        "description": "Servicio del nucleo de seguridad de Windows (plataforma Defender). Clasificado como no cerrable por prudencia: nunca debe entrar en un objetivo de gaming."
     }
 }

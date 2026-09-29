@@ -1070,6 +1070,137 @@ def test_double_tap_guard():
     print("DoubleTapGuard OK.")
 
 
+def test_no_system_process_is_killable():
+    """TASK-024: los procesos de nivel sistema NUNCA pueden ofrecerse como cerrables.
+
+    Es la mitad Critica de este ciclo: matarlos deja el Windows del usuario
+    inservible. El test falla si (a) alguien mete un nombre de la Familia A en
+    `assets/process_db.json` con una prioridad != 'none' o sin semaforo rojo, o
+    (b) el blindaje del servicio deja de forzar rojo/none aunque el JSON este
+    envenenado a proposito.
+    """
+    print("Testing blindaje anti-brick (procesos de sistema)...")
+    import json
+    import shutil
+    import tempfile
+    import woptimizer.config as wopt_config
+    from woptimizer.services.process_service import (
+        SYSTEM_PROTECTED_PROCESSES,
+        ProcessService,
+    )
+
+    rojo = "\U0001F534"
+
+    # 1) El conjunto de proteccion tiene que cubrir el nucleo duro. Si alguien
+    #    lo reduce, este test lo dice aunque el JSON este impecable.
+    nucleo = {
+        "csrss", "lsass", "winlogon", "wininit", "services", "smss",
+        "dwm", "system", "system idle process", "registry", "memcompression",
+        "fontdrvhost", "ctfmon", "spoolsv", "sihost", "conhost", "dllhost",
+        "runtimebroker", "searchhost", "searchindexer", "audiodg", "wudfsvc",
+        "securityhealthsystray", "textinputhost", "systemsettings",
+        "shellexperiencehost", "startmenuexperiencehost", "taskhostw",
+    }
+    faltan = nucleo - SYSTEM_PROTECTED_PROCESSES
+    assert not faltan, (
+        f"El blindaje anti-brick no cubre estos procesos criticos: {sorted(faltan)}"
+    )
+
+    # 2) El JSON real no puede ofrecer ninguno de ellos como cerrable. Incluye
+    #    tambien los que ya estaban como 🔴 (svchost, explorer) para que nadie
+    #    los degraden a verde.
+    with open("assets/process_db.json", encoding="utf-8") as fh:
+        db = json.load(fh)
+    assert isinstance(db, dict), "El esquema del JSON debe seguir siendo dict[str, dict]"
+    assert all(isinstance(v, dict) for v in db.values()), "Cada entrada debe ser un dict"
+
+    vigilados = {k.lower() for k in db} & (SYSTEM_PROTECTED_PROCESSES | {"svchost", "explorer"})
+    closables = [
+        k for k, v in db.items()
+        if k.lower() in (SYSTEM_PROTECTED_PROCESSES | {"svchost", "explorer"})
+        and v.get("priority") != "none"
+    ]
+    assert not closables, (
+        f"Procesos de nivel sistema registrados como cerrables en el JSON: {closables}. "
+        "Ninguno de ellos puede tener prioridad distinta de 'none'."
+    )
+    sin_rojo = [k for k, v in db.items() if k.lower() in vigilados and rojo not in (v.get("category") or "")]
+    assert not sin_rojo, (
+        f"Procesos de nivel sistema sin semaforo 🔴 en el JSON: {sin_rojo}"
+    )
+
+    # 3) El blindaje del servicio: con el JSON ENVENENADO a proposito (lsass y
+    #    winlogon como si fueran bloatware verde), el servicio los sigue
+    #    forzando a rojo/none, con extension, en mayusculas y por subcadena.
+    tmp = tempfile.mkdtemp(prefix="wopt_t024_")
+    _dir_data_original = wopt_config._data_dir
+    try:
+        os.makedirs(os.path.join(tmp, "assets"))
+        envenenado = {
+            "lsass": {"category": "\U0001F7E2 Productividad", "priority": "high",
+                      "description": "ENTRADA ENVENENADA"},
+            "winlogon": {"category": "\U0001F7E2 Productividad", "priority": "high",
+                         "description": "ENTRADA ENVENENADA"},
+        }
+        with open(os.path.join(tmp, "assets", "process_db.json"), "w", encoding="utf-8") as fh:
+            json.dump(envenenado, fh, indent=4, ensure_ascii=False)
+
+        wopt_config._data_dir = lambda: tmp
+        ps_envenenado = ProcessService()
+        assert ps_envenenado.is_db_loaded, "El servicio debe cargar el JSON de prueba"
+
+        # 3a) Saneado en la carga: el mapa ya no contiene la entrada verde.
+        for clave in ("lsass", "winlogon"):
+            cat, prio, _ = ps_envenenado._db_map[clave]
+            assert prio == "none", f"{clave} quedo con prioridad {prio!r} tras la carga"
+            assert rojo in cat, f"{clave} quedo con categoria {cat!r} tras la carga"
+
+        # 3b) Resolucion de metadatos por las tres vias de entrada.
+        for variante in ("lsass", "lsass.exe", "Lsass.EXE", " winlogon.exe "):
+            cat, prio, _ = ps_envenenado._get_process_meta(variante)
+            assert prio == "none", f"{variante!r} -> prioridad {prio!r}"
+            assert rojo in cat, f"{variante!r} -> categoria {cat!r}"
+
+        # 3c) Tambien para el resto de la Familia A, aunque no este en el JSON.
+        for nombre in sorted(SYSTEM_PROTECTED_PROCESSES):
+            cat, prio, _ = ps_envenenado._get_process_meta(f"{nombre}.exe")
+            assert prio == "none", f"{nombre}.exe -> prioridad {prio!r}"
+            assert rojo in cat, f"{nombre}.exe -> categoria {cat!r}"
+            assert ProcessService.is_system_protected(nombre) is True, (
+                f"is_system_protected({nombre!r}) deberia ser True"
+            )
+
+        # 3d) El kill por pack respeta el blindaje: nunca toca un PID de sistema.
+        wopt_config._data_dir = _dir_data_original
+        k, f, s, mb = ProcessService().kill_pack_apps(["lsass.exe", "winlogon.exe"])
+        assert (k, f) == (0, 0), f"kill_pack_apps intento matar un proceso de sistema: {k, f}"
+        assert s == 2, f"Los dos procesos de sistema deberian contar como omitidos, s={s}"
+        assert mb == 0.0, f"No se debe liberar memoria de un kill que no ocurrio: {mb}"
+
+        # Un nombre legitimo sigue siendo normal (guarda contra un blindaje
+        # tan ancho que bloquee el producto entero).
+        assert ProcessService.is_system_protected("powertoys.exe") is False, (
+            "powertoys no es un proceso de sistema: el blindaje seria demasiado ancho"
+        )
+        assert ProcessService.is_system_protected("dsaservice.exe") is False
+    finally:
+        wopt_config._data_dir = _dir_data_original
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # 4) Con la DB real, el bloatware nuevo es verde de verdad.
+    ps_real = ProcessService()
+    for nombre, prio_esperado in (("powertoys.exe", "high"),
+                                  ("unigetui.exe", "high"),
+                                  ("language_server.exe", "high"),
+                                  ("atkexcomsvc.exe", "medium"),
+                                  ("armourycrate.exe", "none"),
+                                  ("mpdefendercoreservice.exe", "none")):
+        cat, prio, _ = ps_real._get_process_meta(nombre)
+        assert prio == prio_esperado, f"{nombre} -> prioridad {prio!r}, esperaba {prio_esperado!r}"
+        assert cat != "? Otros", f"{nombre} ha caido en '? Otros': revisa la clave del JSON"
+    print("Blindaje anti-brick OK.")
+
+
 if __name__ == "__main__":
     print("--- Running Backend Tests ---")
     test_models()
@@ -1093,6 +1224,7 @@ if __name__ == "__main__":
     test_kill_recursive()
     test_git_safe_commit_fail_safe()
     test_double_tap_guard()
+    test_no_system_process_is_killable()
     print("\n--- Running Headless UI Test ---")
     test_headless_ui()
     print("\nALL TESTS PASSED.")

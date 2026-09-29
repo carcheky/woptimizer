@@ -6,6 +6,50 @@ from woptimizer.config import PROCESS_CATEGORIES, CATEGORY_ORDER, logger
 
 _DEFAULT_META = ("? Otros", "none", "Sin descripción")
 
+# TASK-024 - BLINDAJE ANTI-BRICK.
+# Familia A del escaneo medido (openspec/changes/2026-09-29-real-bloatware-scan):
+# procesos de nivel sistema cuyo cierre deja Windows inservible (pantalla negra,
+# BSOD o perdida de sesion). Matar uno de ellos desde una app de "optimizacion"
+# es el peor defecto posible en este producto, asi que no se confiar en que
+# nadie los meta por error en `assets/process_db.json`: el blindaje se aplica
+# ANTES de construir la lista de matables y por las tres vias (carga de la DB,
+# resolucion de metadatos y kill). Coincidencia EXACTA sobre el nombre limpio
+# en minusculas y sin extension, porque el matching de este servicio tambien
+# acepta subcadenas y un nombre generico bloquearia procesos legitimos.
+#
+# No confundir con `PROCESS_CATEGORIES['\U0001F534 Sistema de Windows']['patterns']`:
+# esa lista es de clasificacion legacy e incluye procesos del usuario (taskmgr,
+# cmd, powershell, wsl). Aqui solo van los nombres cuyo cierre ROMPE el SO.
+SYSTEM_PROTECTED_PROCESSES = frozenset({
+    # Nucleo irrompible
+    "csrss", "lsass", "winlogon", "smss", "services", "wininit",
+    "registry", "memcompression", "system", "system idle process",
+    # Sesion de usuario y escritorio
+    "dwm", "sihost", "conhost", "openconsole", "dllhost", "ctfmon",
+    "fontdrvhost", "spoolsv", "lsaiso", "ngciso",
+    "shellexperiencehost", "startmenuexperiencehost",
+    "searchhost", "searchindexer", "runtimebroker", "taskhostw",
+    "textinputhost", "systemsettings",
+    # Audio y dispositivos
+    "audiodg",
+    # Seguridad y drivers en modo usuario
+    "wudfsvc", "wudfhost",
+    "securityhealthsystray", "securityhealthservice", "securityhealthui",
+})
+
+# Meta forzado: el nombre se muestra pero jamas se ofrece como cerrable.
+_PROTECTED_META = (
+    "\U0001F534 Sistema de Windows",
+    "none",
+    "Proceso critico de Windows: cerrarlo deja el sistema inservible. "
+    "No se puede cerrar nunca.",
+)
+
+
+def _normalizar_nombre(name: str) -> str:
+    """Clave de comparacion: minusculas, sin extension y sin espacios sobrantes."""
+    return (name or "").lower().replace('.exe', '').strip()
+
 
 class ProcessService:
     """Servicio de procesos con hashmap O(1) y cache TTL.
@@ -38,6 +82,14 @@ class ProcessService:
             for k, v in self._db_map.items()
         ]
 
+    @staticmethod
+    def is_system_protected(name: str) -> bool:
+        """TASK-024: True si el nombre es de nivel sistema y jamas cerrable.
+
+        Acepta el nombre con o sin extension y en cualquier caja.
+        """
+        return _normalizar_nombre(name) in SYSTEM_PROTECTED_PROCESSES
+
     def _load_local_db(self):
         """Carga la base de datos local como hashmap {pattern: (cat, prio, desc)}."""
         import json, os
@@ -47,14 +99,22 @@ class ProcessService:
             if os.path.exists(local_path):
                 with open(local_path, "r", encoding="utf-8") as f:
                     db_dict = json.load(f)
-                    self._db_map = {
-                        pattern.lower(): (
+                    db_map: Dict[str, Tuple[str, str, str]] = {}
+                    for pattern, props in db_dict.items():
+                        key = _normalizar_nombre(pattern)
+                        # TASK-024: el blindaje se aplica AL CARGAR, antes de
+                        # que la entrada exista en el mapa. Aunque el JSON
+                        # registre un proceso de sistema como cerrable, aqui
+                        # queda forzado a rojo / priority none.
+                        if key in SYSTEM_PROTECTED_PROCESSES:
+                            db_map[key] = _PROTECTED_META
+                            continue
+                        db_map[key] = (
                             props.get('category', '? Otros'),
                             props.get('priority', 'none'),
                             props.get('description', 'Sin descripción')
                         )
-                        for pattern, props in db_dict.items()
-                    }
+                    self._db_map = db_map
                     self._meta_cache.clear()
                     self.is_db_loaded = True
         except Exception as e:
@@ -96,7 +156,13 @@ class ProcessService:
 
     def _get_process_meta(self, name: str) -> Tuple[str, str, str]:
         """Lookup O(1) con fallback a fuzzy match cacheado."""
-        name_clean = name.lower().replace('.exe', '')
+        name_clean = _normalizar_nombre(name)
+
+        # TASK-024: el blindaje se comprueba PRIMERO, antes que la DB y antes que
+        # el matching por subcadenas. Un nombre de sistema nunca puede heredar la
+        # categoria de otro patron ni quedar en "? Otros" como cerrable.
+        if name_clean in SYSTEM_PROTECTED_PROCESSES:
+            return _PROTECTED_META
 
         # Check memoize cache first
         cached = self._meta_cache.get(name_clean)
@@ -203,6 +269,13 @@ class ProcessService:
 
         for pinfo in processes:
             try:
+                # TASK-024: ultima linea de defensa. La UI solo ofrece lo que ve
+                # en la lista, pero un pack guardado a mano podria traer un PID de
+                # sistema: aqui se cuenta como omitido y no se toca el proceso.
+                if self.is_system_protected(pinfo.name) or self.is_system_protected(pinfo.full_name):
+                    skipped += 1
+                    continue
+
                 parent = psutil.Process(pinfo.pid)
 
                 # Capturar memoria del padre ANTES de matar
@@ -251,6 +324,8 @@ class ProcessService:
 
     def kill_pack_apps(self, apps: List[str]) -> Tuple[int, int, int, float]:
         """Mata todos los procesos cuyos nombres o rutas coincidan con la lista apps."""
+        import os
+
         if not apps:
             return 0, 0, 0, 0.0
 
@@ -265,6 +340,15 @@ class ProcessService:
                 exe = (info.get('exe') or '').lower()
 
                 if name in apps_lower or exe in apps_lower:
+                    # TASK-024: blindaje tambien en la via de packs. El pack lo
+                    # escribe el usuario a mano, asi que no basta con lo que
+                    # muestra la lista de la UI: aqui se cuenta como omitido y
+                    # no se toca el proceso.
+                    if (self.is_system_protected(name)
+                            or self.is_system_protected(os.path.basename(exe))):
+                        skipped += 1
+                        continue
+
                     # Capturar memoria del padre ANTES de matar
                     try:
                         proc_rss = proc.memory_info().rss
