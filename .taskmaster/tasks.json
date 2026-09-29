@@ -263,7 +263,7 @@
       "priority": "medium",
       "dependencies": [],
       "module": "assets/process_db.json",
-      "status": "pending",
+      "status": "completed",
       "acceptance_criteria": [
         "Escaneo de procesos activos con psutil para identificar los no registrados",
         "Anadir 8-14 procesos nuevos relevantes a assets/process_db.json",

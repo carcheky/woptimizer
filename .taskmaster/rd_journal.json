@@ -77,5 +77,16 @@
     "commits": ["283bc16 (architect)", "4797d6a (feat)"],
     "tests": {"before": "5 backend", "after": "9 backend, 0 fallos"},
     "impact": "NotificationService nuevo (envuelve pystray.Icon.notify, sin dependencias nuevas). Inyectado en MainWindow + 3 vistas. Autostart del tray en __init__ con guard idempotente. 4 tests headless nuevos. Fix colateral: pystray y Pillow declarados en pyproject.toml (faltaban, rompian builds PyInstaller)."
+  },
+  {
+    "cycle": 9,
+    "date": "2026-09-29T02:58:00",
+    "area": "Base de Datos y Procesos",
+    "slug": "2026-09-29-config-category-emoji-alignment",
+    "task": "TASK-020",
+    "status": "COMPLETED",
+    "commits": ["31906e7 (process-db)", "4977b00 (fix config)"],
+    "tests": {"before": "9 backend", "after": "11 backend, 0 fallos"},
+    "impact": "BUG CRITICO: 6 de 8 categorias de process_db.json no existian en config.py por emojis invertidos, dejando todos esos procesos en '? Otros' sin semaforo. Segundo bug: get_safety_badge evaluaba priority antes que categoria, pintando 🔴 como 🟡. Fix ambos + 2 tests de regresion. Ademas 14 procesos nuevos (navegadores, launchers, herramientas de IA) = 48 total."
   }
 ]

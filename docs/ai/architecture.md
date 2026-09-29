@@ -50,5 +50,14 @@
    - **Degradación segura:** `notify()` **nunca propaga excepciones**. Sin bandeja adjunta registra en el log y retorna `False`; si el backend lanza, captura y registra `warning`. También consulta `Icon.HAS_NOTIFICATION` para no llamar a backends que no soporten la API.
    - **Autostart del tray:** el icono se levanta en `WOptimizerApp.__init__` (no solo al cerrar la ventana) para que las notificaciones funcionen con la ventana visible. Se puede desactivar con `autostart_tray=False` (lo usan los tests headless). `show_tray()` es **idempotente** mediante un guard, porque se invoca desde dos puntos.
    - **Dependencias declaradas:** `pystray` y `Pillow` están en `pyproject.toml` para que PyInstaller las empaquete.
+9. **Invariante Crítico: Emojis de Categoría (TASK-020):**
+   - **Regla:** los emojis de categoría de `PROCESS_CATEGORIES` (`config.py`) deben coincidir **exactamente, carácter a carácter**, con los usados en `assets/process_db.json` y con el sistema de diseño de `ui-design-system.md`.
+     - `🟢 SEGURO` → Navegadores, Sincronización, Productividad
+     - `🟡 PRECAUCIÓN` → Chat, Media, Launchers Gaming
+     - `🔴 NO CERRAR` → Sistema de Windows, Antivirus, Overlays e Info
+   - **Por qué importa:** el lookup de categoría compara strings exactos. Un emoji distinto (p. ej. `🔴 Navegadores` en `config.py` vs `🟢 Navegadores` en el JSON) hace que **todas** las entradas de esa categoría caigan en `? Otros`, perdiendo su semáforo de seguridad.
+   - **Bug corregido:** `config.py` tenía `🔴` en navegadores/sincronización y `🟢` en overlays, invertido frente al JSON. 6 de 8 categorías estaban huérfanas.
+   - **Prioridad de evaluación en `get_safety_badge()`:** la **categoría manda sobre la prioridad**. Antes `priority in [medium, low]` se evaluaba antes que el emoji de categoría, así que una categoría 🔴 con prioridad `low` se pintaba 🟡 PRECAUCIÓN. Ahora: (1) emoji de categoría, (2) palabras clave, (3) prioridad como desempate.
+   - **Test de regresión:** `test_category_emoji_alignment` falla si alguna categoría del JSON no existe en `config.py`. `test_safety_badge_category_priority_order` cubre el orden de ramas.
 
 
