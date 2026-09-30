@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-09-29T10:45:00Z",
-  "active_task_id": "TASK-034",
+  "active_task_id": "TASK-035",
   "tasks": [
     {
       "id": "TASK-001",
@@ -688,6 +688,24 @@
         "run_tests.py y validate_docs.py en verde"
       ],
       "notes": "Ciclo #25 del motor autónomo de I+D (Área 5: Testing & Calidad). Cierra puntos ciegos en la verificación de navegación UI y contratos Pydantic."
+    },
+    {
+      "id": "TASK-035",
+      "title": "Telemetría y Feedback Visual Unificado en Ejecución de Packs",
+      "description": "Implementar feedback inline en pantalla en la ejecución de packs tanto para 'start' como para 'kill': banner enriquecido en DashboardView con actualización de telemetría en reposo, y feedback con _inline_status en PackManagerView, asegurando que todos los hilos secundarios actualicen la UI exclusivamente vía self.after(0, ...).",
+      "complexity": 3,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [],
+      "module": "src/woptimizer/ui/views/dashboard_view.py",
+      "acceptance_criteria": [
+        "DashboardView muestra _show_start_banner ante packs 'start' con tokens ACCENT/WARNING y refresca la barra de reposo",
+        "PackManagerView muestra _inline_status en status_label tras kill_pack y start_pack informando procesos/apps",
+        "Todas las mutaciones de UI desde hilos secundarios se despachan vía self.after(0, ...)",
+        "test_pack_execution_ui_telemetry_feedback valida el comportamiento y el cumplimiento de AST",
+        "run_tests.py y validate_docs.py en verde al 100%"
+      ],
+      "notes": "Ciclo #26 del motor autónomo de I+D (Área 2: Gaming & Telemetría UX). Unifica la experiencia de telemetría y feedback visual en ejecución de packs."
     }
   ]
 }
