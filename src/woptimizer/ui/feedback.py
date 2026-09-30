@@ -1,14 +1,34 @@
 """Mensajes de feedback de ejecucion de packs: funciones PURAS (TASK-035, ciclo 26).
 
 POR QUE ESTE MODULO EXISTE
-`kill_pack` (Gestor de Packs) y `execute_pack` (Portada) tienen DOS puertas de
-cierre cada uno: `GamingService.execute_gaming_pack` (respeta `keepers`,
-`target_categories` y la barrera roja G-2) y `ProcessService.kill_pack_apps`. Las
-DOS devuelven la MISMA 4-tupla `(killed, failed, skipped, freed_mb)`, asi que el
-mensaje se calcula AQUI, una sola vez, y se pasa a la vista. Es la forma de no
+Hay TRES puertas de cierre, no dos, y las tres devuelven la MISMA 4-tupla
+`(killed, failed, skipped, freed_mb)`:
+
+1. `GamingService.execute_gaming_pack` (respeta `keepers`, `target_categories` y
+   la barrera roja G-2) — la usan `kill_pack` y `execute_pack`;
+2. `ProcessService.kill_pack_apps` — la usan `kill_pack` y `execute_pack` con un
+   pack normal;
+3. `ProcessService.kill_processes` — la usa `ProcessManagerView.on_kill_selected`,
+   el Gestor de Procesos, que mata UNO A UNO lo que el usuario marco a mano.
+
+El mensaje se calcula AQUI, una sola vez, y se pasa a la vista. Es la forma de no
 repetir el fallo del ciclo 14, donde un camino evaluaba `p.name` y el otro
-`p.full_name` y uno de los dos dejaba de proteger en silencio: aqui ninguna
-puerta puede mentir por su cuenta porque las dos alimentan el mismo texto.
+`p.full_name` y uno de los dos dejaba de proteger en silencio. Y es la forma de
+no repetir el fallo del ciclo 26, cuya primera auditoria encontro la TERCERA
+puerta (`on_kill_selected`) pintando `"<tick> 0 cerrados, 0 fallidos."` en verde
+con `killed == 0`: la UI miente en verde es la misma clase que el contador
+`started` del ciclo 20.
+
+OJO, ALCANCE REAL DE ESA AFIRMACION: el FORMATEADOR es comun, la LLAMADA no. Que
+las tres alimenten `mensaje_cierre_pack` no basta si alguna puerta no lo llama o
+si una rama se queda sin ejecutar nunca en la suite; las dos cosas se cubren con
+pruebas que entran por la UI y con la guarda AST de
+`test_los_workers_de_pack_solo_publican_por_after`.
+
+LO QUE SE PARAMETRIZA Y POR QUE: el sustantivo ("procesos" / "apps"). El
+Gestor de Procesos cuenta procesos marcados a mano y el Gestor de Packs cuenta
+apps de un pack; duplicar el texto para cada uno seria volver a tener dos
+verdades, que es justo lo que este modulo existe para evitar.
 
 LA MENTIRA QUE ESTE MODULO ELIMINA (medida por el mutation-auditor del ciclo 26)
 Con un pack sin apps vivas, `kill_pack` pintaba siempre
@@ -54,27 +74,33 @@ def clasificar_cierre(killed: int, failed: int) -> str:
 
 
 def mensaje_cierre_pack(nombre: str, killed: int, failed: int,
-                        skipped: int, freed_mb: float) -> Tuple[str, str]:
-    """Feedback inline del Gestor de Packs: `(texto, color)`.
+                        skipped: int, freed_mb: float,
+                        sustantivo: str = "procesos") -> Tuple[str, str]:
+    """Feedback inline del Gestor de Packs y del Gestor de Procesos: `(texto, color)`.
 
     Las cuatro ramas:
 
     | desenlace | cuando | texto | color |
     |---|---|---|---|
-    | exito | `killed > 0` y `failed == 0` | `"✅ N procesos cerrados (X MB liberados) · 'pack'."` | VERDE |
+    | exito | `killed > 0` y `failed == 0` | `"✅ N <sus> cerrados (X MB liberados) · 'pack'."` | VERDE |
     | parcial | `killed > 0` y `failed > 0` | `"⚠️ 'pack': N cerrados, M con error (X MB liberados)."` | AMBAR |
-    | nada | `killed == 0` y `failed == 0` | `"⚠️ 'pack': 0 procesos cerrados, K protegidos o ya cerrados."` | AMBAR |
+    | nada | `killed == 0` y `failed == 0` | `"⚠️ 'pack': 0 <sus> cerrados, K protegidos o ya cerrados."` | AMBAR |
     | fallo | `killed == 0` y `failed > 0` | `"⛔ No se cerró nada de 'pack': M con error."` | ROJO |
+
+    `sustantivo` es lo unico que la vista aporta y no el resultado: el Gestor de
+    Packs dice "procesos" y el Gestor de Procesos tambien, pero el punto es que
+    quien quiera decir "apps" lo diga por parametro y NO copiando el texto.
     """
     caso = clasificar_cierre(killed, failed)
     if caso == EXITO:
-        return f"✅ {killed} procesos cerrados ({freed_mb:.1f} MB liberados) · '{nombre}'.", VERDE
+        return f"✅ {killed} {sustantivo} cerrados ({freed_mb:.1f} MB liberados) · '{nombre}'.", VERDE
     if caso == PARCIAL:
         return (f"⚠️ '{nombre}': {killed} cerrados, {failed} con error "
                 f"({freed_mb:.1f} MB liberados)."), AMBAR
     if caso == FALLO:
         return f"⛔ No se cerró nada de '{nombre}': {failed} con error.", ROJO
-    return f"⚠️ '{nombre}': 0 procesos cerrados, {skipped} protegidos o ya cerrados.", AMBAR
+    return (f"⚠️ '{nombre}': 0 {sustantivo} cerrados, "
+            f"{skipped} protegidos o ya cerrados."), AMBAR
 
 
 def mensaje_banner_cierre(killed: int, failed: int, skipped: int, freed_mb: float,

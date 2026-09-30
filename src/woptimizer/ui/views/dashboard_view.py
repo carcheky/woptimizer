@@ -9,6 +9,12 @@ from woptimizer.ui.confirmation import AMBAR, CANCEL, MSG_EXPIRADO, VENTANA_MS_P
 from woptimizer.ui.feedback import mensaje_banner_cierre
 from woptimizer.ui import theme
 
+#: Auto-ocultado del banner de telemetria, en ms (TASK-035). Constante y no
+#: literal suelto porque las DOS puertas (`_show_start_banner` y `_show_banner`)
+#: la comparten desde `_reprogramar_autoocultado`: duplicada, cada una era un
+#: sitio donde el bug se escondia (ciclo 26, iteracion 3).
+AUTOOCULTADO_MS = 5000
+
 class DashboardView(Confirmable, ctk.CTkFrame):
     def __init__(self, master, process_service: ProcessService, pack_service: PackService, notification_service: NotificationService = None, gaming_service: GamingService = None):
         super().__init__(master, fg_color="transparent")
@@ -133,6 +139,25 @@ class DashboardView(Confirmable, ctk.CTkFrame):
     # ------------------------------------------------------------------
     # Banner de Telemetría y Feedback (TASK-014 / TASK-035 / UI-004)
     # ------------------------------------------------------------------
+    def _reprogramar_autoocultado(self):
+        """ÚNICA puerta del temporizador del banner (TASK-035, ciclo 26 iter. 3).
+
+        El bloque de cancelacion estaba DUPLICADO byte a byte en `_show_start_banner`
+        y en `_show_banner`. Con la copia solo instrumentada en la sonda, tres
+        mutaciones vivian: borrar la cancelacion, mover los 5000 ms a 60 000 y quitar
+        el `_timers_ui.discard` (que deja el handle vivo y lo vuelve a cancelar al
+        destruir). `_show_banner` es la puerta que el gamer ve tras pulsar "Apagar",
+        asi que ahora las dos llaman aqui y hay un solo sitio que testear.
+        """
+        if getattr(self, "_banner_timer", None):
+            try:
+                self.after_cancel(self._banner_timer)
+                if hasattr(self, "_timers_ui"):
+                    self._timers_ui.discard(self._banner_timer)
+            except Exception:
+                pass
+        self._banner_timer = self._schedule_ui(AUTOOCULTADO_MS, self._hide_banner)
+
     def _show_start_banner(self, launched: int, failed: int, pack_name: str):
         """Muestra el banner de feedback tras arrancar apps de un pack.
 
@@ -152,14 +177,7 @@ class DashboardView(Confirmable, ctk.CTkFrame):
         self.status_label.configure(text=msg, text_color=txt_color)
         self.status_banner_frame.pack(fill="x", pady=(0, 8), before=self.buttons_frame)
 
-        if getattr(self, "_banner_timer", None):
-            try:
-                self.after_cancel(self._banner_timer)
-                if hasattr(self, "_timers_ui"):
-                    self._timers_ui.discard(self._banner_timer)
-            except Exception:
-                pass
-        self._banner_timer = self._schedule_ui(5000, self._hide_banner)
+        self._reprogramar_autoocultado()
 
     def _show_banner(self, killed: int, freed_mb: float, is_gaming: bool,
                      failed: int = 0, skipped: int = 0):
@@ -182,16 +200,7 @@ class DashboardView(Confirmable, ctk.CTkFrame):
         self.status_label.configure(text=msg, text_color=txt)
         self.status_banner_frame.pack(fill="x", pady=(0, 8), before=self.buttons_frame)
 
-        if getattr(self, "_banner_timer", None):
-            try:
-                self.after_cancel(self._banner_timer)
-                if hasattr(self, "_timers_ui"):
-                    self._timers_ui.discard(self._banner_timer)
-            except Exception:
-                pass
-        self._banner_timer = self._schedule_ui(5000, self._hide_banner)
-
-    _show_kill_banner = _show_banner
+        self._reprogramar_autoocultado()
 
     def _hide_banner(self):
         """Oculta el banner de telemetría."""

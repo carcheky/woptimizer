@@ -318,9 +318,8 @@ Previamente existía asimetría entre vistas y acciones:
      * Configura `status_banner_frame` y `status_label` con fondo `theme.SURFACE_ALT`:
        - `failed == 0`: texto `"🚀 Pack '{pack_name}' iniciado ({launched} apps)."` con color `theme.ACCENT`.
        - `failed > 0`: texto `"⚠️ Pack '{pack_name}': {launched} apps iniciadas, {failed} fallaron."` con color `theme.WARNING`.
-     * Cancela cualquier temporizador previo de auto-ocultación (`self._banner_timer`).
-     * Programa auto-ocultación a los 5000 ms (`self._schedule_ui(5000, self._hide_banner)`).
-   - **Apagado (`kill`):** Se mantiene `_show_banner` (con alias `_show_kill_banner`), mostrando procesos cerrados y MB liberados con `theme.GAMING` o `theme.ACCENT`.
+     * Cancela cualquier temporizador previo de auto-ocultación y programa el nuevo, **llamando a `self._reprogramar_autoocultado()`** (cancela `self._banner_timer`, saca el handle de `_timers_ui` y programa `AUTOOCULTADO_MS = 5000` ms). Es el **único** sitio donde se programa el auto-ocultado del banner, y lo usan las dos puertas.
+   - **Apagado (`kill`):** Se mantiene `_show_banner` (sin alias: `_show_kill_banner` era código muerto y se borró), mostrando procesos cerrados y MB liberados con `theme.GAMING` o `theme.ACCENT`, y refrescando la barra de reposo con `_update_resting_bar()`.
 
 2. **Gestor de Packs (`PackManagerView`):**
    - **Guarda preventiva en `start_pack`:** Si `not pack.apps`, la UI cancela confirmaciones pendientes y emite de inmediato `self._inline_status(f"⚠️ '{pack.name}' no tiene apps que iniciar.", AMBAR)` sin crear un hilo innecesario.
@@ -328,31 +327,67 @@ Previamente existía asimetría entre vistas y acciones:
      * `failed == 0`: `self.after(0, self._inline_status, f"🚀 {started} apps iniciadas · '{nombre}'.", VERDE)`
      * `failed > 0`: `self.after(0, self._inline_status, f"⚠️ '{nombre}': {started} iniciadas, {failed} con error.", AMBAR)`
    - **Apagado (`kill_pack._run`):** el mensaje **no se escribe en la vista**, se calcula en
-     `ui/feedback.py` (`mensaje_cierre_pack`) a partir de la 4-tupla que devuelven las **dos**
+     `ui/feedback.py` (`mensaje_cierre_pack`) a partir de la 4-tupla que devuelven las
      puertas de cierre y se publica entero:
      `texto, color = mensaje_cierre_pack(nombre, killed, failed, skipped, freed_mb)` y después
      `self.after(0, self._inline_status, texto, color)`.
 
-### El cierre dice la verdad: cuatro desenlaces, verde solo con éxito (ciclo 26)
+3. **Gestor de Procesos (`ProcessManagerView`):**
+   - **Guarda preventiva en `on_kill_selected`:** sin selección marcada se avisa con `MSG_SIN_SELECCION`; con selección que ya no está en ejecución, con `MSG_SIN_PROCESOS`. Ninguna de las dos toca el servicio.
+   - **Cierre (`_kill` → `_publicar_cierre`):** el worker solo publica —
+     `self.after(0, self._publicar_cierre, killed, failed, skipped, freed_mb, len(to_kill))` —
+     y el texto sale del **mismo** `mensaje_cierre_pack` que las otras dos puertas, con el
+     nombre `"{N} seleccionadas"` y el sustantivo `"procesos"`. Con `killed == 0` no hay
+     tick ni verde. Tras publicar, `self._schedule_ui(1000, self.refresh_processes)` retira
+     de la lista lo que ya no está corriendo.
+   - Antes (ciclo 26, iteración 3) esta puerta tenía su **propia** verdad y pintaba
+     `"<tick> {killed} cerrados, {failed} fallidos."` con `killed == 0`. Era el bug que
+     motivó el ciclo, y el más grave de los tres porque mata uno a uno lo que el usuario
+     marcó a mano.
 
-`kill_pack` tiene **dos puertas** —`gaming_service.execute_gaming_pack(pack)` si `is_gaming`, o
-`process_service.kill_pack_apps(apps)` si no— y **las dos devuelven la misma 4-tupla**
-`(killed, failed, skipped, freed_mb)`. El texto se formatea **una sola vez**, en
-`ui/feedback.py`, y ambas ramas lo reciben. Es deliberado: es la forma de no repetir el fallo del
-ciclo 14, donde un camino evaluaba `p.name` y el otro `p.full_name` y uno de los dos dejaba de
-proteger en silencio. Aquí ninguna puerta puede mentir por su cuenta porque las dos alimentan el
-mismo formateador.
+### El cierre dice la verdad: tres puertas, cuatro desenlaces, verde solo con éxito (ciclo 26)
+
+Hay **tres puertas de cierre**, y las tres devuelven la **misma 4-tupla**
+`(killed, failed, skipped, freed_mb)`:
+
+| puerta | quién la llama | servicio |
+|---|---|---|
+| gaming | `PackManagerView.kill_pack` y `DashboardView.execute_pack` con `is_gaming` | `gaming_service.execute_gaming_pack(pack)` |
+| pack | `PackManagerView.kill_pack` y `DashboardView.execute_pack` sin `is_gaming` | `process_service.kill_pack_apps(apps)` |
+| seleccion | `ProcessManagerView.on_kill_selected` | `process_service.kill_processes(procesos)` |
+
+El texto se formatea **una sola vez**, en `ui/feedback.py`, y las tres lo reciben.
+Es deliberado: es la forma de no repetir el fallo del ciclo 14, donde un camino
+evaluaba `p.name` y el otro `p.full_name` y uno de los dos dejaba de proteger en
+silencio.
+
+> **Alcance real de esa garantía — léase antes de citarla.** El **formateador** es
+> común; la **llamada** no lo es por sí sola. Que las tres alimenten
+> `mensaje_cierre_pack` no basta: hace falta que (a) ninguna construya su propio
+> texto, y (b) toda rama se ejecute alguna vez en la suite. El ciclo 26 felló dos
+> veces por esto: la iteración 2 arregló la puerta del Gestor de Packs y dejó
+> intacta `on_kill_selected`, que pintaba `"<tick> 0 cerrados, 0 fallidos."` con
+> `killed == 0`; y la rama no-gaming de la portada no se ejecutaba nunca, de modo
+> que `if p.is_gaming:` y `kill_pack_apps(p.apps)` podían romperse sin que nada
+> se notase. Hoy lo que lo sostiene es `test_el_feedback_de_pack_dice_la_verdad`
+> (que entra por `execute_pack` con pack gaming **y** con pack normal), la sonda
+> nueva `test_el_gestor_de_procesos_tampoco_miente` y la guarda AST.
 
 `ui/feedback.py` es **puro**: solo importa `typing`, `ui.confirmation` y `ui.theme`. Ni `tkinter`,
 ni `psutil`, ni `json`, ni `services`. `clasificar_cierre(killed, failed)` es el clasificador
-ÚNICO de las dos vistas, con cuatro desenlaces:
+ÚNICO de las tres puertas, con cuatro desenlaces:
 
-| Desenlace | Cuándo | Gestor de Packs (`_inline_status`) | Portada (`_show_banner`) |
-|---|---|---|---|
-| **éxito** | `killed > 0`, `failed == 0` | `"✅ N procesos cerrados (X MB liberados) · 'pack'."` en **VERDE** | `"⚡ N procesos cerrados · X MB liberados"` en `GAMING`/`ACCENT` |
-| **parcial** | `killed > 0`, `failed > 0` | `"⚠️ 'pack': N cerrados, M con error (X MB liberados)."` en ÁMBAR | `"⚠️ N procesos cerrados · X MB liberados · M con error."` en `WARNING` |
-| **nada** | `killed == 0`, `failed == 0` | `"⚠️ 'pack': 0 procesos cerrados, K protegidos o ya cerrados."` en ÁMBAR | `"⚠️ Nada que cerrar: K ya cerrados o protegidos."` en `WARNING` |
-| **fallo** | `killed == 0`, `failed > 0` | `"⛔ No se cerró nada de 'pack': M con error."` en ROJO | `"⛔ No se cerró nada: M procesos con error."` en `WARNING` |
+| Desenlace | Cuándo | Gestor de Packs (`_inline_status`) | Portada (`_show_banner`) | Gestor de Procesos (`_publicar_cierre`) |
+|---|---|---|---|---|
+| **éxito** | `killed > 0`, `failed == 0` | `"✅ N procesos cerrados (X MB liberados) · 'pack'."` en **VERDE** | `"⚡ N procesos cerrados · X MB liberados"` en `GAMING`/`ACCENT` | `"✅ N procesos cerrados (X MB liberados) · 'N seleccionadas'."` en **VERDE** |
+| **parcial** | `killed > 0`, `failed > 0` | `"⚠️ 'pack': N cerrados, M con error (X MB liberados)."` en ÁMBAR | `"⚠️ N procesos cerrados · X MB liberados · M con error."` en `WARNING` | idéntico al del Gestor de Packs, con `'N seleccionadas'` |
+| **nada** | `killed == 0`, `failed == 0` | `"⚠️ 'pack': 0 procesos cerrados, K protegidos o ya cerrados."` en ÁMBAR | `"⚠️ Nada que cerrar: K ya cerrados o protegidos."` en `WARNING` | idéntico al del Gestor de Packs, con `'N seleccionadas'` |
+| **fallo** | `killed == 0`, `failed > 0` | `"⛔ No se cerró nada de 'pack': M con error."` en ROJO | `"⛔ No se cerró nada: M procesos con error."` en `WARNING` | idéntico al del Gestor de Packs, con `'N seleccionadas'` |
+
+`mensaje_cierre_pack` admite un **sustantivo parametrizable** (`"procesos"` por
+defecto) para que quien hable de apps lo diga por parámetro. Duplicar el texto
+por vista sería volver a tener dos verdades, que es justo lo que el módulo existe
+para evitar.
 
 Dos reglas que no se pueden relajar:
 
@@ -360,9 +395,11 @@ Dos reglas que no se pueden relajar:
   (ciclo 26, `mutation-auditor` con sonda en runtime) `kill_pack` pintaba
   `"✅ 0 procesos cerrados (0.0 MB liberados)"` en VERDE Gaming con un pack sin apps vivas: todo en
   `keepers`, pack ya vacío, rutas muertas. Es la misma clase que el contador `started` del ciclo 20.
+  En la iteración 3 el mismo defecto seguía vivo, literal, en `on_kill_selected`.
 - **`skipped` no es "fallaron".** `kill_processes` lo suma por blindaje `is_system_protected`
   (TASK-024) o por `NoSuchProcess` (ya no estaba), y `execute_gaming_pack` le suma además los
   descartes del filtro de `keepers` (G9). Por eso el mensaje dice "protegidos o ya cerrados".
+  El mensaje viejo de `on_kill_selected` fundía los dos en "fallidos".
 
 `_show_banner` mantiene la firma anterior y **añade** `failed` y `skipped` con valor por defecto
 `0`, de modo que una llamada antigua no rompe; el worker `_run_kill` sí los pasa.
@@ -372,7 +409,11 @@ La portada **no** usa `theme.DANGER` en el desenlace "fallo" a propósito: `#c22
 distingue por el texto (`⛔`), no inventándose un par de color que no cumple.
 
 ### Invariantes de Hilos y Red de Seguridad
-- **Cero mutaciones directas de widgets desde hilos secundarios:** Todo worker de fondo (`_run`, `_run_kill`, `_run_start`) delega las mutaciones exclusivamente a través de `self.after(0, callback, *args)`.
-- **Análisis AST exhaustivo, no una lista de nombres:** la sonda `test_pack_execution_ui_telemetry_feedback` analiza el **objetivo real de cada `threading.Thread(target=...)`** de `execute_pack`, `kill_pack` y `start_pack`. Dentro de ese `def` se permite una lista **corta y explícita** —`after`, `process_service`, `gaming_service`, `pack_service`, `notification_service`— y **todo lo demás que cuelgue de `self` es infracción**, incluidos los métodos de widget que no estaban en la lista anterior y las **escrituras** en `self.<attr>`. Se exige que **cada** `self.after` del worker lleve `0` ms y un callback de la lista blanca, no solo el primero que aparece: con `self.master.after` en *una* de las dos ramas, el guard antiguo pasaba. `self.master.after` cae solo por la regla (su raíz sobre `self` es `master`). La guarda se prueba **contra sí misma** con código sintáctico en las dos direcciones (3 infracciones que tiene que ver, 2 ramas en las que tiene que ver *las dos*, y un worker conforme que no puede marcar). **Lo que la guarda NO comprueba**: que el `after` se ejecute de verdad en el hilo principal, ni el resultado de la operación. Eso lo cubren las sondas dinámicas con hilo secundario real.
-- **Gestión de temporizadores:** `_banner_timer` se cancela explícitamente antes de programar uno nuevo, y `_hide_banner` lo limpia a `None`. `destroy()` cancela el timer pendiente antes de `cancel_on_destroy()`. El auto-ocultado son **5000 ms** exactos, y la sonda lo mide con un **reloj simulado** (t0 primer banner, t=1000 segundo banner, lectura a t=5500, auto-ocultado a t=6500): sin esperar 5,5 s reales. Si se quita la cancelación, el temporizador viejo apaga a los 5000 ms el banner del *segundo* mensaje; si el auto-ocultado desaparece o se va a 60 s, la lectura de t=6500 lo delata.
+- **Cero mutaciones directas de widgets desde hilos secundarios:** Todo worker de fondo (`_run`, `_run_kill`, `_run_start`, `_load`, `_kill`) delega las mutaciones exclusivamente a través de `self.after(0, callback, *args)`. El worker **no arma callbacks anidados**: publica siempre en un método de la vista, que es lo que permite que la guarda AST lo verifique por nombre.
+- **Análisis AST, con la lista de lo permitido como PARES `(raiz, metodo)`, no de raíces:** la sonda `test_los_workers_de_pack_solo_publican_por_after` analiza el **objetivo real de cada `threading.Thread(target=...)`** de `DashboardView.execute_pack`, `PackManagerView.kill_pack`, `PackManagerView.start_pack`, `ProcessManagerView._do_load` y `ProcessManagerView.on_kill_selected`. Esa lista de vistas y métodos es **explícita y está en el bucle de aplicación del test**, a la vista: añadir un worker nuevo sin añadirlo ahí es un hueco, y el docstring de la sonda lo dice. Dentro del worker, todo lo que cuelgue de `self` y no sea un par permitido es infracción, incluidos los métodos de widget, las **escrituras** en `self.<attr>` y las que entran **por índice** (`self.__dict__['x']`: la guarda baja por `ast.Subscript`, porque un `Subscript` no es un `Attribute` y por eso la puerta de atrás colaba). Se exige que **cada** `self.after` del worker lleve `0` ms y un callback de la lista blanca, no solo el primero que aparece. `self.master.after` cae solo por la regla (par `("master", "after")`, no permitido).
+  - **Comparar solo la raíz NO alcanza** (medido en la iteración 3 del ciclo 26): con una lista de raíces, `self.pack_service.get_all_packs()` y `self.process_service.get_process_exe_path(1)` pasaban. El par es la unidad de comparación.
+  - La guarda se prueba **contra sí misma** con código sintáctico en las dos direcciones: cinco infracciones que tiene que ver (método de widget, `self.master.after`, escritura en `self`, tres métodos prohibidos de raíces permitidas y dos de la puerta de atrás por `__dict__`), un worker conforme que no puede marcar, y un worker de dos ramas en el que tiene que ver *las dos*.
+  - **Lo que la guarda NO comprueba**, sin adornos: los `threading.Thread` de `ui/app.py` (el toast de arranque y el hilo del icono de la bandeja), que no son vistas; y cualquier worker añadido después de esa lista sin añadirlo ahí. Tampoco comprueba que el `after` se ejecute de verdad en el hilo principal ni el resultado de la operación: eso lo cubren las sondas dinámicas con hilo secundario real.
+- **Gestión de temporizadores:** el bloque de "cancelar el anterior y programar el nuevo" está **extraído a un único método**, `DashboardView._reprogramar_autoocultado()`, al que llaman las **dos** puertas del banner (`_show_start_banner` y `_show_banner`). Estaba duplicado byte a byte y, con la sonda instrumentando solo la primera, tres mutaciones vivían en `_show_banner` (la que el gamer ve tras pulsar "Apagar"): borrar la cancelación, mover los 5000 ms a 60 000 y quitar el `_timers_ui.discard` (que dejaba el handle vivo y lo volvía a cancelar al destruir). El auto-ocultado son **5000 ms** (`dashboard_view.AUTOOCULTADO_MS`), y la sonda los mide con un **reloj simulado de plazo absoluto** en **las dos** puertas: t0 primer banner, t=1000 segundo banner, lectura a t=5500 y auto-ocultado a t=6500, sin esperar 5,5 s reales. Además afirma que tras reprogramar queda **exactamente un** handle en `_timers_ui` y que sale al dispararse. `_hide_banner` lo limpia a `None` y `destroy()` cancela el timer pendiente antes de `cancel_on_destroy()`.
+- **Alias muertos: no.** `_show_kill_banner = _show_banner` estaba en `DashboardView` sin que nadie lo llamara; lo único que lo sostenía era su propio nombre en la lista blanca de la guarda. Es el mismo patrón que perdió el ciclo 22, así que se borró de los dos sitios.
 

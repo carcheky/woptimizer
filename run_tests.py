@@ -1664,8 +1664,17 @@ def test_do_load_publica_sin_tk():
                 and nodo.func.value.id == "self"
                 and nodo.args and isinstance(nodo.args[0], ast.Constant)
                 and nodo.args[0].value == 0
-                and len(nodo.args) >= 2 and isinstance(nodo.args[1], ast.Name)):
-            publicadores.add(nodo.args[1].id)
+                and len(nodo.args) >= 2):
+            # TASK-035 iter 3: el destino puede ser un `def` anidado (nombre) o un
+            # metodo de la vista ligado por atributo (`self._apply_load`). Lo que
+            # se exige es lo mismo en los dos casos: que se publique por
+            # `self.after(0, ...)` y no escribiendo el estado desde el secundario.
+            destino = nodo.args[1]
+            if isinstance(destino, ast.Name):
+                publicadores.add(destino.id)
+            elif isinstance(destino, ast.Attribute) and isinstance(destino.value, ast.Name) \
+                    and destino.value.id == "self":
+                publicadores.add(destino.attr)
     assert publicadores, "no hay ninguna funcion destino de self.after(0, ...)"
 
     padres = {}
@@ -7631,20 +7640,28 @@ def test_los_workers_de_pack_solo_publican_por_after():
     valida). El doc de `ui-design-system.md` afirmaba que el analisis era
     "estricto" y no lo era: la afirmacion tambien era falsa.
 
-    Aqui la lista de lo permitido es CORTA Y EXPLICITA
-    (`after`, `process_service`, `gaming_service`, `pack_service`,
-    `notification_service`) y todo lo demas que cuelgue de `self` es infraccion,
-    incluidos los metodos de widget que nadie escribio en la lista y las
-    ESCRITURAS en `self.<attr>`. Se aplica al **objetivo real** de cada
-    `threading.Thread(target=...)` de `execute_pack`, `kill_pack` y `start_pack`,
-    y exige que CADA `self.after` del worker lleve 0 ms y un callback de la lista
-    blanca, no solo el primero.
+    Aqui la lista de lo permitido son PARES `(raiz, metodo)` y todo lo demas que
+    cuelgue de `self` es infraccion, incluidos los metodos de widget que nadie
+    escribio en la lista y las ESCRITURAS en `self.<attr>` (tambien las que
+    entran por indice: `self.__dict__['x']`). Se aplica al **objetivo real** de
+    cada `threading.Thread(target=...)` de `execute_pack`, `kill_pack`,
+    `start_pack`, `ProcessManagerView._do_load` y
+    `ProcessManagerView.on_kill_selected`, y exige que CADA `self.after` del
+    worker lleve 0 ms y un callback de la lista blanca, no solo el primero.
+
+    LO QUE LA GUARDA **NO** CUBRE, dicho sin adornos: los `threading.Thread` de
+    `ui/app.py` (el toast de arranque y el hilo del icono de la bandeja), que no
+    son vistas, y ningun worker anadido despues de esta lista sin anadirlo aqui.
+    La lista de vistas y metodos esta en el bucle de aplicacion, mas abajo, a la
+    vista de todos.
 
     **La guarda se prueba contra si misma** (control del detector, no del
-    fichero): tres infracciones sinteticas que tiene que ver, un worker conforme
-    que no puede marcar, y el caso de las DOS ramas, donde el worker tiene una
-    rama buena y otra con `self.master.after`: ese es precisamente el agujero que
-    el guard per-nodo no veia.
+    fichero): cinco infracciones sinteticas que tiene que ver —un metodo de
+    widget, `self.master.after`, una escritura en `self`, tres metodos prohibidos
+    de raices permitidas y doslde la puerta de atras por `__dict__`—, un worker
+    conforme que no puede marcar, y el caso de las DOS ramas, donde el worker
+    tiene una rama buena y otra con `self.master.after`: ese es precisamente el
+    agujero que el guard per-nodo no veia.
 
     LO QUE NO COMPRUEBA (y por eso no hay que leerlo como mas de lo que es): que
     el `after` se ejecute de verdad en el hilo principal, ni el resultado de la
@@ -7661,36 +7678,68 @@ def test_los_workers_de_pack_solo_publican_por_after():
     # prohibido, y la lista de lo permitido es CORTA A PROPOSITO: cualquier
     # llamada nueva sobre `self` tiene que pasar por esta lista para no ser una
     # infraccion silenciosa.
-    PERMITIDOS = {"after", "process_service", "gaming_service", "pack_service", "notification_service"}
-    CALLBACKS = {"_inline_status", "_show_banner", "_show_kill_banner", "_show_start_banner"}
+    #
+    # TASK-035 iter 3: la lista es de PARES `(raiz, metodo)`, no de raices. Con
+    # raices, `self.pack_service.get_all_packs()` y
+    # `self.process_service.get_process_exe_path(1)` colaban: la raiz estaba
+    # permitida y el metodo, no. Comparar el par cierra esa puerta y hace que la
+    # lista signifique algo.
+    PERMITIDOS = {
+        ("process_service", "kill_pack_apps"),
+        ("process_service", "kill_processes"),
+        ("process_service", "start_pack_apps"),
+        ("process_service", "get_running_processes"),
+        ("gaming_service", "execute_gaming_pack"),
+        ("notification_service", "notify_pack_activated"),
+        ("notification_service", "notify_kill_result"),
+        ("notification_service", "notify_apps_launched"),
+    }
+    # `_show_kill_banner` salio de aqui porque era un alias MUERTO de
+    # `_show_banner` (mismo patron que perdio el ciclo 22): nadie lo llamaba y lo
+    # unico que lo sostenia era su propia presencia en esta lista.
+    CALLBACKS = {"_inline_status", "_show_banner", "_show_start_banner",
+                 "_publicar_cierre", "_apply_load"}
 
     def _raiz_de_self(expresion):
-        """`(atributo, ruta)` de una expresion que cuelga de `self`; `(None, [])` si no cuelga.
+        """`(raiz, camino)` de una expresion que cuelga de `self`; `(None, [])` si no.
 
-        Ejemplos: `self.after` -> `("after", ["after"])`;
-        `self.status_label.configure` -> `("status_label", ["status_label", "configure"])`;
-        `self.master.after` -> `("master", ["master", "after"])`.
+        `camino` va de la raiz al metodo llamado: `self.after` ->
+        `("after", ["after"])`; `self.status_label.configure` ->
+        `("status_label", ["status_label", "configure"])`; `self.master.after` ->
+        `("master", ["master", "after"])`.
+
+        TASK-035 iter 3: baja tambien por `ast.Subscript`. Antes,
+        `self.__dict__['status_label'].configure(...)` devolvia `(None, [])` y la
+        guarda no lo veia: un `Subscript` no es un `Attribute`. Era la misma
+        llamada de widget de siempre, escrita por la puerta de atras.
         """
         ruta = []
         nodo = expresion
-        while isinstance(nodo, ast.Attribute):
-            ruta.append(nodo.attr)
-            nodo = nodo.value
-            if isinstance(nodo, ast.Name) and nodo.id == "self":
-                return ruta[-1], list(reversed(ruta))
+        while True:
+            if isinstance(nodo, ast.Attribute):
+                ruta.append(nodo.attr)
+                nodo = nodo.value
+            elif isinstance(nodo, ast.Subscript):
+                nodo = nodo.value
+            else:
+                break
+        if ruta and isinstance(nodo, ast.Name) and nodo.id == "self":
+            return ruta[-1], list(reversed(ruta))
         return None, []
 
     def _infracciones(worker, etiqueta):
         """Todas las violaciones del invariante en UN worker. Lista vacia = conforme."""
         malos = []
         for call in [n for n in ast.walk(worker) if isinstance(n, ast.Call)]:
-            raiz, ruta = _raiz_de_self(call.func)
+            raiz, camino = _raiz_de_self(call.func)
             if raiz is None:
                 continue
-            if raiz not in PERMITIDOS:
-                malos.append(f"{etiqueta}:L{call.lineno} self.{'.'.join(ruta)}(...) desde el hilo secundario")
-                continue
             if raiz != "after":
+                if (raiz, camino[-1]) not in PERMITIDOS:
+                    malos.append(
+                        f"{etiqueta}:L{call.lineno} self.{'.'.join(camino)}(...) "
+                        f"desde el hilo secundario"
+                    )
                 continue
             if not call.args or not (isinstance(call.args[0], ast.Constant) and call.args[0].value == 0):
                 malos.append(f"{etiqueta}:L{call.lineno} self.after debe ser de 0 ms")
@@ -7705,10 +7754,13 @@ def test_los_workers_de_pack_solo_publican_por_after():
             else:
                 objetivos = []
             for t in objetivos:
-                if isinstance(t, ast.Attribute):
-                    raiz, ruta = _raiz_de_self(t)
+                if isinstance(t, (ast.Attribute, ast.Subscript)):
+                    raiz, camino = _raiz_de_self(t)
                     if raiz is not None:
-                        malos.append(f"{etiqueta}:L{nodo.lineno} escribe self.{'.'.join(ruta)} desde el hilo secundario")
+                        malos.append(
+                            f"{etiqueta}:L{nodo.lineno} escribe "
+                            f"self.{'.'.join(camino)} desde el hilo secundario"
+                        )
         return malos
 
     # Control 1: las tres infracciones que la guarda VIEJA no veia.
@@ -7750,6 +7802,48 @@ def test_los_workers_de_pack_solo_publican_por_after():
     assert len(malos_ramas) == 2, (
         f"la guarda tiene que afirmar sobre TODAS las ramas del worker, no sobre la "
         f"primera que encuentra: {malos_ramas}"
+    )
+
+    # Control 4 (iter 3): con la lista de RAICES, estas cuatro llamadas pasaban
+    # enteras. Se comparan por pares: la misma raiz puede estar permitida con un
+    # metodo y prohibida con otro.
+    codigo_pares = (
+        "def _run(self):\n"
+        "    self.process_service.kill_pack_apps([])\n"
+        "    self.process_service.get_process_exe_path(1)\n"
+        "    self.pack_service.get_all_packs()\n"
+        "    self.gaming_service.should_kill_for_gaming('x', None)\n"
+    )
+    malos_pares = _infracciones(ast.parse(codigo_pares).body[0], "CONTROL-PARES")
+    assert len(malos_pares) == 3, (
+        "la guarda tiene que comparar el PAR (raiz, metodo): con la raiz sola, "
+        f"pack_service, get_process_exe_path y should_kill_for_gaming colaban: {malos_pares}"
+    )
+    for prohibido in ("get_process_exe_path", "get_all_packs", "should_kill_for_gaming"):
+        assert any(prohibido in m for m in malos_pares), (
+            f"la guarda no ve self.<raiz>.{prohibido}: {malos_pares}"
+        )
+    assert not any("kill_pack_apps" in m for m in malos_pares), (
+        "el metodo SI permitido de una raiz permitida no puede marcarse: solo mira al par"
+    )
+
+    # Control 5 (iter 3): `self.__dict__['status_label'].configure(...)` es la misma
+    # llamada de widget escrita con un `Subscript` por medio, y antes colaba porque
+    # un Subscript no es un Attribute. Tambien la escritura por indice.
+    codigo_subscript = (
+        "def _run(self):\n"
+        "    self.__dict__['status_label'].configure(text='x')\n"
+        "    self.__dict__['_last_gaming_summary'] = 'x'\n"
+    )
+    malos_sub = _infracciones(ast.parse(codigo_subscript).body[0], "CONTROL-SUBSCRIPT")
+    assert len(malos_sub) == 2, (
+        f"la guarda no baja por ast.Subscript y se la esquivan por el indice: {malos_sub}"
+    )
+    assert any("__dict__" in m and "configure" in m for m in malos_sub), (
+        f"no ve la llamada por indice: {malos_sub}"
+    )
+    assert any("__dict__" in m and "escribe" in m for m in malos_sub), (
+        f"no ve la escritura por indice: {malos_sub}"
     )
 
     # -----------------------------------------------------------------
@@ -7809,6 +7903,7 @@ def test_los_workers_de_pack_solo_publican_por_after():
 
     arbol_dash = _arbol_de("dashboard_view.py")
     arbol_pm = _arbol_de("pack_manager_view.py")
+    arbol_proc = _arbol_de("process_manager_view.py")
 
     exec_pack = _metodo(arbol_dash, "DashboardView", "execute_pack")
     assert exec_pack is not None, "DashboardView.execute_pack no encontrado"
@@ -7817,9 +7912,20 @@ def test_los_workers_de_pack_solo_publican_por_after():
     assert kill_pack is not None, "PackManagerView.kill_pack no encontrado"
     assert start_pack is not None, "PackManagerView.start_pack no encontrado"
 
+    # Iter 3: el Gestor de Procesos tambien lanza `threading.Thread` y hasta aqui
+    # no lo leia nadie. `_do_load` es el worker de carga de la lista y
+    # `on_kill_selected` es la TERCERA puerta de cierre (la que mata uno a uno lo
+    # que el usuario marco a mano). Los dos entran en el mismo invariante.
+    do_load = _metodo(arbol_proc, "ProcessManagerView", "_do_load")
+    on_kill = _metodo(arbol_proc, "ProcessManagerView", "on_kill_selected")
+    assert do_load is not None, "ProcessManagerView._do_load no encontrado"
+    assert on_kill is not None, "ProcessManagerView.on_kill_selected no encontrado"
+
     for metodo, etiqueta in ((exec_pack, "DashboardView.execute_pack"),
                              (kill_pack, "PackManagerView.kill_pack"),
-                             (start_pack, "PackManagerView.start_pack")):
+                             (start_pack, "PackManagerView.start_pack"),
+                             (do_load, "ProcessManagerView._do_load"),
+                             (on_kill, "ProcessManagerView.on_kill_selected")):
         for worker in _workers(metodo, etiqueta):
             infracciones = _infracciones(worker, etiqueta)
             assert not infracciones, (
@@ -7874,7 +7980,9 @@ def test_el_feedback_de_pack_dice_la_verdad():
     from woptimizer.ui.views import pack_manager_view as pmv_mod
     from woptimizer.ui.views.dashboard_view import DashboardView
     from woptimizer.ui.views.pack_manager_view import PackManagerView
-    from woptimizer.ui.confirmation import AMBAR, ROJO, VERDE, VENTANA_MS, VENTANA_MS_PORTADA
+    from woptimizer.ui.confirmation import (
+        AMBAR, MSG_PACK_INEXISTENTE, ROJO, VERDE, VENTANA_MS, VENTANA_MS_PORTADA,
+    )
     from woptimizer.ui import theme
 
     # -----------------------------------------------------------------
@@ -8051,26 +8159,63 @@ def test_el_feedback_de_pack_dice_la_verdad():
 
         # --- el banner de cierre tampoco puede mentir con 0 cerrados (S1, misma clase)
         dash._show_banner(killed=4, freed_mb=128.5, is_gaming=False)
-        assert "4 procesos cerrados · 128.5 MB liberados" in dash.status_label.cget("text")
+        assert dash.status_label.cget("text") == "⚡ 4 procesos cerrados · 128.5 MB liberados", (
+            f"exito real del banner: {dash.status_label.cget('text')!r}"
+        )
         assert dash.status_label.cget("text_color") == theme.ACCENT
 
+        # (iter 3) `_show_banner` tambien refresca la barra de reposo. Sin esta
+        # afirmacion, borrar su `_update_resting_bar()` dejaba la suite en verde.
+        reloj_procesos.snapshot = [object(), object()]
+        antes_reposo = dash.resting_label.cget("text")
+        dash._show_banner(killed=4, freed_mb=128.5, is_gaming=False)
+        assert "2 procesos activos" in dash.resting_label.cget("text"), (
+            "_show_banner tiene que refrescar la barra de reposo: antes "
+            f"{antes_reposo!r}, despues {dash.resting_label.cget('text')!r}"
+        )
+
         dash._show_banner(killed=6, freed_mb=256.0, is_gaming=True)
-        assert "6 procesos cerrados · 256.0 MB liberados" in dash.status_label.cget("text")
+        assert dash.status_label.cget("text") == "⚡ 6 procesos cerrados · 256.0 MB liberados"
         assert dash.status_label.cget("text_color") == theme.GAMING
+        # (iter 3) El resumen del Gaming Mode se escribe EN EL TEXTO de reposo, no
+        # en un atributo que nadie lee. Sin esta afirmacion, desactivar el
+        # `if is_gaming:` pasaba.
+        assert "Último Gaming Mode: 6 cerrados, 256.0 MB" in dash.resting_label.cget("text"), (
+            f"la barra de reposo debe decir como quedo el Gaming Mode: "
+            f"{dash.resting_label.cget('text')!r}"
+        )
+
+        # (iter 3) UN SOLO cerrado sigue siendo exito: `clasificar_cierre` no puede
+        # exigir dos. Sin este caso, `killed > 0` -> `killed > 1` sobrevivia.
+        dash._show_banner(killed=1, freed_mb=2.5, is_gaming=False)
+        assert dash.status_label.cget("text") == "⚡ 1 procesos cerrados · 2.5 MB liberados", (
+            f"cerrar UN proceso es exito: {dash.status_label.cget('text')!r}"
+        )
+        assert dash.status_label.cget("text_color") == theme.ACCENT, (
+            "cerrar un solo proceso da derecho al color de marca"
+        )
 
         dash._show_banner(killed=0, freed_mb=0.0, is_gaming=True, failed=0, skipped=6)
+        texto_banner = dash.status_label.cget("text")
+        assert texto_banner == "⚠️ Nada que cerrar: 6 ya cerrados o protegidos.", (
+            f"nada que cerrar dice exactamente eso: {texto_banner!r}"
+        )
         assert dash.status_label.cget("text_color") == theme.WARNING, (
             "con 0 procesos cerrados la portada no puede pintar su color de marca: "
             f"{dash.status_label.cget('text')!r}"
         )
-        assert "6" in dash.status_label.cget("text"), (
-            f"el banner debe decir cuantos quedaron intactos: {dash.status_label.cget('text')!r}"
+        assert "✅" not in texto_banner, (
+            f"la rama 'nada' del banner no puede llevar tick de exito: {texto_banner!r}"
         )
 
         dash._show_banner(killed=0, freed_mb=0.0, is_gaming=True, failed=2, skipped=0)
+        texto_banner = dash.status_label.cget("text")
+        assert texto_banner == "⛔ No se cerró nada: 2 procesos con error.", (
+            f"el banner de fallo nombra a los que fallaron: {texto_banner!r}"
+        )
         assert dash.status_label.cget("text_color") == theme.WARNING
-        assert "2" in dash.status_label.cget("text"), (
-            f"el banner de fallo debe decir cuantos fallaron: {dash.status_label.cget('text')!r}"
+        assert "✅" not in texto_banner, (
+            f"la rama 'fallo' del banner no puede llevar tick: {texto_banner!r}"
         )
 
         # --- S5: temporizadores con RELOJ SIMULADO (sin 5,5 s de espera real)
@@ -8116,6 +8261,54 @@ def test_el_feedback_de_pack_dice_la_verdad():
         )
         assert not _banner_visible(), "el banner debe ocultarse solo a los 5000 ms"
         assert dash._banner_timer is None, "_hide_banner debe limpiar _banner_timer"
+
+        # (iter 3) EL MISMO ESCENARIO SOBRE `_show_banner`, que es la puerta que el
+        # gamer ve tras pulsar "Apagar". Con el bloque de cancelacion duplicado
+        # byte a byte y solo instrumentado en `_show_start_banner`, aqui sobrevivian
+        # tres mutaciones: borrar la cancelacion, mover los 5000 ms a 60 000 y quitar
+        # el `_timers_ui.discard` (fuga de handle y doble cancelacion al destruir).
+        dash._hide_banner()
+        assert not _banner_visible(), "precondicion del arnés: el banner arranca oculto"
+
+        # t0: primer mensaje de CIERRE
+        dash._show_banner(killed=3, freed_mb=64.0, is_gaming=True)
+        primero_cierre = dash._banner_timer
+        assert primero_cierre is not None, "el banner de cierre tiene que programar su auto-ocultado"
+        # t = 1000: segundo mensaje de cierre
+        reloj.avanzar(1000)
+        dash._show_banner(killed=1, freed_mb=8.0, is_gaming=False)
+        segundo_cierre = dash._banner_timer
+        assert segundo_cierre != primero_cierre
+        assert primero_cierre not in {j["id"] for j in reloj.jobs if j["vivo"]}, (
+            f"el banner de cierre nuevo debe cancelar el auto-ocultado anterior "
+            f"({primero_cierre}); sin eso, a los 5000 ms el temporizador viejo apaga "
+            f"el banner del SEGUNDO mensaje. Jobs vivos: {reloj.vivos()}"
+        )
+        assert primero_cierre not in dash._timers_ui, (
+            "el handle viejo tiene que salir de `_timers_ui` al reprogramar: si se "
+            f"queda, `cancel_on_destroy` lo cancela dos veces. Vivos: {dash._timers_ui}"
+        )
+        assert dash._timers_ui == {segundo_cierre}, (
+            f"debe quedar exactamente un auto-ocultado registrado: {dash._timers_ui}"
+        )
+        # t = 5500: el viejo habria vencido (t0+5000) y el nuevo no (1000+5000)
+        vencidos = reloj.avanzar(4500)
+        assert not vencidos, (
+            f"nada puede vencer a t=5500 con el temporizador viejo cancelado: {vencidos}"
+        )
+        assert _banner_visible(), (
+            "a t=5500 el banner del segundo cierre tiene que seguir en pantalla"
+        )
+        assert dash.status_label.cget("text") == "⚡ 1 procesos cerrados · 8.0 MB liberados"
+        # t = 6500: el auto-ocultado nuevo (5000 ms) se cumple
+        vencidos = reloj.avanzar(1000)
+        assert segundo_cierre in vencidos, (
+            f"el auto-ocultado de 5000 ms tiene que seguir existiendo (vencidos={vencidos})"
+        )
+        assert not _banner_visible(), "el banner de cierre debe ocultarse solo a los 5000 ms"
+        assert dash._timers_ui == set(), (
+            f"al dispararse, el handle tiene que salir de `_timers_ui`: {dash._timers_ui}"
+        )
 
         # --- la guarda preventiva de `start_pack` (ventana real, widget real)
         pm_real = PackManagerView(root, ps, pack_s, ns, gs)
@@ -8226,6 +8419,57 @@ def test_el_feedback_de_pack_dice_la_verdad():
             pack_normal = Pack(id="trabajo", name="Trabajo", apps=list(APPS))
             pack_gaming = Pack(id="gaming", name="Gaming Mode", is_gaming=True)
 
+            # (iter 3) La rama NO GAMING de la portada no se ejecutaba NUNCA en la
+            # suite: con solo el pack gaming, tanto `if p.is_gaming:` ->
+            # `if not p.is_gaming:` como `kill_pack_apps(p.apps)` ->
+            # `kill_pack_apps([])` pasaban los dos. Es el mismo patron del ciclo 14:
+            # una rama sin probar y la otra mirando cosas distintas.
+            pack_apagar = Pack(id="apagar", name="Apagar", apps=list(APPS),
+                               default_action="kill")
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            procs.cierre = (2, 0, 0, 40.0)
+            dash.process_service = procs
+            dash.gaming_service = gaming
+            dash.notification_service = _Notis()
+            dash.after = lambda ms, func=None, *a: cola.append((ms, func, a, threading.get_ident()))
+            _correr(dash, DashboardView.execute_pack, pack_apagar, doble=True,
+                    callback=lambda v: v._show_banner)
+            assert gaming.llamadas == 0, (
+                "un pack NO gaming de la portada no puede pasar por la puerta del "
+                "Gaming Mode: execute_gaming_pack consulta keepers y solo tiene "
+                "sentido en el preset"
+            )
+            assert procs.llamadas_cierre == 1 and procs.apps == APPS, (
+                "un pack NO gaming se cierra con SUS apps, no con una lista vacia: "
+                f"llego {procs.apps}"
+            )
+            assert dash.status_label.cget("text") == (
+                "⚡ 2 procesos cerrados · 40.0 MB liberados"
+            ), f"banner de la rama no gaming: {dash.status_label.cget('text')!r}"
+            assert dash.status_label.cget("text_color") == theme.ACCENT
+            del dash.after
+
+            # (iter 3) El ORDEN de la 4-tupla en el worker de la portada. Con
+            # `failed == skipped` en todos los casos anteriores, intercambiar
+            # `(..., failed, skipped)` por `(..., skipped, failed)` era invisible:
+            # los dos numeros se parecian y el texto salia igual.
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            gaming.cierre = (2, 3, 5, 12.0)          # failed != skipped a proposito
+            dash.process_service = procs
+            dash.gaming_service = gaming
+            dash.after = lambda ms, func=None, *a: cola.append((ms, func, a, threading.get_ident()))
+            _correr(dash, DashboardView.execute_pack, pack_portada, doble=True,
+                    callback=lambda v: v._show_banner)
+            assert dash.status_label.cget("text") == (
+                "⚠️ 2 procesos cerrados · 12.0 MB liberados · 3 con error."
+            ), (
+                "el worker de la portada tiene que leer la 4-tupla en el orden "
+                "(killed, failed, skipped, freed_mb): si intercambia failed y "
+                f"skipped, el texto dirá 5 con error. Dice: {dash.status_label.cget('text')!r}"
+            )
+            assert dash.status_label.cget("text_color") == theme.WARNING
+            del dash.after
+
             # (1) CIERRE NORMAL CON EXITO REAL -> VERDE
             procs, gaming = _ProcesosGestor(), _GamingGestor()
             procs.cierre = (3, 0, 0, 128.5)
@@ -8241,6 +8485,20 @@ def test_el_feedback_de_pack_dice_la_verdad():
             assert gaming.llamadas == 0, "un pack normal no pasa por la puerta del Gaming Mode"
             assert v.notification_service.eventos == [("kill", "Trabajo", 3, 128.5)], (
                 f"el toast debe llevar el resultado real: {v.notification_service.eventos}"
+            )
+
+            # (iter 3) `killed == 1` con `failed == 0` es EXITO, no "nada". Sin este
+            # caso, `clasificar_cierre` con `killed > 0` -> `killed > 1` sobrevivia:
+            # ningun caso de la puerta del pack cerraba exactamente UN proceso.
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            procs.cierre = (1, 0, 0, 2.5)
+            v = _correr(_gestor(pack_normal, procs, gaming), PackManagerView.kill_pack,
+                        "trabajo", doble=True)
+            assert v.status_label.texto == (
+                "✅ 1 procesos cerrados (2.5 MB liberados) · 'Trabajo'."
+            ), f"cerrar un solo proceso sigue siendo exito: {v.status_label.texto!r}"
+            assert v.status_label.color == VERDE, (
+                f"cerrar un proceso da derecho al verde: {v.status_label.color!r}"
             )
 
             # (2) NADA CERRADO POR LA PUERTA NORMAL (todo en keepers / ya cerrado)
@@ -8316,6 +8574,35 @@ def test_el_feedback_de_pack_dice_la_verdad():
                 "⚠️ 'Trabajo': 2 iniciadas, 1 con error."
             ), f"arranque con errores: {v.status_label.texto!r}"
             assert v.status_label.color == AMBAR
+
+            # (iter 3) Las dos guardas PREVENTIVAS. Sin la de `execute_pack`, un pack
+            # no gaming y sin apps armaba la doble pulsacion ("para apagar 0 apps")
+            # sobre un pack-imposible; sin la de `kill_pack`, un id desaparecido
+            # reventaba con AttributeError en `pack.is_gaming`.
+            pack_vacio = Pack(id="vacio", name="Vacio", apps=[], default_action="kill")
+            antes_hilos, antes_cola = len(hilos), len(cola)
+            antes_texto = dash.status_label.cget("text")
+            DashboardView.execute_pack(dash, pack_vacio)
+            assert len(hilos) == antes_hilos, (
+                "un pack no gaming y vacio no puede lanzar el worker de cierre"
+            )
+            assert len(cola) == antes_cola, (
+                "un pack no gaming y vacio no publica feedback de cierre"
+            )
+            assert dash.status_label.cget("text") == antes_texto, (
+                "un pack no gaming y vacio se corta en silencio: ni aviso ni "
+                f"confirmacion armada. Antes {antes_texto!r}, despues "
+                f"{dash.status_label.cget('text')!r}"
+            )
+
+            v = _gestor(pack_normal, _ProcesosGestor(), _GamingGestor())
+            antes_hilos = len(hilos)
+            PackManagerView.kill_pack(v, "no_existe")
+            assert len(hilos) == antes_hilos, "un pack inexistente no puede lanzar worker"
+            assert v.status_label.texto == MSG_PACK_INEXISTENTE, (
+                f"un pack inexistente se avisa, no se revienta: {v.status_label.texto!r}"
+            )
+            assert v.status_label.color == AMBAR
         finally:
             pmv_mod.threading = threading_real
             dash_mod.threading = threading_real_dash
@@ -8335,6 +8622,277 @@ def test_el_feedback_de_pack_dice_la_verdad():
                 pass
 
     print("test_el_feedback_de_pack_dice_la_verdad OK (TASK-035, cierre del ciclo 26).")
+
+
+def test_el_gestor_de_procesos_tampoco_miente():
+    """TASK-035 / ciclo 26 iteracion 3: la TERCERA puerta de feedback.
+
+    El `mutation-auditor` de la iteracion 3 demostro en RUNTIME, con un doble que
+    devuelve `(0, 0, 3, 0.0)` (todo en `keepers` o ya muerto), que
+    `ProcessManagerView.on_kill_selected` pintaba
+    `"<tick> 0 cerrados, 0 fallidos."`: tick de exito, verde, sin haber cerrado
+    NADA. Es literalmente el bug que motivo el ciclo 26 entero, en la vista que ni
+    el fix de la iteracion 2 ni la guarda AST tocaban, y es la mas grave de las
+    tres puertas porque mata UNO A UNO lo que el usuario marco a mano.
+
+    Aqui se entra por `on_kill_selected` DE VERDAD: doble pulsacion, hilo
+    secundario real y `after` simulado, y se afirma sobre el TEXTO y el COLOR que
+    produjo el codigo en los cuatro desenlaces, incluido `killed == 1` (que
+    `clasificar_cierre` con `killed > 1` declaraba "nada").
+
+    Lo que NO comprueba: que `kill_processes` mate de verdad. Aqui no se mata ni un
+    proceso; lo que se comprueba es que la vista no se contradiga a si misma
+    cuando el servicio le dice lo que ocurrio.
+    """
+    print("Testing honest kill feedback in ProcessManagerView (TASK-035 / cycle 26 iter 3)...")
+    import collections
+    from woptimizer.models import ProcessInfo
+    from woptimizer.ui.feedback import mensaje_cierre_pack
+    from woptimizer.ui.views import process_manager_view as procv_mod
+    from woptimizer.ui.views.process_manager_view import ProcessManagerView
+    from woptimizer.ui.confirmation import AMBAR, ROJO, VERDE, VENTANA_MS
+
+    # El sustantivo de `mensaje_cierre_pack` NO es decorativo. Con `"procesos"`
+    # escrito a pelo dentro del formateador, todo lo de esta seccion seguiria en
+    # verde (el unico llamante pasa "procesos") y el parametro seria una mentira mas.
+    # Se comprueba con el otro sustantivo, "apps".
+    t_apps, c_apps = mensaje_cierre_pack("Trabajo", 2, 0, 0, 8.0, sustantivo="apps")
+    assert t_apps == "✅ 2 apps cerrados (8.0 MB liberados) · 'Trabajo'.", (
+        f"el sustantivo se usa de verdad, no esta cableado: {t_apps!r}"
+    )
+    assert c_apps == VERDE
+    t_proc, _ = mensaje_cierre_pack("Trabajo", 0, 0, 3, 0.0)
+    assert t_proc == "⚠️ 'Trabajo': 0 procesos cerrados, 3 protegidos o ya cerrados.", (
+        f"y el valor por defecto sigue siendo 'procesos': {t_proc!r}"
+    )
+
+    class _Reloj:
+        """Doble de `TkScheduler` con reloj ABSOLUTO (mismo criterio que el de la
+        sonda de la portada: `delay <= elapsed` no ordenaria dos plazos iguales)."""
+
+        def __init__(self):
+            self.jobs = []
+            self.ahora = 0
+            self._n = 0
+
+        def schedule(self, delay_ms, callback):
+            self._n += 1
+            handle = f"job{self._n}"
+            self.jobs.append({"id": handle, "vence": self.ahora + delay_ms,
+                              "cb": callback, "vivo": True})
+            return handle
+
+        def cancel(self, handle):
+            for job in self.jobs:
+                if job["id"] == handle:
+                    job["vivo"] = False
+                    return
+            raise AssertionError(f"Se cancelo un handle que no existe: {handle!r}")
+
+        def vivos(self):
+            return [j for j in self.jobs if j["vivo"]]
+
+        def avanzar(self, ms):
+            self.ahora += ms
+            vencidos = [j for j in self.jobs if j["vivo"] and j["vence"] <= self.ahora]
+            for job in vencidos:
+                job["vivo"] = False
+            for job in vencidos:
+                job["cb"]()
+            return [j["id"] for j in vencidos]
+
+    class _Label:
+        def __init__(self):
+            self.escrituras = []
+
+        def winfo_exists(self):
+            return 1
+
+        def configure(self, **kw):
+            self.escrituras.append((kw.get("text"), kw.get("text_color")))
+
+        @property
+        def texto(self):
+            return self.escrituras[-1][0] if self.escrituras else None
+
+        @property
+        def color(self):
+            return self.escrituras[-1][1] if self.escrituras else None
+
+    class _Casilla:
+        def __init__(self, marcado):
+            self.marcado = marcado
+
+        def get(self):
+            return self.marcado
+
+    class _Procesos:
+        """Doble de `ProcessService`: captura lo que llega a `kill_processes` y
+        devuelve una 4-tupla fija. No mata nada."""
+
+        def __init__(self):
+            self.cierre = (0, 0, 0, 0.0)
+            self.recibidos = None
+            self.llamadas = 0
+
+        def kill_processes(self, procesos):
+            self.llamadas += 1
+            self.recibidos = [p.pid for p in procesos]
+            return self.cierre
+
+    class _Notis:
+        def __init__(self):
+            self.eventos = []
+
+        def notify_kill_result(self, killed, failed, freed_mb):
+            self.eventos.append((killed, failed, freed_mb))
+
+    cola = collections.deque()
+    principal = threading.get_ident()
+    hilos = []
+
+    class _HiloEspia(threading.Thread):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            hilos.append(self)
+
+    class _ShimThreading:
+        Thread = _HiloEspia
+
+    def _gestor(cierre):
+        v = ProcessManagerView.__new__(ProcessManagerView)
+        v.status_label = _Label()
+        v.btn_kill = None
+        v.checkboxes = {"chrome": _Casilla(True), "steam": _Casilla(True),
+                        "discord": _Casilla(True)}
+        v.grouped_processes = {
+            "chrome": [ProcessInfo(name="chrome", full_name="chrome.exe", pid=11),
+                       ProcessInfo(name="chrome", full_name="chrome.exe", pid=12)],
+            "steam": [ProcessInfo(name="steam", full_name="steam.exe", pid=13)],
+        }
+        v.process_service = _Procesos()
+        v.process_service.cierre = cierre
+        v.notification_service = _Notis()
+        v.refreshes = 0
+        v.refresh_processes = lambda: setattr(v, "refreshes", v.refreshes + 1)
+        v.update_idletasks = lambda: None
+        v.reloj = _Reloj()
+        v.after = lambda ms, func=None, *a: cola.append((ms, func, a, threading.get_ident()))
+        v._init_confirmable(v.status_label, window_ms=VENTANA_MS, scheduler=v.reloj)
+        return v
+
+    def _cerrar(v):
+        """Pulsa dos veces y aplica en el PRINCIPAL lo que el secundario encolo."""
+        antes_hilos, antes_cola = len(hilos), len(cola)
+        ProcessManagerView.on_kill_selected(v)          # 1a pulsacion: solo arma
+        assert len(hilos) == antes_hilos, (
+            "la primera pulsacion no debe matar nada: el usuario marco 3 procesos"
+        )
+        assert len(cola) == antes_cola, "la primera pulsacion no publica feedback de cierre"
+        assert v.status_label.texto == "⚠️ Segunda pulsación para cerrar 3 apps seleccionadas.", (
+            f"la primera pulsacion solo arma la confirmacion: {v.status_label.texto!r}"
+        )
+        assert v.process_service.llamadas == 0, "la primera pulsacion no toca el servicio"
+
+        ProcessManagerView.on_kill_selected(v)          # 2a pulsacion: ejecuta
+        nuevos = hilos[antes_hilos:]
+        assert len(nuevos) == 1, f"se esperaba 1 worker secundario, se crearon {len(nuevos)}"
+        nuevos[0].join(20)
+        assert not nuevos[0].is_alive(), "el worker secundario no termino"
+        assert v.process_service.llamadas == 1
+        assert v.process_service.recibidos == [11, 12, 13], (
+            f"se cierran los procesos marcados, no otros: {v.process_service.recibidos}"
+        )
+        pendientes = list(cola)[antes_cola:]
+        assert len(pendientes) == 1, f"el worker debe publicar una sola vez: {pendientes}"
+        ms, func, args, ident = pendientes[0]
+        assert ms == 0, f"el after debe ser de 0 ms, no de {ms}"
+        assert ident != principal, "el after se encolo desde el principal: el secundario no publico nada"
+        assert func == v._publicar_cierre, (
+            f"el worker debe publicar en _publicar_cierre, no en {func}"
+        )
+        func(*args)
+        return v
+
+    threading_real = procv_mod.threading
+    procv_mod.threading = _ShimThreading
+    try:
+        # (0) NADA CERRADO. Es exactamente el caso que demostro el auditor:
+        # (0, 0, 3, 0.0) con tres procesos marcados a mano.
+        v = _cerrar(_gestor((0, 0, 3, 0.0)))
+        texto, color = v.status_label.texto, v.status_label.color
+        assert texto == ("⚠️ '3 seleccionadas': 0 procesos cerrados, "
+                         "3 protegidos o ya cerrados."), (
+            f"cerrar cero procesos no puede decir '0 cerrados' con tick: {texto!r}"
+        )
+        assert color != VERDE, f"con 0 cerrados el feedback no puede ser VERDE: {texto!r}"
+        assert color == AMBAR, f"sin cierre y sin error, el feedback es de atencion: {color!r}"
+        assert "✅" not in texto, f"no hay exito que celebrar: {texto!r}"
+        assert "3" in texto, f"el mensaje dice cuantos quedaron intactos: {texto!r}"
+        assert v.refreshes == 0, (
+            "el refresco de la lista es diferido a 1000 ms, no inmediato"
+        )
+        pendientes = v.reloj.vivos()
+        assert len(pendientes) == 1 and pendientes[0]["vence"] == 1000, (
+            f"tras publicar el cierre se programa UN refresco a 1000 ms: {pendientes}"
+        )
+        v.reloj.avanzar(1000)
+        assert v.refreshes == 1, (
+            "a los 1000 ms la lista se refresca sola para que el proceso muerto "
+            f"desaparezca; hubo {v.refreshes} refrescos"
+        )
+        assert v.notification_service.eventos == [(0, 0, 0.0)], (
+            f"el toast lleva el resultado real: {v.notification_service.eventos}"
+        )
+
+        # (1) EXITO REAL. Y `killed == 1` va aqui a proposito: con `failed == 0`
+        # sigue siendo exito, y `clasificar_cierre` con `killed > 1` lo degradaba
+        # a "nada" sin que ningun caso anterior lo notase.
+        v = _cerrar(_gestor((1, 0, 0, 2.5)))
+        assert v.status_label.texto == (
+            "✅ 1 procesos cerrados (2.5 MB liberados) · '3 seleccionadas'."
+        ), f"cerrar un proceso sigue siendo exito: {v.status_label.texto!r}"
+        assert v.status_label.color == VERDE
+
+        # (2) PARCIAL: cerro algo y algo fallo -> ni tick ni verde.
+        v = _cerrar(_gestor((2, 1, 0, 64.0)))
+        texto, color = v.status_label.texto, v.status_label.color
+        assert texto == ("⚠️ '3 seleccionadas': 2 cerrados, 1 con error "
+                         "(64.0 MB liberados)."), f"detalle del parcial: {texto!r}"
+        assert color == AMBAR and "✅" not in texto, (
+            f"un cierre parcial no se celebra como exito: {texto!r} / {color!r}"
+        )
+
+        # (3) FALLO: no se pudo cerrar NADA.
+        v = _cerrar(_gestor((0, 2, 0, 0.0)))
+        texto, color = v.status_label.texto, v.status_label.color
+        assert texto == "⛔ No se cerró nada de '3 seleccionadas': 2 con error.", (
+            f"un cierre fallido es un bloqueo: {texto!r}"
+        )
+        assert color == ROJO, f"un cierre fallido no se pinta de aviso: {color!r}"
+        assert "✅" not in texto
+
+        # (4) `skipped` se cuenta como lo que es: protegidos o ya cerrados, no
+        # "fallidos". El mensaje viejo de esta puerta los fundia con `failed`.
+        v = _cerrar(_gestor((0, 0, 2, 0.0)))
+        texto = v.status_label.texto
+        assert "2 protegidos o ya cerrados" in texto and "fallidos" not in texto, (
+            f"`skipped` no es `failed`: {texto!r}"
+        )
+
+        # (5) Sin seleccion no se mata nada y se dice por que.
+        v = _gestor((0, 0, 0, 0.0))
+        v.checkboxes = {k: _Casilla(False) for k in v.checkboxes}
+        antes_hilos = len(hilos)
+        ProcessManagerView.on_kill_selected(v)
+        assert len(hilos) == antes_hilos, "sin seleccion marcada no hay worker"
+        assert v.status_label.texto == "⚠️ Selecciona procesos primero.", (
+            f"sin seleccion hay que decirlo: {v.status_label.texto!r}"
+        )
+    finally:
+        procv_mod.threading = threading_real
+
+    print("test_el_gestor_de_procesos_tampoco_miente OK (TASK-035, ciclo 26 iter 3).")
 
 
 if __name__ == "__main__":
@@ -8448,5 +9006,8 @@ if __name__ == "__main__":
     # guarda AST por un lado y la honestidad del feedback por otro.
     test_los_workers_de_pack_solo_publican_por_after()
     test_el_feedback_de_pack_dice_la_verdad()
+    # Ciclo 26 iteracion 3: la TERCERA puerta de feedback (Gestor de Procesos), que
+    # el fix de la iteracion 2 y la guarda AST no tocaban.
+    test_el_gestor_de_procesos_tampoco_miente()
     test_headless_ui()
     print("\nALL TESTS PASSED.")

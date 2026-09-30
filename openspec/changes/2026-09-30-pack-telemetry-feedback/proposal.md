@@ -13,18 +13,20 @@ En el Área 2 (Gaming & Telemetría UX), la ejecución de packs ofrece feedback 
 1. **En `DashboardView`**:
    - Implementar `_show_start_banner(self, launched: int, failed: int, pack_name: str)` para mostrar feedback inline en `status_banner_frame` con los tokens semánticos correspondientes (`theme.ACCENT` en éxito, `theme.WARNING` ante fallos parciales) y auto-ocultación a los 5 segundos vía `_schedule_ui`.
    - Conectar `_run_start` para invocar `self.after(0, self._show_start_banner, launched, failed, p.name)` y refrescar el contador de telemetría de procesos activos con `_update_resting_bar()`.
+   - El auto-ocultado se programa **desde un único método** compartido por las dos puertas (`_reprogramar_autoocultado`), no desde cada una.
 2. **En `PackManagerView`**:
-   - En `kill_pack`: al finalizar el hilo de kill, emitir feedback al hilo principal vía `self.after(0, self._inline_status, f"✅ {killed} procesos cerrados ({freed_mb:.1f} MB liberados) · '{nombre}'.", VERDE)`.
+   - En `kill_pack`: al finalizar el hilo de kill, **no** emitir un literal. El texto y el color se calculan en `ui/feedback.py` con `mensaje_cierre_pack(nombre, killed, failed, skipped, freed_mb)` a partir de la 4-tupla real y se publican enteros con `self.after(0, self._inline_status, texto, color)`. *(El contrato original pedía el literal `f"✅ {killed} procesos cerrados ... · '{nombre}'.", VERDE`; ese literal es exactamente la mentira que el ciclo 26 eliminó: con `killed == 0` pintaba un tick de éxito en verde.)*
    - En `start_pack`: al finalizar el arranque, emitir feedback vía `self.after(0, self._inline_status, ...)` informando apps iniciadas o fallidas.
    - En caso de packs sin apps en `start_pack`: mostrar aviso preventivo `⚠️ '{pack.name}' no tiene apps que iniciar.` vía `_inline_status(..., AMBAR)`.
 3. **Pruebas y Validación**:
-   - Crear `test_pack_execution_ui_telemetry_feedback` en `run_tests.py`:
-     - Validar que `DashboardView` renderiza banners para `kill` y `start` con los textos y colores semánticos previstos.
-     - Validar que `PackManagerView` actualiza `status_label` tras ejecutar `kill_pack` y `start_pack`.
-     - Validar mediante análisis AST que ninguna llamada de UI se realiza directamente desde los hilos secundarios (todas a través de `self.after(0, ...)`).
-   - Actualizar `docs/ai/ui-design-system.md` documentando la unificación de telemetría y feedback visual en ejecución de packs.
+   - La sonda de honestidad del feedback (**`test_el_feedback_de_pack_dice_la_verdad`**) entra por la UI de verdad —`execute_pack`, `kill_pack`, `start_pack`, con doble pulsación, hilo secundario real y `self.after` encolado— y afirma sobre el **texto y el color** que produjo el código en los cuatro desenlaces y por las **tres** puertas de cierre.
+   - **`test_el_gestor_de_procesos_tampoco_miente`** cubre la tercera puerta, `ProcessManagerView.on_kill_selected` (cierre uno a uno de lo que el usuario marcó a mano), que también se alimenta de `mensaje_cierre_pack`.
+   - **`test_los_workers_de_pack_solo_publican_por_after`**: análisis AST del **objetivo real** de cada `threading.Thread(target=...)` de las cinco vistas, con la lista de lo permitido como pares `(raiz, metodo)`, bajando también por `ast.Subscript`, y exigiendo que cada `self.after` sea de 0 ms con un callback de la lista blanca.
+   - Actualizar `docs/ai/ui-design-system.md` y `docs/ai/testing-guide.md` documentando la unificación y sus límites.
 
 ## Criterios de Aceptación
-- La ejecución de packs (start o kill) muestra feedback visual inmediato en pantalla tanto en la Portada como en el Gestor de Packs.
-- Seguridad de hilos estricta: UI nunca se muta desde hilos secundarios (siempre vía `self.after(0, ...)`).
-- Suite de tests `run_tests.py` (76 tests) y `validate_docs.py` en verde al 100%.
+- La ejecución de packs (start o kill) muestra feedback visual inmediato en pantalla tanto en la Portada como en el Gestor de Packs **como en el Gestor de Procesos**.
+- **El verde es una promesa.** Con `killed == 0` ninguna de las tres puertas escribe tick ni color de éxito. Este criterio es normativo y lo cellspacing `mutation-auditor`: el texto y el color se calculan en `ui/feedback.py` a partir de la 4-tupla real, nunca en la vista.
+- Las tres puertas de cierre se alimentan del **mismo formateador** (`mensaje_cierre_pack` / `mensaje_banner_cierre`, con `clasificar_cierre` como clasificador único). *Alcance honesto de este punto:* el formateador común no basta por sí solo; además ninguna puerta construye su propio texto y toda rama se ejecuta en la suite.
+- Seguridad de hilos estricta: la UI nunca se muta desde hilos secundarios (siempre vía `self.after(0, ...)`).
+- Suite de tests `run_tests.py` en verde al 100% y `verify_ui_syntax.py` sin errores.

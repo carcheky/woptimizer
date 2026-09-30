@@ -104,9 +104,10 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 72 | `test_scan_latency_and_lazy_exe_resolution` | **TASK-033:** optimización de latencia en `ProcessService` (`psutil.process_iter(['pid', 'name'])`, `exe_path=""` lazy, `model_construct`, precomputación `_CAT_ORDER_IDX`, `get_process_exe_path(pid)` on-demand con degradación segura y benchmark < 25 ms) |
 | 73 | `test_models_strict_validation_and_contracts` | **TASK-034:** validación estricta de modelos Pydantic (`strict=True` en `is_favorite`/`is_gaming`, `default_action` restringido a `Literal["start", "kill"]`, `extra="allow"` en `Pack` y `AppData`, y defaults canónicos de `ProcessInfo`) |
 | 74 | `test_main_window_navigation_transitions` | **TASK-034:** ciclo de vida y navegación headless en `MainWindow` (transiciones Dashboard -> Packs -> ProcessManager -> Dashboard, destrucción de vistas previas con `winfo_exists()`, activación de estilos nav y recarga asíncrona) |
-| 75 | `test_los_workers_de_pack_solo_publican_por_after` | **TASK-035 ciclo 26 (S2, S3):** el worker de `execute_pack`, `kill_pack` y `start_pack` solo **publica**: la lista de lo permitido sobre `self` es corta y explícita (`after` + los cuatro colaboradores) y todo lo demás, incluidas las escrituras en `self.<attr>`, es infracción. Exige que **cada** `self.after` lleve 0 ms y un callback de la lista blanca. La guarda se prueba **contra sí misma** (3 infracciones sintéticas, 1 worker conforme, y el caso de las dos ramas con `self.master.after` en una) |
-| 76 | `test_el_feedback_de_pack_dice_la_verdad` | **TASK-035 ciclo 26 (S1, S4, S5, S9):** el feedback de cierre dice la verdad en los **cuatro** desenlaces y por las **dos** puertas (gaming y normal), con el worker real, doble pulsación, hilo secundario real y `self.after` encolado; la barra de reposo se afirma por su **texto**; los temporizadores se miden con un **reloj simulado** (t0, t=1000, t=5500, t=6500) |
-| 77 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
+| 75 | `test_los_workers_de_pack_solo_publican_por_after` | **TASK-035 ciclo 26 (S2, S3; iter 3):** el worker de `execute_pack`, `kill_pack`, `start_pack`, **`ProcessManagerView._do_load` y `ProcessManagerView.on_kill_selected`** solo **publica**. La lista de lo permitido son **pares `(raiz, metodo)`**, no raíces: con raíces, `self.pack_service.get_all_packs()` y `self.process_service.get_process_exe_path(1)` colaban. También baja por `ast.Subscript` (`self.__dict__['status_label'].configure(...)` es la misma llamada de widget por la puerta de atrás) y marca las escrituras por índice. Exige que **cada** `self.after` lleve 0 ms y un callback de la lista blanca. La guarda se prueba **contra sí misma** (5 infracciones sintéticas, 1 worker conforme, y el caso de las dos ramas con `self.master.after` en una) |
+| 76 | `test_el_feedback_de_pack_dice_la_verdad` | **TASK-035 ciclo 26 (S1, S4, S5, S9; iter 3):** el feedback de cierre dice la verdad en los **cuatro** desenlaces, por las **tres** puertas (gaming, pack normal y la no-gaming de la portada, que hasta la iteración 3 no se ejecutaba nunca), con el worker real, doble pulsación, hilo secundario real y `self.after` encolado. Afirma el **texto exacto** (no "dice algo con 6"), incluido `killed == 1` como éxito y `"✅" not in texto` en las ramas `nada` y `fallo` del banner. La barra de reposo se afirma por su **texto** (procesos activos y resumen del Gaming Mode) y los temporizadores se miden con un **reloj simulado de plazo absoluto** (t0, t=1000, t=5500, t=6500) en **las dos** puertas del banner, afirmando además que en `_timers_ui` queda exactamente un handle |
+| 77 | `test_el_gestor_de_procesos_tampoco_miente` | **TASK-035 ciclo 26 iter 3:** la **tercera** puerta de feedback, `ProcessManagerView.on_kill_selected`, que el fix de la iteración 2 y la guarda AST no tocaban y que pintaba `"<tick> 0 cerrados, 0 fallidos."` con `killed == 0`. Entra por `on_kill_selected` de verdad (doble pulsación, hilo secundario real, `after` encolado) y afirma texto y color exactos en los cuatro desenlaces; comprueba que se cierran los PIDs marcados, que el refresco de la lista se programa a 1000 ms y no al instante, y que `skipped` no se confunde con `failed`. **No mata ningún proceso**: el `ProcessService` es un doble |
+| 78 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
 
 ### Notas de Aislamiento
 - Los tests de `PackService` usan `tempfile.NamedTemporaryFile` (helper `_pack_service_temporal()`) para no modificar `profiles.json` real. `test_pack_service_backup_and_recovery` limpia además los `.bak` y `.tmp` que genera, y restaura los permisos de solo lectura que usa para probar el `PermissionError`.
@@ -158,7 +159,7 @@ verificación**. Peor, su docstring decía "kill_pack exitoso actualiza status_l
 aserciones": es entrar por el camino real. Ahora la sonda pulsa **dos veces** (el contrato de
 doble pulsación), el worker corre en un hilo secundario real, el `after` **encola** y el test
 hace de bucle de eventos: `join(20)` y aplicación en el principal de lo entregado. Lo que se
-afirma es el **texto y el color que produjo el código**, en los cuatro desenlaces y por las dos
+afirma es el **texto y el color que produjo el código**, en los cuatro desenlaces y por las tres
 puertas de cierre.
 
 | Lo que se afirma | Mutante que muere |
@@ -199,24 +200,55 @@ importa `run_tests`, por la trampa del `sys.stdout` de este repo). **12 mutacion
 | la guarda `ast` anulada (`return []`) | sus propios controles sintéticos |
 | la guarda mira solo el **primer** `self.after` | el control de las dos ramas |
 
-### 3. La guarda `ast` es ahora exhaustiva, y eso obliga a decir qué NO comprueba
+### 3. La guarda `ast` compara **pares**, y eso obliga a decir qué NO comprueba
 
 Del objetivo real de cada `threading.Thread(target=...)` se permite una lista **corta y
-explícita** —`after`, `process_service`, `gaming_service`, `pack_service`, `notification_service`—
-y **todo lo demás que cuelgue de `self` es infracción**, incluidos los métodos de widget que
-nadie escribió en la lista y las escrituras en `self.<attr>`. `self.master.after` cae por la
-regla (su raíz sobre `self` es `master`). Se exige que **cada** `self.after` del worker lleve 0
-ms y un callback de la lista blanca, no solo el primero que aparece.
+explícita** de **pares `(raiz, metodo)`** y **todo lo demás que cuelgue de `self` es
+infracción**, incluidos los métodos de widget que nadie escribió en la lista, las escrituras en
+`self.<attr>` y las que entran **por índice**. Se exige que **cada** `self.after` del worker
+lleve 0 ms y un callback de la lista blanca, no solo el primero que aparece.
 
-Una guarda así **se prueba contra sí misma** antes de que la use: tres infracciones sintéticas
+**Por qué pares y no raíces** (medido en la iteración 3, 80 mutaciones / 21 supervivientes):
+con una lista de raíces, `self.pack_service.get_all_packs()` y
+`self.process_service.get_process_exe_path(1)` pasaban las dos. Y
+`self.__dict__['status_label'].configure(...)` pasaba porque la resolución de la raíz no bajaba
+por `ast.Subscript` — la misma llamada de widget, escrita por la puerta de atrás. Con la lista
+de pares y el descenso por `Subscript`, el mutante de "borrar el `discard`" y el de
+"comparar solo la raíz" mueren.
+
+Una guarda así **se prueba contra sí misma** antes de que la use: cinco infracciones sintéticas
 que tiene que ver, un worker conforme que no puede marcar, y el caso de las dos ramas. Un
 detector que no ve nada y uno que ve de más dan **el mismo verde**, y sin las dos direcciones
 no se sabe cuál de los dos se tiene.
 
 **Lo que la guarda NO comprueba, escrito para que nadie lo lea como más:** que el `after` se
-ejecute de verdad en el hilo principal, ni el resultado de la operación. Eso lo cubre la sonda
-dinámica con hilo secundario real. Un doc que promete más de lo que el guard comprueba es la
-misma clase de defecto que el bug que el guard no veía.
+ejecute de verdad en el hilo principal, ni el resultado de la operación. Eso lo cubren las sondas
+dinámicas con hilo secundario real. Tampoco cubre los `threading.Thread` de `ui/app.py` (el
+toast de arranque y el hilo del icono de la bandeja), que no son vistas, ni ningún worker nuevo
+que se añada sin meterlo en la lista del test — la lista de vistas y métodos está **en el
+bucle de aplicación** de la sonda, a la vista. Un doc que promete más de lo que el guard
+comprueba es la misma clase de defecto que el bug que el guard no veía.
+
+### 3-bis. La iteración 3: lo que la auditoría encontró y no era estilo
+
+Tres correcciones de fondo, todas medidas:
+
+- **Había una TERCERA puerta de feedback.** `ProcessManagerView.on_kill_selected` —la que
+  mata uno a uno lo que el usuario marcó a mano— pintaba `"<tick> 0 cerrados, 0 fallidos."`
+  con `killed == 0`, porque tenía su **propia** verdad y no el formateador común. Era el bug
+  que motivó el ciclo, vivo en la vista que nadie había tocado. Ahora entra por
+  `mensaje_cierre_pack` con el sustantivo parametrizado, y hay una sonda propia
+  (`test_el_gestor_de_procesos_tampoco_miente`).
+- **Un bloque de código duplicado es dos sitios donde el bug se esconde.** La cancelación del
+  temporizador del banner estaba byte a byte en `_show_start_banner` y en `_show_banner`, y la
+  sonda solo instrumentaba la primera. Se extrajo a `_reprogramar_autoocultado()` y el escenario
+  con reloj simulado se monta ahora en **las dos** puertas. No es "duplicar el test": es no
+  duplicar el código.
+- **Una rama sin ejecutar no es una rama probada.** La rama no-gaming de `execute_pack` no se
+  ejecutaba nunca, así que `if p.is_gaming:` y `kill_pack_apps(p.apps)` podían romperse sin
+  que nada se notase. El mismo patrón del ciclo 14. Basta con un caso con pack no gaming.
+  Lo mismo con `killed == 1` (que `clasificar_cierre` con `killed > 1` degradaba a "nada") y con
+  `failed != skipped` (que hacía invisible intercambiar el orden de la 4-tupla).
 
 ## Sondas de mutación: cada test nombra la mutación que mata (TASK-030)
 Regla del ciclo #18: **un criterio sin mutación asociada es un deseo**. La tabla está medida

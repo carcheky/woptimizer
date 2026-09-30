@@ -13,7 +13,24 @@ from woptimizer.ui.confirmation import (
     MSG_SIN_SELECCION,
     Confirmable,
 )
+from woptimizer.ui.feedback import mensaje_cierre_pack
 from woptimizer.ui import theme
+
+
+def _agrupar(procs: List[ProcessInfo]) -> Dict[str, List[ProcessInfo]]:
+    """Agrupa por nombre en minusculas. PURA y a nivel de modulo a proposito.
+
+    Vive fuera de la clase para que el worker de carga (`_do_load`, hilo
+    secundario) no tenga que llamar a `self._group`: el invariante de
+    `test_los_workers_de_pack_solo_publican_por_after` es que un worker solo
+    publica por `self.after(0, ...)` y no toca la vista de ninguna otra forma.
+    `ProcessManagerView._group` se conserva como fachada porque es parte del
+    contrato usado por `test_do_load_publica_sin_tk`.
+    """
+    grouped: Dict[str, List[ProcessInfo]] = {}
+    for p in procs:
+        grouped.setdefault(p.name.lower(), []).append(p)
+    return grouped
 
 class ProcessManagerView(Confirmable, ctk.CTkFrame):
     def __init__(self, master, process_service: ProcessService, pack_service: PackService, notification_service: NotificationService = None):
@@ -154,24 +171,21 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
     def _do_load(self):
         def _load():
             procs = self.process_service.get_running_processes()
-            grouped = self._group(procs)
-
-            def _apply():
-                self.processes = procs
-                self.grouped_processes = grouped
-                self._render_list()
-                self._update_pack_dropdown()
-
-            self.after(0, _apply)
+            self.after(0, self._apply_load, procs)
 
         threading.Thread(target=_load, daemon=True).start()
 
+    def _apply_load(self, procs: List[ProcessInfo]):
+        """Callback de `_load`. Corre en el HILO PRINCIPAL: aqui si se toca la vista."""
+        self.processes = procs
+        self.grouped_processes = _agrupar(procs)
+        self._render_list()
+        self._update_pack_dropdown()
+
     @staticmethod
     def _group(procs: List[ProcessInfo]) -> Dict[str, List[ProcessInfo]]:
-        grouped: Dict[str, List[ProcessInfo]] = {}
-        for p in procs:
-            grouped.setdefault(p.name.lower(), []).append(p)
-        return grouped
+        """Fachada de `_agrupar`. Ver la nota de por que la logica vive fuera."""
+        return _agrupar(procs)
 
     def _update_pack_dropdown(self):
         packs = self.pack_service.get_all_packs()
@@ -340,16 +354,31 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
 
         def _kill():
             killed, failed, skipped, freed_mb = self.process_service.kill_processes(to_kill)
-            def _done():
-                if freed_mb > 0:
-                    self.status_label.configure(text=f"✅ {killed} cerrados ({freed_mb:.1f} MB liberados), {failed} fallidos.")
-                else:
-                    self.status_label.configure(text=f"✅ {killed} cerrados, {failed} fallidos.")
-                self.after(1000, self.refresh_processes)
-            self.after(0, _done)
+            self.after(0, self._publicar_cierre, killed, failed, skipped, freed_mb,
+                       len(to_kill))
             self.notification_service.notify_kill_result(killed, failed, freed_mb)
-            
+
         threading.Thread(target=_kill, daemon=True).start()
+
+    def _publicar_cierre(self, killed: int, failed: int, skipped: int,
+                         freed_mb: float, cuantos: int):
+        """Callback de `_kill`. Corre en el HILO PRINCIPAL.
+
+        TASK-035 / ciclo 26 iteracion 3: esta es la TERCERA puerta de feedback y
+        hasta aqui llegaba con su PROPIA verdad: pintaba
+        `"<tick> {killed} cerrados, {failed} fallidos."` con tick y sin mirar
+        `killed`, así que cerrar cero procesos (todo en `keepers` o ya muerto)
+        se pintaba como exito en verde. Es el bug que motivó el ciclo, en la vista
+        que mata lo que el usuario marcó a mano. Ahora el texto sale del MISMO
+        formateador que las otras dos puertas (`mensaje_cierre_pack`), y con
+        `killed == 0` no hay tick ni verde.
+        """
+        texto, color = mensaje_cierre_pack(
+            f"{cuantos} seleccionadas", killed, failed, skipped, freed_mb,
+            sustantivo="procesos",
+        )
+        self.status_label.configure(text=texto, text_color=color)
+        self._schedule_ui(1000, self.refresh_processes)
 
     def on_add_to_pack(self):
         selected_keys = [k for k, cb in self.checkboxes.items() if cb.get()]
