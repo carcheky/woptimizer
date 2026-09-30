@@ -20,6 +20,7 @@ class DashboardView(Confirmable, ctk.CTkFrame):
         # romper constructores antiguos ni tests.
         self.gaming_service = gaming_service or GamingService(process_service, pack_service)
         self._last_gaming_summary = None
+        self._banner_timer = None
         self._buttons_by_pack_id = {}
         self._empty_label = None
         self._build_ui()
@@ -65,6 +66,7 @@ class DashboardView(Confirmable, ctk.CTkFrame):
             height=36,
             corner_radius=theme.RADIUS_MEDIUM
         )
+        self.banner_frame = self.status_banner_frame
         self.status_label = ctk.CTkLabel(
             self.status_banner_frame,
             text="",
@@ -72,6 +74,7 @@ class DashboardView(Confirmable, ctk.CTkFrame):
             wraplength=600,
             anchor="w",
         )
+        self.lbl_banner = self.status_label
         self.status_label.pack(side="left", padx=12)
 
         self.buttons_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -101,6 +104,12 @@ class DashboardView(Confirmable, ctk.CTkFrame):
             self.resting_label.configure(text=self._get_resting_status_text())
 
     def destroy(self):
+        if getattr(self, "_banner_timer", None):
+            try:
+                self.after_cancel(self._banner_timer)
+            except Exception:
+                pass
+            self._banner_timer = None
         # El `after` de la pendiente pertenece a la vista: sin esto sobrevive al cambio
         # de pestaña y reconfigura un boton ya destruido (regla §6.1).
         self.cancel_on_destroy()
@@ -121,8 +130,36 @@ class DashboardView(Confirmable, ctk.CTkFrame):
         self._schedule_ui(2500, self._hide_banner)
 
     # ------------------------------------------------------------------
-    # Banner de Telemetría de RAM (TASK-014 / UI-004)
+    # Banner de Telemetría y Feedback (TASK-014 / TASK-035 / UI-004)
     # ------------------------------------------------------------------
+    def _show_start_banner(self, launched: int, failed: int, pack_name: str):
+        """Muestra el banner de feedback tras arrancar apps de un pack.
+
+        Debe llamarse siempre desde el hilo principal (usar self.after(0, ...)).
+        """
+        self.process_service.invalidate_cache()
+        self._update_resting_bar()
+
+        if failed == 0:
+            txt_color = theme.ACCENT
+            msg = f"🚀 Pack '{pack_name}' iniciado ({launched} apps)."
+        else:
+            txt_color = theme.WARNING
+            msg = f"⚠️ Pack '{pack_name}': {launched} apps iniciadas, {failed} fallaron."
+
+        self.status_banner_frame.configure(fg_color=theme.SURFACE_ALT)
+        self.status_label.configure(text=msg, text_color=txt_color)
+        self.status_banner_frame.pack(fill="x", pady=(0, 8), before=self.buttons_frame)
+
+        if getattr(self, "_banner_timer", None):
+            try:
+                self.after_cancel(self._banner_timer)
+                if hasattr(self, "_timers_ui"):
+                    self._timers_ui.discard(self._banner_timer)
+            except Exception:
+                pass
+        self._banner_timer = self._schedule_ui(5000, self._hide_banner)
+
     def _show_banner(self, killed: int, freed_mb: float, is_gaming: bool):
         """Muestra el banner de feedback con los datos de RAM liberada.
 
@@ -138,10 +175,21 @@ class DashboardView(Confirmable, ctk.CTkFrame):
         self.status_banner_frame.configure(fg_color=fg)
         self.status_label.configure(text=msg, text_color=txt)
         self.status_banner_frame.pack(fill="x", pady=(0, 8), before=self.buttons_frame)
-        self._schedule_ui(5000, self._hide_banner)
+
+        if getattr(self, "_banner_timer", None):
+            try:
+                self.after_cancel(self._banner_timer)
+                if hasattr(self, "_timers_ui"):
+                    self._timers_ui.discard(self._banner_timer)
+            except Exception:
+                pass
+        self._banner_timer = self._schedule_ui(5000, self._hide_banner)
+
+    _show_kill_banner = _show_banner
 
     def _hide_banner(self):
         """Oculta el banner de telemetría."""
+        self._banner_timer = None
         self.status_banner_frame.pack_forget()
 
     def refresh_dashboard(self):
@@ -254,6 +302,7 @@ class DashboardView(Confirmable, ctk.CTkFrame):
             self._cancel_confirm()
             def _run_start(p: Pack):
                 launched, failed = self.process_service.start_pack_apps(p.apps)
+                self.after(0, self._show_start_banner, launched, failed, p.name)
                 self.notification_service.notify_apps_launched(p.name, launched, failed)
 
             threading.Thread(target=_run_start, args=(pack,), daemon=True).start()

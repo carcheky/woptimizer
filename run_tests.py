@@ -7620,6 +7620,214 @@ def test_main_window_navigation_transitions():
     print("test_main_window_navigation_transitions OK.")
 
 
+def test_pack_execution_ui_telemetry_feedback():
+    """TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.
+
+    Discriminadores:
+      1. AST Analysis: en dashboard_view.py y pack_manager_view.py, los workers
+         en segundo plano (_run_kill, _run_start, _run) despachan mutaciones de UI
+         exclusivamente a traves de self.after(0, ...), sin llamadas directas a widgets.
+      2. Dynamic Headless DashboardView:
+         - _show_start_banner con failed=0 muestra texto con theme.ACCENT, invalida
+           cache de procesos y refresca resting_bar.
+         - _show_start_banner con failed>0 muestra texto con theme.WARNING.
+         - _show_banner (kill) muestra telemetria de RAM con theme.ACCENT y theme.GAMING.
+         - Cancelacion limpia de timer previo de auto-ocultacion.
+      3. Dynamic Headless PackManagerView:
+         - start_pack con pack sin apps emite aviso inline ambar preventivo inmediatamente.
+         - start_pack exitoso / fallido actualiza status_label con VERDE / AMBAR via self.after.
+         - kill_pack exitoso actualiza status_label con metricas de procesos y MB liberados.
+    """
+    print("Testing pack execution UI telemetry and feedback (TASK-035)...")
+    import ast
+    import customtkinter as ctk
+    from woptimizer.models import Pack
+    from woptimizer.services.process_service import ProcessService
+    from woptimizer.services.gaming_service import GamingService
+    from woptimizer.services.notification_service import NotificationService
+    from woptimizer.ui.views.dashboard_view import DashboardView
+    from woptimizer.ui.views.pack_manager_view import PackManagerView
+    from woptimizer.ui.confirmation import AMBAR, VERDE
+    from woptimizer.ui import theme
+
+    # -------------------------------------------------------------
+    # 1. AST Analysis
+    # -------------------------------------------------------------
+    raiz = os.path.dirname(os.path.abspath(__file__))
+
+    # 1.1 dashboard_view.py
+    path_dash = os.path.join(raiz, "src", "woptimizer", "ui", "views", "dashboard_view.py")
+    with open(path_dash, "r", encoding="utf-8") as f:
+        tree_dash = ast.parse(f.read(), path_dash)
+
+    def _find_func(tree, class_name, func_name):
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == class_name:
+                for item in node.body:
+                    if isinstance(item, ast.FunctionDef) and item.name == func_name:
+                        return item
+        return None
+
+    def _find_inner_funcs(func_node):
+        inners = {}
+        for item in func_node.body:
+            if isinstance(item, ast.FunctionDef):
+                inners[item.name] = item
+            elif isinstance(item, ast.If):
+                for sub in item.body + item.orelse:
+                    if isinstance(sub, ast.FunctionDef):
+                        inners[sub.name] = sub
+        return inners
+
+    exec_pack_node = _find_func(tree_dash, "DashboardView", "execute_pack")
+    assert exec_pack_node is not None, "DashboardView.execute_pack no encontrado"
+    dash_inners = _find_inner_funcs(exec_pack_node)
+    assert "_run_kill" in dash_inners, "_run_kill debe estar definido dentro de execute_pack"
+    assert "_run_start" in dash_inners, "_run_start debe estar definido dentro de execute_pack"
+
+    for worker_name, target_cb in [("_run_kill", "_show_banner"), ("_run_start", "_show_start_banner")]:
+        worker = dash_inners[worker_name]
+        after_calls = []
+        direct_ui_calls = []
+        for call in [n for n in ast.walk(worker) if isinstance(n, ast.Call)]:
+            if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name) and call.func.value.id == "self":
+                if call.func.attr == "after":
+                    after_calls.append(call)
+                elif call.func.attr in ("_show_banner", "_show_kill_banner", "_show_start_banner", "_inline_status"):
+                    direct_ui_calls.append(call.func.attr)
+
+        assert not direct_ui_calls, f"Llamada directa de UI prohibida en {worker_name}: {direct_ui_calls}"
+        assert len(after_calls) >= 1, f"{worker_name} debe invocar self.after(0, ...)"
+
+        call = after_calls[0]
+        assert len(call.args) >= 2, f"self.after en {worker_name} debe recibir delay y callback"
+        assert isinstance(call.args[0], ast.Constant) and call.args[0].value == 0, (
+            f"El delay de self.after en {worker_name} debe ser 0 ms"
+        )
+        assert isinstance(call.args[1], ast.Attribute) and call.args[1].attr in (target_cb, "_show_kill_banner"), (
+            f"Callback en self.after({worker_name}) debe ser {target_cb}, obtenido {ast.dump(call.args[1])}"
+        )
+
+    # 1.2 pack_manager_view.py
+    path_pm = os.path.join(raiz, "src", "woptimizer", "ui", "views", "pack_manager_view.py")
+    with open(path_pm, "r", encoding="utf-8") as f:
+        tree_pm = ast.parse(f.read(), path_pm)
+
+    for method_name in ("kill_pack", "start_pack"):
+        m_node = _find_func(tree_pm, "PackManagerView", method_name)
+        assert m_node is not None, f"PackManagerView.{method_name} no encontrado"
+        pm_inners = _find_inner_funcs(m_node)
+        assert "_run" in pm_inners, f"_run worker no encontrado en PackManagerView.{method_name}"
+        worker = pm_inners["_run"]
+
+        after_calls = []
+        direct_ui_calls = []
+        for call in [n for n in ast.walk(worker) if isinstance(n, ast.Call)]:
+            if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name) and call.func.value.id == "self":
+                if call.func.attr == "after":
+                    after_calls.append(call)
+                elif call.func.attr in ("_inline_status", "_show_banner", "_show_start_banner"):
+                    direct_ui_calls.append(call.func.attr)
+
+        assert not direct_ui_calls, f"Llamada directa de UI prohibida en {method_name}._run: {direct_ui_calls}"
+        assert len(after_calls) >= 1, f"{method_name}._run debe invocar self.after(0, self._inline_status, ...)"
+        for ac in after_calls:
+            assert isinstance(ac.args[0], ast.Constant) and ac.args[0].value == 0
+            assert isinstance(ac.args[1], ast.Attribute) and ac.args[1].attr == "_inline_status"
+
+    # -------------------------------------------------------------
+    # 2. Dynamic Headless Testing
+    # -------------------------------------------------------------
+    pack_s, tmp_path = _pack_service_temporal()
+    root = ctk.CTk()
+    root.withdraw()
+    try:
+        ps = ProcessService()
+        gs = GamingService(ps, pack_s)
+        ns = NotificationService()
+
+        # --- A. DashboardView testing ---
+        dash = DashboardView(root, ps, pack_s, ns, gs)
+        dash.pack()
+
+        ps.get_running_processes()
+        assert ps._proc_cache is not None, "Precondicion: la cache debe estar poblada"
+        ts_before = ps._proc_cache_ts
+
+        # 1) Start banner exitoso (failed == 0)
+        dash._show_start_banner(launched=3, failed=0, pack_name="Trabajo")
+        # invalidate_cache() borra la cache, _update_resting_bar() la repuebla:
+        # verificamos que el timestamp cambio (invalidacion + refresco real).
+        assert ps._proc_cache_ts != ts_before, "_show_start_banner debe invalidar y refrescar cache"
+        assert dash.status_label.cget("text") == "🚀 Pack 'Trabajo' iniciado (3 apps)."
+        assert dash.lbl_banner.cget("text") == "🚀 Pack 'Trabajo' iniciado (3 apps)."
+        assert dash.status_label.cget("text_color") == theme.ACCENT
+        assert dash._banner_timer is not None, "_banner_timer debe quedar programado"
+        primer_timer = dash._banner_timer
+
+        # 2) Start banner con fallos parciales (failed > 0)
+        dash._show_start_banner(launched=2, failed=1, pack_name="Herramientas")
+        assert dash.status_label.cget("text") == "⚠️ Pack 'Herramientas': 2 apps iniciadas, 1 fallaron."
+        assert dash.status_label.cget("text_color") == theme.WARNING
+        assert dash._banner_timer != primer_timer, "El timer previo debe reemplazarse al mostrar nuevo banner"
+
+        # 3) Kill banner (dashboard kill feedback)
+        dash._show_banner(killed=4, freed_mb=128.5, is_gaming=False)
+        assert "4 procesos cerrados · 128.5 MB liberados" in dash.status_label.cget("text")
+        assert dash.status_label.cget("text_color") == theme.ACCENT
+
+        dash._show_banner(killed=6, freed_mb=256.0, is_gaming=True)
+        assert "6 procesos cerrados · 256.0 MB liberados" in dash.status_label.cget("text")
+        assert dash.status_label.cget("text_color") == theme.GAMING
+
+        # 4) Auto-ocultacion / _hide_banner
+        dash._hide_banner()
+        assert dash._banner_timer is None, "_hide_banner debe limpiar _banner_timer"
+
+        # --- B. PackManagerView testing ---
+        pm = PackManagerView(root, ps, pack_s, ns, gs)
+        pm.pack()
+
+        # 1) start_pack con pack sin apps emite aviso inline ambar preventivo y no lanza worker
+        pack_vacio = Pack(id="vacio", name="Pack Vacio", apps=[])
+        pm.start_pack(pack_vacio)
+        assert pm.status_label.cget("text") == "⚠️ 'Pack Vacio' no tiene apps que iniciar."
+        assert pm.status_label.cget("text_color") == AMBAR
+
+        # 2) Inline status despacho start exitoso
+        pm._inline_status("🚀 3 apps iniciadas · 'Trabajo'.", VERDE)
+        assert pm.status_label.cget("text") == "🚀 3 apps iniciadas · 'Trabajo'."
+        assert pm.status_label.cget("text_color") == VERDE
+
+        # 3) Inline status despacho start con fallos
+        pm._inline_status("⚠️ 'Trabajo': 2 iniciadas, 1 con error.", AMBAR)
+        assert pm.status_label.cget("text") == "⚠️ 'Trabajo': 2 iniciadas, 1 con error."
+        assert pm.status_label.cget("text_color") == AMBAR
+
+        # 4) Inline status despacho kill con telemetria de RAM liberada
+        pm._inline_status("✅ 5 procesos cerrados (180.2 MB liberados) · 'Gaming'.", VERDE)
+        assert pm.status_label.cget("text") == "✅ 5 procesos cerrados (180.2 MB liberados) · 'Gaming'."
+        assert pm.status_label.cget("text_color") == VERDE
+
+        # 5) Limpieza en destroy
+        dash.destroy()
+        pm.destroy()
+
+    finally:
+        try:
+            root.quit()
+            root.destroy()
+        except Exception:
+            pass
+        if os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    print("test_pack_execution_ui_telemetry_feedback OK.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -7726,5 +7934,7 @@ if __name__ == "__main__":
     test_models_strict_validation_and_contracts()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
+    # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs
+    test_pack_execution_ui_telemetry_feedback()
     test_headless_ui()
     print("\nALL TESTS PASSED.")

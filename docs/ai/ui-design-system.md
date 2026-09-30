@@ -300,3 +300,38 @@ En las dos vistas, el texto del aviso se adapta al pack pero **el guard es el mi
 - `ui/confirmation.py` solo importa `typing`; prohibido `psutil`, `json`, `services` y `models` (§7.4 de la OpenSpec). El guard de imports vive en `run_tests.py::test_double_tap_guard`.
 - **Nada se traga en silencio:** los fallos de `delete_pack` (pack de sistema / inexistente) se muestran en el `status_label`, nunca `except: pass`.
 - **El acordeón de categorías compara contra el centinela canónico (TASK-026 / FIX-005).** El filtro `if "⚪ Otros" not in row.category` de `PackManagerView` usa el **círculo U+26AA**, el mismo literal que `config.CATEGORY_ORDER[-1]` y que `process_service._DEFAULT_META[0]`. Escribirlo como `"? Otros"` deja el filtro comparando contra un texto que ya no existe en el código (no-op) y, en cuanto la DB traiga la categoría canónica, ofrece "Otros" como casilla activable de `target_categories`: basura seleccionable que el usuario nunca pidió. Cuando se toque uno de los tres sitios, se tocan los tres.
+
+## Feedback y Telemetría en Ejecución de Packs (TASK-035)
+
+### Motivación y Unificación
+Previamente existía asimetría entre vistas y acciones:
+- En la Portada (`DashboardView`), la acción `kill` mostraba un banner enriquecido con procesos cerrados y MB de RAM liberados (`_show_banner`), mientras que `start` lanzaba un worker en segundo plano y toast del tray, pero la interfaz permanecía muda sin banner en pantalla ni refresco de telemetría.
+- En el Gestor de Packs (`PackManagerView`), tanto `kill_pack` como `start_pack` corrían en hilos secundarios pero dejaban `status_label` completamente vacío.
+- Además, `start_pack` con un pack sin apps retornaba de forma silenciosa sin indicar al usuario por qué no ocurría nada.
+
+### Contrato de Feedback Visual Unificado
+1. **Portada (`DashboardView`):**
+   - **Arranque (`start`):** El worker secundario despacha al hilo principal vía `self.after(0, self._show_start_banner, launched, failed, p.name)`.
+   - `_show_start_banner(launched, failed, pack_name)`:
+     * Invalida la caché del servicio de procesos (`process_service.invalidate_cache()`).
+     * Actualiza la barra de reposo en vivo (`_update_resting_bar()`).
+     * Configura `status_banner_frame` y `status_label` con fondo `theme.SURFACE_ALT`:
+       - `failed == 0`: texto `"🚀 Pack '{pack_name}' iniciado ({launched} apps)."` con color `theme.ACCENT`.
+       - `failed > 0`: texto `"⚠️ Pack '{pack_name}': {launched} apps iniciadas, {failed} fallaron."` con color `theme.WARNING`.
+     * Cancela cualquier temporizador previo de auto-ocultación (`self._banner_timer`).
+     * Programa auto-ocultación a los 5000 ms (`self._schedule_ui(5000, self._hide_banner)`).
+   - **Apagado (`kill`):** Se mantiene `_show_banner` (con alias `_show_kill_banner`), mostrando procesos cerrados y MB liberados con `theme.GAMING` o `theme.ACCENT`.
+
+2. **Gestor de Packs (`PackManagerView`):**
+   - **Guarda preventiva en `start_pack`:** Si `not pack.apps`, la UI cancela confirmaciones pendientes y emite de inmediato `self._inline_status(f"⚠️ '{pack.name}' no tiene apps que iniciar.", AMBAR)` sin crear un hilo innecesario.
+   - **Arranque (`start_pack._run`):**
+     * `failed == 0`: `self.after(0, self._inline_status, f"🚀 {started} apps iniciadas · '{nombre}'.", VERDE)`
+     * `failed > 0`: `self.after(0, self._inline_status, f"⚠️ '{nombre}': {started} iniciadas, {failed} con error.", AMBAR)`
+   - **Apagado (`kill_pack._run`):**
+     * `self.after(0, self._inline_status, f"✅ {killed} procesos cerrados ({freed_mb:.1f} MB liberados) · '{nombre}'.", VERDE)`
+
+### Invariantes de Hilos y Red de Seguridad
+- **Cero mutaciones directas de widgets desde hilos secundarios:** Todo worker de fondo (`_run`, `_run_kill`, `_run_start`) delega las mutaciones exclusivamente a través de `self.after(0, callback, *args)`.
+- **Análisis AST estricto:** La suite de pruebas (`test_pack_execution_ui_telemetry_feedback`) verifica mediante introspección del árbol sintáctico que ningún worker secundario llama a métodos de interfaz gráfica de forma síncrona.
+- **Gestión de temporizadores:** `_banner_timer` se cancela explícitamente antes de programar uno nuevo, y `_hide_banner` lo limpia a `None`. `destroy()` cancela el timer pendiente antes de `cancel_on_destroy()`.
+

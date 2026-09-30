@@ -482,13 +482,23 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
                 killed, _failed, _skipped, freed_mb = self.gaming_service.execute_gaming_pack(pack)
             else:
                 killed, _failed, _skipped, freed_mb = self.process_service.kill_pack_apps(apps)
+            self.after(0, self._inline_status, f"✅ {killed} procesos cerrados ({freed_mb:.1f} MB liberados) · '{nombre}'.", VERDE)
             self.notification_service.notify_pack_activated(nombre, killed, freed_mb)
         threading.Thread(target=_run, daemon=True).start()
 
     def start_pack(self, pack: Pack):
         self._cancel_confirm()
-        if not pack.apps: return
+        if not pack.apps:
+            self._inline_status(f"⚠️ '{pack.name}' no tiene apps que iniciar.", AMBAR)
+            return
+        nombre = pack.name
+        apps = list(pack.apps)
         def _run():
-            started, failed = self.process_service.start_pack_apps(pack.apps)
-            self.notification_service.notify_apps_launched(pack.name, started, failed)
+            started, failed = self.process_service.start_pack_apps(apps)
+            if failed == 0:
+                self.after(0, self._inline_status, f"🚀 {started} apps iniciadas · '{nombre}'.", VERDE)
+            else:
+                self.after(0, self._inline_status, f"⚠️ '{nombre}': {started} iniciadas, {failed} con error.", AMBAR)
+            self.notification_service.notify_apps_launched(nombre, started, failed)
         threading.Thread(target=_run, daemon=True).start()
+

@@ -695,7 +695,7 @@
       "description": "Implementar feedback inline en pantalla en la ejecución de packs tanto para 'start' como para 'kill': banner enriquecido en DashboardView con actualización de telemetría en reposo, y feedback con _inline_status en PackManagerView, asegurando que todos los hilos secundarios actualicen la UI exclusivamente vía self.after(0, ...).",
       "complexity": 3,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "src/woptimizer/ui/views/dashboard_view.py",
       "acceptance_criteria": [
