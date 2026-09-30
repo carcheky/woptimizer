@@ -7642,31 +7642,38 @@ def test_los_workers_de_pack_solo_publican_por_after():
 
     Aqui la lista de lo permitido son PARES `(raiz, metodo)` y todo lo demas que
     cuelgue de `self` es infraccion, incluidos los metodos de widget que nadie
-    escribio en la lista y las ESCRITURAS en `self.<attr>` (tambien las que
-    entran por indice: `self.__dict__['x']`). Se aplica al **objetivo real** de
-    cada `threading.Thread(target=...)` de `execute_pack`, `kill_pack`,
-    `start_pack`, `ProcessManagerView._do_load` y
+    escribio en la lista y las ESCRITURAS en `self.<attr>`. Se aplica al
+    **objetivo real** de cada `threading.Thread(target=...)` de `execute_pack`,
+    `kill_pack`, `start_pack`, `ProcessManagerView._do_load` y
     `ProcessManagerView.on_kill_selected`, y exige que CADA `self.after` del
     worker lleve 0 ms y un callback de la lista blanca, no solo el primero.
 
-    LO QUE LA GUARDA **NO** CUBRE, dicho sin adornos: los `threading.Thread` de
-    `ui/app.py` (el toast de arranque y el hilo del icono de la bandeja), que no
-    son vistas, y ningun worker anadido despues de esta lista sin anadirlo aqui.
-    La lista de vistas y metodos esta en el bucle de aplicacion, mas abajo, a la
-    vista de todos.
+    LO QUE LA GUARDA CUBRE, DICHO CON SUS LIMITES (iter 4, correccion de una
+    promesa que era falsa): toda llamada o escritura que se resuelva sobre `self`
+    por `Attribute`, por `Subscript`, por `getattr`/`setattr`/`delattr`, por
+    `del`, o **pasada como argumento** de una llamada permitida.
+
+    LO QUE LA GUARDA **NO** CUBRE, dicho sin adornos:
+
+    * los `threading.Thread` de `ui/app.py` (el toast de arranque y el hilo del
+      icono de la bandeja), que no son vistas, y ningun worker anadido despues de
+      esta lista sin anadirlo aqui (la lista de vistas y metodos esta en el
+      bucle de aplicacion, mas abajo, a la vista de todos);
+    * un **alias local**: `lbl = self.status_label` y luego `lbl.configure(...)`
+      no se resuelve hasta `self` y la guarda no lo ve. Es el agujero que queda
+      abierto, y no lo cierra un analisis estatico de este tipo;
+    * que el `after` se ejecute de verdad en el hilo principal, ni el resultado
+      de la operacion. Eso lo cubren las sondas con hilo secundario real.
 
     **La guarda se prueba contra si misma** (control del detector, no del
-    fichero): cinco infracciones sinteticas que tiene que ver —un metodo de
-    widget, `self.master.after`, una escritura en `self`, tres metodos prohibidos
-    de raices permitidas y doslde la puerta de atras por `__dict__`—, un worker
-    conforme que no puede marcar, y el caso de las DOS ramas, donde el worker
-    tiene una rama buena y otra con `self.master.after`: ese es precisamente el
-    agujero que el guard per-nodo no veia.
-
-    LO QUE NO COMPRUEBA (y por eso no hay que leerlo como mas de lo que es): que
-    el `after` se ejecute de verdad en el hilo principal, ni el resultado de la
-    operacion. Eso lo cubre `test_el_feedback_de_pack_dice_la_verdad`, con hilo
-    secundario real.
+    fichero): ocho infracciones sinteticas que tiene que ver —un metodo de
+    widget, `self.master.after`, una escritura en `self`, un `del self.<attr>`,
+    `getattr`/`setattr` sobre la vista, `self.<attr>` como argumento de una
+    llamada permitida, tres metodos prohibidos de raices permitidas y dos de la
+    puerta de atras por `__dict__`—, un worker conforme que no puede marcar, y
+    el caso de las DOS ramas, donde el worker tiene una rama buena y otra con
+    `self.master.after`: ese es precisamente el agujero que el guard per-nodo no
+    veia.
     """
     print("Testing that pack workers only publish via self.after (TASK-035 / cycle 26)...")
 
@@ -7700,6 +7707,13 @@ def test_los_workers_de_pack_solo_publican_por_after():
     CALLBACKS = {"_inline_status", "_show_banner", "_show_start_banner",
                  "_publicar_cierre", "_apply_load"}
 
+    #: Accesos a la vista que NO son ni `Attribute` ni `Subscript`. Con esta
+    #: lista, `getattr(self, 'status_label').configure(...)` y
+    #: `setattr(self, '_last_gaming_summary', 'x')` dejan de llevarse el widget
+    #: entero por la puerta de atras. Medido en la iteracion 4 del ciclo 26: la
+    #: guarda era una RED, no un muro, y por tres agujeros.
+    ACCESOS_DINAMICOS = {"getattr", "setattr", "delattr"}
+
     def _raiz_de_self(expresion):
         """`(raiz, camino)` de una expresion que cuelga de `self`; `(None, [])` si no.
 
@@ -7712,8 +7726,13 @@ def test_los_workers_de_pack_solo_publican_por_after():
         `self.__dict__['status_label'].configure(...)` devolvia `(None, [])` y la
         guarda no lo veia: un `Subscript` no es un `Attribute`. Era la misma
         llamada de widget de siempre, escrita por la puerta de atras.
+
+        TASK-035 iter 4: y por `getattr`/`setattr`/`delattr`, que no son ninguno
+        de los dos. `getattr(self, 'status_label').configure(...)` es la MISMA
+        llamada de widget de siempre, con el `Attribute` partido en dos.
         """
         ruta = []
+        acceso_directo = False
         nodo = expresion
         while True:
             if isinstance(nodo, ast.Attribute):
@@ -7721,9 +7740,15 @@ def test_los_workers_de_pack_solo_publican_por_after():
                 nodo = nodo.value
             elif isinstance(nodo, ast.Subscript):
                 nodo = nodo.value
+            elif (isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Name)
+                    and nodo.func.id in ACCESOS_DINAMICOS and nodo.args
+                    and isinstance(nodo.args[0], ast.Name) and nodo.args[0].id == "self"):
+                ruta.append(nodo.func.id)
+                acceso_directo = True
+                break
             else:
                 break
-        if ruta and isinstance(nodo, ast.Name) and nodo.id == "self":
+        if acceso_directo or (ruta and isinstance(nodo, ast.Name) and nodo.id == "self"):
             return ruta[-1], list(reversed(ruta))
         return None, []
 
@@ -7731,15 +7756,39 @@ def test_los_workers_de_pack_solo_publican_por_after():
         """Todas las violaciones del invariante en UN worker. Lista vacia = conforme."""
         malos = []
         for call in [n for n in ast.walk(worker) if isinstance(n, ast.Call)]:
+            # Un `getattr`/`setattr`/`delattr` SOBRE `self` es un acceso entero a
+            # la vista. Se marca aqui porque `_raiz_de_self` solo lo veria cuando
+            # cuelga de un `Attribute` (`getattr(self, 'x').y`), no cuando la
+            # llamada es el nodo mas externo (`setattr(self, 'x', 1)`).
+            if (isinstance(call.func, ast.Name) and call.func.id in ACCESOS_DINAMICOS
+                    and call.args and isinstance(call.args[0], ast.Name)
+                    and call.args[0].id == "self"):
+                malos.append(
+                    f"{etiqueta}:L{call.lineno} {call.func.id}(self, ...) "
+                    f"desde el hilo secundario"
+                )
+                continue
             raiz, camino = _raiz_de_self(call.func)
             if raiz is None:
                 continue
             if raiz != "after":
-                if (raiz, camino[-1]) not in PERMITIDOS:
-                    malos.append(
-                        f"{etiqueta}:L{call.lineno} self.{'.'.join(camino)}(...) "
-                        f"desde el hilo secundario"
-                    )
+                if (raiz, camino[-1]) in PERMITIDOS:
+                    # `self` como ARGUMENTO de una llamada permitida tambien es
+                    # tocar la vista: el widget no se escribe aqui, pero se saca
+                    # de la vista para que otro lo escriba.
+                    for arg in list(call.args) + [kw.value for kw in call.keywords]:
+                        a_raiz, a_camino = _raiz_de_self(arg)
+                        if a_raiz is not None:
+                            malos.append(
+                                f"{etiqueta}:L{call.lineno} pasa "
+                                f"self.{'.'.join(a_camino)} como argumento de "
+                                f"una llamada permitida"
+                            )
+                    continue
+                malos.append(
+                    f"{etiqueta}:L{call.lineno} self.{'.'.join(camino)}(...) "
+                    f"desde el hilo secundario"
+                )
                 continue
             if not call.args or not (isinstance(call.args[0], ast.Constant) and call.args[0].value == 0):
                 malos.append(f"{etiqueta}:L{call.lineno} self.after debe ser de 0 ms")
@@ -7751,6 +7800,11 @@ def test_los_workers_de_pack_solo_publican_por_after():
                 objetivos = nodo.targets
             elif isinstance(nodo, (ast.AugAssign, ast.AnnAssign)):
                 objetivos = [nodo.target]
+            elif isinstance(nodo, ast.Delete):
+                # `del self._last_gaming_summary` es tan destructivo como
+                # `self._last_gaming_summary = ...`, y la guarda solo miraba
+                # escrituras: `ast.Delete` no es `ast.Assign`.
+                objetivos = nodo.targets
             else:
                 objetivos = []
             for t in objetivos:
@@ -7844,6 +7898,65 @@ def test_los_workers_de_pack_solo_publican_por_after():
     )
     assert any("__dict__" in m and "escribe" in m for m in malos_sub), (
         f"no ve la escritura por indice: {malos_sub}"
+    )
+
+    # Control 6 (iter 4): `getattr`/`setattr` sobre `self`. La guarda bajaba por
+    # `Attribute` y por `Subscript`, pero `getattr(self, 'x')` no es ninguno de
+    # los dos, asi que el widget se pasaba entero por la puerta de atras. Se
+    # cuentan DOS infracciones en la primera linea: la llamada de widget
+    # (`...configure`) y el `getattr` por si mismo, que ya ES un acceso a la
+    # vista aunque nadie lo encadene con nada.
+    codigo_getattr = (
+        "def _run(self):\n"
+        "    getattr(self, 'status_label').configure(text='x')\n"
+        "    setattr(self, '_last_gaming_summary', 'x')\n"
+    )
+    malos_getattr = _infracciones(ast.parse(codigo_getattr).body[0], "CONTROL-GETATTR")
+    assert len(malos_getattr) == 3, (
+        f"la guarda no ve los accesos dinamicos a la vista: {malos_getattr}"
+    )
+    assert any("getattr" in m and "configure" in m for m in malos_getattr), (
+        f"no ve getattr(self, 'widget').metodo(...): {malos_getattr}"
+    )
+    assert any("setattr(self, ...)" in m for m in malos_getattr), (
+        f"no ve setattr(self, 'attr', ...): {malos_getattr}"
+    )
+
+    # Control 7 (iter 4): `del self.<attr>` es una escritura destructiva y la
+    # guarda no miraba `ast.Delete`, solo `ast.Assign`.
+    codigo_del = (
+        "def _run(self):\n"
+        "    del self._last_gaming_summary\n"
+        "    del self.__dict__['status_label']\n"
+    )
+    malos_del = _infracciones(ast.parse(codigo_del).body[0], "CONTROL-DEL")
+    assert len(malos_del) == 2, (
+        f"la guarda no ve los `del` sobre la vista: {malos_del}"
+    )
+    assert any("_last_gaming_summary" in m for m in malos_del), (
+        f"no ve del self._last_gaming_summary: {malos_del}"
+    )
+    assert any("__dict__" in m for m in malos_del), (
+        f"no ve del self.__dict__['x']: {malos_del}"
+    )
+
+    # Control 8 (iter 4): el `self` que NO se escribe tambien cuenta cuando se
+    # entrega a una llamada permitida. Antes solo se miraba `call.func`.
+    codigo_argumento = (
+        "def _run(self):\n"
+        "    self.process_service.kill_pack_apps(self.status_label)\n"
+        "    self.notification_service.notify_pack_activated('X', self.killed, 0.0)\n"
+        "    self.process_service.kill_pack_apps(p.apps)\n"
+    )
+    malos_arg = _infracciones(ast.parse(codigo_argumento).body[0], "CONTROL-ARGUMENTO")
+    assert len(malos_arg) == 2, (
+        f"la guarda no ve self.<attr> como ARGUMENTO de una llamada permitida: {malos_arg}"
+    )
+    assert any("status_label" in m for m in malos_arg), (
+        f"no ve el widget pasado como argumento: {malos_arg}"
+    )
+    assert not any("p.apps" in m for m in malos_arg), (
+        f"un argumento que NO cuelga de self no puede marcarse: {malos_arg}"
     )
 
     # -----------------------------------------------------------------
@@ -8069,6 +8182,7 @@ def test_el_feedback_de_pack_dice_la_verdad():
             self.arranque = (0, 0)
             self.llamadas_cierre = 0
             self.llamadas_arranque = 0
+            self.invalidadas = 0
             self.apps = None
 
         def kill_pack_apps(self, apps):
@@ -8080,6 +8194,9 @@ def test_el_feedback_de_pack_dice_la_verdad():
             self.llamadas_arranque += 1
             self.apps = list(apps)
             return self.arranque
+
+        def invalidate_cache(self):
+            self.invalidadas += 1
 
         def get_running_processes(self):
             # La barra de reposo de la portada lo pide; con lista vacia la
@@ -8180,7 +8297,10 @@ def test_el_feedback_de_pack_dice_la_verdad():
         # (iter 3) El resumen del Gaming Mode se escribe EN EL TEXTO de reposo, no
         # en un atributo que nadie lee. Sin esta afirmacion, desactivar el
         # `if is_gaming:` pasaba.
-        assert "Último Gaming Mode: 6 cerrados, 256.0 MB" in dash.resting_label.cget("text"), (
+        # (iter 4) El resumen usa la MISMA clausula de MB que el texto del
+        # banner: con `freed_mb <= 0` no escribe "0.0 MB liberados", igual que
+        # ya hace `format_kill_result`.
+        assert "Último Gaming Mode: 6 cerrados (256.0 MB liberados)" in dash.resting_label.cget("text"), (
             f"la barra de reposo debe decir como quedo el Gaming Mode: "
             f"{dash.resting_label.cget('text')!r}"
         )
@@ -8193,6 +8313,35 @@ def test_el_feedback_de_pack_dice_la_verdad():
         )
         assert dash.status_label.cget("text_color") == theme.ACCENT, (
             "cerrar un solo proceso da derecho al color de marca"
+        )
+
+        # (iter 4) CERRAR UN PROCESO Y NO LIBERAR MEMORIA: la clausula de MB se
+        # omite con `freed_mb <= 0`, que es la regla que `format_kill_result`
+        # ya aplicaba y que un test fijaba (`run_tests.py:303`). Los dos
+        # formateadores de `feedback.py` la escribian siempre, de modo que la
+        # misma verdad se decia de dos maneras segun por donde se ejecutara.
+        # Sin este caso, borrar el `if freed_mb <= 0` de `clausula_mb` pasaba.
+        dash._show_banner(killed=1, freed_mb=0.0, is_gaming=False)
+        assert dash.status_label.cget("text") == "⚡ 1 procesos cerrados", (
+            "cerrar un proceso sin liberar MB no puede inventar una cifra de RAM: "
+            f"{dash.status_label.cget('text')!r}"
+        )
+        assert "MB" not in dash.status_label.cget("text"), (
+            f"la clausula de MB desaparece con freed_mb <= 0: "
+            f"{dash.status_label.cget('text')!r}"
+        )
+        assert dash.status_label.cget("text_color") == theme.ACCENT, (
+            "omitir la clausula de MB no degrada el exito a aviso: se cerro de verdad"
+        )
+        # El resumen del Gaming Mode con la MISMA regla (si `is_gaming`).
+        dash._show_banner(killed=1, freed_mb=0.0, is_gaming=True)
+        assert "Último Gaming Mode: 1 cerrados" in dash.resting_label.cget("text"), (
+            "el resumen del Gaming Mode tampoco puede escribir 0.0 MB: "
+            f"{dash.resting_label.cget('text')!r}"
+        )
+        assert "0.0 MB" not in dash.resting_label.cget("text"), (
+            f"0.0 MB liberados es un numero que el usuario no puede cuadrar: "
+            f"{dash.resting_label.cget('text')!r}"
         )
 
         dash._show_banner(killed=0, freed_mb=0.0, is_gaming=True, failed=0, skipped=6)
@@ -8315,7 +8464,8 @@ def test_el_feedback_de_pack_dice_la_verdad():
         pm_real.pack()
         pm_real.start_pack(Pack(id="vacio", name="Pack Vacio", apps=[]))
         assert pm_real.status_label.cget("text") == (
-            "⚠️ 'Pack Vacio' no tiene apps que iniciar."
+            "⚠️ 'Pack Vacio' no tiene apps que iniciar. "
+            "Añádelas desde el Gestor de Procesos."
         ), f"aviso preventivo de pack vacio: {pm_real.status_label.cget('text')!r}"
         assert pm_real.status_label.cget("text_color") == AMBAR
         pm_real.destroy()
@@ -8399,7 +8549,14 @@ def test_el_feedback_de_pack_dice_la_verdad():
             dash.gaming_service = gaming_portada
             dash.notification_service = _Notis()
             dash.after = lambda ms, func=None, *a: cola.append((ms, func, a, threading.get_ident()))
-            pack_portada = Pack(id="gaming", name="Gaming Mode", is_gaming=True, default_action="kill")
+            # (iter 4) El Gaming Mode con categorias NO es inerte y tiene que
+            # seguir entrando por la puerta real. Sin categorias este pack
+            # caeria en el diagnostico de TASK-036 y `execute_gaming_pack` no
+            # llegaria a llamarse nunca.
+            CATEGORIA_MEDIA = "\U0001F7E1 Media y Streaming"
+            pack_portada = Pack(id="gaming", name="Gaming Mode", is_gaming=True,
+                                default_action="kill",
+                                target_categories=[CATEGORIA_MEDIA])
             _correr(dash, DashboardView.execute_pack, pack_portada, doble=True,
                     callback=lambda v: v._show_banner)
             assert gaming_portada.llamadas == 1 and procs_portada.llamadas_cierre == 0, (
@@ -8417,7 +8574,8 @@ def test_el_feedback_de_pack_dice_la_verdad():
 
             APPS = [r"C:\Juegos\juego.exe"]
             pack_normal = Pack(id="trabajo", name="Trabajo", apps=list(APPS))
-            pack_gaming = Pack(id="gaming", name="Gaming Mode", is_gaming=True)
+            pack_gaming = Pack(id="gaming", name="Gaming Mode", is_gaming=True,
+                               target_categories=[CATEGORIA_MEDIA])
 
             # (iter 3) La rama NO GAMING de la portada no se ejecutaba NUNCA en la
             # suite: con solo el pack gaming, tanto `if p.is_gaming:` ->
@@ -8466,6 +8624,71 @@ def test_el_feedback_de_pack_dice_la_verdad():
                 "el worker de la portada tiene que leer la 4-tupla en el orden "
                 "(killed, failed, skipped, freed_mb): si intercambia failed y "
                 f"skipped, el texto dirá 5 con error. Dice: {dash.status_label.cget('text')!r}"
+            )
+            assert dash.status_label.cget("text_color") == theme.WARNING
+            del dash.after
+
+            # (iter 4) LA RAMA START DE `execute_pack` NO SE EJECUTABA NUNCA.
+            # Tres mutaciones pasaban la suite entera en verde: intercambiar
+            # `launched`/`failed` en `_run_start`, arrancar
+            # `start_pack_apps([])`, y publicar en `_show_banner` con
+            # `(p.name)` en el hueco de `is_gaming` (banner verde Gaming y
+            # `_last_gaming_summary` basura, sin crash). Es la misma clase que
+            # el ciclo condena: una rama sin ejecutar no es una rama probada. El
+            # caso entra por el WORKER REAL, no llamando a `_show_start_banner`
+            # con valores puestos a mano (que es el patron "test que se llama a
+            # si mismo" que `testing-guide.md` sec. 1 condena).
+            pack_arrancar = Pack(id="arrancar", name="Trabajo", apps=list(APPS),
+                                 default_action="start")
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            procs.arranque = (3, 0)
+            antes_resumen = dash.resting_label.cget("text")
+            dash.process_service = procs
+            dash.gaming_service = gaming
+            dash.notification_service = _Notis()
+            dash.after = lambda ms, func=None, *a: cola.append((ms, func, a, threading.get_ident()))
+            _correr(dash, DashboardView.execute_pack, pack_arrancar,
+                    callback=lambda v: v._show_start_banner)
+            assert procs.llamadas_arranque == 1 and procs.apps == APPS, (
+                "la rama start arranca SUS apps, no una lista vacia: "
+                f"llego {procs.apps!r}"
+            )
+            assert procs.llamadas_cierre == 0 and gaming.llamadas == 0, (
+                "la rama start no cierra nada: no puede pasar por kill_pack_apps "
+                "ni por execute_gaming_pack"
+            )
+            assert dash.status_label.cget("text") == "🚀 Pack 'Trabajo' iniciado (3 apps).", (
+                f"el worker de arranque tiene que entregar launched y failed sin "
+                f"intercambiarlos: {dash.status_label.cget('text')!r}"
+            )
+            assert dash.status_label.cget("text_color") == theme.ACCENT
+            assert dash.notification_service.eventos == [("start", "Trabajo", 3, 0)], (
+                "el toast de arranque lleva los numeros reales, no intercambiados: "
+                f"{dash.notification_service.eventos}"
+            )
+            # El nombre del pack no puede colarse como flag de gaming: publicar en
+            # `_show_banner` con `p.name` en el hueco de `is_gaming` deja el
+            # resumen del Gaming Mode reescrito con datos de arranque, sin crash.
+            assert dash.resting_label.cget("text") == antes_resumen, (
+                "arrancar no es ejecutar el Gaming Mode: el resumen del Gaming Mode "
+                f"no puede cambiar. Antes {antes_resumen!r}, despues "
+                f"{dash.resting_label.cget('text')!r}"
+            )
+
+            # El mismo caso con fallos, que es donde intercambiar los dos numeros
+            # se ve: 3/0 y 1/2 dan textos distintos.
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            procs.arranque = (1, 2)
+            dash.process_service = procs
+            dash.gaming_service = gaming
+            dash.after = lambda ms, func=None, *a: cola.append((ms, func, a, threading.get_ident()))
+            _correr(dash, DashboardView.execute_pack, pack_arrancar,
+                    callback=lambda v: v._show_start_banner)
+            assert dash.status_label.cget("text") == (
+                "⚠️ Pack 'Trabajo': 1 apps iniciadas, 2 fallaron."
+            ), (
+                "1 iniciada y 2 fallidas no es lo mismo que 2 iniciadas y 1 fallida: "
+                f"{dash.status_label.cget('text')!r}"
             )
             assert dash.status_label.cget("text_color") == theme.WARNING
             del dash.after
@@ -8579,20 +8802,208 @@ def test_el_feedback_de_pack_dice_la_verdad():
             # no gaming y sin apps armaba la doble pulsacion ("para apagar 0 apps")
             # sobre un pack-imposible; sin la de `kill_pack`, un id desaparecido
             # reventaba con AttributeError en `pack.is_gaming`.
+            #
+            # (iter 4, TASK-036) LA ASERCION DE ARRIBA ESTABA INVERTIDA: afirmaba
+            # el SILENCIO, y una asercion que prohibe la verdad nueva se convierte
+            # en la especificacion de la mentira. Aqui lo que se mantiene es que no
+            # hay worker ni nada encolado; lo que se invierte es que el aviso sale.
+            def _sin_confirmacion_pendiente(v):
+                # Lo que se afirma es que no hay una pendiente VIVA. El boton
+                # marcado no se mira porque en este arnes `button=None`
+                # (los workers se disparan sin boton), asi que `_boton_pendiente`
+                # nunca se rellena y mirarlo daria un verde por la razon
+                # equivocada.
+                return not v._guard.is_pending()
+
+            AVISO_VACIO_APAGAR = (
+                "⚠️ 'Vacio' no tiene apps que apagar. "
+                "Añádelas desde el Gestor de Procesos."
+            )
+            DIAGNOSTICO_GAMING = (
+                "⛔ El Gaming Mode de 'Gaming Vacio' no tiene nada que cerrar: "
+                "0 apps y 0 categorías configuradas. Revísalo en el Gestor de Packs."
+            )
             pack_vacio = Pack(id="vacio", name="Vacio", apps=[], default_action="kill")
             antes_hilos, antes_cola = len(hilos), len(cola)
-            antes_texto = dash.status_label.cget("text")
+            before_text = dash.status_label.cget("text")
             DashboardView.execute_pack(dash, pack_vacio)
             assert len(hilos) == antes_hilos, (
                 "un pack no gaming y vacio no puede lanzar el worker de cierre"
             )
             assert len(cola) == antes_cola, (
-                "un pack no gaming y vacio no publica feedback de cierre"
+                "un pack no gaming y vacio no encola feedback por after: el aviso es "
+                "sincrono, ya estamos en el hilo principal dentro de un callback"
             )
-            assert dash.status_label.cget("text") == antes_texto, (
-                "un pack no gaming y vacio se corta en silencio: ni aviso ni "
-                f"confirmacion armada. Antes {antes_texto!r}, despues "
+            assert dash.status_label.cget("text") == AVISO_VACIO_APAGAR, (
+                "un pack no gaming y vacio SE AVISA, no se traga en silencio "
+                "(ui-design-system.md, Acciones Destructivas). Antes "
+                f"{before_text!r}, despues {dash.status_label.cget('text')!r}"
+            )
+            assert dash.status_label.cget("text_color") == theme.WARNING, (
+                "el aviso de pack inerte es de ATENCION: no verde (no hubo exito) ni "
+                f"rojo (no hubo error). Color: {dash.status_label.cget('text_color')!r}"
+            )
+            assert _sin_confirmacion_pendiente(dash), (
+                "el aviso no puede ir montado sobre una doble pulsacion: la guarda va "
+                "ANTES de `_require_double_tap`, o se arma 'Segunda pulsacion para "
+                f"apagar 0 apps'. Estado: {dash._guard.token!r}"
+            )
+
+            # (a) `default_action="start"` -> el verbo lo decide el formateador.
+            # Sin este caso, un "apagar" cableado a mano pasa la prueba de arriba.
+            antes_hilos, antes_cola = len(hilos), len(cola)
+            DashboardView.execute_pack(dash, Pack(id="vacio2", name="Vacio",
+                                                  apps=[], default_action="start"))
+            assert dash.status_label.cget("text") == (
+                "⚠️ 'Vacio' no tiene apps que iniciar. "
+                "Añádelas desde el Gestor de Procesos."
+            ), (
+                "con `default_action='start'` el verbo es 'iniciar': el mapa esta "
+                f"DENTRO del formateador. Dice: {dash.status_label.cget('text')!r}"
+            )
+            assert len(hilos) == antes_hilos and len(cola) == antes_cola, (
+                "tampoco la rama start puede lanzar worker con un pack vacio"
+            )
+            assert _sin_confirmacion_pendiente(dash), (
+                "la rama start tampoco puede armar la doble pulsacion sobre un pack vacio"
+            )
+
+            # (b) El Gaming Mode INERTE es un diagnostico, no un desenlace. Con 0
+            # apps y 0 categorias `should_kill_for_gaming` cae a False para todo
+            # lo que no este protegido: es inerte por construccion.
+            antes_hilos, antes_cola = len(hilos), len(cola)
+            pack_gaming_inerte = Pack(id="gin", name="Gaming Vacio", is_gaming=True,
+                                      default_action="kill")
+            DashboardView.execute_pack(dash, pack_gaming_inerte)
+            assert dash.status_label.cget("text") == DIAGNOSTICO_GAMING, (
+                "el Gaming Mode inerte se diagnostica: sin este texto caia en la "
+                f"puerta real y decia 'Nada que cerrar: 0 ya cerrados'. Dice: "
                 f"{dash.status_label.cget('text')!r}"
+            )
+            assert dash.status_label.cget("text_color") == theme.WARNING, (
+                "el diagnostico va en el color de la portada (theme.DANGER sobre "
+                f"SURFACE_ALT da 3.07:1 y el design system exige 4.5:1): "
+                f"{dash.status_label.cget('text_color')!r}"
+            )
+            assert len(hilos) == antes_hilos and len(cola) == antes_cola, (
+                "el gaming inerte no puede lanzar worker: no hay nada que cerrar"
+            )
+            assert _sin_confirmacion_pendiente(dash), (
+                "el diagnostico va ANTES de la doble pulsacion, no despues"
+            )
+
+            # (c) Un gaming CON categorias NO es inerte y NO avisa: cierra de verdad
+            # por la via G-2/G-3. Sin este caso, `es_pack_inerte` con `or` en vez
+            # de `and` (n_apps == 0 or n_categorias == 0) pasa todo lo anterior.
+            antes_texto = dash.status_label.cget("text")
+            procs_sano, gaming_sano = _ProcesosGestor(), _GamingGestor()
+            gaming_sano.cierre = (1, 0, 0, 12.0)
+            dash.process_service = procs_sano
+            dash.gaming_service = gaming_sano
+            dash.notification_service = _Notis()
+            dash.after = lambda ms, func=None, *a: cola.append((ms, func, a, threading.get_ident()))
+            _correr(dash, DashboardView.execute_pack, pack_portada, doble=True,
+                    callback=lambda v: v._show_banner)
+            assert gaming_sano.llamadas == 1, (
+                "un gaming CON categorias tiene que cerrar de verdad, no avisar: "
+                "diagnosticar como inerte un pack que si puede cerrar es tan mentira "
+                f"como el silencio. Banner: {dash.status_label.cget('text')!r}"
+            )
+            assert dash.status_label.cget("text") == (
+                "⚡ 1 procesos cerrados · 12.0 MB liberados"
+            ), f"gaming sano: {dash.status_label.cget('text')!r}"
+            del dash.after
+
+            # (d) Un gaming con APPS pero sin categorias tampoco es inerte (es el
+            # otro lado del mismo `and`).
+            antes_hilos, antes_cola = len(hilos), len(cola)
+            pack_gaming_con_apps = Pack(id="gapps", name="Gaming Con Apps", is_gaming=True,
+                                        default_action="kill", apps=list(APPS))
+            procs_sano2, gaming_sano2 = _ProcesosGestor(), _GamingGestor()
+            gaming_sano2.cierre = (1, 0, 0, 4.0)
+            dash.process_service = procs_sano2
+            dash.gaming_service = gaming_sano2
+            dash.after = lambda ms, func=None, *a: cola.append((ms, func, a, threading.get_ident()))
+            _correr(dash, DashboardView.execute_pack, pack_gaming_con_apps, doble=True,
+                    callback=lambda v: v._show_banner)
+            assert gaming_sano2.llamadas == 1, (
+                "0 categorias no significa inerte si hay apps: el `and` de "
+                f"es_pack_inerte no puede ser un `or`. Banner: {dash.status_label.cget('text')!r}"
+            )
+            del dash.after
+
+            # (e) Las DOS FAMILIAS dicen lo mismo. Si la frase viviera copiada en
+            # los dos sitios, el usuario leeria el mismo hecho con dos redacciones
+            # segun donde pulse. Se comprueba en las dos familias y en los dos
+            # avisos (el de apps vacias y el diagnostico del gaming inerte).
+            from woptimizer.ui.feedback import (
+                mensaje_banner_gaming_inerte, mensaje_banner_sin_apps,
+                mensaje_gaming_inerte, mensaje_sin_apps,
+            )
+            assert mensaje_sin_apps("Vacio", "kill")[0] == mensaje_banner_sin_apps("Vacio", "kill")[0], (
+                "las dos familias del aviso de pack sin apps tienen que decir "
+                "exactamente lo mismo"
+            )
+            assert mensaje_gaming_inerte("G")[0] == mensaje_banner_gaming_inerte("G")[0], (
+                "las dos familias del diagnostico del gaming inerte tienen que decir "
+                "exactamente lo mismo"
+            )
+            assert mensaje_sin_apps("Vacio", "kill")[1] == AMBAR, (
+                "la familia inline del aviso es AMBAR"
+            )
+            assert mensaje_banner_sin_apps("Vacio", "kill")[1] == theme.WARNING, (
+                "la familia banner del aviso es theme.WARNING"
+            )
+            assert mensaje_gaming_inerte("G")[1] == ROJO, (
+                "el diagnostico inline es ROJO: es un bloqueo, no un aviso"
+            )
+            assert mensaje_banner_gaming_inerte("G")[1] == theme.WARNING, (
+                "el diagnostico en banner no puede ser DANGER: 3.07:1 < 4.5:1"
+            )
+
+            # (f) El CANAL del aviso: `_show_aviso_banner` y no `_inline_status`.
+            # `_inline_status` pinta el fondo con `CANCEL`, que es la familia del
+            # aviso de "confirmacion pendiente", y NUNCA se auto-oculta. Con el
+            # reloj simulado del bloque S5 (ya instalado en `dash`) se mide que el
+            # aviso se va solo a los 5000 ms.
+            dash._hide_banner()
+            assert not _banner_visible(), "precondicion del arnes: el banner arranca oculto"
+            DashboardView.execute_pack(dash, pack_vacio)
+            assert dash.status_banner_frame.cget("fg_color") == theme.SURFACE_ALT, (
+                "el aviso va sobre SURFACE_ALT, no sobre el fondo CANCEL de la "
+                "confirmacion pendiente (que se lee como 'espera la segunda pulsacion'): "
+                f"{dash.status_banner_frame.cget('fg_color')!r}"
+            )
+            assert dash._banner_timer is not None, (
+                "el aviso tiene que programar su auto-ocultado: un aviso pegado en la "
+                "portada contradice la regla de _on_expirado"
+            )
+            assert _banner_visible(), "el aviso se ve en pantalla"
+            handle_aviso = dash._banner_timer
+            vencidos = reloj.avanzar(dash_mod.AUTOOCULTADO_MS)
+            assert handle_aviso in vencidos, (
+                f"el aviso tiene que auto-ocultarse a los {dash_mod.AUTOOCULTADO_MS} "
+                f"ms, como las otras dos puertas del banner. Vencidos: {vencidos}"
+            )
+            assert not _banner_visible(), "el aviso es de usar y tirar, como el resto"
+            dash._hide_banner()
+
+            # El MISMO canal desde el Gestor de Packs: el gaming inerte se
+            # diagnostica tambien ahi, antes de la doble pulsacion.
+            v = _gestor(Pack(id="gin", name="Gaming Vacio", is_gaming=True),
+                        _ProcesosGestor(), _GamingGestor())
+            antes_hilos = len(hilos)
+            PackManagerView.kill_pack(v, "gin")
+            assert len(hilos) == antes_hilos, "el gaming inerte no lanza worker"
+            assert v.status_label.texto == (
+                "⛔ El Gaming Mode de 'Gaming Vacio' no tiene nada que cerrar: "
+                "0 apps y 0 categorías configuradas. Revísalo en el Gestor de Packs."
+            ), f"diagnostico en el Gestor: {v.status_label.texto!r}"
+            assert v.status_label.color == ROJO, (
+                f"el diagnostico inline del Gestor es ROJO: {v.status_label.color!r}"
+            )
+            assert not v._guard.is_pending(), (
+                "el diagnostico va antes de la doble pulsacion tambien en el Gestor"
             )
 
             v = _gestor(pack_normal, _ProcesosGestor(), _GamingGestor())
@@ -8664,6 +9075,20 @@ def test_el_gestor_de_procesos_tampoco_miente():
     t_proc, _ = mensaje_cierre_pack("Trabajo", 0, 0, 3, 0.0)
     assert t_proc == "⚠️ 'Trabajo': 0 procesos cerrados, 3 protegidos o ya cerrados.", (
         f"y el valor por defecto sigue siendo 'procesos': {t_proc!r}"
+    )
+    # (iter 4) El sustantivo tambien se comprueba en la rama NADA, que es la
+    # unica de las dos que hoy tiene un llamante de produccion. Cablear
+    # `"procesos"` a pelo dentro del formateador dejaba la suite en verde con la
+    # comprobacion de arriba, porque los dos llamantes pasan "procesos": es decir,
+    # la fila "el sustantivo se ignora" solo era cierta para UNA de las dos ramas
+    # que lo usan.
+    t_apps_nada, c_apps_nada = mensaje_cierre_pack("Trabajo", 0, 0, 3, 0.0, sustantivo="apps")
+    assert t_apps_nada == "⚠️ 'Trabajo': 0 apps cerrados, 3 protegidos o ya cerrados.", (
+        f"el sustantivo tambien se usa en la rama 'nada': {t_apps_nada!r}"
+    )
+    assert c_apps_nada == AMBAR, (
+        f"con 0 cerrados y sin error el color es de atencion, sea cual sea el "
+        f"sustantivo: {c_apps_nada!r}"
     )
 
     class _Reloj:

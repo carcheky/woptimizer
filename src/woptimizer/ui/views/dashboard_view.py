@@ -6,7 +6,10 @@ from woptimizer.services.gaming_service import GamingService
 from woptimizer.services.notification_service import NotificationService
 from woptimizer.models import Pack
 from woptimizer.ui.confirmation import AMBAR, CANCEL, MSG_EXPIRADO, VENTANA_MS_PORTADA, Confirmable
-from woptimizer.ui.feedback import mensaje_banner_cierre
+from woptimizer.ui.feedback import (
+    clausula_mb, es_pack_inerte, mensaje_banner_cierre, mensaje_banner_gaming_inerte,
+    mensaje_banner_sin_apps,
+)
 from woptimizer.ui import theme
 
 #: Auto-ocultado del banner de telemetria, en ms (TASK-035). Constante y no
@@ -158,6 +161,34 @@ class DashboardView(Confirmable, ctk.CTkFrame):
                 pass
         self._banner_timer = self._schedule_ui(AUTOOCULTADO_MS, self._hide_banner)
 
+    def _publicar_en_banner(self, texto: str, txt_color: str) -> None:
+        """LA puerta unica de publicacion del banner (TASK-036).
+
+        Poner fondo, texto, color, `pack(...)` y auto-ocultado era un bloque de
+        cuatro lineas copiado en `_show_start_banner` y en `_show_banner`, y la
+        tercera puerta (el aviso de pack inerte) iba a ser la TERCERA copia: que
+        es exactamente el patron que perdio el ciclo 26. Aqui no se decide nada,
+        solo se pinta lo que le traiga el formateador.
+        """
+        self.status_banner_frame.configure(fg_color=theme.SURFACE_ALT)
+        self.status_label.configure(text=texto, text_color=txt_color)
+        self.status_banner_frame.pack(fill="x", pady=(0, 8), before=self.buttons_frame)
+        self._reprogramar_autoocultado()
+
+    def _show_aviso_banner(self, texto: str, txt_color: str) -> None:
+        """Aviso de que el pack NO puede hacer nada (TASK-036).
+
+        **No** reusa `_inline_status`, y por dos razones medidas:
+
+        1. `_inline_status` pinta el fondo con `CANCEL`, que es la familia del
+           aviso de "confirmacion pendiente" (`PENDIENTE_FG`): un aviso
+           permanente con ese fondo se lee como "espera la segunda pulsacion".
+        2. `_inline_status` llama a `pack()` y no a `_reprogramar_autoocultado()`:
+           el aviso se quedaria pegado, contra la regla de `_on_expirado` ("el
+           banner de la portada es de usar y tirar").
+        """
+        self._publicar_en_banner(texto, txt_color)
+
     def _show_start_banner(self, launched: int, failed: int, pack_name: str):
         """Muestra el banner de feedback tras arrancar apps de un pack.
 
@@ -173,11 +204,7 @@ class DashboardView(Confirmable, ctk.CTkFrame):
             txt_color = theme.WARNING
             msg = f"⚠️ Pack '{pack_name}': {launched} apps iniciadas, {failed} fallaron."
 
-        self.status_banner_frame.configure(fg_color=theme.SURFACE_ALT)
-        self.status_label.configure(text=msg, text_color=txt_color)
-        self.status_banner_frame.pack(fill="x", pady=(0, 8), before=self.buttons_frame)
-
-        self._reprogramar_autoocultado()
+        self._publicar_en_banner(msg, txt_color)
 
     def _show_banner(self, killed: int, freed_mb: float, is_gaming: bool,
                      failed: int = 0, skipped: int = 0):
@@ -190,17 +217,14 @@ class DashboardView(Confirmable, ctk.CTkFrame):
         Gaming o el azul de acento son marcas de EXITO y no se conceden cuando
         no se ha cerrado nada.
         """
-        fg = theme.SURFACE_ALT
         msg, txt = mensaje_banner_cierre(killed, failed, skipped, freed_mb, is_gaming)
         if is_gaming:
-            self._last_gaming_summary = f"{killed} cerrados, {freed_mb:.1f} MB"
+            # La misma regla de `clausula_mb` que en el texto: sin MB liberados
+            # no se escribe una MB que el usuario no puede cuadrar con nada.
+            self._last_gaming_summary = f"{killed} cerrados{clausula_mb(freed_mb)}"
         self._update_resting_bar()
 
-        self.status_banner_frame.configure(fg_color=fg)
-        self.status_label.configure(text=msg, text_color=txt)
-        self.status_banner_frame.pack(fill="x", pady=(0, 8), before=self.buttons_frame)
-
-        self._reprogramar_autoocultado()
+        self._publicar_en_banner(msg, txt)
 
     def _hide_banner(self):
         """Oculta el banner de telemetría."""
@@ -293,7 +317,20 @@ class DashboardView(Confirmable, ctk.CTkFrame):
         return btn
 
     def execute_pack(self, pack: Pack, button=None):
+        # TASK-036: las dos guardas van ANTES de `_require_double_tap` y ANTES
+        # del `if pack.default_action`, asi que el aviso sale de UN solo punto y
+        # el verbo lo decide `default_action` solo. Armar la doble pulsacion
+        # sobre un pack que no puede hacer nada produciria "Segunda pulsacion
+        # para apagar 0 apps de 'X'", que es la fealdad que esta guarda evita.
+        if es_pack_inerte(pack.is_gaming, len(pack.apps), len(pack.target_categories)):
+            self._show_aviso_banner(*mensaje_banner_gaming_inerte(pack.name))
+            return
         if not pack.is_gaming and not pack.apps:
+            # El silencio no es la opcion neutra: la pulsacion no dejaba ni
+            # rastro, y con `default_action="start"` el usuario creia que se
+            # abrian programas que nunca se abren. Sin hilo, sin `after` y sin
+            # worker: ya estamos en el hilo principal dentro de un callback.
+            self._show_aviso_banner(*mensaje_banner_sin_apps(pack.name, pack.default_action))
             return
 
         if pack.default_action == "kill":

@@ -26,7 +26,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 ## Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **77 tests**: 73 de backend + 4 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **78 tests**: 73 de backend + 5 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
 
 | # | Test | Qué valida |
 |---|------|-----------|
@@ -104,8 +104,8 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 72 | `test_scan_latency_and_lazy_exe_resolution` | **TASK-033:** optimización de latencia en `ProcessService` (`psutil.process_iter(['pid', 'name'])`, `exe_path=""` lazy, `model_construct`, precomputación `_CAT_ORDER_IDX`, `get_process_exe_path(pid)` on-demand con degradación segura y benchmark < 25 ms) |
 | 73 | `test_models_strict_validation_and_contracts` | **TASK-034:** validación estricta de modelos Pydantic (`strict=True` en `is_favorite`/`is_gaming`, `default_action` restringido a `Literal["start", "kill"]`, `extra="allow"` en `Pack` y `AppData`, y defaults canónicos de `ProcessInfo`) |
 | 74 | `test_main_window_navigation_transitions` | **TASK-034:** ciclo de vida y navegación headless en `MainWindow` (transiciones Dashboard -> Packs -> ProcessManager -> Dashboard, destrucción de vistas previas con `winfo_exists()`, activación de estilos nav y recarga asíncrona) |
-| 75 | `test_los_workers_de_pack_solo_publican_por_after` | **TASK-035 ciclo 26 (S2, S3; iter 3):** el worker de `execute_pack`, `kill_pack`, `start_pack`, **`ProcessManagerView._do_load` y `ProcessManagerView.on_kill_selected`** solo **publica**. La lista de lo permitido son **pares `(raiz, metodo)`**, no raíces: con raíces, `self.pack_service.get_all_packs()` y `self.process_service.get_process_exe_path(1)` colaban. También baja por `ast.Subscript` (`self.__dict__['status_label'].configure(...)` es la misma llamada de widget por la puerta de atrás) y marca las escrituras por índice. Exige que **cada** `self.after` lleve 0 ms y un callback de la lista blanca. La guarda se prueba **contra sí misma** (5 infracciones sintéticas, 1 worker conforme, y el caso de las dos ramas con `self.master.after` en una) |
-| 76 | `test_el_feedback_de_pack_dice_la_verdad` | **TASK-035 ciclo 26 (S1, S4, S5, S9; iter 3):** el feedback de cierre dice la verdad en los **cuatro** desenlaces, por las **tres** puertas (gaming, pack normal y la no-gaming de la portada, que hasta la iteración 3 no se ejecutaba nunca), con el worker real, doble pulsación, hilo secundario real y `self.after` encolado. Afirma el **texto exacto** (no "dice algo con 6"), incluido `killed == 1` como éxito y `"✅" not in texto` en las ramas `nada` y `fallo` del banner. La barra de reposo se afirma por su **texto** (procesos activos y resumen del Gaming Mode) y los temporizadores se miden con un **reloj simulado de plazo absoluto** (t0, t=1000, t=5500, t=6500) en **las dos** puertas del banner, afirmando además que en `_timers_ui` queda exactamente un handle |
+| 75 | `test_los_workers_de_pack_solo_publican_por_after` | **TASK-035 ciclo 26 (S2, S3; iter 3 y 4):** el worker de `execute_pack`, `kill_pack`, `start_pack`, **`ProcessManagerView._do_load` y `ProcessManagerView.on_kill_selected`** —cinco métodos de tres clases de vista— solo **publica**. La lista de lo permitido son **pares `(raiz, metodo)`**, no raíces: con raíces, `self.pack_service.get_all_packs()` y `self.process_service.get_process_exe_path(1)` colaban. Baja por `ast.Subscript` (iter 3) y desde la iteración 4 también por `getattr`/`setattr`/`delattr`, por `ast.Delete` y por los **argumentos** de las llamadas permitidas: sin eso, `getattr(self, 'status_label').configure(...)`, `setattr(self, '_last_gaming_summary', 'x')`, `del self._last_gaming_summary` y `kill_pack_apps(self.status_label)` pasaban las cuatro. Exige que **cada** `self.after` lleve 0 ms y un callback de la lista blanca. La guarda se prueba **contra sí misma** (8 infracciones sintéticas, 1 worker conforme, y el caso de las dos ramas con `self.master.after` en una) |
+| 76 | `test_el_feedback_de_pack_dice_la_verdad` | **TASK-035 ciclo 26 (S1, S4, S5, S9; iter 3) + TASK-036 (iter 4):** el feedback de cierre dice la verdad en los **cuatro** desenlaces, por las **tres** puertas (gaming, pack normal y la no-gaming de la portada, que hasta la iteración 3 no se ejecutaba nunca), con el worker real, doble pulsación, hilo secundario real y `self.after` encolado. Desde la iteración 4 también entra por el worker de la **rama `start`** de `execute_pack` (que tampoco se ejecutaba nunca). Afirma el **texto exacto** (no "dice algo con 6"), incluido `killed == 1` como éxito, `"✅" not in texto` en las ramas `nada` y `fallo`, y la **omisión de la cláusula de MB con `freed_mb <= 0`**. Y afirma el **aviso del pack que no puede hacer nada** (vacío y Gaming inerte) por sus dos familias, con el color exacto, sin worker, sin nada encolado y **sin doble pulsación armada**, más el gaming sano con apps o con categorías (que no debe avisar). La barra de reposo se afirma por su **texto** (procesos activos y resumen del Gaming Mode) y los temporizadores se miden con un **reloj simulado de plazo absoluto** (t0, t=1000, t=5500, t=6500) en las **tres** puertas del banner, afirmando además que en `_timers_ui` queda exactamente un handle |
 | 77 | `test_el_gestor_de_procesos_tampoco_miente` | **TASK-035 ciclo 26 iter 3:** la **tercera** puerta de feedback, `ProcessManagerView.on_kill_selected`, que el fix de la iteración 2 y la guarda AST no tocaban y que pintaba `"<tick> 0 cerrados, 0 fallidos."` con `killed == 0`. Entra por `on_kill_selected` de verdad (doble pulsación, hilo secundario real, `after` encolado) y afirma texto y color exactos en los cuatro desenlaces; comprueba que se cierran los PIDs marcados, que el refresco de la lista se programa a 1000 ms y no al instante, y que `skipped` no se confunde con `failed`. **No mata ningún proceso**: el `ProcessService` es un doble |
 | 78 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
 
@@ -182,31 +182,59 @@ haber saltado el auto-ocultado de 5000 ms (si desaparece o se va a 60 s, no).
 
 Matriz `_matrix_c26.py` (utillaje de diagnóstico en la raíz, con prefijo `_`; copia del árbol a
 `%TEMP%` sin `.git`, `__pycache__` purgada, sondas en **subproceso** — nunca en el proceso que
-importa `run_tests`, por la trampa del `sys.stdout` de este repo). **12 mutaciones, 12 muertes,
-0 supervivientes**:
+importa `run_tests`, por la trampa del `sys.stdout` de este repo — y las **tres** sondas del
+ciclo en cada mutación).
+
+> **La tabla anterior era mentira y la tabla esta la reproduce.** La versión previa de
+> `_matrix_c26.py` declaraba "12 mutaciones, 12 muertes, 0 supervivientes" y **reventaba en la
+> mutación 5 de 12** con `AssertionError: no se encontró el ancla de M6` (el ancla
+> `self._schedule_ui(5000, ...)` ya no existía: la iteración 3 extrajo
+> `_reprogramar_autoocultado()`), y `correr()` lanzaba **2 de las 3 sondas**, así que la
+> tercera puerta nunca estuvo en esa matriz. Además el `print` de la salida podía llevar
+> emoji y la consola es cp1252. Todo eso está arreglado: las anclas se comprueban contra el
+> código de hoy y **un ancla que no se encuentra es un error duro**, no una mutación saltada
+> en silencio, y la salida se filtra a ASCII. Una tabla de mutaciones que nadie puede
+> reproducir es peor que no tenerla: parece cobertura y no lo es.
+
+**20 mutaciones, 20 muertes, 0 supervivientes** (ejecutadas el 2026-09-30, salida literal de
+`python _matrix_c26.py`):
 
 | Mutante | Muere por |
 |---|---|
-| `kill_pack`: color forzado a VERDE | `color != VERDE` con 0 cerrados |
-| `kill_pack`: vuelta al literal incondicional | `"✅" not in texto` |
-| `kill_pack`: vuelve a tirar `failed`/`skipped` | `"4" in texto` (los que quedaron intactos) |
-| `clasificar_cierre` dice siempre `EXITO` | idem, por la vía del clasificador |
-| `_show_start_banner` sin `_update_resting_bar()` | el **texto** de `resting_label` sigue con el snapshot viejo |
-| sin cancelar el `_banner_timer` previo | a t=5500 el banner ya está oculto |
-| auto-ocultado a 60 s | a t=6500 no ha vencido nada |
-| el worker toca `self.status_label` | la guarda `ast` |
-| `self.master.after` en **una** de las dos ramas | la guarda `ast` por rama |
-| la portada tira `failed`/`skipped` en `_run_kill` | el banner del worker real de `execute_pack` dice 0 intactos |
-| la guarda `ast` anulada (`return []`) | sus propios controles sintéticos |
-| la guarda mira solo el **primer** `self.after` | el control de las dos ramas |
+| **M-A** `execute_pack` vuelve al `return` mudo | "un pack no gaming y vacío SE AVISA, no se traga en silencio" |
+| **M-B** el verbo se cablea a `apagar` | el aviso preventivo de `start_pack` ("no tiene apps que iniciar") |
+| **M-C** el aviso en el color de marca (`GAMING`) | "el aviso de pack inerte es de ATENCIÓN" |
+| **M-D** la guarda sin sitio (equivale a ir tras la doble pulsación) | la misma aserción de texto; `_sin_confirmacion_pendiente` la mata detrás |
+| **M-E** se borra el diagnóstico del gaming inerte | "el Gaming Mode inerte se diagnostica" |
+| **M-F** `es_pack_inerte` con `or` | `or` hace inerte al gaming CON categorías: "se esperaba 1 worker secundario, se crearon 0" |
+| **M-G** el aviso reusa `_inline_status` | "el aviso va sobre SURFACE_ALT, no sobre el fondo CANCEL" (y el auto-ocultado detrás) |
+| **M-H** se borra `if freed_mb <= 0` de `clausula_mb` | "cerrar un proceso sin liberar MB no puede inventar una cifra de RAM" |
+| **S1-a** `_run_start` intercambia `launched`/`failed` | "tiene que entregar launched y failed sin intercambiarlos" |
+| **S1-b** `_run_start` arranca `start_pack_apps([])` | "la rama start arranca SUS apps, no una lista vacía: llegó []" |
+| **S1-c** `_run_start` publica en `_show_banner` con `p.name` como `is_gaming` | "el after debe publicar en `_show_start_banner`" |
+| **S2-a** la guarda vuelve a no bajar por `getattr`/`setattr` | su control sintético: "la guarda no ve los accesos dinámicos a la vista" |
+| **S2-b** la guarda vuelve a ignorar `ast.Delete` | su control: "la guarda no ve los `del` sobre la vista" |
+| **S2-c** la guarda vuelve a mirar solo `call.func` | su control: "no ve `self.<attr>` como ARGUMENTO de una llamada permitida" |
+| **S3** el sustantivo se cablea en la rama `nada` | "el sustantivo también se usa en la rama 'nada'" |
+| **R-1** `clasificar_cierre` dice siempre `EXITO` | "nada que cerrar dice exactamente eso" |
+| **R-2** `_show_banner` deja de refrescar la barra de reposo | "tiene que refrescar la barra de reposo: antes …, después …" |
+| **R-3** se borra la cancelación del auto-ocultado previo | "el banner nuevo debe cancelar el auto-ocultado anterior" |
+| **R-4** el worker de la portada vuelve a tirar `failed`/`skipped` | "tiene que entregarle a `_show_banner` el resultado completo" |
+| **R-5** la guarda AST anulada (`return []`) | "el detector no ve las tres infracciones de control" |
+
+Las dos primeras filas de esta tabla son la prueba de que el arreglo de TASK-036 no es código
+muerto: sin M-A a M-H, `run_tests.py` estaría en verde con el silencio, el verbo cableado, el
+color equivocado, la guarda movida, el diagnóstico borrado, el `or`, el canal equivocado y la
+cláusula de MB siempre escrita.
 
 ### 3. La guarda `ast` compara **pares**, y eso obliga a decir qué NO comprueba
 
 Del objetivo real de cada `threading.Thread(target=...)` se permite una lista **corta y
-explícita** de **pares `(raiz, metodo)`** y **todo lo demás que cuelgue de `self` es
-infracción**, incluidos los métodos de widget que nadie escribió en la lista, las escrituras en
-`self.<attr>` y las que entran **por índice**. Se exige que **cada** `self.after` del worker
-lleve 0 ms y un callback de la lista blanca, no solo el primero que aparece.
+explícita** de **pares `(raiz, metodo)`**, y es infracción toda llamada o escritura que se
+resuelva sobre `self` por `Attribute`, por `Subscript`, por `getattr`/`setattr`/`delattr`,
+por `del`, o **pasada como argumento** de una llamada permitida. Se exige que **cada**
+`self.after` del worker lleve 0 ms y un callback de la lista blanca, no solo el primero que
+aparece.
 
 **Por qué pares y no raíces** (medido en la iteración 3, 80 mutaciones / 21 supervivientes):
 con una lista de raíces, `self.pack_service.get_all_packs()` y
@@ -216,18 +244,37 @@ por `ast.Subscript` — la misma llamada de widget, escrita por la puerta de atr
 de pares y el descenso por `Subscript`, el mutante de "borrar el `discard`" y el de
 "comparar solo la raíz" mueren.
 
-Una guarda así **se prueba contra sí misma** antes de que la use: cinco infracciones sintéticas
+**Por qué tampoco bastaba mirar `call.func`** (medido en la iteración 4): cuatro formas más
+de llegar a `self` pasaban la guarda entera con la suite en verde, y las cuatro son la misma
+infracción con distinta ropa:
+
+| se escapaba | por qué |
+|---|---|
+| `getattr(self, 'status_label').configure(text='x')` | `getattr` no es ni `Attribute` ni `Subscript`: el `Attribute` estaba partido en dos |
+| `setattr(self, '_last_gaming_summary', 'x')` | la llamada es el nodo más externo; `_raiz_de_self` solo se preguntaba por `call.func` |
+| `del self._last_gaming_summary` | la guarda miraba `ast.Assign`, no `ast.Delete` |
+| `self.process_service.kill_pack_apps(self.status_label)` | el widget no se escribe ahí, pero se **saca de la vista** para que otro lo escriba |
+
+Una guarda así **se prueba contra sí misma** antes de que la use: ocho infracciones sintéticas
 que tiene que ver, un worker conforme que no puede marcar, y el caso de las dos ramas. Un
 detector que no ve nada y uno que ve de más dan **el mismo verde**, y sin las dos direcciones
 no se sabe cuál de los dos se tiene.
 
-**Lo que la guarda NO comprueba, escrito para que nadie lo lea como más:** que el `after` se
-ejecute de verdad en el hilo principal, ni el resultado de la operación. Eso lo cubren las sondas
-dinámicas con hilo secundario real. Tampoco cubre los `threading.Thread` de `ui/app.py` (el
-toast de arranque y el hilo del icono de la bandeja), que no son vistas, ni ningún worker nuevo
-que se añada sin meterlo en la lista del test — la lista de vistas y métodos está **en el
-bucle de aplicación** de la sonda, a la vista. Un doc que promete más de lo que el guard
-comprueba es la misma clase de defecto que el bug que el guard no veía.
+**Lo que la guarda NO comprueba, escrito para que nadie lo lea como más:**
+
+* que el `after` se ejecute de verdad en el hilo principal, ni el resultado de la operación.
+  Eso lo cubren las sondas dinámicas con hilo secundario real;
+* los `threading.Thread` de `ui/app.py` (el toast de arranque y el hilo del icono de la
+  bandeja), que no son vistas, ni ningún worker nuevo que se añada sin meterlo en la lista
+  del test — la lista de vistas y métodos está **en el bucle de aplicación** de la sonda, a la
+  vista;
+* **un alias local**: `lbl = self.status_label` y luego `lbl.configure(...)` no se resuelve
+  hasta `self`, y ese agujero no lo cierra un análisis estático de este tipo. Es el que queda
+  abierto, y se dice en vez de prometer "todo lo que cuelgue de `self`".
+
+Un doc que promete más de lo que el guard comprueba es la misma clase de defecto que el bug
+que el guard no veía. La iteración 4 corrigió exactamente eso: la frase anterior ("todo lo
+demás que cuelgue de `self` es infracción") era una promesa de muro sobre una red.
 
 ### 3-bis. La iteración 3: lo que la auditoría encontró y no era estilo
 
@@ -249,6 +296,29 @@ Tres correcciones de fondo, todas medidas:
   que nada se notase. El mismo patrón del ciclo 14. Basta con un caso con pack no gaming.
   Lo mismo con `killed == 1` (que `clasificar_cierre` con `killed > 1` degradaba a "nada") y con
   `failed != skipped` (que hacía invisible intercambiar el orden de la 4-tupla).
+
+### 3-ter. La iteración 4: tres cosas que el verde no distingüía
+
+1. **La rama `start` de `execute_pack` tampoco se ejecutaba nunca.** Tres mutaciones pasaban
+   la suite entera: intercambiar `launched`/`failed` en `_run_start`, arrancar
+   `start_pack_apps([])`, y publicar en `_show_banner` con `p.name` en el hueco de `is_gaming`
+   (banner verde Gaming y `_last_gaming_summary` basura, sin crash). El caso entra por el
+   **worker real** —hilo secundario, `after` encolado, aplicado en el principal—, no llamando
+   a `_show_start_banner` con valores puestos a mano, que es el patrón "test que se llama a sí
+   mismo" que el §1 de esta guía condena. Y como `_last_gaming_summary` es un atributo que
+   **persiste entre casos**, la aserción correcta no es "no aparece Último Gaming Mode" sino
+   "la barra de reposo no ha cambiado": la primera afirmación habría muerto por el caso
+   anterior, no por el mutante.
+2. **Una aserción que afirma el silencio se convierte en la especificación de la mentira.**
+   `assert dash.status_label.cget("text") == antes_texto` con el mensaje *"se corta en
+   silencio: ni aviso ni confirmación armada"* era verde, y además era verdad sobre el código
+   viejo. Invertirla en el mismo commit que el aviso es la parte que hace el arreglo
+   comprobable; lo que se mantiene del caso viejo es que no hay worker ni nada encolado, que
+   sigue siendo cierto y sigue importando.
+3. **Un parámetro probado en una sola rama no está probado.** La comprobación de
+   `sustantivo="apps"` miraba solo el desenlace de éxito, y el valor por defecto solo la rama
+   `nada`: cablear `"procesos"` a mano dejaba la suite en verde, porque los dos llamantes de
+   producción pasan `"procesos"`. Ahora se comprueban las dos ramas que nombran el sustantivo.
 
 ## Sondas de mutación: cada test nombra la mutación que mata (TASK-030)
 Regla del ciclo #18: **un criterio sin mutación asociada es un deseo**. La tabla está medida

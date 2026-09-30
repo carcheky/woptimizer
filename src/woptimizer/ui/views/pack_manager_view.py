@@ -9,7 +9,9 @@ from woptimizer.services.notification_service import NotificationService
 from woptimizer.models import Pack
 from woptimizer.config import ordenar_categorias
 from woptimizer.ui.confirmation import AMBAR, ROJO, VERDE, MSG_PACK_INEXISTENTE, Confirmable
-from woptimizer.ui.feedback import mensaje_cierre_pack
+from woptimizer.ui.feedback import (
+    es_pack_inerte, mensaje_cierre_pack, mensaje_gaming_inerte, mensaje_sin_apps,
+)
 from woptimizer.ui import theme
 
 
@@ -453,15 +455,32 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
         self.refresh_packs()
         self._inline_status(f"✅ '{app_name}' quitada de '{pack.name}'.", VERDE)
 
+    def _aviso_pack_inerte(self, pack: Pack):
+        """El par `(texto, color)` del pack que no puede hacer nada, o `None`.
+
+        La frase NO esta aqui: sale de `ui/feedback.py`, igual que la del cierre,
+        para que el Gestor y la Portada no puedan divergir. El diagnostico del
+        Gaming Mode inerte va antes que el aviso de "no tiene apps" porque es
+        otro hecho: no es que falten apps, es que no hay NADA que cerrar.
+        """
+        if es_pack_inerte(pack.is_gaming, len(pack.apps), len(pack.target_categories)):
+            return mensaje_gaming_inerte(pack.name)
+        if not pack.is_gaming and not pack.apps:
+            return mensaje_sin_apps(pack.name, pack.default_action)
+        return None
+
     def kill_pack(self, pack_id: str, button=None):
         pack = self.pack_service.get_all_packs().get(pack_id)
         if pack is None:
             self._cancel_confirm()
             self._inline_status(MSG_PACK_INEXISTENTE, AMBAR)
             return
-        if not pack.is_gaming and not pack.apps:
+        # Antes de `_require_double_tap`: armar la confirmacion sobre un pack
+        # imposible no deja nada que confirmar.
+        aviso_inerte = self._aviso_pack_inerte(pack)
+        if aviso_inerte is not None:
             self._cancel_confirm()
-            self._inline_status(f"⚠️ '{pack.name}' no tiene apps que apagar.", AMBAR)
+            self._inline_status(*aviso_inerte)
             return
         if pack.is_gaming:
             aviso = f"⚠️ Segunda pulsación para preparar el Gaming Mode de '{pack.name}'."
@@ -473,8 +492,12 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
         if pack is None:
             self._inline_status(MSG_PACK_INEXISTENTE, AMBAR)
             return
-        if not pack.is_gaming and not pack.apps:
-            self._inline_status(f"⚠️ '{pack.name}' no tiene apps que apagar.", AMBAR)
+        # El pack se vuelve a leer por `id` (TASK-026), y entre las dos lecturas
+        # el usuario puede haber borrado sus apps. Es la MISMA comprobacion, no
+        # una segunda: por eso esta en un metodo y no en dos literales.
+        aviso_inerte = self._aviso_pack_inerte(pack)
+        if aviso_inerte is not None:
+            self._inline_status(*aviso_inerte)
             return
         apps = list(pack.apps)
         nombre = pack.name
@@ -496,7 +519,12 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
     def start_pack(self, pack: Pack):
         self._cancel_confirm()
         if not pack.apps:
-            self._inline_status(f"⚠️ '{pack.name}' no tiene apps que iniciar.", AMBAR)
+            # Aqui la accion la decide el METODO, no el pack: `start_pack` es
+            # arrancar siempre, y un pack gaming con `default_action="kill"`
+            # iniciado desde el Gestor tiene que decir "iniciar". El verbo lo
+            # sigue sacando el formateador de la accion, que es lo unico que la
+            # vista le pasa.
+            self._inline_status(*mensaje_sin_apps(pack.name, "start"))
             return
         nombre = pack.name
         apps = list(pack.apps)

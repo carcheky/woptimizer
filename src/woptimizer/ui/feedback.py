@@ -46,6 +46,14 @@ FRONTERA DE CAPAS (AGENTS.md)
 Solo importa `typing` y los literales de color de `ui.confirmation`. Ni
 `tkinter`, ni `customtkinter`, ni `psutil`, ni `json`, ni `services`, ni
 `models`: son funciones puras y se testean sin ventana.
+
+LO QUE TAMBIEN VIVE AQUI (TASK-036)
+El pack que NO PUEDE hacer nada. Un pack normal sin apps y un Gaming Mode con 0
+apps y 0 categorias no producen un resultado que clasificar, asi que no tienen
+desenlace: tienen su propio par de formateadores puros, con la misma disciplina
+de "una sola frase por hecho" que el resto del modulo. La razon de que esten aqui
+y no en la vista es la misma que justifica el modulo entero: una frase escrita en
+la vista es una frase que se puede copiar y divergir.
 """
 
 from typing import Tuple
@@ -54,12 +62,36 @@ from woptimizer.ui.confirmation import AMBAR, ROJO, VERDE
 from woptimizer.ui import theme
 
 #: Los cuatro desenlaces posibles de un cierre. El clasificador es UNICO para
-#: las dos vistas: si cada una decidiera por su cuenta, volveriamos a tener dos
-#: verdades.
+#: las TRES puertas: si cada una decidiera por su cuenta, volveriamos a tener
+#: tres verdades.
 EXITO = "exito"
 PARCIAL = "parcial"
 NADA = "nada"
 FALLO = "fallo"
+
+#: Destino de la clausula de MB segun la familia que la publica: la inline la
+#: enclose en parentesis y la de banner la separa con punto medio. El separador
+#: es lo UNICO que distingue una familia de otra; la regla de si la clausula se
+#: publica o no es la misma para las dos, y por eso vive en un solo sitio.
+_MB_INLINE = " ({:.1f} MB liberados)"
+_MB_BANNER = " · {:.1f} MB liberados"
+
+
+def clausula_mb(freed_mb: float, estilo: str = "inline") -> str:
+    """La clausula de MB liberados, o cadena vacia si no se libero memoria.
+
+    `format_kill_result` ya decidio esta regla y la tiene fijada por un test
+    (`run_tests.py::test_notification_message_formatting`): con `freed_mb <= 0`
+    la clausula NO se escribe. Antes de este helper los dos formateadores de este
+    modulo la escribian siempre, de modo que la misma verdad se decia de dos
+    maneras segun por donde se ejecutara, que es justo lo que este modulo vino a
+    cerrar. `"0.0 MB liberados"` tampoco es una promesa imposible: es un numero
+    que el usuario no puede cuadrar con lo que ve en el Administrador de tareas y
+    que le hace sospechar de la telemetria entera.
+    """
+    if freed_mb <= 0:
+        return ""
+    return (_MB_BANNER if estilo == "banner" else _MB_INLINE).format(freed_mb)
 
 
 def clasificar_cierre(killed: int, failed: int) -> str:
@@ -87,16 +119,20 @@ def mensaje_cierre_pack(nombre: str, killed: int, failed: int,
     | nada | `killed == 0` y `failed == 0` | `"⚠️ 'pack': 0 <sus> cerrados, K protegidos o ya cerrados."` | AMBAR |
     | fallo | `killed == 0` y `failed > 0` | `"⛔ No se cerró nada de 'pack': M con error."` | ROJO |
 
+    La clausula `(X MB liberados)` sale de `clausula_mb` y **desaparece con
+    `freed_mb <= 0`**, igual que en `format_kill_result`.
+
     `sustantivo` es lo unico que la vista aporta y no el resultado: el Gestor de
     Packs dice "procesos" y el Gestor de Procesos tambien, pero el punto es que
     quien quiera decir "apps" lo diga por parametro y NO copiando el texto.
     """
     caso = clasificar_cierre(killed, failed)
     if caso == EXITO:
-        return f"✅ {killed} {sustantivo} cerrados ({freed_mb:.1f} MB liberados) · '{nombre}'.", VERDE
+        return (f"✅ {killed} {sustantivo} cerrados"
+                f"{clausula_mb(freed_mb)} · '{nombre}'."), VERDE
     if caso == PARCIAL:
-        return (f"⚠️ '{nombre}': {killed} cerrados, {failed} con error "
-                f"({freed_mb:.1f} MB liberados)."), AMBAR
+        return (f"⚠️ '{nombre}': {killed} cerrados, {failed} con error"
+                f"{clausula_mb(freed_mb)}."), AMBAR
     if caso == FALLO:
         return f"⛔ No se cerró nada de '{nombre}': {failed} con error.", ROJO
     return (f"⚠️ '{nombre}': 0 {sustantivo} cerrados, "
@@ -121,10 +157,114 @@ def mensaje_banner_cierre(killed: int, failed: int, skipped: int, freed_mb: floa
     caso = clasificar_cierre(killed, failed)
     marca = theme.GAMING if is_gaming else theme.ACCENT
     if caso == EXITO:
-        return f"⚡ {killed} procesos cerrados · {freed_mb:.1f} MB liberados", marca
+        return (f"⚡ {killed} procesos cerrados"
+                f"{clausula_mb(freed_mb, estilo='banner')}"), marca
     if caso == PARCIAL:
-        return (f"⚠️ {killed} procesos cerrados · {freed_mb:.1f} MB liberados "
-                f"· {failed} con error."), theme.WARNING
+        return (f"⚠️ {killed} procesos cerrados"
+                f"{clausula_mb(freed_mb, estilo='banner')}"
+                f" · {failed} con error."), theme.WARNING
     if caso == FALLO:
         return f"⛔ No se cerró nada: {failed} procesos con error.", theme.WARNING
     return f"⚠️ Nada que cerrar: {skipped} ya cerrados o protegidos.", theme.WARNING
+
+
+# ---------------------------------------------------------------------------
+# PACK QUE NO PUEDE HACER NADA (TASK-036)
+#
+# NO es un quinto desenlace de `clasificar_cierre`. El clasificador clasifica un
+# RESULTADO REAL y su docstring dice que no mira ni el pack ni la ruta. Un pack
+# vacio no produce resultado: no se llama a ningun servicio, no se lanza worker
+# y no hay 4-tupla que formatear. Meterlo ahi seria mentir sobre el contrato y
+# abriria la puerta a un quinto color que ninguna puerta de cierre alcanza.
+#
+# Lo que hay abajo son funciones PURAS: la vista pide un par `(texto, color)` y
+# lo publica. El verbo sale de la ACCION DENTRO del formateador (nunca desde la
+# vista), y las dos familias (inline y banner) comparten la frase con un
+# constructor privado para que no puedan divergir.
+# ---------------------------------------------------------------------------
+
+#: `Pack.default_action` es `Literal["start", "kill"]` (`models.py:54`), asi que
+#: el mapa es TOTAL por construccion: no hay un tercer verbo posible. El
+#: `default` del `get` es solo para que un valor futuro no reviente la UI.
+VERBOS = {"kill": "apagar", "start": "iniciar"}
+
+
+def es_pack_inerte(is_gaming: bool, n_apps: int, n_categorias: int) -> bool:
+    """El Gaming Mode no tiene NADA que cerrar: 0 apps Y 0 categorias.
+
+    Con ambas listas vacias `should_kill_for_gaming` cae a `False` para todo lo
+    que no este protegido, asi que es **inerte por construccion**, no
+    "probablemente inerte". Un gaming con apps **o** con categorias NO es inerte
+    y no avisa: cierra de verdad por la via G-2/G-3.
+    """
+    return is_gaming and n_apps == 0 and n_categorias == 0
+
+
+def _verbo(accion: str) -> str:
+    """El verbo de la frase a partir de la ACCION que se esta ejecutando.
+
+    Quien llama pasa la accion, nunca el verbo: en la Portada es
+    `pack.default_action` (que es lo que decide la rama), y en `start_pack` es
+    `"start"`, porque ese metodo ES arrancar aunque el pack sea gaming.
+    """
+    return VERBOS.get(accion, VERBOS["kill"])
+
+
+def _frase_sin_apps(nombre: str, accion: str) -> str:
+    """La frase UNICA del pack sin apps. Constructor privado de los dos pares.
+
+    Si las familias inline y banner divergeieran, el usuario veria el mismo
+    hecho con dos redacciones distintas segun donde pulse.
+    """
+    return (f"⚠️ '{nombre}' no tiene apps que {_verbo(accion)}. "
+            f"Añádelas desde el Gestor de Procesos.")
+
+
+def _frase_gaming_inerte(nombre: str) -> str:
+    """La frase UNICA del Gaming Mode inerte (constructor privado del par)."""
+    return (f"⛔ El Gaming Mode de '{nombre}' no tiene nada que cerrar: "
+            f"0 apps y 0 categorías configuradas. "
+            f"Revísalo en el Gestor de Packs.")
+
+
+def mensaje_sin_apps(nombre: str, default_action: str) -> Tuple[str, str]:
+    """`(texto, AMBAR)` de un pack normal sin apps. Inline (Gestor de Packs).
+
+    `default_action` es la ACCION que se esta ejecutando (`"kill"` o `"start"`),
+    no un verbo: el mapeo accion -> verbo vive aqui dentro y en ningun otro
+    sitio. En la Portada lo que se pasa es `pack.default_action`, que es lo que
+    decide la rama; en `start_pack` se pasa `"start"` porque arrancar es lo que
+    ese metodo hace.
+
+    El color es el de ATENCION en las dos familias: nunca verde (no hubo exito)
+    ni rojo (no hubo error). En la Portada el mismo par se publica con
+    `theme.WARNING` sobre `SURFACE_ALT` por la restriccion de contraste.
+    """
+    return _frase_sin_apps(nombre, default_action), AMBAR
+
+
+def mensaje_banner_sin_apps(nombre: str, default_action: str) -> Tuple[str, str]:
+    """El mismo par para la familia BANNER (Portada). Solo cambia el color."""
+    return _frase_sin_apps(nombre, default_action), theme.WARNING
+
+
+def mensaje_gaming_inerte(nombre: str) -> Tuple[str, str]:
+    """`(texto, ROJO)` del Gaming Mode inerte. Inline.
+
+    Es un DIAGNOSTICO de configuracion, no un desenlace de ejecucion: por eso
+    lleva `⛔` y ROJO, y no el aviso ambar de "no hay nada que hacer". Sin esta
+    diagnosis el gaming inerte caia en la puerta real y decia "Nada que cerrar:
+    0 ya cerrados o protegidos", donde el `0` es el contador de blindaje, no de
+    apps: el usuario leia "ya estaban cerrados" y culpaba al sistema operativo.
+    """
+    return _frase_gaming_inerte(nombre), ROJO
+
+
+def mensaje_banner_gaming_inerte(nombre: str) -> Tuple[str, str]:
+    """El mismo par para la familia BANNER. Solo cambia el color.
+
+    NO puede ser `theme.DANGER` sobre `SURFACE_ALT`: da 3.07:1 y el design
+    system exige 4.5:1 (ver `test_contrast_wcag_aa`). El bloqueo se distingue
+    por el texto (`⛔`), no inventandose un par de color que no cumple.
+    """
+    return _frase_gaming_inerte(nombre), theme.WARNING

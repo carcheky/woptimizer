@@ -1,49 +1,85 @@
 ## [CYCLE-026] 2026-09-30 23:40 — pack-telemetry-feedback
 **Área**: Testing & Calidad
 **Change**: openspec/changes/2026-09-30-pack-telemetry-feedback/
-**Estado**: IMPLEMENTADO (iteración 3) — el veredicto del Paso 4 lo da el `mutation-auditor`, no la implementación
+**Estado**: IMPLEMENTADO (iteración 4) — el veredicto del Paso 4 lo da el `mutation-auditor`, no la implementación
 **Models**:
 - Paso 1 (Buscar): heredado del ciclo
-- Paso 2 (Planear): architect-review → VISTO BUENO CON DIRECTRICES OBLIGATORIAS
-- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO (iteración 3)
-- Paso 4 (Auditar tests): mutation-auditor → FAIL (iter 1), FAIL (iter 2), pendiente (iter 3)
+- Paso 2 (Planear): architect-review → VISTO BUENO CON DIRECTRICES OBLIGATORIAS, y en la iteración 4 **decisión de producto** (`decision-portada-pack-vacio.md`, TASK-036) sin cambios en `src/`
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO (iteraciones 1 a 4)
+- Paso 4 (Auditar tests): mutation-auditor → FAIL (iter 1), FAIL (iter 2), FAIL (iter 3, 3 supervivientes), pendiente (iter 4)
 
-### Historial de las tres iteraciones
+### Historial de las cuatro iteraciones
 | iter | veredicto | qué encontró |
 |---|---|---|
 | 1 | FAIL | `kill_pack` pintaba `"<tick> 0 procesos cerrados (0.0 MB liberados)"` en VERDE Gaming con `killed == 0`; la guarda AST era una lista de 3-4 nombres de método |
 | 2 | FAIL (80 mutaciones, 58 muertas, **21 supervivientes**) | El fix de la iteración 1 announcementaba lo que hacía pero dejaba **una tercera puerta** (`on_kill_selected`) mintiendo en verde, el bloque de cancelación del temporizador **duplicado byte a byte** con la sonda instrumentando solo una mitad, cuatro ramas sin ejecutar, y cinco afirmaciones documentales falsas |
-| 3 | pendiente | Cierre de los 21 supervivientes + corrección de las cinco afirmaciones |
+| 3 | FAIL (3 supervivientes) | La ronda 3 cerró las tres puertas de feedback, el formateador común, los temporizadores de las dos puertas, el umbral `killed == 1`, el orden de la 4-tupla, el alcance de la guarda AST y el alias muerto. Quedaron 3 de severidad ALTA: la **rama `start` sin ejecutar**, la **guarda AST que era una red y el doc la llamaba muro**, y el **sustantivo probado solo en la rama éxito**; más tres afirmaciones documentales falsas más (`len(to_kill)`, la matriz de mutaciones inflada e irreproducible, y "las dos vistas") |
+| 4 | pendiente | Las tres de ALTA cerradas con test, la decisión de producto TASK-036 ejecutada (aviso del pack inerte + diagnóstico del gaming inerte + cláusula de MB), la matriz reparada y las 7 incidencias de deuda escritas con severidad |
 
-### Mutaciones verificadas a mano en la iteración 3
-Reproducidas con un script temporal que reescribe `src/`, corre la suite y revierte (`_matrix_c26.py` es el utillaje del auditor; este era propio y no se dejó en el árbol porque muta el árbol real en sitio).
+### Iteración 3 — mutaciones verificadas a mano (TABLA RETIRADA, ver nota)
+Reproducidas con un script temporal que reescribía `src/` **en el sitio del árbol real**. Esa
+tabela declaraba "15 mutaciones, 15 muertas, 0 supervivientes" y **no es reproducible**:
 
-| # | Mutación | Veredicto | Muere por |
-|---|---|---|---|
-| 1 | `on_kill_selected` vuelve a su texto con tick en verde | killed | `test_el_gestor_de_procesos_tampoco_miente`: "cerrar cero procesos no puede decir '0 cerrados' con tick" |
-| 2 | El formateador de la tercera puerta se ignora (`max(killed, 1)`) | killed | El texto deja de ser `"...0 procesos cerrados, 3 protegidos..."` |
-| 3 | Se borra la cancelación del auto-ocultado | killed | "el banner nuevo debe cancelar el auto-ocultado anterior (job1)" |
-| 4 | El auto-ocultado se va a 60 s | killed | "el auto-ocultado de 5000 ms tiene que seguir existiendo" |
-| 5 | Se quita el `_timers_ui.discard` | killed | "el handle viejo tiene que salir de `_timers_ui`" |
-| 6 | `clasificar_cierre` exige dos cerrados para dar éxito | killed | "cerrar UN proceso es exito" (el caso `killed == 1`) |
-| 7 | La rama `nada` del banner se pone en verde | killed | `texto_banner == "⚠️ Nada que cerrar: ..."` (texto exacto) |
-| 8 | La rama no-gaming de la portada se invierte | killed | "la portada cierra el pack gaming por la puerta que respeta keepers" |
-| 9 | Se invierte el orden de la 4-tupla en el worker de la portada | killed | "el worker tiene que leer la 4-tupla en el orden (killed, failed, skipped, freed_mb)" |
-| 10 | `_show_banner` deja de refrescar la barra de reposo | killed | "_show_banner tiene que refrescar la barra de reposo" |
-| 11 | El Gaming Mode deja de anotar su resumen | killed | "la barra de reposo debe decir como quedo el Gaming Mode" |
-| 12 | `execute_pack` deja de avisar del pack no gaming y vacío | killed | "un pack no gaming y vacio se corta en silencio" |
-| 13 | `kill_pack` deja de avisar del pack inexistente | killed | `AttributeError: 'NoneType' object has no attribute 'is_gaming'` |
-| 14 | La tercera puerta no refresca la lista a los 1000 ms | killed | "tras publicar el cierre se programa UN refresco a 1000 ms" |
-| 15 | El sustantivo parametrizable se ignora (se cablea `"procesos"`) | killed | "el sustantivo se usa de verdad, no esta cableado" |
+* la #13 (`kill_pack` deja de avisar del pack inexistente) murió por un
+  `AttributeError: 'NoneType' object has no attribute 'is_gaming'`, es decir por un **crash**,
+  no por una aserción: un mutante que revienta el código no demuestra que el test lo detects;
+* la #15 (el sustantivo se ignora) sobrevivió en la primera pasada y se dio por cerrada con un
+  caso que solo miraba la rama de éxito. La afirmación "el sustantivo se ignora" era cierta
+  para **una** de las dos ramas que lo usan;
+* el utillaje `_matrix_c26.py` que acompaña al auditor, **reventaba** en la mutación 5 de 12
+  (`AssertionError: no se encontró el ancla de M6`) y lanzaba 2 de las 3 sondas, así que la
+  tercera puerta nunca estuvo en la tabla que el doc daba por buena.
 
-**15 mutaciones, 15 muertas, 0 supervivientes.** La 15 sobrevivió en la primera pasada y era un
-mutante **equivalente** (el único llamante pasaba `"procesos"`): se añadió la comprobación con el
-otro sustantivo, `"apps"`, que es lo que demuestra que el parámetro existe.
+**Las quince filas NO se conservan aquí.** Una tabla de mutaciones que nadie puede reproducir
+es peor que no tenerla: parece cobertura y no lo es. Quedan en el historial (`git log`, commit
+de la iteración 3) como registro de lo que se midió entonces; la tabla vigente, con su salida
+literal, es la de la iteración 4.
+
+### Iteración 4 — mutaciones verificadas con salida real (VIGENTE)
+`python _matrix_c26.py`, que ahora **sí** se puede ejecutar: copia el árbol a `%TEMP%`, aplica
+una mutación, purga `__pycache__` y corre **las tres sondas** en un subproceso. Un ancla que
+no se encuentra es un **error duro**, no una mutación saltada. Salida literal del 2026-09-30:
+
+```
+CONTROL (sin mutar): rc=0 -> VERDE
+M-A  execute_pack vuelve al return mudo (el silencio)          MUERE  | un pack no gaming y vacio SE AVISA, no se traga en silencio
+M-B  el verbo se cablea a 'apagar' en vez de mapearse          MUERE  | aviso preventivo de pack vacio: "... no tiene apps que apagar"
+M-C  el aviso del pack vacio se pinta en el color de marca     MUERE  | el aviso de pack inerte es de ATENCION
+M-D  la guarda se queda sin sitio                               MUERE  | un pack no gaming y vacio SE AVISA, no se traga en silencio
+M-E  se borra el diagnostico del Gaming Mode inerte            MUERE  | el Gaming Mode inerte se diagnostica
+M-F  es_pack_inerte con 'or' en vez de 'and'                   MUERE  | se esperaba 1 worker secundario, se crearon 0
+M-G  el aviso reusa _inline_status                             MUERE  | el aviso va sobre SURFACE_ALT, no sobre el fondo CANCEL
+M-H  se borra la clausula 'freed_mb <= 0' de clausula_mb       MUERE  | cerrar un proceso sin liberar MB no puede inventar una cifra de RAM
+S1-a _run_start intercambia launched y failed                  MUERE  | el worker de arranque tiene que entregar launched y failed sin intercambiarlos
+S1-b _run_start arranca start_pack_apps([])                    MUERE  | la rama start arranca SUS apps, no una lista vacia: llego []
+S1-c _run_start publica en _show_banner con el NOMBRE          MUERE  | el after debe publicar en _show_start_banner
+S2-a la guarda vuelve a no bajar por getattr/setattr            MUERE  | la guarda no ve los accesos dinamicos a la vista
+S2-b la guarda vuelve a ignorar ast.Delete                     MUERE  | la guarda no ve los `del` sobre la vista
+S2-c la guarda vuelve a mirar solo call.func                   MUERE  | no ve self.<attr> como ARGUMENTO de una llamada permitida
+S3   el sustantivo se cablea a 'procesos' en la rama 'nada'    MUERE  | el sustantivo tambien se usa en la rama 'nada'
+R-1  clasificar_cierre dice siempre EXITO                      MUERE  | nada que cerrar dice exactamente eso
+R-2  _show_banner deja de refrescar la barra de reposo         MUERE  | _show_banner tiene que refrescar la barra de reposo
+R-3  se borra la cancelacion del auto-ocultado previo          MUERE  | el banner nuevo debe cancelar el auto-ocultado anterior
+R-4  el worker de la portada vuelve a tirar failed/skipped     MUERE  | el worker tiene que entregarle a _show_banner el resultado completo
+R-5  la guarda AST anulada (return [] siempre)                 MUERE  | el detector no ve las tres infracciones de control
+
+supervivientes: ninguno
+```
+
+**20 mutaciones, 20 muertes, 0 supervivientes.** Las ocho primeras son las que exige
+`decision-portada-pack-vacio.md` §4 (M-A a M-H). Las tres `S1-*` son las de la rama `start` que
+no se ejecutaba; las tres `S2-*` son "se devuelve el detector a su versión anterior" y mueren en
+sus propios controles sintéticos; `S3` es el sustantivo en la rama `nada`; y las cinco `R-*` son
+regresión de lo que las iteraciones 2 y 3 ya cerraron. Las que mueren por aserción y no por
+crash se distinguen en la salida: en esta tabla **las veinte mueren por `AssertionError`**, que
+es lo que hace que la tabla signifique algo.
 
 ### Pendiente de este pase
 - `CHANGELOG.md` y esta entrada cierran el pase, pero **no cierran el ciclo**: el Paso 4 sigue
-  siendo del `mutation-auditor` y TASK-035 sigue sin marcarse como `completed` en
-  `.taskmaster/tasks.json` a propósito.
+  siendo del `mutation-auditor` y TASK-036 sigue `pending` en `.taskmaster/tasks.json` a
+  propósito (la marca el orquestador según el veredicto).
+- **No se ha mutado `src/` en sitio en esta iteración**: todas las mutaciones se aplican a una
+  copia en `%TEMP%`.
 
 ---
 
