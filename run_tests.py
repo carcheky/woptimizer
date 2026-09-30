@@ -5879,6 +5879,15 @@ def test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz():
     significa de verdad "esta ruta NO esta ignorada", y lleva un CONTROL
     NEGATIVO: `saved_processes.json` si esta ignorado y tiene que dar rc=0. Sin
     ese control, un `check-ignore` que no discrimina daria verde igual.
+
+    ITERACION 3. La norma tenia un agujero de RUTA, no de contenido: se
+    vigilaba la raiz del repo, pero la ruta que la app LEE es `_app_dir()`, que
+    en desarrollo es `src/woptimizer/`. Copiar ahi el v2 archivado dejaba la
+    suite en verde (medido por el `mutation-auditor`) y, peor, no es un
+    fichero inerte: `load()` tiene rama legacy, o sea que la app lo abriria de
+    verdad. El bloque de abajo cierra eso por CONTENIDO, no por inexistencia
+    (por la ruta viva vive el `profiles.json` del estado local, escrito por la
+    propia app; exigir que no exista seria una sonda que falla siempre).
     """
     repo_root, env = _entorno_git_del_repo()
     rel_dir = "docs/archive/legacy-root-data"
@@ -5947,7 +5956,69 @@ def test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz():
             f"{nombre} ha vuelto a la raiz del repo: se ha desarchivado. {por_que} (M13)"
         )
 
-    print("El archivo de docs/archive esta versionado, completo y sin volver a la raiz.")
+    # --- Y LA RUTA VIVA, que no es la raiz (TASK-028 iteracion 3) -----------
+    # `PROFILES_FILE` sale de `_app_dir()`, que en modo desarrollo devuelve
+    # `dirname(config.py)`, o sea `src/woptimizer/profiles.json`; congelado, el
+    # directorio del `.exe`. La app NO lee el `profiles.json` de la raiz: lee
+    # ese, que en desarrollo esta DENTRO del arbol de `src/`.
+    # Vigilando solo la raiz, el archivo archivado se podia copiar a la ruta que
+    # la app SI lee y todo seguia en verde: medido por el `mutation-auditor`
+    # (copia del v2 archivado -> `src/woptimizer/profiles.json` -> suite VERDE).
+    # Y ahi el esquema retirado no es un fichero inerte: `load()` tiene rama
+    # legacy, asi que lo cargaria de verdad, con sus claves que `models.py` no
+    # define (`__system_gaming__`, `factory`, `kill_low_chat`).
+    #
+    # Por eso la asercion NO es "no existe en la ruta viva" (ahi vive el
+    # profiles.json del estado local, escrito por la propia app, y exigir que
+    # no exista seria una sonda que falla siempre), sino sobre el CONTENIDO: si
+    # hay documento, tiene que ser del esquema VIVO, no el v2 retirado.
+    import json
+    from woptimizer.config import PROFILES_FILE, _app_dir as _app_dir_viva
+
+    assert os.path.normcase(PROFILES_FILE) == os.path.normcase(
+            os.path.join(_app_dir_viva(), "profiles.json")), (
+        f"PROFILES_FILE vale {PROFILES_FILE!r} y deberia ser "
+        f"{os.path.join(_app_dir_viva(), 'profiles.json')!r}. La sonda siguiente mira AHORA "
+        "bien la ruta viva, con lo que si la constante se repunta dejaria de mirarla."
+    )
+
+    # Claves que el esquema v2 usaba y `models.py` NO define (`extra="allow"`
+    # las conservaria, y por eso un fichero v2 no se rompe: se arrastra).
+    viva = PROFILES_FILE
+    with open(os.path.join(dir_arch, "profiles.json"), encoding="utf-8") as fh:
+        crudo_archivado = fh.read()
+    if os.path.exists(viva):
+        with open(viva, encoding="utf-8") as fh:
+            crudo_vivo = fh.read()
+        try:
+            doc_vivo = json.loads(crudo_vivo)
+        except ValueError as e:
+            raise AssertionError(
+                f"el profiles.json de la ruta viva ({viva}) no es JSON ({e}). La app tampoco "
+                "lo abriria: lo marcaria como danado y arrancaria con cero packs. Es estado "
+                "local de esta maquina (lo ignora .gitignore): se borra y la app lo regenera."
+            ) from e
+        registros = doc_vivo.get("profiles") if isinstance(doc_vivo, dict) else None
+        encontrados = set()
+        if isinstance(registros, dict):
+            if "__system_gaming__" in registros:
+                encontrados.add("__system_gaming__")
+            for registro in registros.values():
+                if isinstance(registro, dict):
+                    encontrados |= {"factory", "kill_low_chat"} & set(registro)
+        assert not encontrados, (
+            f"el profiles.json de la RUTA VIVA ({viva}) es el esquema v2 RETIRADO: declara "
+            f"{sorted(encontrados)}, que no existen en models.py. La app lee esta ruta, no la "
+            "raiz, y `load()` tiene rama legacy: lo abriria de verdad y resucitaria el preset "
+            "de fabrica `__system_gaming__`. Es el archivo de docs/archive/legacy-root-data "
+            "copiado al sitio de lectura (el mutation-auditor lo midio: copia ahi -> suite en "
+            f"verde). Coincide byte a byte con el archivado: {crudo_vivo == crudo_archivado}. "
+            "El fichero de la ruta viva es estado local (lo ignora .gitignore): se borra y la "
+            "app lo regenera en el primer guardado."
+        )
+
+    print("El archivo de docs/archive esta versionado, completo, sin volver a la raiz "
+          "ni a la ruta viva que lee la app.")
 
 
 def test_el_punto_de_entrada_declara_el_log_antes_de_los_servicios():
@@ -6200,51 +6271,203 @@ def test_el_log_rota_con_el_limite_declarado():
     print("El log rota de verdad: tipo exacto y limites medidos contra el codigo.")
 
 
+# TASK-028 iteracion 3: el detector de "configurar el logging al importar".
+#
+# EL CRITERIO, que es lo que hace que esto no sea un detector de adivinar:
+#   * CONFIGURAR = ADJUNTAR un handler a un logger, FIJARLE nivel o formato, o
+#     REEMPLAZAR su lista `handlers`. Las tres cosas hacen que el root cambie
+#     como efecto colateral de `import config`, que es el defecto que FIX-010
+#     cerro y que §15 promete que no vuelve.
+#   * OBTENER no es configurar: `logging.getLogger(__name__)`, incluso sin
+#     argumentos (el root), es una ASIGNACION normal. `logger =
+#     logging.getLogger('woptimizer')` lo importan cuatro modulos
+#     (notification_service, pack_service, process_service, ui/app) y es el
+#     punto de contrato: un detector que lo marque obligaria a moverlo para no
+#     tener que pensar, y el invariante seria el equivocado.
+#   * Construir un handler sin adjuntarlo tampoco configura nada: no emite.
+#
+# Las dos mitades se comprueban con las tablas ILEGALES y LEGALES de la sonda,
+# que son la razon de que el detector no pueda quedarse demasiado estrecho ni
+# demasiado amplio: los dos fallos dan el MISMO verde.
+_MUTADORES_DE_LOG = {
+    "addHandler", "removeHandler", "setLevel", "setFormatter", "setHandlers",
+    "addFilter", "captureWarnings",
+    # Los de la LISTA, que solo cuentan si el receptor es `<logger>.handlers`:
+    "append", "extend", "clear", "insert", "pop", "remove",
+}
+_FUNCIONES_DE_CONFIG = {"basicConfig", "dictConfig", "fileConfig", "disable"}
+# Nombres desnudos que solo valen si vienen de `logging` (o de un import de
+# `logging`), para no marcar `algo.disable()` de otra biblioteca.
+_FICIONES_DE_LOG = {"logging", "logging.config", "logging.logconfig"}
+
+
+def _ruta_dotted(nodo):
+    """`a.b.c` -> 'a.b.c'; lo que no sea una cadena de nombres, None."""
+    if isinstance(nodo, ast.Name):
+        return nodo.id
+    if isinstance(nodo, ast.Attribute):
+        base = _ruta_dotted(nodo.value)
+        return f"{base}.{nodo.attr}" if base else None
+    return None
+
+
+def _es_get_logger(nodo):
+    return isinstance(nodo, ast.Call) and _ruta_dotted(nodo.func) in (
+        "logging.getLogger", "getLogger")
+
+
+def _configuraciones_de_logging(codigo, nombre="<memoria>"):
+    """Lineas de nivel de modulo que CONFIGURAN el logging. -> (fuera, dentro).
+
+    `fuera` son los hallazgos a nivel de modulo (lo que esta sonda prohibe) y
+    `dentro` los que estan dentro de una funcion o una clase (lo permitido:
+    `setup_logging()` existe precisamente para configurar ahi, y se invoca
+    desde `__main__` y desde la suite).
+    """
+    arbol = ast.parse(codigo, filename=nombre)
+
+    # (1) Los loggers NOMBRADOS a nivel de modulo: `X = logging.getLogger(...)`.
+    loggers = set()
+    for stmt in arbol.body:
+        if isinstance(stmt, ast.Assign):
+            objetivos, valor = stmt.targets, stmt.value
+        elif isinstance(stmt, ast.AnnAssign) and stmt.value is not None:
+            objetivos, valor = [stmt.target], stmt.value
+        else:
+            continue
+        if _es_get_logger(valor):
+            loggers |= {t.id for t in objetivos if isinstance(t, ast.Name)}
+
+    def _es_logger(nodo):
+        return _es_get_logger(nodo) or (isinstance(nodo, ast.Name) and nodo.id in loggers)
+
+    def _es_lista_de_handlers(nodo):
+        return (isinstance(nodo, ast.Attribute) and nodo.attr == "handlers"
+                and _es_logger(nodo.value))
+
+    def _motivos(nodo):
+        for n in ast.walk(nodo):
+            if isinstance(n, ast.Call):
+                func, ruta = n.func, _ruta_dotted(n.func)
+                if ruta:
+                    ultimo = ruta.rsplit(".", 1)[-1]
+                    cabecera = ruta.rsplit(".", 1)[0] if "." in ruta else None
+                    if ultimo in _FUNCIONES_DE_CONFIG and (
+                            cabecera in _FICIONES_DE_LOG or not cabecera):
+                        yield n.lineno, f"llamada de configuracion {ruta}()"
+                        continue
+                if (isinstance(func, ast.Attribute) and func.attr in _MUTADORES_DE_LOG
+                        and (_es_logger(func.value) or _es_lista_de_handlers(func.value))):
+                    yield n.lineno, f"mutador .{func.attr}() sobre un logger a nivel de modulo"
+            elif isinstance(n, ast.Assign):
+                for t in n.targets:
+                    if _es_lista_de_handlers(t):
+                        yield n.lineno, "asignacion a <logger>.handlers"
+                    elif isinstance(t, ast.Subscript) and _es_lista_de_handlers(t.value):
+                        yield n.lineno, "asignacion a <logger>.handlers[...]"
+            elif isinstance(n, ast.AugAssign):
+                if _es_lista_de_handlers(n.target):
+                    yield n.lineno, "asignacion a <logger>.handlers"
+                elif isinstance(n.target, ast.Subscript) and _es_lista_de_handlers(n.target.value):
+                    yield n.lineno, "asignacion a <logger>.handlers[...]"
+
+    fuera, dentro = [], []
+    for stmt in arbol.body:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            dentro += _motivos(stmt)
+        else:
+            fuera += _motivos(stmt)
+    return fuera, dentro
+
+
 def test_config_no_configura_nada_al_importarse():
-    """M16: `architecture.md` §15 afirma que "`config.py` no configura nada al
+    """M16 (y su hermano, mismo defecto con otro nombre de funcion):
+    `architecture.md` §15 afirma que "`config.py` no configura nada al
     importarse". Reinyectar `logging.basicConfig(...)` a nivel de modulo dejaba
     la suite en verde, y no por casualidad: la sonda T1 **limpia los handlers
     DESPUES de importar**, asi que por construccion no puede verlo. Es el
     patron de validador que se deduce a si mismo otra vez, por el otro lado.
 
-    Aqui se mira el AST: ninguna llamada a `basicConfig` fuera de una funcion.
-    Y se lleva un CONTROL que demuestra que el detector SI la encuentra dentro
-    de `setup_logging`: sin ese control, "no hay ninguna" seria el verde de un
-    detector muerto.
+    ITERACION 3. El detector anterior buscaba **una sola** llamada,
+    `basicConfig`, y las tres que el `mutation-auditor` dejo en verde son el
+    MISMO defecto con otro nombre de funcion:
+      * `logging.getLogger().addHandler(logging.StreamHandler())`
+      * `logger.addHandler(logging.StreamHandler())`
+      * `logging.config.dictConfig({...})`
+    Las tres configuran el root como efecto colateral de importar, y las tres
+    pasaban. O sea: la promesa de la doc era mas fuerte que lo que se media.
+
+    Por eso el criterio esta escrito arriba (configurar = adjuntar/fijar
+    nivel/formato/reemplazar `handlers`; obtener el logger NO es configurar) y
+    por eso el detector se prueba CONTRA SI MISMO en las dos direcciones, con
+    codigo sintetico: ILEGALES tiene que marcar las ocho y LEGALES no puede
+    marcar ninguna. Un detector que no ve nada y uno que ve de mas dan el
+    mismo verde, y sin las dos tablas no se sabe cual de los dos se tiene.
     """
     raiz = os.path.dirname(os.path.abspath(__file__))
     ruta_cfg = os.path.join(raiz, "src", "woptimizer", "config.py")
     with open(ruta_cfg, encoding="utf-8") as fh:
-        arbol = ast.parse(fh.read(), filename=ruta_cfg)
-
-    def _basic_config_en(nodo):
-        return [
-            n.lineno for n in ast.walk(nodo)
-            if isinstance(n, ast.Call)
-            and (getattr(n.func, "attr", None) == "basicConfig"
-                 or getattr(n.func, "id", None) == "basicConfig")
-        ]
-
-    fuera, dentro = [], []
-    for stmt in arbol.body:
-        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            dentro += _basic_config_en(stmt)
-        else:
-            fuera += _basic_config_en(stmt)
+        fuera, dentro = _configuraciones_de_logging(fh.read(), ruta_cfg)
 
     assert not fuera, (
-        f"config.py llama a basicConfig en la(s) linea(s) {fuera} a NIVEL DE MODULO: el canal "
-        "de log vuelve a configurarse como efecto colateral de importar, que es exactamente el "
-        "defecto que FIX-010 cerro. Se rompe en silencio en cuanto alguien importa el paquete "
-        "sin pasar por __main__ (M16)"
+        f"config.py CONFIGURA el logging a NIVEL DE MODULO en {fuera}: el canal de log vuelve a "
+        "configurarse como efecto colateral de importar, que es exactamente el defecto que "
+        "FIX-010 cerro. Se rompe en silencio en cuanto alguien importa el paquete sin pasar por "
+        "__main__. El criterio esta escrito en el docstring de `_configuraciones_de_logging` "
+        "(M16: basicConfig; M16b-M16d: las otras tres formas del mismo defecto)"
     )
     assert dentro, (
-        "CONTROL ROTO: el detector no encuentra NI UNA llamada a basicConfig en config.py, ni "
-        "siquiera dentro de setup_logging(). Un detector que no ve nada no puede probar que no "
-        "haya nada: la asercion de arriba pasaria siempre."
+        "CONTROL ROTO: el detector no encuentra NI UNA configuracion de logging dentro de "
+        "config.py, ni siquiera en setup_logging(). Un detector que no ve nada no puede probar "
+        "que no haya nada: la asercion de arriba pasaria siempre."
     )
 
-    print("config.py no configura el logging al importarse (ni dentro de setup_logging no se pierde).")
+    ILEGALES = (
+        ("getLogger().addHandler() sobre el root",
+         "logging.getLogger().addHandler(logging.StreamHandler())"),
+        ("addHandler() sobre un logger nombrado",
+         "logger = logging.getLogger('woptimizer')\nlogger.addHandler(logging.StreamHandler())"),
+        ("logging.config.dictConfig()",
+         "import logging.config\nlogging.config.dictConfig({'version': 1})"),
+        ("logging.config.fileConfig()",
+         "import logging.config\nlogging.config.fileConfig('w.ini', disable_existing_loggers=False)"),
+        ("setLevel() sobre el root",
+         "logging.getLogger().setLevel(logging.DEBUG)"),
+        ("handlers[:] = [...] del root",
+         "root = logging.getLogger()\nroot.handlers[:] = [logging.StreamHandler()]"),
+        ("handlers.clear() del root",
+         "root = logging.getLogger()\nroot.handlers.clear()"),
+        ("addHandler() sobre logging.getLogger(__name__)",
+         "logger = logging.getLogger(__name__)\nlogger.addHandler(h)"),
+    )
+    for etiqueta, codigo in ILEGALES:
+        halladas, _ = _configuraciones_de_logging(codigo, etiqueta)
+        assert halladas, (
+            f"CONTROL ROTO (falso NEGATIVO): el detector no marca «{etiqueta}» "
+            f"({codigo!r}). Esa forma configura el logging al importarse, y es la que "
+            "M16b/M16c/M16d dejaron en verde. O el detector se ha quedado estrecho otra vez."
+        )
+
+    LEGALES = (
+        ("logger nombrado", "logger = logging.getLogger('woptimizer')"),
+        ("logging.getLogger(__name__)", "import logging\nlogger = logging.getLogger(__name__)"),
+        ("el root obtenido y nada mas", "root = logging.getLogger()"),
+        ("handler construido sin adjuntar", "import logging\nh = logging.StreamHandler()"),
+        ("configuracion DENTRO de una funcion",
+         "def setup():\n    logging.basicConfig(force=True)"),
+        ("constantes de formato", "LOG_FORMAT = '%(asctime)s - %(message)s'"),
+    )
+    for etiqueta, codigo in LEGALES:
+        halladas, _ = _configuraciones_de_logging(codigo, etiqueta)
+        assert not halladas, (
+            f"CONTROL ROTO (falso POSITIVO): el detector marca «{etiqueta}» ({halladas}). "
+            "Obtener el logger NO es configurarlo: `logger = logging.getLogger(...)` es el "
+            "punto de contrato que importan cuatro modulos, y un detector que marca de mas "
+            "acaba ignorandose (matar M16b/M16c/M16d no puede ser facil)"
+        )
+
+    print("config.py no configura el logging al importarse (detector probado en las dos "
+          "direcciones: 8 ilegales marcados, 6 legales sin marcar).")
 
 
 if __name__ == "__main__":

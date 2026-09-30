@@ -77,7 +77,7 @@
      - ⚠️ **Corrección TASK-028 (esta frase citaba el fichero equivocado, y el error era de los que hacen perder tiempo).** Este documento situaba `SYSTEM_PROTECTED_PROCESSES` en **`config.py`**. **Es falso: vive en `src/woptimizer/services/process_service.py:33-48`** (un `frozenset` de 34 nombres), junto al adaptador de `psutil` que lo consume, y **no** en `config.py` (que solo tiene `PROCESS_CATEGORIES` y los `patterns` legacy de clasificación). Importa porque quien vaya a tocar el blindaje irá primero a `config.py` y no lo encontrará, y porque `PROCESS_CATEGORIES['🔴 Sistema de Windows']['patterns']` (`config.py:82-86`) es una lista **distinta**, más amplia y de otro propósito: incluye procesos del usuario (`taskmgr`, `cmd`, `powershell`, `wsl`) que no rompen el SO. No son intercambiables. Verificado en caliente: `svchost` y `explorer` **no** están en el `frozenset` (`ProcessService.is_system_protected('svchost')` → `False`), que es lo que hace necesaria la barrera de categoría de arriba. Los 34 nombres están transcritos y explicados en [`data-models.md`](data-models.md), sección 'Blindaje anti-brick'.
      - *(Corrección TASK-028 iteración 2, hallazgo **D4**: las tres menciones de este §11 y de `data-models.md` escribían `is_system_protected('svchost')` como si fuera una **función de módulo**. No lo es: es un `@staticmethod` de `ProcessService` (`process_service.py:330-336`), así que la forma correcta es `ProcessService.is_system_protected('svchost')` (o `ProcessService().is_system_protected(...)`, que también vale). El comportamiento afirmado era cierto; la **forma escrita** habría lanzado `NameError` a quien copiara la línea.)*
      - *(Y el rango `33-48` y la transcripción de los 34 nombres ya no son una medición que se hace a sí misma: `test_la_documentacion_del_blindaje_no_puede_desfasarse` los **vuelve a medir con `ast`** sobre el código y falla si cualquiera de los dos documentos deja de decir lo medido. Antes, una línea de comentario nueva en `process_service.py` invalidaba el rango y nadie se enteraba — hallazgo **M11**.)*
-     - *(El encargo de TASK-028 citaba `process_service.py:23-38`; el rango real del `frozenset` es **33-48**, medido con `ast`. Aquí se transcribe el rango medido, no elAuditado.)*
+     - *(El encargo de TASK-028 citaba `process_service.py:23-38`; el rango real del `frozenset` es **33-48**, medido con `ast`. Aquí se transcribe el rango **medido**, no el que venía en el encargo.)*
    - **G-1, una sola puerta de kill:** `gaming_service.py` **no** importa el adaptador de procesos ni el de disco; delega íntegro en `kill_processes`, que ya aplica el blindaje de nombres, el kill recursivo (hijos antes que padre) y `invalidate_cache()`. El módulo **no** reimplementa el bucle de kill ni añade una cuarta llamada a un método privado de otro servicio.
    - **Gaming Mode sin apps:** un Gaming Mode válido puede tener `apps` vacía, porque su configuración vive en `keepers` + `target_categories`. Los dos `if not pack.apps: return` mudos de `dashboard_view.py` y `pack_manager_view.py` se levantaron a `if not pack.is_gaming and not pack.apps`, o el Gaming Mode solo por categorías no se ejecutaría nunca.
    - **Threading:** el kill va en `threading.Thread(..., daemon=True)`. La UI solo se toca con `self.after(0, ...)`, nunca `self.master.after(...)` (`MainWindow` destruye la vista en toda navegación y `master` es `content_frame`, que sobrevive). En el tray no hay `after`: solo `logger` + `notification_service`, ambos seguros desde cualquier hilo.
@@ -189,8 +189,35 @@
         por construcción no puede verlo. Lo vigila `test_config_no_configura_nada_al_importarse`
         (AST, con un control que demuestra que el detector sí encuentra `basicConfig` dentro
         de `setup_logging`, para que "no hay ninguna" no sea el verde de un detector muerto).
+        - **Iteración 3 del ciclo 21: el detector era más estrecho que esta promesa.** Buscaba
+          **una sola** llamada, y las tres que el `mutation-auditor` dejó en verde
+          (`logging.getLogger().addHandler(...)`, `logger.addHandler(...)` y
+          `logging.config.dictConfig({...})`) son **el mismo defecto con otro nombre de función**:
+          el root se configura como efecto colateral de importar. El criterio está ahora escrito
+          en el docstring de `_configuraciones_de_logging` y tiene **dos mitades**, porque
+          pasarse de amplio tiene un coste real: **configurar** es *adjuntar un handler, fijar
+          nivel o formato, o reemplazar la lista `handlers`*; **obtener** el logger **no** lo es
+          (`logger = logging.getLogger(__name__)`, incluso sin argumentos, es una asignación
+          normal, y ese `logger` lo importan cuatro módulos: es el punto de contrato y no se
+          mueve). El detector se prueba **contra sí mismo** con código sintético en las dos
+          direcciones —8 formas ilegales que tiene que marcar y 6 legales que no puede marcar—
+          porque un detector que no ve nada y uno que ve de más dan el **mismo** verde, que es
+          justo el fallo que este ciclo viene a cerrar. Matriz medida en
+          [`testing-guide.md`](testing-guide.md).
    - **Lo que este §15 **no** cubre, y por qué no es una tarea pendiente.** Un `.bat` o un
      `.spec` nuevo que declare una versión con un token que no sea `ver`/`version` escaparía al
      escáner de `test_la_consulta_de_version_no_puede_desincronizarse` (que exige literal
      semver **y** token de versión en la misma línea). Se acepta el riesgo: hoy los tres
      ficheros de empaquetado no declaran versión y el filtro no produce ningún positivo.
+     **Dictamen del `mutation-auditor` (ciclo 21, iteración 3, 2026-09-30): DEUDA ACEPTADA, no
+     se arregla.** La consecuencia sería **desincronización de la versión de empaquetado**, no
+     seguridad ni datos, y está escrito aquí y en la spec de la iteración para que el próximo
+     que lo lea sepa que es una **decisión** y no un olvido.
+   - **Y lo que §15 sí cubre, sobre la ruta de datos (iteración 3).** La norma "nunca borrar,
+     siempre archivar" la vigila `test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz`,
+     y tenía un agujero de **ruta**: vigilaba la raíz del repo, pero el fichero que la app lee
+     es `PROFILES_FILE` = `_app_dir()`, que en desarrollo es **`src/woptimizer/`**, no la raíz
+     (ver [`data-models.md`](data-models.md) §"Reglas de Persistencia" y el README del archivo).
+     Copiar ahí el `profiles.json` v2 archivado dejaba la suite en verde **y** no es inocuo:
+     `load()` tiene rama legacy, así que la app lo abriría de verdad, con las claves que
+     `models.py` no define. La comprobación es por **contenido**, no por inexistencia.

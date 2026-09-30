@@ -36,6 +36,14 @@ un único preset de sistema:
   `_app_dir()`, que en modo desarrollo devuelve `dirname(config.py)`, o sea
   `src/woptimizer/profiles.json`. Un `grep` de `src/` no encuentra ninguna
   referencia a la raíz. Este fichero no lo abría nadie.
+- **Por eso no debe copiarse allí, y la norma la vigila una sonda.** La ruta
+  viva no es un lugar inerte: `PackService.load()` tiene **rama legacy** (`data-models.md` §4.5),
+  así que un `profiles.json` v2 copiado en `src/woptimizer/` **se cargaría de verdad**,
+  con las claves que `models.py` no define. La comprobación es por **contenido** —
+  si hay documento en la ruta viva, tiene que ser del esquema vivo
+  (`{"packs": …}`) y no el v2 — y no por inexistencia, porque en la ruta viva vive
+  el `profiles.json` de estado local que escribe la propia app (lo ignora
+  `.gitignore`).
 
 **Lo que NO se tocó y por qué** (FIX-011, veto explícito del arquitecto):
 

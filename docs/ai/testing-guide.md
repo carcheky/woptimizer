@@ -26,7 +26,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 ## Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **57 tests**: 56 de backend + 1 headless de UI, numerados aquí en el **orden de registro** del `__main__` (el headless va el último, aunque antes viviera en medio de la lista).
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **65 tests**: 64 de backend + 1 headless de UI, numerados aquí en el **orden de registro** del `__main__` (el headless va el último, aunque antes viviera en medio de la lista). *El recuento es el de la iteración 3 de TASK-028; esta tabla estaba congelada en 57 y no contaba las ocho sondas que añadieron TASK-027 iteración 2/3 y TASK-028. Recuento vivo: `Select-String -Path run_tests.py -Pattern '^\s+test_[a-z_]+\(\)\s*$'`.*
 
 | # | Test | Qué valida |
 |---|------|-----------|
@@ -86,7 +86,15 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 54 | `test_el_gestor_guarda_la_ruta_absoluta` | **TASK-027 (FIX-003, escritor):** lo que se guarda en `Pack.apps` es la ruta absoluta, con degradación a `full_name` |
 | 55 | `test_orden_de_categorias_no_es_alfabetico` | **TASK-027 (FIX-004):** el orden es `CATEGORY_ORDER`, no el de `sorted()` sobre cadenas con emoji |
 | 56 | `test_toggle_favorite_desmarca` | **TASK-027 (FIX-006):** la segunda pulsación de la estrella desmarca el favorito |
-| 57 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
+| 57 | `test_logging_va_a_fichero_y_no_a_stderr` | **TASK-028 (FIX-010):** el aviso acaba DENTRO de `woptimizer.log` y **no** en `stderr` (afirma sobre contenido y con el control negativo del `StreamHandler` sembrado: mata la implementación sin `force=True`) |
+| 58 | `test_la_consulta_de_version_no_puede_desincronizarse` | **TASK-028 (FIX-018):** `pyproject.toml`, `__init__.py` y `tasks.json` declaran la **misma** versión, y no puede existir un cuarto sitio (escáner de `src/` con expectativa derivada del código) |
+| 59 | `test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz` | **TASK-028 iter 2 + iter 3:** el archivo de `docs/archive` está versionado, completo y **sin volver ni a la raíz ni a la ruta viva que lee la app** (`_app_dir()`, por contenido) |
+| 60 | `test_el_punto_de_entrada_declara_el_log_antes_de_los_servicios` | `__main__.main()` invoca `setup_logging()` **antes** de instanciar ningún servicio (AST, por **orden** de lineno; no ejecuta `main()`) |
+| 61 | `test_process_list_file_sigue_siendo_un_contrato` | `PROCESS_LIST_FILE` existe, vale lo que debe y la nombran sus tres consumidores vivos |
+| 62 | `test_la_documentacion_del_blindaje_no_puede_desfasarse` | las dos docs dicen el rango **medido con `ast`** y los 34 nombres **reales** del `frozenset` |
+| 63 | `test_el_log_rota_con_el_limite_declarado` | el handler es un `RotatingFileHandler` **exacto** con `maxBytes`/`backupCount` declarados (`isinstance` no lo distinguiría: hereda de `FileHandler`) |
+| 64 | `test_config_no_configura_nada_al_importarse` | `config.py` no **configura** el logging a nivel de módulo (adjuntar handler / fijar nivel o formato / reemplazar `handlers`), y el detector se prueba en las dos direcciones: 8 ilegales marcados, 6 legales sin marcar |
+| 65 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
 
 ### Notas de Aislamiento
 - Los tests de `PackService` usan `tempfile.NamedTemporaryFile` (helper `_pack_service_temporal()`) para no modificar `profiles.json` real. `test_pack_service_backup_and_recovery` limpia además los `.bak` y `.tmp` que genera, y restaura los permisos de solo lectura que usa para probar el `PermissionError`.
@@ -301,6 +309,48 @@ testearlos y la auditoría lo **confirma con medición**:
 Un fix equivalente por construcción **no necesita** guarda; lo que no puede es llevar el nombre de
 una que no vigila. Queda escrito aquí para que la diferencia entre "sin cobertura" y "no hace
 falta" no se pierda en el siguiente ciclo.
+
+### Sondas del ciclo 21, iteración 3: dos huecos de ALCANCE (TASK-028)
+
+Los 16 supervivientes del ciclo 21 ya estaban cerrados. Lo que el `mutation-auditor` encontró en la
+tercera vuelta no eran supervivientes sino **huecos de alcance**: la promesa de la documentación era
+más fuerte que lo que la sonda media. Dos, y solo dos, eran trabajo real.
+
+**N7 solo veía `basicConfig`.** `architecture.md` §15 promete que `config.py` **no configura nada al
+importarse**, y el detector AST buscaba **una sola** llamada. Las tres que el auditor dejó en verde
+(`logging.getLogger().addHandler(...)`, `logger.addHandler(...)`, `logging.config.dictConfig({...})`)
+son **el mismo defecto con otro nombre de función**: el root se configura como efecto colateral de
+importar. El criterio está escrito en el docstring de `_configuraciones_de_logging`, y las dos mitades
+importan:
+
+- **configurar** = adjuntar un handler, fijar nivel o formato, o reemplazar la lista `handlers`;
+- **obtener** no es configurar: `logger = logging.getLogger(__name__)` —incluso sin argumentos— es
+  una asignación normal, y ese `logger` lo importan cuatro módulos y es el punto de contrato. Un
+  detector que lo marque acabaría ignorándose (o obligaría a mover el punto de contrato para no
+  tener que pensar, que es el invariante equivocado).
+
+| Sonda | Invariante | Muerte (medida, `_mutmatrix_t028_iter3.py`) | Por qué esa aserción y no otra |
+|---|---|---|---|
+| **N1** el archivo de `docs/archive` no vuelve **a la ruta que la app lee** | si hay documento en `PROFILES_FILE` (`_app_dir()`), es del esquema **vivo**; el v2 archivado ahí es un fallo | **M13c** (copia byte a byte del v2), **M13d** (el mismo v2 **reformateado**: `indent=1`, claves ordenadas), **M13e** (un v2 que **no** es el archivado: otro nombre de preset, `factory` propia), **P1a** (mirar la raíz `packs` en vez de `profiles` → **el mutante escapa**, medido) | **La ruta viva no es la raíz**: `PROFILES_FILE` sale de `_app_dir()`, que en desarrollo es `src/woptimizer/`. El auditor copió el v2 archivado ahí y la suite siguió verde. Y ahí no es un fichero inerte: `load()` tiene **rama legacy**, así que la app lo abriría de verdad. Por eso la aserción es **sobre el contenido** (`__system_gaming__`, `factory`, `kill_low_chat` no existen en `models.py`) y **no** "no existe": en la ruta viva vive el `profiles.json` de estado local que escribe la propia app, y exigir su inexistencia sería **una sonda que falla siempre**. M13d y M13e son los que demuestran que se mira el **contenido** y no la igualdad de bytes. |
+| **N7** `config.py` no configura nada al importarse | ninguna llamada de nivel de módulo que **configure** el logging | **M16b** (`logging.getLogger().addHandler(...)`), **M16c** (`logger.addHandler(...)`), **M16d** (`logging.config.dictConfig`), **M16e** (`logging.config.fileConfig`), **M16f** (`logging.getLogger().setLevel(...)`), **M16g** (`root.handlers[:] = [...]`), **M16h** (`root.handlers.clear()`), **M16i** (`logger.setLevel(...)` sobre un logger nombrado), y para la sonda: **P7a** (detector muerto), **P7b** (detector demasiado amplio), **P7c** (parte A anulada + detector amplio), **P7d** (parte A anulada + M16b: **el mutante escapa**, medido) | El detector se **prueba contra sí mismo** con código sintético en las dos direcciones: 8 formas ilegales que tiene que marcar y 6 legales que no puede marcar. Un detector que no ve nada y uno que ve de más dan el **mismo verde**, y sin las dos tablas no se sabe cuál de los dos se tiene — que es exactamente por lo que este ciclo existe. Las tablas son un **control del detector, no del fichero**: por eso `P7d` mide que la parte A es la que lleva el veredicto. |
+
+**M10 (categoría) queda como DEUDA ACEPTADA, y es una decisión, no un olvido.** El escáner de
+versión no pilla un semver en una línea sin token de versión (`set TAG=9.9.9` en `build.bat`,
+`release = "9.9.9"` en el `.spec`). El `mutation-auditor` lo dictaminó **aceptable**: ya está escrito
+en `architecture.md` §15 y en la spec, y la consecuencia es **desincronización de la versión de
+empaquetado**, no seguridad ni datos. **No se arregla en esta iteración**; queda aquí para que el
+siguiente que lo lea no lo scourta como una forgot.
+
+**Punto 5: `run_tests.py:8` reemplaza `sys.stdout` (preexistente, NO se cambia).**
+`sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')` deja el `sys.stdout` **original**
+sin ninguna referencia que lo cierre, y su wrapper sustituto **cierra el buffer subyacente al
+liberarse**. Importar `run_tests` desde **otro** proceso es lo que dispara eso: cuando el proceso
+importador termina, el buffer del host se queda cerrado y **todo lo que el host escriba después sale
+roto**. Le costó un ciclo entero de depuración. **No se toca** (arriesga tumbar el runner entero), pero
+queda anotado como **trampa para el próximo que escriba un validador que importe la suite**: si un
+script tiene que importar `run_tests` para reutilizar una sonda, que lance la sonda en un
+**subproceso** (`python -c "import run_tests; run_tests.<sonda>()"`, cwd = raíz del repo) y no en el
+propio proceso. Es exactamente la mecánica de `_mutmatrix_t028_iter3.py`.
 
 ### Trampa del `__pycache__` al medir mutaciones (medida en este ciclo)
 Python reutiliza un `.pyc` obsoleto cuando el mutante tiene la **misma longitud en bytes** y el
