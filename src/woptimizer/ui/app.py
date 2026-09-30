@@ -1,9 +1,11 @@
+import os
 import sys
 import customtkinter as ctk
 from woptimizer.services.process_service import ProcessService
 from woptimizer.services.pack_service import PackService
 from woptimizer.services.gaming_service import GamingService
 from woptimizer.services.notification_service import NotificationService
+from woptimizer.config import _data_dir
 from woptimizer.ui.main_window import MainWindow
 
 class WOptimizerApp:
@@ -16,6 +18,14 @@ class WOptimizerApp:
         self.root.geometry("860x560")
         self.root.minsize(720, 460)
         self.root.protocol('WM_DELETE_WINDOW', self.on_window_close)
+        
+        # UI-006: Asignar icono a la barra de titulo si existe assets/woptimizer.ico
+        icon_path = os.path.join(_data_dir(), "assets", "woptimizer.ico")
+        if os.path.exists(icon_path):
+            try:
+                self.root.iconbitmap(icon_path)
+            except Exception:
+                pass
         
         self.process_service = process_service
         self.pack_service = pack_service
@@ -72,9 +82,18 @@ class WOptimizerApp:
         import pystray
         from PIL import Image, ImageDraw
         
-        image = Image.new('RGB', (64, 64), color = (30, 30, 30))
-        d = ImageDraw.Draw(image)
-        d.text((20, 20), "W3", fill=(255, 255, 255))
+        icon_path = os.path.join(_data_dir(), "assets", "woptimizer.ico")
+        if os.path.exists(icon_path):
+            try:
+                image = Image.open(icon_path)
+            except Exception:
+                image = Image.new('RGB', (64, 64), color = (30, 30, 30))
+                d = ImageDraw.Draw(image)
+                d.text((20, 20), "W3", fill=(255, 255, 255))
+        else:
+            image = Image.new('RGB', (64, 64), color = (30, 30, 30))
+            d = ImageDraw.Draw(image)
+            d.text((20, 20), "W3", fill=(255, 255, 255))
         
         def show_action(icon, item):
             icon.stop()

@@ -6,10 +6,11 @@ from woptimizer.services.notification_service import NotificationService
 from woptimizer.ui.views.process_manager_view import ProcessManagerView
 from woptimizer.ui.views.pack_manager_view import PackManagerView
 from woptimizer.ui.views.dashboard_view import DashboardView
+from woptimizer.ui import theme
 
 class MainWindow(ctk.CTkFrame):
     def __init__(self, master, process_service: ProcessService, pack_service: PackService, gaming_service: GamingService, notification_service: NotificationService = None):
-        super().__init__(master)
+        super().__init__(master, fg_color=theme.SURFACE)
         self.process_service = process_service
         self.pack_service = pack_service
         self.gaming_service = gaming_service
@@ -26,32 +27,88 @@ class MainWindow(ctk.CTkFrame):
         self.content_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.content_frame.pack(fill="both", expand=True, padx=10, pady=(10, 0))
         
-        # Barra de navegación inferior
-        self.nav_frame = ctk.CTkFrame(self, height=40)
+        # Barra de navegacion inferior con altura fija real (UI-003)
+        self.nav_frame = ctk.CTkFrame(
+            self,
+            height=44,
+            fg_color=theme.SURFACE_ALT,
+            corner_radius=theme.RADIUS_LARGE,
+            border_width=1,
+            border_color=theme.BORDER
+        )
         self.nav_frame.pack(fill="x", side="bottom", padx=8, pady=(4, 8))
+        self.nav_frame.pack_propagate(False)
         
-        self.btn_nav_home = ctk.CTkButton(self.nav_frame, text="🏠 Portada", command=self._show_home, fg_color="transparent", border_width=1, text_color=("gray10", "#DCE4EE"))
-        self.btn_nav_home.pack(side="left", expand=True, padx=5)
+        self.btn_nav_home = ctk.CTkButton(
+            self.nav_frame,
+            text="🏠 Portada",
+            command=self._show_home,
+            fg_color="transparent",
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            text_color=theme.TEXT_MUTED,
+            font=("Segoe UI", theme.FONT_SIZE_BODY),
+            height=32,
+            corner_radius=theme.RADIUS_MEDIUM
+        )
+        self.btn_nav_home.pack(side="left", expand=True, fill="both", padx=4, pady=4)
         
-        self.btn_nav_packs = ctk.CTkButton(self.nav_frame, text="📁 Gestor de Packs", command=self._show_packs, fg_color="transparent", border_width=1, text_color=("gray10", "#DCE4EE"))
-        self.btn_nav_packs.pack(side="left", expand=True, padx=5)
+        self.btn_nav_packs = ctk.CTkButton(
+            self.nav_frame,
+            text="📁 Gestor de Packs",
+            command=self._show_packs,
+            fg_color="transparent",
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            text_color=theme.TEXT_MUTED,
+            font=("Segoe UI", theme.FONT_SIZE_BODY),
+            height=32,
+            corner_radius=theme.RADIUS_MEDIUM
+        )
+        self.btn_nav_packs.pack(side="left", expand=True, fill="both", padx=4, pady=4)
         
-        self.btn_nav_procs = ctk.CTkButton(self.nav_frame, text="⚡ Gestor de Procesos", command=self._show_process_manager, fg_color="transparent", border_width=1, text_color=("gray10", "#DCE4EE"))
-        self.btn_nav_procs.pack(side="left", expand=True, padx=5)
+        self.btn_nav_procs = ctk.CTkButton(
+            self.nav_frame,
+            text="⚡ Gestor de Procesos",
+            command=self._show_process_manager,
+            fg_color="transparent",
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            text_color=theme.TEXT_MUTED,
+            font=("Segoe UI", theme.FONT_SIZE_BODY),
+            height=32,
+            corner_radius=theme.RADIUS_MEDIUM
+        )
+        self.btn_nav_procs.pack(side="left", expand=True, fill="both", padx=4, pady=4)
+
+    def _set_active_nav(self, active_btn):
+        for btn in (self.btn_nav_home, self.btn_nav_packs, self.btn_nav_procs):
+            if btn is active_btn:
+                btn.configure(
+                    fg_color=theme.SURFACE_SUNKEN,
+                    border_color=theme.ACCENT,
+                    border_width=2,
+                    text_color=theme.TEXT_PRIMARY
+                )
+            else:
+                btn.configure(
+                    fg_color="transparent",
+                    border_color=theme.BORDER,
+                    border_width=1,
+                    text_color=theme.TEXT_MUTED
+                )
 
     def _clear_content(self):
         if self.current_view:
             self.current_view.destroy()
             self.current_view = None
-            
-        # Reset nav buttons style
-        self.btn_nav_home.configure(fg_color="transparent")
-        self.btn_nav_packs.configure(fg_color="transparent")
-        self.btn_nav_procs.configure(fg_color="transparent")
 
     def _show_home(self):
         self._clear_content()
-        self.btn_nav_home.configure(fg_color=["#3B8ED0", "#1F6AA5"])
+        self._set_active_nav(self.btn_nav_home)
         self.current_view = DashboardView(
             self.content_frame,
             self.process_service,
@@ -63,7 +120,7 @@ class MainWindow(ctk.CTkFrame):
 
     def _show_packs(self):
         self._clear_content()
-        self.btn_nav_packs.configure(fg_color=["#3B8ED0", "#1F6AA5"])
+        self._set_active_nav(self.btn_nav_packs)
         self.current_view = PackManagerView(
             self.content_frame,
             self.process_service,
@@ -75,7 +132,7 @@ class MainWindow(ctk.CTkFrame):
 
     def _show_process_manager(self):
         self._clear_content()
-        self.btn_nav_procs.configure(fg_color=["#3B8ED0", "#1F6AA5"])
+        self._set_active_nav(self.btn_nav_procs)
         self.current_view = ProcessManagerView(
             self.content_frame, 
             self.process_service, 

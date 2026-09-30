@@ -1,28 +1,76 @@
 # Sistema de Diseño y Flujo UI CustomTkinter (v3)
 
+## Sistema de Diseño y Tokens (`ui/theme.py`)
+
+A partir de la versión 3.0.1 (TASK-029), la interfaz implementa un sistema de diseño centralizado en `src/woptimizer/ui/theme.py`.
+Este módulo define **únicamente tokens visuales** y funciones matemáticas de luminancia y contraste WCAG 2.1; está libre de widgets y lógica de negocio.
+
+### 1. Colores Semánticos y Roles
+- **Superficies:**
+  - `SURFACE = "#121212"`: Fondo base de la aplicación y frames principales.
+  - `SURFACE_ALT = "#1a1a1a"`: Fondo de barras de navegación, tarjetas de packs y cabeceras de categorías.
+  - `SURFACE_SUNKEN = "#151515"`: Fondo de subcontenedores (listas de apps, cajas de texto de entrada).
+  - `SURFACE_HOVER = "#262626"`: Estado hover en superficies y botones de navegación/herramientas.
+  - `BORDER = "#2e2e2e"`: Bordes delimitadores y divisores de contenedor.
+- **Tipografía y Textos:**
+  - `TEXT_PRIMARY = "#ffffff"`: Texto de alto contraste para títulos, ejecutables y botones activos.
+  - `TEXT_MUTED = "#888888"`: Texto secundario, descripciones y pistas.
+- **Identidad de Marca y Estados (Opción A):**
+  - `GAMING = "#1DB954"` / `GAMING_HOVER = "#1aa34a"`: **Verde Gaming**. Utilizado exclusivamente para el botón principal del Gaming Mode en portada, badges de preset y bordes activos de packs gaming. Resuelve la contradicción histórica (la documentación previa mencionaba rojo en §1 y verde en §5).
+  - `ACCENT = "#3B8ED0"` / `ACCENT_HOVER = "#1f6aa5"`: Azul de acento para acciones primarias constructivas (arranque de packs, altas, selecciones).
+  - `DANGER = "#c22d2d"` / `DANGER_HOVER = "#a82424"`: **Rojo exclusivo para peligro y acciones destructivas**. Reservado para botones de kill manual, apagado forzado y avisos de bloqueo irrecuperable.
+  - `WARNING = "#f59e0b"`: Ámbar para confirmaciones pendientes y estados de atención.
+  - `SUCCESS = "#22c55e"`: Verde confirmatorio para feedback completado.
+
+### 2. Escala Tipográfica (Exactamente 6 Tamaños)
+La jerarquía tipográfica está estrictamente acotada a una tupla de 6 valores numéricos (`FONT_SIZES = (9, 11, 13, 14, 18, 24)`):
+- `FONT_SIZE_TINY = 9`: Badges compactos (PRESET en tarjetas).
+- `FONT_SIZE_SMALL = 11`: Descripciones de procesos, tooltips y opciones secundarias.
+- `FONT_SIZE_BODY = 13`: Cuerpo de texto estándar, filas de apps y elementos de navegación.
+- `FONT_SIZE_SUBHEADER = 14`: Títulos de tarjetas y cabeceras colapsables.
+- `FONT_SIZE_HEADER = 18`: Títulos de sección y botones de favoritos en portada.
+- `FONT_SIZE_HERO = 24`: Título principal del Dashboard.
+
+### 3. Radios de Borde (Exactamente 3 Tamaños)
+- `RADIUS_SMALL = 4`: Badges y checkboxes.
+- `RADIUS_MEDIUM = 6`: Tarjetas internas, filas de procesos y botones de herramientas.
+- `RADIUS_LARGE = 8`: Marcos principales, barra de navegación y tarjetas de nivel superior.
+
+### 4. Accesibilidad y Micro-UX
+- **Contraste WCAG 2.1 AA:** Todo par de colores de texto y fondo en uso supera la ratio de contraste de `4.5:1` (`theme.is_wcag_aa(fg, bg)`).
+- **Objetivos de Puntero (Hit Targets):** Todos los botones y controles interactivos tienen una dimensión mínima de `28x28px`.
+- **Diálogos Modales Propios:** Sustitución de `CTkInputDialog` huérfano por `NewPackModal` acoplado al toplevel con `grab_set()` y centrado relativo, sin `messagebox`.
+- **Responsive y Ancho Mínimo (720px):** Las etiquetas de descripción incorporan `wraplength=380` para prevenir desbordes laterales en pantallas de 14" con escalado de DPI de 125%-150%.
+
+---
+
 ## Arquitectura de Vistas (3 Ventanas/Paneles)
 
 ### 1. Ventana Principal (Portada / Dashboard)
 - **Propósito:** Ejecución ultra rápida de un solo clic al sentarse a jugar o volver a trabajar.
+- **Barra de Telemetría en Reposo:** Muestra permanentemente el estado del sistema (`N procesos activos`) y el resultado de la última activación del Gaming Mode sin importar `psutil`.
 - **Contenido Central:**
-  - Botones gigantes para los packs marcados como `is_favorite = True`.
-  - El botón del pack Gaming tiene estilo prioritario (color acentuado rojo `#c22d2d`).
+  - Botones de favoritos para los packs marcados como `is_favorite = True`.
+  - El botón del pack Gaming tiene estilo prioritario en verde Gaming (`#1DB954`).
   - Al hacer clic en un favorito, ejecuta su acción principal (apagar para gaming, arrancar para packs de trabajo).
 - **Barra de Navegación Inferior:**
+  - Altura fija unificada (`height=44`, `pack_propagate(False)`).
+  - Indicador de vista activa mediante acento visual y texto primario, sin fondos azules estridentes.
   - Botón `📁 Gestor de Packs`: Abre la vista de gestión completa.
   - Botón `⚡ Gestor de Procesos`: Abre la vista de procesos activos.
 
 ### 2. Gestor de Packs (`views/pack_manager_view.py`)
 - **Propósito:** Crear, editar y ejecutar packs de aplicaciones.
 - **Contenido:**
-  - Botón superior `➕ Nuevo Pack`.
+  - Botón superior `➕ Nuevo Pack` que abre un diálogo modal acoplado (`NewPackModal`).
   - Lista scrollable con tarjetas para cada pack.
+  - El pack Gaming de fábrica cuenta con borde y badge `PRESET` resaltados en verde Gaming (`#1DB954`).
   - Cada tarjeta de pack incluye:
     - Nombre del pack y cantidad de apps configuradas.
     - Botón `⭐` para alternar si es favorito (aparece en portada). Es un **toggle real**: la segunda pulsación de la estrella de un pack que ya es favorito lo **desmarca** (`pack_service.set_favorite(None)`). El estado se lee **en vivo** de `get_all_packs()`, nunca del `pack` capturado en el render (queda obsoleto en cuanto el estado cambia) ni del glifo ⭐/☆, y **nunca** con `get_favorite_pack()` (devuelve el PRIMER favorito: con dos favoritos pulsaría el segundo en vez de desmarcarlo). Consecuencia aceptada: al desmarcar el único pack la portada queda en su **estado vacío** (`dashboard_view._show_empty_state`), un callejón sin salida *desde la portada* pero recuperable desde el Gestor de Packs, que es donde vive la estrella (TASK-027 / FIX-006).
     - Botón `⛔ Apagar Apps`: Cierra los ejecutables del pack. Si `is_gaming = True` va por `gaming_service.execute_gaming_pack()` (respeta `keepers` y `target_categories`); si no, por `process_service.kill_pack_apps()`.
     - Botón `🚀 Arrancar Apps`: Lanza todos los ejecutables configurados vía `ProcessService.start_pack_apps()`, que **valida cada ruta antes de lanzarla** (sin intérprete, sin UNC, contenida en las raíces permitidas y con extensión `.exe`/`.com`). La UI nunca llama a `subprocess` ni a `os.startfile`: ver `architecture.md` § 14 (TASK-027 / FIX-003).
-    - Botón `✏️ Editar`: Abre modal para añadir/quitar apps o keepers.
+    - Botón `🔄 Restaurar`: Restablece la configuración predeterminada del pack Gaming (`reset_gaming_pack`).
     - Botón `🗑️ Borrar`: Elimina el pack (deshabilitado si `is_gaming = True`).
 
 ### 3. Gestor de Procesos en Vivo (`views/process_manager_view.py`)
@@ -30,8 +78,10 @@
 - **Contenido:**
   - Botón superior `🔄 Actualizar Lista`.
   - Buscador de texto en tiempo real.
-  - Lista agrupada por categorías (`🔴 Navegadores`, `🟡 Chat`, etc.) con checkboxes.
+  - Cabeceras de categorías con fondo (`SURFACE_ALT`), hover (`SURFACE_HOVER`) y contador `(N)`.
+  - Lista agrupada por categorías (`🔴 Navegadores`, `🟡 Chat`, etc.) con checkboxes y descripciones con `wraplength=380`.
   - **El orden de las secciones es `CATEGORY_ORDER`**, no el color del semáforo y **nunca `sorted()`** sobre los nombres: se llama a `config.ordenar_categorias()` en los **dos** sitios que dibujan categorías (`_render_list` y el acordeón de `pack_manager_view`). `CATEGORY_ORDER` entrelaza verde y amarillo a propósito (`🟢 Productividad` va detrás de `🟡 Chat`), así que «orden semántico 🟢 → 🟡 → 🔴 → ⚪» es un criterio imposible. Lo que `sorted()` rompía: ordena por **punto de código**, y el centinela `⚪ Otros` (U+26AA, BMP) salía PRIMERO mientras que 🟢🟡🔴 viven en el plano suplementario (U+1F7E2, U+1F7E1, U+1F534): el bloque rojo «NO CERRAR» subía al primer golpe de vista. Las categorías desconocidas van al final conservando su orden de entrada. Trampa en [`../known-issues.md`](../known-issues.md) (TASK-027 / FIX-004).
+  - Estado vacío neutro y descriptivo sin checks fuera de lugar (UI-011).
   - Barra de acción inferior fijada:
     - Desplegable `Añadir seleccionados a: [Seleccionar Pack ▼]`.
     - Botón `➕ Añadir al Pack`.
@@ -39,8 +89,8 @@
 
 ## Reglas de CustomTkinter
 - **Tema:** Modo oscuro forzado (`ctk.set_appearance_mode("Dark")`).
-- **Fuentes:** Utilizar familias de sistema estándar (`"Segoe UI"` en Windows).
-- **Hilos de Fondo:** Toda operación de listado o kill pesado debe correr en un `threading.Thread(daemon=True)` para que la interfaz nunca se congele, actualizando la UI mediante `master.after(0, callback)`.
+- **Fuentes:** Utilizar familias de sistema estándar (`"Segoe UI"` en Windows) con la escala tipográfica de `theme.py`.
+- **Hilos de Fondo:** Toda operación de listado o kill pesado debe correr en un `threading.Thread(daemon=True)` para que la interfaz nunca se congele, actualizando la UI mediante `self.after(0, callback)`.
 
 ## Especificaciones de Pantalla y Responsive (14 Pulgadas)
 - **Dimensiones:** Ventana inicial de `860x560` (mínimo `720x460`) optimizada para portátiles de 14" con escalado de Windows de 125% a 150%.
@@ -49,7 +99,7 @@
   - `🟡 PRECAUCIÓN`: Amarillo ámbar (`#fcc419`) sobre fondo amarillo oscuro (`#3d3711`). Apps de juegos/media (Launchers, Discord, Spotify).
   - `🔴 NO CERRAR`: Rojo vibrante (`#ff6b6b`) sobre fondo rojo oscuro (`#401616`). Vitales para el SO o hardware (Windows, drivers, antivirus).
 - **Gestor de Packs Compacto:**
-  - Toolbar de acciones en tarjetas de pack limitada a ~270px para evitar colisiones con el título.
+  - Toolbar de acciones en tarjetas de pack con hit targets mínimos de 28x28px.
   - Acordeón plegable para configurar categorías automáticas en el Pack Gaming.
 
 ## Banner de Telemetría de RAM (`status_banner`) — TASK-014

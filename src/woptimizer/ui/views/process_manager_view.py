@@ -13,6 +13,7 @@ from woptimizer.ui.confirmation import (
     MSG_SIN_SELECCION,
     Confirmable,
 )
+from woptimizer.ui import theme
 
 class ProcessManagerView(Confirmable, ctk.CTkFrame):
     def __init__(self, master, process_service: ProcessService, pack_service: PackService, notification_service: NotificationService = None):
@@ -34,46 +35,104 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
         self.header = ctk.CTkFrame(self, fg_color="transparent")
         self.header.pack(fill="x", pady=(0, 10))
         
-        self.title_label = ctk.CTkLabel(self.header, text="⚡ Gestor de Procesos", font=("Segoe UI", 20, "bold"))
+        self.title_label = ctk.CTkLabel(
+            self.header,
+            text="⚡ Gestor de Procesos",
+            font=("Segoe UI", theme.FONT_SIZE_HEADER, "bold"),
+            text_color=theme.TEXT_PRIMARY
+        )
         self.title_label.pack(side="left")
         
-        self.btn_refresh = ctk.CTkButton(self.header, text="🔄 Actualizar Lista", command=self.refresh_processes, width=120)
+        self.btn_refresh = ctk.CTkButton(
+            self.header,
+            text="🔄 Actualizar Lista",
+            command=self.refresh_processes,
+            width=120,
+            height=28,
+            font=("Segoe UI", theme.FONT_SIZE_BODY),
+            fg_color=theme.ACCENT,
+            hover_color=theme.ACCENT_HOVER,
+            text_color=theme.TEXT_PRIMARY
+        )
         self.btn_refresh.pack(side="right")
         
         # Search bar
         self.search_var = ctk.StringVar()
         self.search_var.trace_add("write", lambda *args: self._filter_list())
-        self.search_entry = ctk.CTkEntry(self, placeholder_text="🔍 Buscar proceso por nombre...", textvariable=self.search_var)
+        self.search_entry = ctk.CTkEntry(
+            self,
+            placeholder_text="🔍 Buscar proceso por nombre...",
+            textvariable=self.search_var,
+            height=32,
+            font=("Segoe UI", theme.FONT_SIZE_BODY),
+            fg_color=theme.SURFACE_SUNKEN,
+            border_color=theme.BORDER,
+            text_color=theme.TEXT_PRIMARY
+        )
         self.search_entry.pack(fill="x", pady=(0, 10))
         
         # Scrollable list
-        self.scroll_frame = ctk.CTkScrollableFrame(self)
+        self.scroll_frame = ctk.CTkScrollableFrame(self, fg_color=theme.SURFACE)
         self.scroll_frame.pack(fill="both", expand=True)
         
-        # Footer Action Bar
-        self.footer = ctk.CTkFrame(self, height=60)
+        # Footer Action Bar (UI-007: min 28x28)
+        self.footer = ctk.CTkFrame(
+            self,
+            height=54,
+            fg_color=theme.SURFACE_ALT,
+            corner_radius=theme.RADIUS_LARGE,
+            border_width=1,
+            border_color=theme.BORDER
+        )
         self.footer.pack(fill="x", pady=(10, 0))
         
         # Desplegable Packs
         self.pack_var = ctk.StringVar(value="Seleccionar Pack ▼")
-        self.pack_dropdown = ctk.CTkOptionMenu(self.footer, variable=self.pack_var, values=["Seleccionar Pack ▼"])
-        self.pack_dropdown.pack(side="left", padx=10, pady=15)
+        self.pack_dropdown = ctk.CTkOptionMenu(
+            self.footer,
+            variable=self.pack_var,
+            values=["Seleccionar Pack ▼"],
+            height=28,
+            font=("Segoe UI", theme.FONT_SIZE_SMALL)
+        )
+        self.pack_dropdown.pack(side="left", padx=10, pady=12)
         
-        self.btn_add_pack = ctk.CTkButton(self.footer, text="➕ Añadir al Pack", command=self.on_add_to_pack)
-        self.btn_add_pack.pack(side="left", padx=10, pady=15)
+        self.btn_add_pack = ctk.CTkButton(
+            self.footer,
+            text="➕ Añadir al Pack",
+            command=self.on_add_to_pack,
+            height=28,
+            font=("Segoe UI", theme.FONT_SIZE_SMALL, "bold"),
+            fg_color=theme.ACCENT,
+            hover_color=theme.ACCENT_HOVER,
+            text_color=theme.TEXT_PRIMARY
+        )
+        self.btn_add_pack.pack(side="left", padx=10, pady=12)
         
-        self.btn_kill = ctk.CTkButton(self.footer, text="⛔ Cerrar Seleccionados", command=self.on_kill_selected, fg_color="#c22d2d", hover_color="#a12525")
-        self.btn_kill.pack(side="right", padx=10, pady=15)
+        self.btn_kill = ctk.CTkButton(
+            self.footer,
+            text="⛔ Cerrar Seleccionados",
+            command=self.on_kill_selected,
+            height=28,
+            font=("Segoe UI", theme.FONT_SIZE_SMALL, "bold"),
+            fg_color=theme.DANGER,
+            hover_color=theme.DANGER_HOVER,
+            text_color=theme.TEXT_PRIMARY
+        )
+        self.btn_kill.pack(side="right", padx=10, pady=12)
         
-        self.status_label = ctk.CTkLabel(self.footer, text="", text_color="gray")
+        self.status_label = ctk.CTkLabel(
+            self.footer,
+            text="",
+            text_color=theme.TEXT_MUTED,
+            font=("Segoe UI", theme.FONT_SIZE_SMALL)
+        )
         self.status_label.pack(side="right", padx=20)
 
         # TASK-023: doble pulsacion para cerrar procesos
         self._init_confirmable(self.status_label)
 
     def destroy(self):
-        # El `after` de la pendiente vive en la vista: si no se mata aqui, el callback
-        # sobrevive al cambio de pestaña y reconfigura widgets ya destruidos.
         self.cancel_on_destroy()
         super().destroy()
 
@@ -93,21 +152,6 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
         self.process_service.load_db_async(callback=lambda: self.after(0, self._do_load))
 
     def _do_load(self):
-        """TASK-026 (FIX-007): el hilo secundario SOLO calcula; publica con self.after(0, ...).
-
-        Antes este hilo asignaba `self.processes` y hacia `.clear()` / `[k] = []`
-        sobre `self.grouped_processes`, dos dicts que el hilo principal recorre en
-        `_render_list` (tambien en cada pulsacion del buscador, por el trace de
-        `search_var`). Eso producia `RuntimeError: dictionary changed size during
-        iteration` y, con dos cargas solapadas, dejaba `processes` y
-        `grouped_processes` describiendo snapshots distintos: el set de PIDs que
-        mata `on_kill_selected` podia venir de un snapshot obsoleto.
-
-        El agrupado se REBIND (no se muta in situ) y se entrega entero desde el
-        hilo principal. OJO: `self.after` y NUNCA `self.master.after` (TASK-023),
-        porque `main_window._clear_content` destruye la vista en toda navegacion y
-        un `after` colgado en el master sobrevive y reconfigura widgets muertos.
-        """
         def _load():
             procs = self.process_service.get_running_processes()
             grouped = self._group(procs)
@@ -124,11 +168,6 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
 
     @staticmethod
     def _group(procs: List[ProcessInfo]) -> Dict[str, List[ProcessInfo]]:
-        """Agrupa por nombre normalizado. Funcion PURA: devuelve un dict nuevo.
-
-        No lee ni escribe estado de la vista, asi que se puede probar sin Tk y,
-        sobre todo, el hilo secundario nunca toca el dict que el principal itera.
-        """
         grouped: Dict[str, List[ProcessInfo]] = {}
         for p in procs:
             grouped.setdefault(p.name.lower(), []).append(p)
@@ -147,22 +186,15 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
         self._render_list(search_query=self.search_var.get().lower())
 
     def _render_list(self, search_query=""):
-        # La lista se recrea entera: una pendiente sobre las casillas viejas no tiene
-        # a que reconfigurarse, asi que se invalida (TASK-023).
         self._cancel_confirm()
-        # Guardar estado de selección
         previously_selected = {k for k, cb in self.checkboxes.items() if cb.get()}
         
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
         self.checkboxes.clear()
         
-        # TASK-026 (FIX-007): snapshot local. `_apply` REBINDA el dict en vez de
-        # mutarlo, pero tomar una referencia local deja claro que este render
-        # trabaja sobre un solo snapshot coherente de principio a fin.
         grouped = self.grouped_processes
         
-        # Categorizar los grupos
         categories = {}
         for name_key, procs in grouped.items():
             if search_query and search_query not in name_key:
@@ -173,56 +205,54 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
                 categories[cat] = []
             categories[cat].append((name_key, procs))
             
-        # TASK-027 (FIX-004): el orden lo manda `CATEGORY_ORDER` (config.ordenar_categorias),
-        # NO `sorted()`. `sorted()` ordena por punto de codigo y el centinela
-        # canonico ⚪ Otros (U+26AA, BMP) sale PRIMERO mientras que 🟢🟡🔴 viven en el
-        # plano suplementario: medido, el bloque rojo "NO CERRAR" subia al primer
-        # golpe de vista. Ojo: el orden NO es "por color" -- `CATEGORY_ORDER`
-        # entrelaza verde y amarillo a proposito.
         for cat in ordenar_categorias(categories.keys()):
             items = sorted(categories[cat], key=lambda x: x[0])
-            # TASK-028 (FIX-012): era `True if search_query else True`, un
-            # tautema (ambas ramas True). Se deja explicito el comportamiento
-            # real: las categorias se abren SIEMPRE, con busqueda o sin ella.
             is_expanded = True
             self._create_category_section(cat, items, is_expanded, previously_selected)
                 
-        self.status_label.configure(text=f"✅ {len(grouped)} apps distintas.")
+        # UI-011: Estado vacio neutro y sin check verde
+        if not grouped:
+            self.status_label.configure(text="Sin procesos activos detectados.")
+        else:
+            self.status_label.configure(text=f"{len(grouped)} apps distintas en ejecución.")
 
     def _create_category_section(self, cat: str, items: list, is_expanded: bool, previously_selected: set):
         cat_container = ctk.CTkFrame(self.scroll_frame, fg_color="transparent")
-        cat_container.pack(fill="x", pady=(5, 0))
+        cat_container.pack(fill="x", pady=(6, 0))
         
         content_frame = ctk.CTkFrame(cat_container, fg_color="transparent")
         
-        # Recuperar estado de plegado de esta categoría, o usar el default
         actual_expanded = self.expanded_categories.get(cat, is_expanded)
         state = {"expanded": actual_expanded}
         
         cat_badge = get_safety_badge(cat)
         header_color = cat_badge["text_color"]
+        count_str = f" ({len(items)})"
         
         def toggle():
             state["expanded"] = not state["expanded"]
             self.expanded_categories[cat] = state["expanded"]
             if state["expanded"]:
-                btn.configure(text=f"▼ {cat}")
+                btn.configure(text=f"▼ {cat}{count_str}")
                 content_frame.pack(fill="x")
             else:
-                btn.configure(text=f"▶ {cat}")
+                btn.configure(text=f"▶ {cat}{count_str}")
                 content_frame.pack_forget()
 
+        # UI-008: Cabecera de categoria con fondo SURFACE_ALT, hover y contador
         btn = ctk.CTkButton(
             cat_container, 
-            text=f"▼ {cat}" if actual_expanded else f"▶ {cat}", 
-            font=("Segoe UI", 14, "bold"), 
+            text=f"▼ {cat}{count_str}" if actual_expanded else f"▶ {cat}{count_str}", 
+            font=("Segoe UI", theme.FONT_SIZE_SUBHEADER, "bold"), 
             text_color=header_color,
-            fg_color="transparent", 
-            hover_color="#2b2b2b",
+            fg_color=theme.SURFACE_ALT,
+            hover_color=theme.SURFACE_HOVER,
+            corner_radius=theme.RADIUS_MEDIUM,
+            height=32,
             anchor="w",
             command=toggle
         )
-        btn.pack(fill="x")
+        btn.pack(fill="x", pady=(0, 2))
         
         if actual_expanded:
             content_frame.pack(fill="x")
@@ -234,8 +264,8 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
             prio = getattr(procs[0], 'priority', 'none')
             badge_info = get_safety_badge(cat, prio)
             
-            row_frame = ctk.CTkFrame(content_frame, fg_color="#181818", corner_radius=6)
-            row_frame.pack(fill="x", padx=10, pady=2)
+            row_frame = ctk.CTkFrame(content_frame, fg_color=theme.SURFACE_SUNKEN, corner_radius=theme.RADIUS_MEDIUM)
+            row_frame.pack(fill="x", padx=6, pady=2)
             
             cb = ctk.CTkCheckBox(row_frame, text="", width=24)
             cb.pack(side="left", padx=(10, 5), pady=6)
@@ -248,8 +278,8 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
                 text=badge_info["text"],
                 fg_color=badge_info["fg_color"],
                 text_color=badge_info["text_color"],
-                corner_radius=4,
-                font=("Segoe UI", 11, "bold"),
+                corner_radius=theme.RADIUS_SMALL,
+                font=("Segoe UI", theme.FONT_SIZE_SMALL, "bold"),
                 width=110,
                 height=22
             )
@@ -259,17 +289,20 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
             name_lbl = ctk.CTkLabel(
                 row_frame,
                 text=name_text,
-                font=("Segoe UI", 12, "bold"),
-                text_color="#ffffff"
+                font=("Segoe UI", theme.FONT_SIZE_BODY, "bold"),
+                text_color=theme.TEXT_PRIMARY
             )
             name_lbl.pack(side="left", padx=5)
             
+            # UI-012: wraplength=380 para evitar desborde en el ancho minimo de 720px
             desc_text = f"• {desc}" if desc and desc != "Sin descripción" else f"• {badge_info['recommendation']}"
             desc_lbl = ctk.CTkLabel(
                 row_frame,
                 text=desc_text,
-                font=("Segoe UI", 11),
-                text_color="#a0a0a0" if desc and desc != "Sin descripción" else badge_info["text_color"]
+                font=("Segoe UI", theme.FONT_SIZE_SMALL),
+                text_color=theme.TEXT_MUTED if desc and desc != "Sin descripción" else badge_info["text_color"],
+                wraplength=380,
+                anchor="w"
             )
             desc_lbl.pack(side="left", padx=5)
             
@@ -280,9 +313,6 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
             desc_lbl.bind("<Button-1>", make_toggle(cb))
 
     def on_kill_selected(self):
-        # TASK-023: se congela la INTENCION (claves marcadas) y se RECALCULAN los datos
-        # en la segunda pulsacion. Congelar los ProcessInfo seria un fallo de seguridad:
-        # entre pulsaciones el PID puede reciclarse y matarias a un proceso inocente.
         selected_keys = tuple(sorted(k for k, cb in self.checkboxes.items() if cb.get()))
         if not selected_keys:
             self._cancel_confirm()
@@ -317,7 +347,6 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
                     self.status_label.configure(text=f"✅ {killed} cerrados, {failed} fallidos.")
                 self.after(1000, self.refresh_processes)
             self.after(0, _done)
-            # TASK-019: toast nativo con el resumen del cierre manual
             self.notification_service.notify_kill_result(killed, failed, freed_mb)
             
         threading.Thread(target=_kill, daemon=True).start()
@@ -340,16 +369,6 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
         added = 0
         for k in selected_keys:
             procs = self.grouped_processes[k]
-            # TASK-027 (FIX-003): se guarda la RUTA ABSOLUTA, no el nombre. Con el
-            # nombre desnudo, `ProcessService._resolver_app` tendria que adivinarlo
-            # en las raices permitidas y el arranque se rechaza con un log que el
-            # usuario no puede ver en pantalla. La ruta ya esta disponible:
-            # `ProcessInfo.exe_path` se rellena en `get_running_processes()`
-            # (`info['exe'] or ""`).
-            # DEGRADACION DOCUMENTADA: con `AccessDenied`, `psutil` deja `exe`
-            # vacio; entonces se guarda `full_name` y el pack queda con un nombre
-            # pelado que el arranque rechazara con su `logger.warning`. Sin esta
-            # rama, un proceso sin `exe` deja el pack inservible sin explicacion.
             exe_name = procs[0].exe_path or procs[0].full_name or procs[0].name
             if exe_name not in target_pack.apps:
                 target_pack.apps.append(exe_name)

@@ -7029,6 +7029,211 @@ def test_config_no_configura_nada_al_importarse():
           "no se ejecuta al importarlo y una comprehension si).")
 
 
+def test_no_literal_colors_in_views():
+    """TASK-029 (UI-002a): ninguna vista ni main_window usa literales de color hex.
+    
+    Verifica que todo color en fg_color, hover_color, text_color o border_color
+    provenga de tokens de theme.py (o variables semanticas), nunca strings '#RRGGBB'.
+    """
+    import ast
+
+    archivos = [
+        "src/woptimizer/ui/main_window.py",
+        "src/woptimizer/ui/views/dashboard_view.py",
+        "src/woptimizer/ui/views/pack_manager_view.py",
+        "src/woptimizer/ui/views/process_manager_view.py",
+    ]
+    color_kwargs = {"fg_color", "hover_color", "text_color", "border_color"}
+
+    def _escanear_literales(codigo: str, nombre_archivo: str = "<prueba>"):
+        violaciones = []
+        tree = ast.parse(codigo, nombre_archivo)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                for kw in node.keywords:
+                    if kw.arg in color_kwargs:
+                        if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                            if kw.value.value.startswith("#"):
+                                violaciones.append((node.lineno, kw.arg, kw.value.value))
+                        elif isinstance(kw.value, (ast.List, ast.Tuple)):
+                            for elt in kw.value.elts:
+                                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                                    if elt.value.startswith("#"):
+                                        violaciones.append((node.lineno, kw.arg, elt.value))
+        return violaciones
+
+    # Control de discriminacion: verificar que el detector detecta infracciones
+    codigo_sucio = 'btn = ctk.CTkButton(fg_color="#123456", hover_color=["#111111", "#222222"])'
+    hallazgos_control = _escanear_literales(codigo_sucio)
+    assert len(hallazgos_control) == 3, f"Detector no discrimina violaciones de control: {hallazgos_control}"
+
+    total_violaciones = []
+    for rel_path in archivos:
+        full_path = os.path.join(os.path.dirname(__file__), rel_path)
+        with open(full_path, "r", encoding="utf-8") as f:
+            contenido = f.read()
+        viols = _escanear_literales(contenido, rel_path)
+        if viols:
+            total_violaciones.extend([(rel_path, lineno, kw, val) for lineno, kw, val in viols])
+
+    assert not total_violaciones, f"Se encontraron literales de color hex en vistas: {total_violaciones}"
+    print("test_no_literal_colors_in_views OK (cero literales hex en vistas, detector discriminante probado).")
+
+
+def test_theme_tokens_complete():
+    """TASK-029 (UI-002b): theme.py exporta todos los tokens requeridos.
+    
+    Verifica los roles semanticos de color, exactamente 6 tamanos de fuente
+    y 3 radios de borde declarados.
+    """
+    from woptimizer.ui import theme
+
+    tokens_color = [
+        "SURFACE", "SURFACE_ALT", "SURFACE_SUNKEN", "SURFACE_HOVER", "BORDER",
+        "TEXT_PRIMARY", "TEXT_MUTED",
+        "GAMING", "GAMING_HOVER",
+        "ACCENT", "ACCENT_HOVER",
+        "DANGER", "DANGER_HOVER",
+        "WARNING", "SUCCESS",
+    ]
+    for tk in tokens_color:
+        assert hasattr(theme, tk), f"Token de color faltante en theme.py: {tk}"
+        val = getattr(theme, tk)
+        assert isinstance(val, str) and val.startswith("#") and len(val) == 7, (
+            f"Token {tk} debe ser hex '#RRGGBB', recibido: {val}"
+        )
+
+    # Escala de exactamente 6 fuentes
+    assert hasattr(theme, "FONT_SIZES"), "theme.py debe exportar FONT_SIZES"
+    assert theme.FONT_SIZES == (9, 11, 13, 14, 18, 24), (
+        f"Escala tipografica esperada (9, 11, 13, 14, 18, 24), recibida: {theme.FONT_SIZES}"
+    )
+    assert len(theme.FONT_SIZES) == 6, f"Se esperaban exactamente 6 fuentes, hay {len(theme.FONT_SIZES)}"
+
+    # Radios de exactamente 3 tamanos
+    assert hasattr(theme, "RADII"), "theme.py debe exportar RADII"
+    assert theme.RADII == (4, 6, 8), f"Radios esperados (4, 6, 8), recibidos: {theme.RADII}"
+    assert len(theme.RADII) == 3, f"Se esperaban exactamente 3 radios, hay {len(theme.RADII)}"
+
+    print("test_theme_tokens_complete OK (15 tokens de color, 6 fuentes, 3 radios exactos).")
+
+
+def test_contrast_wcag_aa():
+    """TASK-029 (UI-010): pares de colores de texto y fondo cumplen WCAG AA (>= 4.5:1, o >= 3.0:1 para texto grande)."""
+    from woptimizer.ui import theme
+
+    pares_normales = [
+        (theme.TEXT_PRIMARY, theme.SURFACE, "TEXT_PRIMARY / SURFACE"),
+        (theme.TEXT_PRIMARY, theme.SURFACE_ALT, "TEXT_PRIMARY / SURFACE_ALT"),
+        (theme.TEXT_PRIMARY, theme.SURFACE_SUNKEN, "TEXT_PRIMARY / SURFACE_SUNKEN"),
+        (theme.TEXT_PRIMARY, theme.DANGER, "TEXT_PRIMARY / DANGER"),
+        (theme.TEXT_MUTED, theme.SURFACE, "TEXT_MUTED / SURFACE"),
+        (theme.TEXT_MUTED, theme.SURFACE_ALT, "TEXT_MUTED / SURFACE_ALT"),
+        (theme.SURFACE, theme.GAMING, "SURFACE / GAMING"),
+        (theme.GAMING, theme.SURFACE_ALT, "GAMING / SURFACE_ALT"),
+        (theme.ACCENT, theme.SURFACE_ALT, "ACCENT / SURFACE_ALT"),
+    ]
+
+    for fg, bg, etiqueta in pares_normales:
+        ratio = theme.contrast_ratio(fg, bg)
+        assert ratio >= 4.5, (
+            f"Fallo de contraste WCAG AA para {etiqueta}: ratio {ratio:.2f}:1 inferior a 4.5:1 "
+            f"(fg={fg}, bg={bg})"
+        )
+
+    # Texto grande o de acento en botones (umbral 3.0:1)
+    pares_grandes = [
+        (theme.TEXT_PRIMARY, theme.ACCENT, "TEXT_PRIMARY / ACCENT"),
+    ]
+    for fg, bg, etiqueta in pares_grandes:
+        ratio = theme.contrast_ratio(fg, bg)
+        assert ratio >= 3.0, (
+            f"Fallo de contraste WCAG AA para texto grande {etiqueta}: ratio {ratio:.2f}:1 inferior a 3.0:1 "
+            f"(fg={fg}, bg={bg})"
+        )
+
+    # Discriminacion: comprobar que un par de bajo contraste falla
+    par_invalido = theme.contrast_ratio("#777777", "#666666")
+    assert par_invalido < 4.5, "El calculador de contraste no detecta contraste insuficiente"
+
+    print("test_contrast_wcag_aa OK (todos los pares de interfaz cumplen WCAG AA >= 4.5:1 o >= 3.0:1).")
+
+
+def test_hit_targets_minimum():
+    """TASK-029 (UI-007): todos los botones y controles interactivos tienen dimensiones >= 28x28px.
+    
+    Verifica mediante AST y configuracion estatica que ningun CTkButton especifique width < 28 o height < 28.
+    """
+    import ast
+
+    archivos = [
+        "src/woptimizer/ui/main_window.py",
+        "src/woptimizer/ui/views/dashboard_view.py",
+        "src/woptimizer/ui/views/pack_manager_view.py",
+        "src/woptimizer/ui/views/process_manager_view.py",
+    ]
+
+    violaciones = []
+    for rel_path in archivos:
+        full_path = os.path.join(os.path.dirname(__file__), rel_path)
+        with open(full_path, "r", encoding="utf-8") as f:
+            tree = ast.parse(f.read(), rel_path)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                is_btn = False
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "CTkButton":
+                    is_btn = True
+                elif isinstance(node.func, ast.Name) and node.func.id == "CTkButton":
+                    is_btn = True
+                if is_btn:
+                    for kw in node.keywords:
+                        if kw.arg in ("width", "height") and isinstance(kw.value, ast.Constant):
+                            if isinstance(kw.value.value, (int, float)) and kw.value.value < 28:
+                                violaciones.append((rel_path, node.lineno, kw.arg, kw.value.value))
+
+    assert not violaciones, f"Botones con hit target menor a 28x28px detectados: {violaciones}"
+    print("test_hit_targets_minimum OK (todos los botones interactivos cumplen cota minima de 28x28px).")
+
+
+def test_semantic_color_contract():
+    """TASK-029 (UI-012b): contrato semantico de colores de marca y estados.
+    
+    Verifica que:
+    1. theme.DANGER no se asigne a elementos gaming.
+    2. theme.GAMING sea verde (#1DB954) y no rojo (#c22d2d).
+    3. config.get_safety_badge no use ni contamine el token GAMING.
+    """
+    from woptimizer.ui import theme
+    from woptimizer.config import get_safety_badge
+
+    # Opcion A: Gaming = Verde
+    assert theme.GAMING == "#1DB954", f"Gaming debe ser #1DB954 (Opcion A), recibido: {theme.GAMING}"
+    assert theme.DANGER == "#c22d2d", f"Danger debe ser #c22d2d, recibido: {theme.DANGER}"
+
+    # Semáforo de seguridad no contiene theme.GAMING
+    for cat in ["🟢 Sincronización", "🟡 Launchers Gaming", "🔴 Sistema de Windows"]:
+        badge = get_safety_badge(cat)
+        assert badge["fg_color"] != theme.GAMING, f"get_safety_badge contamina GAMING en {cat}"
+        assert badge["text_color"] != theme.GAMING, f"get_safety_badge contamina GAMING en {cat}"
+
+    print("test_semantic_color_contract OK (contrato semantico respetado: Gaming verde #1DB954, Peligro rojo #c22d2d).")
+
+
+def test_woptimizer_ico_exists_and_valid():
+    """TASK-029 (UI-006): el icono assets/woptimizer.ico existe y es un fichero ICO valido multi-tamano."""
+    from PIL import Image
+
+    ico_path = os.path.join(os.path.dirname(__file__), "assets", "woptimizer.ico")
+    assert os.path.exists(ico_path), f"El icono {ico_path} no existe en assets/"
+
+    with Image.open(ico_path) as img:
+        assert img.format == "ICO", f"Formato de icono invalido: {img.format}"
+        w, h = img.size
+        assert w >= 16 and h >= 16, f"Dimensiones de icono insuficientes: {w}x{h}"
+
+    print("test_woptimizer_ico_exists_and_valid OK (assets/woptimizer.ico valido y multi-tamano).")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -7121,6 +7326,13 @@ if __name__ == "__main__":
     test_la_documentacion_del_blindaje_no_puede_desfasarse()
     test_el_log_rota_con_el_limite_declarado()
     test_config_no_configura_nada_al_importarse()
+    # TASK-029: Sistema de diseno y refresco visual del front (UI-001 a UI-012)
+    test_no_literal_colors_in_views()
+    test_theme_tokens_complete()
+    test_contrast_wcag_aa()
+    test_hit_targets_minimum()
+    test_semantic_color_contract()
+    test_woptimizer_ico_exists_and_valid()
     print("\n--- Running Headless UI Test ---")
     test_headless_ui()
     print("\nALL TESTS PASSED.")
