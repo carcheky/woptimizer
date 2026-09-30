@@ -363,5 +363,45 @@
         "category": "🔴 Antivirus y Seguridad",
         "priority": "none",
         "description": "Servicio del nucleo de seguridad de Windows (plataforma Defender). Clasificado como no cerrable por prudencia: nunca debe entrar en un objetivo de gaming."
+    },
+    "braveupdate": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Actualizador en segundo plano del navegador Brave. Seguro de cerrar durante sesiones de juego."
+    },
+    "xboxgamebarwidgets": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Widgets de la barra de juegos de Xbox (Xbox Game Bar). Overlay de juegos de Microsoft; mantener para funciones de captura y overlay en partida."
+    },
+    "xboxpcappft": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Launcher y servicio auxiliar de la app Xbox en PC. Mantener si se ejecutan juegos de Xbox / PC Game Pass."
+    },
+    "whatsapp.root": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Proceso principal de WhatsApp Desktop (versión UWP/Store). Cerrar salvo que se use para comunicación durante la partida."
+    },
+    "crossdeviceresume": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "Servicio Microsoft Cross Device Resume (Enlace Móvil). Reanuda tareas entre móvil y PC; seguro de cerrar en gaming."
+    },
+    "lightingservice": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Servicio de iluminación ASUS Aura Sync. Controla efectos RGB de placa y periféricos; mantener para preservar perfil de iluminación."
+    },
+    "powertoys.mousewithoutbordershelper": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Proceso auxiliar de Mouse Without Borders de PowerToys. Seguro de cerrar durante el juego si no se usa control multipantalla en red."
+    },
+    "acpowernotification": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Notificador de alimentación CA de ASUS. Informa sobre conexión del adaptador; no esencial durante el juego."
     }
 }

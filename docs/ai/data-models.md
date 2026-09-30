@@ -478,6 +478,8 @@ centinela `999` del sort, y rompe el filtro que lo excluye de `target_categories
 
 ## Base de Datos de Procesos (`assets/process_db.json`)
 
+Contiene actualmente **81** procesos catalogados (expandido en TASK-032 desde 73) con su semáforo de seguridad, categoría canónica y descripción contextual.
+
 ### Esquema
 `dict[str, dict]`. La clave es el **nombre del proceso en minúsculas y sin extensión**
 (`chrome`, no `chrome.exe`) y el valor es un `dict` con exactamente tres campos:

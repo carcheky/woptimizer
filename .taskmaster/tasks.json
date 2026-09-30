@@ -638,7 +638,7 @@
       "description": "Escanear procesos vivos en Windows, cruzar con assets/process_db.json (73 entradas actuales), clasificar launchers, bloatware y utilidades OEM desconocidas, respetando el blindaje anti-brick (SYSTEM_PROTECTED_PROCESSES) y las 8 categorías canónicas de config.py.",
       "complexity": 3,
       "priority": "medium",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "assets/process_db.json",
       "acceptance_criteria": [
