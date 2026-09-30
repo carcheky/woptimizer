@@ -309,5 +309,21 @@
       "after": "57 backend + 1 headless UI, 0 fallos"
     },
     "impact": "Saneamiento de deuda tecnica (TASK-028, FIX-010 al FIX-020): setup_logging con force=True y rotacion en woptimizer.log sin fugas a stderr, archivo seguro de perfiles legacy en docs/archive/legacy-root-data/, eliminacion de redundancias en quit_app y process_manager_view, sincronizacion de version 3.0.1.dev0 en pyproject.toml y __init__.py con test AST hermetico. Cierre de supervivientes de mutacion y blindaje de perfiles ilegibles (F1) y proteccion de datos de usuario."
+  },
+  {
+    "cycle": 22,
+    "date": "2026-09-30T20:15:00",
+    "area": "Diseño & UI / Micro-UX",
+    "slug": "2026-09-29-ui-visual-refresh",
+    "task": "TASK-029",
+    "status": "COMPLETED",
+    "commits": [
+      "16ef4dc (feat)"
+    ],
+    "tests": {
+      "before": "57 backend + 1 headless UI",
+      "after": "63 backend + 1 headless UI, 0 fallos"
+    },
+    "impact": "Sistema de diseno y refresco visual del front (TASK-029, UI-001 a UI-012). Centralizacion de tokens en ui/theme.py (colores semanticos, escala de 6 fuentes, 3 radios, contrastes WCAG AA). Resolucion de contradiccion de marca: Opcion A Gaming = verde #1DB954 y rojo exclusivo para peligro (#c22d2d). Generacion y cableado de assets/woptimizer.ico en ventana y system tray. Barra de navegacion con altura fija de 44px (pack_propagate(False)), hover y estado activo desacoplado. Portada (DashboardView) con banda de telemetria permanente en reposo sin psutil, etiquetas descriptivas ('N apps · M categorias · KILL') y reutilizacion de widgets. Tarjeta del pack Gaming destacada con acento y badge PRESET verde. Reemplazo de CTkInputDialog huerfano por NewPackModal acoplado al toplevel sin messagebox. Botones interactivos con objetivos de puntero minimos de 28x28px. Cabeceras de categorias con fondo, hover y contador. 6 tests discriminantes nuevos validados con 100% de letalidad por mutation-auditor (PASS)."
   }
 ]

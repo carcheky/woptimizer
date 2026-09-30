@@ -1,3 +1,32 @@
+## CYCLE-022 - 2026-09-30
+
+**Diseño & Front-End** — `TASK-029` (UI-001 a UI-012)
+
+### Añadido
+- **Sistema centralizado de tokens de diseño (`theme.py`).** Se introdujo una fuente única de verdad para la interfaz: colores semánticos por rol (`SURFACE`, `ACCENT`, `GAMING`, `DANGER`), escala tipográfica fija de exactamente 6 tamaños y 3 radios de borde.
+- **Icono oficial de la aplicación (`woptimizer.ico`).** Se incorporó el icono multi-tamaño para la ventana principal (`root.iconbitmap`) y para la bandeja del sistema (`pystray`), eliminando el icono genérico de Python en la barra de título y el placeholder "W3".
+- **Banda de telemetría permanente en reposo.** La portada (`DashboardView`) ahora muestra de forma continua el recuento de procesos activos en el sistema y el resumen del último Gaming Mode sin consultar `psutil` directamente.
+- **Diálogo modal propio para crear packs.** Sustitución de `CTkInputDialog` por `NewPackModal`, un diálogo centrado y adaptado al tema oscuro que previene que la ventana de creación se abra por detrás de la app.
+- **6 nuevas pruebas discriminantes en `run_tests.py`.** Verificación AST de ausencia de literales hex sueltos, completitud de tokens, cálculo de contraste WCAG AA (≥ 4.5:1), objetivos de puntero mínimos (≥ 28x28px) y validez del archivo `.ico`. Total suite: **63 tests backend + 1 headless UI**, todos en verde.
+
+### Corregido
+- **Contradicción visual del Gaming Mode (Opción A).** El Gaming Mode utilizaba antes rojo en los botones y verde en el banner de resultados. Se unificó en verde Gaming (`#1DB954`), reservando el rojo exclusivamente para acciones destructivas y señales de peligro (`⛔` y `🔴 NO CERRAR`), evitando confusiones de seguridad.
+- **La etiqueta del botón Gaming ya no miente.** Se reetiquetó la información para mostrar el número de apps y de categorías automáticas afectadas (`N apps · M categorías · KILL`), reflejando la realidad del comportamiento tras TASK-025.
+- **Parpadeo al refrescar la portada.** `refresh_dashboard()` ahora reutiliza los botones existentes cuando los favoritos no cambian en lugar de destruirlos y recrearlos, eliminando parpadeos y conservando el foco.
+- **Estado vacío con 0 procesos.** En el Gestor de Procesos se reemplazó el mensaje equívoco `"✅ 0 apps distintas"` por un texto neutro y descriptivo.
+- **Desborde de texto en pantallas pequeñas.** Se añadió ajuste de línea (`wraplength=380`) a las descripciones de procesos para garantizar una visualización óptima en pantallas de 14" y ventanas mínimas de 720px.
+
+### Cambiado
+- **Barra de navegación renovada.** Altura fija estricta de 44px con `pack_propagate(False)`, soporte hover suave y marcado del estado activo mediante acento visual y texto primario, reemplazando el relleno azul estridente anterior.
+- **Cabeceras de categorías mejoradas.** Las cabeceras del Gestor de Procesos ahora cuentan con fondo visual (`SURFACE_ALT`), hover interactivo y recuento explícito de apps contenidas (`▼ Categoría (N)`).
+- **Tarjeta del pack Gaming destacada.** Borde de acento verde y badge `PRESET` diferenciado para identificarlo inmediatamente frente a los packs de usuario.
+- **Objetivos de puntero ampliados.** Todos los botones y herramientas interactivas cumplen la cota mínima ergonómica de `28x28px`.
+
+### Impacto
+Se completó la consolidación estética y funcional más importante desde el rediseño v3. La interfaz ya no depende de colores hardcodeados dispersos, cumple los estándares de accesibilidad de contraste WCAG AA, clarifica la semántica de seguridad (verde para gaming, rojo solo para peligro) y ofrece una experiencia fluida, consistente y profesional.
+
+---
+
 ## CYCLE-021 - 2026-09-30
 
 **Resiliencia & Deuda Técnica** — `TASK-028` (FIX-010 al FIX-020)

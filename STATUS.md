@@ -6,19 +6,19 @@
 
 ## 🟢 Salud General del Sistema
 - **Sintaxis Estática UI:** 🟢 Pasa al 100% (`verify_ui_syntax.py`, 8 módulos)
-- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **57 tests**: 56 backend + 1 headless UI)
+- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **64 tests**: 63 backend + 1 headless UI)
 - **Micro-Benchmark Base:** 182 ms (Init) | 16.4 ms (Escaneo 326 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
-- **Compilación PyInstaller:** 🟡 Al día con el ciclo #11, **pendiente de regenerar** (no incluye los fixes de los ciclos #12, #13 y #14)
+- **Compilación PyInstaller:** 🟡 Al día con el ciclo #11, **pendiente de regenerar**
 - **Base de Datos de Procesos:** 73 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
-- **Versionado:** ⚠️ **Ciclos #14 a #20 SIN COMMIT.** El shell del entorno falló con `spawn EPERM` de forma intermitente y `git_safe_commit.py` requiere `subprocess`. El árbol tiene cambios pendientes de versionar.
+- **Versionado:** 🟢 Al día en git (`16ef4dc` feat(ui): TASK-029).
 
 ---
 
 ### 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 21 (`rd_journal.json` actualizado).
-- **Ciclo Actual #22:** Paso 1 — la tarea activa es `TASK-029` (sistema de diseño y refresco visual del front).
-- **Última Acción:** Ciclo #21 TASK-028 — saneamiento de deuda técnica (logging, versión, archivo legacy, F1). **57 tests backend + 1 UI en verde, Paso 4 = PASS.**
+- **Ciclos Completados:** 22 (`rd_journal.json` actualizado).
+- **Ciclo Actual #23:** Paso 1 — Selección de nueva tarea en el backlog.
+- **Última Acción:** Ciclo #22 TASK-029 — Sistema de diseño y refresco visual del front (`ui/theme.py`, `woptimizer.ico`, Opción A verde, `NewPackModal`, hit targets ≥28x28). **63 tests backend + 1 UI en verde, Paso 4 = PASS.**
 
 ---
 
@@ -41,6 +41,7 @@
 16. **[Ciclo #16 - Pipeline]:** 🔧 **Los tres roles del pipeline pasaron de skills a agentes reales** (`architect-review`, `openspec-dev`, `process-db-updater`), así que aparecen en el panel del runtime y se delegan con `task` en vez de que el orquestador traduzca sus directrices a mano. La causa de que el propietario no los viera: `.agents/skills/` y el panel de agentes son **mecanismos distintos**, y la skill además pedía `invoke_subagent`, un mecanismo ya inexistente que rompía la primera invocación. Reparadas 5 referencias a `tm.py` (no ejecutable en este entorno) y la matriz de modelos, que pedía valores no soportados. Cerrados **dos falsos verdes del propio validador** introducidos en este y el ciclo anterior, y una regresión mía: al renombrar la sección de roles de `AGENTS.md`, el validador —que buscaba el encabezado por nombre literal— pasó a dar FAIL. Sin cambios en `src/`.
 17. **[Ciclo #17 - Pipeline]:** 🧬 **El bucle pasa de 3 a 4 pasos: alguien rompe el código a propósito para ver si los tests se enteran.** `run_tests.py` en verde dice que el código hace lo que el test comprueba, **no** que el test compruebe algo — la cobertura mide ejecución, no verificación. Nuevo agente `mutation-auditor` con una tabla de 12 mutaciones canónicas de este repo, que trabaja solo sobre copias y tiene prohibido reparar lo que encuentra. **Su primer arranque devolvió FAIL**: encontró 3 tests de los ciclos 14-15 que pasan con el bug puesto, incluido el de escritura atómica (mira que exista un `.tmp`, así que si la atomicidad desaparece y el `.tmp` nunca se crea, el assert sigue verde) y el de errores de permisos (acepta igual "no intentó guardar" que "intentó y falló"). También reparadas 5 referencias a `tm.py` en `AGENTS.md` que mandaban usar un comando no funcional. Sin cambios en `src/`.
 18. **[Ciclo #21 - Resiliencia & Deuda Técnica]:** 🧹 **Saneamiento de deuda técnica (TASK-028, FIX-010 al FIX-020)** — `setup_logging` explícito con `force=True` y rotación de archivo sin ensuciar stderr; sincronización de versión `3.0.1.dev0` con test AST; perfiles legacy v2 archivados en `docs/archive/legacy-root-data/` con README; limpias redundancias en `quit_app` e `is_expanded`. 57 tests backend + 1 UI en verde y mutaciones auditadas con PASS.
+19. **[Ciclo #22 - Diseño & UI / Micro-UX]:** 🎨 **Sistema de diseño y refresco visual del front (TASK-029, UI-001 a UI-012)** — tokens centralizados en `ui/theme.py` (colores semánticos, 6 fuentes, 3 radios, WCAG AA); resolución de contradicción de marca (Opción A: Gaming verde `#1DB954`, peligro rojo `#c22d2d`); icono oficial `woptimizer.ico` en ventana y tray; barra de navegación fija a 44px; telemetría en reposo en `DashboardView` sin `psutil`; `NewPackModal` sin `messagebox`; hit targets ≥28x28px y descripciones responsive (`wraplength=380`). 63 tests backend + 1 UI en verde y Paso 4 = PASS (6/6 mutantes eliminados).
 
 ---
 

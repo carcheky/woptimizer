@@ -1,3 +1,45 @@
+## [CYCLE-022] 2026-09-30 20:15 — ui-visual-refresh
+**Área**: Diseño & UI / Micro-UX
+**Change**: openspec/changes/2026-09-29-ui-visual-refresh/
+**Estado**: COMPLETED
+**Models**:
+- Paso 1 (Buscar): inherit
+- Paso 2 (Planear): architect-review → VISTO BUENO PARA IMPLEMENTAR (Opción A adoptada)
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → VERDICT: PASS (6/6 mutantes eliminados)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| UI-002a (Cero hex) | Inyectar `fg_color="#123456"` en vista | killed | `test_no_literal_colors_in_views detectó literal hex suelto vía AST` |
+| UI-002b (Tokens) | Modificar `FONT_SIZES` o borrar token | killed | `test_theme_tokens_complete detectó token faltante / tupla de fuentes alterada` |
+| UI-010 (WCAG AA) | Degradar `TEXT_MUTED` a `#555555` (< 4.5:1) | killed | `test_contrast_wcag_aa detectó ratio 2.50:1 inferior a 4.5:1` |
+| UI-007 (Hit targets) | Reducir botón a `width=20` o `height=24` | killed | `test_hit_targets_minimum detectó botón con dimensión menor a 28x28px` |
+| UI-012b (Contrato semántico) | Cambiar `GAMING` a `#c22d2d` o contaminar semáforo | killed | `test_semantic_color_contract detectó violación de paleta Gaming/Peligro` |
+| UI-006 (Icono real) | Renombrar o corromper `assets/woptimizer.ico` | killed | `test_woptimizer_ico_exists_and_valid detectó archivo ausente o no-ICO` |
+
+### What
+- Sistema centralizado de tokens en `src/woptimizer/ui/theme.py`: roles semánticos de color (`SURFACE`, `ACCENT`, `GAMING`, `DANGER`), escala fija de 6 tamaños y 3 radios, funciones de luminancia y contraste WCAG 2.1 AA.
+- Resolución de contradicción de marca: adopción de Opción A (Gaming = verde `#1DB954`, peligro exclusivo rojo `#c22d2d`).
+- Icono oficial de aplicación `assets/woptimizer.ico` (multi-tamaño: 16 a 256px), cableado en `app.py` (`root.iconbitmap` y `pystray.Icon`).
+- Rediseño de barra de navegación (`main_window.py`): altura fija estricta de 44px (`pack_propagate(False)`), hover, y estado activo unificado en `_set_active_nav` con borde de acento y `text_primary`.
+- Portada (`DashboardView`): banda de telemetría permanente en reposo sin `psutil` (`process_service.get_running_processes()`), reetiquetado descriptivo (`N apps · M categorías · KILL`) y reutilización de widgets en `refresh_dashboard`.
+- Tarjeta de pack Gaming destacada (`pack_manager_view.py`): borde de acento verde `#1DB954` y badge `PRESET` con contraste WCAG AA 7.24:1 (`theme.SURFACE`).
+- Sustitución de `CTkInputDialog` huérfano por `NewPackModal` acoplado al toplevel con `grab_set()` y centrado relativo, sin `messagebox`.
+- Objetivos de puntero mínimos garantizados a `28x28px`.
+- Cabeceras de categorías con fondo `SURFACE_ALT`, hover `SURFACE_HOVER` y contador explícito `(N)`.
+- Responsive: `wraplength=380` en descripciones para ancho mínimo de 720px en pantallas de 14".
+
+### Outcome
+- Commits: `16ef4dc (feat)`
+- Tests: 63 backend + 1 headless UI PASS (0 fallos).
+- Docs: `docs/ai/ui-design-system.md` completamente actualizado como sistema de diseño estructurado.
+
+### Impact
+Consolidación completa del sistema visual y la ergonomía del frontend. Cero colores literales hardcodeados en vistas, accesibilidad WCAG AA contrast ratio certificada, separación nítida entre marca Gaming y alertas de peligro, e iconos nativos en ventana y bandeja del sistema.
+
+---
+
 ## [CYCLE-021] 2026-09-30 18:00 — task028-debt-cleanup
 **Área**: Resiliencia & Robustez / Deuda Técnica
 **Change**: openspec/changes/2026-09-30-task028-debt-cleanup/
