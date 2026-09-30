@@ -74,6 +74,8 @@
    - **Orden de reglas (normativo, G0-G9):** `G0` snapshot con `force_refresh=True` (la cache tiene TTL de 2 s y la doble pulsación tarda ~0,4 s: sin forzar se quedan fuera procesos recién lanzados — es eficacia, no seguridad) → `G1` barrera de categoría roja sobre `target_categories` → `G2` recorrido → `G3` **el nombre se evalúa siempre contra `p.full_name or p.name`** → `G4` blindaje de nombres (`is_system_protected`) → `G5` barrera de categoría roja sobre la categoría del proceso → `G6` keepers > apps > categorías → `G7` candidatos → `G8` única llamada a `kill_processes` → `G9` `skipped` **suma** los descartes del filtro a los de la vía de kill, para que la UI vea lo protegido en vez de silenciarlo.
    - **G-3 (`full_name`, nunca `name`):** los keepers y las apps explícitas se guardan con extensión (`"discord.exe"`, `"chrome.exe"`) mientras que `ProcessInfo.name` llega sin ella (`"discord"`). El matching de `should_kill_for_gaming` es por subcadena, así que evaluar con `name` haría que **keepers y apps murieran en silencio**: el usuario configuraría Steam y Discord como keepers y ambos caerían.
    - **G-2, barrera de categoría roja (la garantía anti-brick):** una categoría `🔴` en `target_categories` es **inerte, sea cual sea el nombre**, y se aplica en **dos sitios independientes**: (1) `get_safety_badge(c)["tier"] == "danger"` filtra `target_categories` antes de evaluar, y (2) un segundo filtro sobre `p.category` del snapshot. Hace falta porque `svchost` y `explorer` están en `🔴 Sistema de Windows` en `assets/process_db.json` y **no** figuran en `SYSTEM_PROTECTED_PROCESSES` (`is_system_protected('svchost')` es `False`): la categoría roja se ofrece como casilla activable en el acordeón del Gestor de Packs, y matarla dejaría Windows inservible. El blacklist de nombres no es una garantía suficiente para una evaluación por categoría, porque depende de que alguien se acuerde de añadir cada nombre nuevo.
+     - ⚠️ **Corrección TASK-028 (esta frase citaba el fichero equivocado, y el error era de los que hacen perder tiempo).** Este documento situaba `SYSTEM_PROTECTED_PROCESSES` en **`config.py`**. **Es falso: vive en `src/woptimizer/services/process_service.py:33-48`** (un `frozenset` de 34 nombres), junto al adaptador de `psutil` que lo consume, y **no** en `config.py` (que solo tiene `PROCESS_CATEGORIES` y los `patterns` legacy de clasificación). Importa porque quien vaya a tocar el blindaje irá primero a `config.py` y no lo encontrará, y porque `PROCESS_CATEGORIES['🔴 Sistema de Windows']['patterns']` (`config.py:82-86`) es una lista **distinta**, más amplia y de otro propósito: incluye procesos del usuario (`taskmgr`, `cmd`, `powershell`, `wsl`) que no rompen el SO. No son intercambiables. Verificado en caliente: `svchost` y `explorer` **no** están en el `frozenset` (`is_system_protected('svchost')` → `False`), que es lo que hace necesaria la barrera de categoría de arriba. Los 34 nombres están transcritos y explicados en [`data-models.md`](data-models.md), sección 'Blindaje anti-brick'.
+     - *(El encargo de TASK-028 citaba `process_service.py:23-38`; el rango real del `frozenset` es **33-48**, medido con `ast`. Aquí se transcribe el rango medido, no elAuditado.)*
    - **G-1, una sola puerta de kill:** `gaming_service.py` **no** importa el adaptador de procesos ni el de disco; delega íntegro en `kill_processes`, que ya aplica el blindaje de nombres, el kill recursivo (hijos antes que padre) y `invalidate_cache()`. El módulo **no** reimplementa el bucle de kill ni añade una cuarta llamada a un método privado de otro servicio.
    - **Gaming Mode sin apps:** un Gaming Mode válido puede tener `apps` vacía, porque su configuración vive en `keepers` + `target_categories`. Los dos `if not pack.apps: return` mudos de `dashboard_view.py` y `pack_manager_view.py` se levantaron a `if not pack.is_gaming and not pack.apps`, o el Gaming Mode solo por categorías no se ejecutaría nunca.
    - **Threading:** el kill va en `threading.Thread(..., daemon=True)`. La UI solo se toca con `self.after(0, ...)`, nunca `self.master.after(...)` (`MainWindow` destruye la vista en toda navegación y `master` es `content_frame`, que sobrevive). En el tray no hay `after`: solo `logger` + `notification_service`, ambos seguros desde cualquier hilo.
@@ -129,5 +131,38 @@
    - **Tests de regresión:** `test_arranque_de_apps_no_usa_shell` (sin Tk, sin DB, con `os.startfile` y `subprocess.Popen` instrumentados — el `Popen` sembrado lanza `BaseException`, no `Exception`, para que el `except Exception` del código viejo no lo pueda digerir en verde), `test_el_gestor_guarda_la_ruta_absoluta` y, de la iteración 2, `test_un_junction_no_puede_colar_lo_que_hay_detras`, `test_la_contencion_no_acepta_un_hermano_de_prefijo`, `test_la_contencion_no_depende_de_la_caja` y `test_la_guarda_de_shell_true_ve_atributos_y_aliases`; de la iteración 3, `test_un_hard_link_no_es_una_hoja_y_el_script_no_pasa` (hard link real, copia plena, `MZ` sin `PE\0\0`, `e_lfanew` absurdo, fail-closed y el control (6) sobre un `.exe` **instalado** con `st_nlink > 1`). Matriz de mutación medida: este párrafo declaraba **27 y 27**, y el `mutation-auditor` midió otra cosa (**29 mutaciones, 28 muertas**) con un superviviente: **M10**, la contención por prefijo, que nadie vigilaba. M10 queda cerrada en la iteración 2, cuya matriz es **21 mutaciones, 21 muertas** (re-verificada en la iteración 3, porque la regla 9 podía haber tapado a la comprobación de la extensión real y lo ha tapado: ver abajo). La iteración 3 añade `_mutmatrix_t027_iter3.py`, **5 mutaciones, 5 muertas, 0 supervivientes**. Tabla y sonda ejecutable en `docs/ai/testing-guide.md`.
    - **Aviso de la iteración 3, que es la clase de bug que hay que mirar dos veces:** al añadir la regla 9, los ficheros de prueba que الأبيض "una app" eran **vacíos**, y un `.exe` vacío no es un PE, así que la regla 9 los rechazaba **por el motivo equivocado**. Dos propiedades dejaron de estar probadas sin que ninguna sonda se quejara: la extensión real (mutación **A3**) y la lista blanca (caso (b)). La lección es: *una sonda que sigue verde puede estar midiendo otra cosa*. Se arregló con el helper `_escribir_pe_minimo` (fixtures que son PEs de verdad) y, sobre todo, con el caso (b) ampliado: el **mismo contenido** con `.bat` no arranca y con `.exe` sí, así que la diferencia la tiene que hacer la extensión y no el contenido.
 
-
-
+15. **Invariante: el canal de log se DECLARA, no se hereda de importar (TASK-028 / FIX-010):**
+   - **La regla.** Existe `setup_logging()` en `config.py` y la invoca **quien quiera
+     tener log a fichero**: `__main__.main()` antes de instanciar los servicios, y
+     `run_tests.py` en su `__main__`. **`config.py` no configura nada al importarse.**
+   - **Por qué NO se puede dejar como estaba.** Antes `config.py` ejecutaba
+     `logging.basicConfig(...)` a **nivel de módulo**: el contrato de §5 ("los errores
+     se canalizan a `woptimizer.log`") se cumplía como **efecto colateral de importar**.
+     Eso se rompe en silencio en cuanto alguien importa el paquete sin pasar por
+     `__main__`, y el caso real no es hipotético: **`run_tests.py` importa los
+     servicios sin pasar por ahí**. Sin fichero, un `logger.warning` no se pierde:
+     lo recoge el `lastResort` de la stdlib y sale por **stderr**, que es un fallo
+     mudo (parece un aviso del script y es la configuración del producto).
+   - **`force=True` es obligatorio, no cosmético.** `logging.basicConfig()` es un
+     **no-op mudo** si el root ya tiene handlers. Sin `force`, la segunda llamada no
+     reinstala el fichero, un handler ajeno sobrevive y sus avisos se siguen yendo a
+     donde se fueran. Con `force=True` la llamada es **idempotente por construcción**:
+     cierra y quita lo anterior y deja exactamente un handler.
+   - **El log rota.** `RotatingFileHandler` con `maxBytes = 1 MiB` y `backupCount = 3`.
+     El destino y el formato **no cambian** (mismo `woptimizer.log`, mismo
+     `'%(asctime)s - %(name)s - %(levelname)s - %(message)s'`), solo deja de crecer
+     sin control: el fichero había llegado a **1.799.880 bytes (1,8 MB)**, casi todo
+     ruido de la propia suite. Ojo al ignorar eso: `.gitignore` tenía `*.log`, que
+     **no** casa con `woptimizer.log.1`; sin la línea `*.log.*` un `git add -A` se
+     lleva por delante el histórico rotado.
+   - **`logger` no se mueve.** `logging.getLogger('woptimizer')` sigue en `config.py`
+     y lo importan `notification_service.py:21`, `pack_service.py:8`,
+     `process_service.py:7` y `ui/app.py:41,90`. Es el punto de contrato; desacoplar
+     el *canal* no toca el *nombre*.
+   - **Test de regresión:** `test_logging_va_a_fichero_y_no_a_stderr` (TASK-028). No
+     se limita a comprobar que existe un `FileHandler` —eso también lo daría un
+     `getLogger()` cualquiera—: afirma sobre el **contenido** (la marca del aviso
+     aparece dentro de `woptimizer.log`) y sobre el **control negativo** (la misma
+     marca **no** aparece en `stderr` con `contextlib.redirect_stderr`). La segunda
+     mitad es la que mata la implementación sin `force=True`: siembra un `StreamHandler`
+     a stderr, vuelve a llamar a `setup_logging()` y mira si el aviso se escapa.

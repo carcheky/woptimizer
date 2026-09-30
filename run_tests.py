@@ -5617,7 +5617,163 @@ def test_toggle_favorite_desmarca():
     print("La estrella desmarca el favorito en la segunda pulsacion (FIX-006).")
 
 
+def test_logging_va_a_fichero_y_no_a_stderr():
+    """FIX-010: el contrato de log de `docs/ai/architecture.md` §5 ("los errores
+    se canalizan a woptimizer.log") tiene que cumplirse SIN depender de que
+    alguien pase por `__main__`.
+
+    QUE MATA, y por que esta sonda no es tautologica:
+      * Hoy `config.py` no expone `setup_logging` -> AttributeError.
+      * Una implementacion SIN `force=True` deja vivo un handler ajeno: el aviso
+        sigue yendose a su stderr (parte 2 de abajo, con el espia de por medio) y
+        ademas quedan DOS handlers en el root.
+      * Una implementacion que no escriba a fichero tampoco pasa: sin handler en
+        el root, la stdlib manda el aviso a `lastResort` (stderr).
+    """
+    import contextlib
+    import logging
+    from woptimizer.config import _app_dir, logger, setup_logging
+
+    root = logging.getLogger()
+    handlers_prev = root.handlers[:]
+    level_prev = root.level
+    log_path = os.path.join(_app_dir(), "woptimizer.log")
+
+    try:
+        # (1) Destino: UN handler de fichero, y el aviso ACABA dentro. La
+        #     afirmacion es sobre el CONTENIDO del log, no sobre "se llamo".
+        root.handlers.clear()
+        setup_logging()
+
+        ficheros = [h for h in root.handlers if isinstance(h, logging.FileHandler)]
+        assert len(ficheros) == 1, (
+            "setup_logging() debe instalar UN handler de fichero, instala "
+            f"{[type(h).__name__ for h in root.handlers]}"
+        )
+        assert os.path.basename(ficheros[0].baseFilename) == "woptimizer.log", (
+            f"el log no va a woptimizer.log: {ficheros[0].baseFilename}"
+        )
+        assert os.path.normcase(ficheros[0].baseFilename) == os.path.normcase(log_path), (
+            f"el log deberia ir al lado de la app: {ficheros[0].baseFilename}"
+        )
+
+        marca = "Sonda-FIX-010-al-fichero"
+        err1 = io.StringIO()
+        with contextlib.redirect_stderr(err1):
+            logger.warning(marca)
+        assert marca not in err1.getvalue(), (
+            "sin fichero la stdlib manda el aviso a stderr (lastResort): "
+            f"{err1.getvalue()!r}"
+        )
+        with open(log_path, "r", encoding="utf-8", errors="replace") as fh:
+            cola = fh.read()[-8000:]
+        assert marca in cola, (
+            "el aviso no llego a woptimizer.log: el contrato de architecture.md "
+            "se estaria cumpliendo solo a medias"
+        )
+
+        # (2) IDEMPOTENCIA REAL, que es lo que hace `force=True` obligatorio. Se
+        #     SIEMBRA un handler ajeno a stderr: sin `force=True`, `basicConfig()`
+        #     es un no-op mudo, el handler sobrevive y su aviso se escapa por
+        #     stderr. Con `force=True` se cierra, se quita y solo queda el
+        #     fichero. Por eso NO se cuenta "handlers llamados" sinohandlers
+        #     SUPERVIVIENTES: contar llamadas seria tautologico.
+        err2 = io.StringIO()
+        marca2 = marca + "-idempotente"
+        with contextlib.redirect_stderr(err2):
+            root.addHandler(logging.StreamHandler(sys.stderr))
+            setup_logging()
+            supervivientes = list(root.handlers)
+            logger.warning(marca2)
+        assert marca2 not in err2.getvalue(), (
+            "la segunda llamada de setup_logging() dejo vivo un handler previo: "
+            f"sin force=True basicConfig es un no-op. Quedan "
+            f"{[type(h).__name__ for h in supervivientes]}"
+        )
+        assert len(supervivientes) == 1, (
+            "la segunda llamada debe dejar UN handler en el root, deja "
+            f"{[type(h).__name__ for h in supervivientes]}"
+        )
+        assert isinstance(supervivientes[0], logging.FileHandler) and os.path.basename(
+            supervivientes[0].baseFilename
+        ) == "woptimizer.log", (
+            f"la segunda llamada debe reinstalar el handler de fichero, deja "
+            f"{[type(h).__name__ for h in supervivientes]}"
+        )
+    finally:
+        for h in root.handlers:
+            if not any(h is p for p in handlers_prev):
+                h.close()
+        root.handlers[:] = handlers_prev
+        root.setLevel(level_prev)
+
+    print("Los avisos van a woptimizer.log y no se escapan a stderr (FIX-010).")
+
+
+def test_la_consulta_de_version_no_puede_desincronizarse():
+    """FIX-018: la version vivia en DOS ficheros y DESINCRONIZADA
+    (`pyproject.toml` = "3.0.0", `__init__.py` = "3.0.0.dev0"). Una pregunta que
+    la app hace de si misma no puede tener dos respuestas.
+
+    QUE MATA: hoy los dos valores no coinciden, y la asercion de contenido es
+    exactamente esa. No es un test de "existe el atributo": compara los dos
+    valores leidos de las FUENTES, con la version ya unificada.
+    """
+    import re
+    import tomllib
+
+    raiz = os.path.dirname(os.path.abspath(__file__))
+
+    with open(os.path.join(raiz, "pyproject.toml"), "rb") as fh:
+        v_pyproject = tomllib.load(fh)["project"]["version"]
+
+    # NUNCA `import woptimizer` para leer la version: importarlo EJECUTA el
+    # paquete entero. Se parsea el texto con `ast`, que solo mira el literal.
+    ruta_init = os.path.join(raiz, "src", "woptimizer", "__init__.py")
+    with open(ruta_init, encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read(), filename=ruta_init)
+    v_init = None
+    for nodo in arbol.body:
+        if not isinstance(nodo, ast.Assign):
+            continue
+        for objetivo in nodo.targets:
+            if getattr(objetivo, "id", None) == "__version__":
+                v_init = ast.literal_eval(nodo.value)
+
+    assert v_init is not None, "src/woptimizer/__init__.py no declara __version__"
+    assert v_init == v_pyproject, (
+        f"la version esta desincronizada: pyproject.toml dice {v_pyproject!r} y "
+        f"__init__.py dice {v_init!r}. Se declara UN solo valor en los dos sitios."
+    )
+
+    # Y que no aparezca un TERCER sitio que vuelva a separarlos. Estos tres son
+    # los que participan en el empaquetado; hoy ninguno declara version
+    # (PyInstaller la toma del .exe) y la sonda lo deja fijado por escrito.
+    for nombre in ("woptimizer.spec", "build.bat", "force_build.py"):
+        ruta = os.path.join(raiz, nombre)
+        if not os.path.exists(ruta):
+            continue
+        with open(ruta, encoding="utf-8", errors="replace") as fh:
+            for num, linea in enumerate(fh.read().splitlines(), 1):
+                if "version" not in linea.lower():
+                    continue
+                for encontrada in re.findall(r"\b\d+\.\d+\.\d+(?:\.dev\d+)?\b", linea):
+                    assert encontrada == v_pyproject, (
+                        f"{nombre}:{num} declara otra version ({encontrada!r}); la "
+                        f"unica buena es {v_pyproject!r}"
+                    )
+
+    print("pyproject.toml y __init__.py declaran la MISMA version (FIX-018).")
+
+
 if __name__ == "__main__":
+    # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
+    # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
+    # al `lastResort` de la stdlib (stderr) en vez de a `woptimizer.log`, que es
+    # justo el contrato que promete `docs/ai/architecture.md` §5.
+    from woptimizer.config import setup_logging as _setup_logging
+    _setup_logging()
+
     print("--- Running Backend Tests ---")
     test_models()
     test_process_service_signatures()
@@ -5690,6 +5846,10 @@ if __name__ == "__main__":
     test_el_gestor_guarda_la_ruta_absoluta()
     test_orden_de_categorias_no_es_alfabetico()
     test_toggle_favorite_desmarca()
+    # TASK-028: FIX-010 (el log va a fichero, no a stderr) y FIX-018 (la version
+    # no puede desincronizarse entre pyproject.toml y __init__.py).
+    test_logging_va_a_fichero_y_no_a_stderr()
+    test_la_consulta_de_version_no_puede_desincronizarse()
     print("\n--- Running Headless UI Test ---")
     test_headless_ui()
     print("\nALL TESTS PASSED.")

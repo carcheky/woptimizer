@@ -6,6 +6,11 @@
 # Datos de usuario (perfiles, sesiones, lista de procesos matados)
 profiles.json
 saved_processes.json
+# TASK-028 (FIX-015): EXCEPCION deliberada. El `profiles.json` de la raiz (420 B,
+# esquema v2 muerto) se archivo en `docs/archive/legacy-root-data/` en vez de
+# borrarse; si no se exceptua aqui, seguiria IGNORADO y el archivo archivado
+# existiria solo en esta maquina, que es justo lo contrario de archivar.
+!docs/archive/legacy-root-data/profiles.json
 
 # Python
 __pycache__/
@@ -40,6 +45,10 @@ desktop.ini
 
 # Logs
 *.log
+# TASK-028 (FIX-010): el log ahora rota (RotatingFileHandler) y `*.log` NO
+# cubre `woptimizer.log.1`. Sin esta linea, `git add -A` se llevaria por
+# delante el historico rotado de 1,8 MB.
+*.log.*
 logs/
 
 # Outputs temporales / tests

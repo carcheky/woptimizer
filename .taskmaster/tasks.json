@@ -1,6 +1,6 @@
 {
   "project": "woptimizer",
-  "version": "3.0.0",
+  "version": "3.0.1.dev0",
   "updated_at": "2026-09-29T10:45:00Z",
   "active_task_id": "TASK-028",
   "tasks": [
@@ -497,7 +497,7 @@
       "description": "Limpieza general y consolidación del repositorio: (1) FIX-010: mover logging.basicConfig a función explícita setup_logging en __main__.py; (2) FIX-011: eliminar constante PROCESS_LIST_FILE y fichero saved_processes.json obsoleto; (3) FIX-012: limpiar is_expanded; (4) FIX-013: migrar procesos útiles de procesos.csv a assets/process_db.json respetando blindaje anti-brick; (5) FIX-014: PRESERVAR los 11 test_*.py del root por norma del propietario; consolidar suite viva en run_tests.py; (6) FIX-015: limpiar json de perfiles legacy del root; (7) FIX-016 a FIX-020: eliminar imports redundantes, sincronizar docs y unificar versión 3.0.1.",
       "complexity": 3,
       "priority": "medium",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-027"
       ],

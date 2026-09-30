@@ -1,0 +1,21 @@
+{
+  "profiles": {
+    "__system_gaming__": {
+      "kind": "system",
+      "label": "🚀 Preparar para Gaming",
+      "keepers": [
+        "discord"
+      ],
+      "kill_low_chat": true,
+      "factory": {
+        "kind": "system",
+        "label": "🚀 Preparar para Gaming",
+        "keepers": [
+          "discord"
+        ],
+        "kill_low_chat": true
+      }
+    }
+  },
+  "favorite": null
+}

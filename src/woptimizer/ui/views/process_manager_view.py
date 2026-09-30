@@ -181,7 +181,10 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
         # entrelaza verde y amarillo a proposito.
         for cat in ordenar_categorias(categories.keys()):
             items = sorted(categories[cat], key=lambda x: x[0])
-            is_expanded = True if search_query else True
+            # TASK-028 (FIX-012): era `True if search_query else True`, un
+            # tautema (ambas ramas True). Se deja explicito el comportamiento
+            # real: las categorias se abren SIEMPRE, con busqueda o sin ella.
+            is_expanded = True
             self._create_category_section(cat, items, is_expanded, previously_selected)
                 
         self.status_label.configure(text=f"✅ {len(grouped)} apps distintas.")

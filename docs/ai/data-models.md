@@ -522,6 +522,35 @@ alguien los registra por error en el JSON.
   de cubrir el núcleo duro, o (c) el blindaje deja de forzar 🔴/`none` con un JSON
   envenenado a propósito.
 
+#### Los 34 nombres, transcritos (TASK-028)
+
+`SYSTEM_PROTECTED_PROCESSES` es un `frozenset` de **34** entradas en
+`src/woptimizer/services/process_service.py:33-48` (rango medido con `ast`; el
+encargo de TASK-028 citaba 23-38, que era otro tramo del fichero). Coincidencia
+**exacta** sobre el nombre normalizado, nunca por subcadena:
+
+  - **Nucleo irrompible**: `csrss`, `lsass`, `winlogon`, `smss`, `services`, `wininit`, `registry`, `memcompression`, `system`, `system idle process`.
+  - **Sesion de usuario y escritorio**: `dwm`, `sihost`, `conhost`, `openconsole`, `dllhost`, `ctfmon`, `fontdrvhost`, `spoolsv`, `lsaiso`, `ngciso`, `shellexperiencehost`, `startmenuexperiencehost`, `searchhost`, `searchindexer`, `runtimebroker`, `taskhostw`, `textinputhost`, `systemsettings`.
+  - **Audio y dispositivos**: `audiodg`.
+  - **Seguridad y drivers en modo usuario**: `wudfsvc`, `wudfhost`, `securityhealthsystray`, `securityhealthservice`, `securityhealthui`.
+
+⚠️ **Los que NO estan, y por qué su ausencia no es un agujero.** `svchost` y
+`explorer` **no** están en la lista (verificado en caliente:
+`is_system_protected('svchost')` → `False`), y sí están en
+`🔴 Sistema de Windows` en `assets/process_db.json`. Por eso existe la
+**barrera de categoría roja** (G-2, `architecture.md` §11): una lista negra de
+nombres no es una garantía, porque depende de que alguien se acuerde de añadir
+cada nombre nuevo. Lo mismo pasa con `applicationframehost`, `widgetboard` y
+`widgetservice`: son componentes de shell, no están en el `frozenset` y una
+importación masiva de datos los volvería cerrables. **La barrera de categoría, no
+la lista, es la garantía.**
+
+Y no confundir esta lista con los `patterns` de
+`PROCESS_CATEGORIES['🔴 Sistema de Windows']` (`config.py:82-86`), que están en
+otro fichero, son más amplios (incluyen `taskmgr`, `cmd`, `powershell`,
+`wsl`) y sirven para **clasificar**, no para **blindar**. No son intercambiables:
+sustituir una por otra abre un vector de brick o deja procesos de sistema cerrables.
+
 ### Qué entra y qué no
 - **Sí**: bloatware y telemetría de terceros (PowerToys, procesos de consumo de Armoury Crate,
   mejoras de audio, language servers, actualizadores de drivers). Van a `🟢 Productividad`
@@ -531,3 +560,26 @@ alguien los registra por error en el JSON.
   `rogliveservice`) van a `🔴 Overlays e Info` / `none`, igual que `icue`, `razer` o `lghub`,
   porque cerrarlas deja el equipo sin perfil de ventilación o RGB.
 
+### 7. Version del paquete: UN valor en UN sitio (TASK-028 / FIX-018)
+
+`pyproject.toml` (`[project].version`) y `src/woptimizer/__init__.py`
+(`__version__`) declaraban **valores distintos y desincronizados**: `"3.0.0"` y
+`"3.0.0.dev0"`. Una pregunta que la app hace de sí misma ("¿qué versión soy?")
+tenía dos respuestas, y la segunda es la que ve un `import woptimizer`.
+
+**Valor único: `"3.0.1.dev0"`**, en los dos ficheros. Se elige un `dev0` y no un
+`3.0.1` a secas porque **`3.0.1` afirmaría una release publicada que no existe**:
+`dev0` dice "la siguiente versión es 3.0.1 y sigo en desarrollo" sin mentir.
+
+**No hay un tercer sitio.** Verificado: `woptimizer.spec` no declara campo
+`version` (PyInstaller la toma del `.exe`), y `build.bat` y `force_build.py` no
+mencionan ninguna versión. La sonda `test_la_consulta_de_version_no_puede_desincronizarse`
+lo deja escrito: lee los dos ficheros (**`tomllib` y `ast`, nunca `import`**, que
+ejecutaría el paquete) y además comprueba que ninguno de esos tres ficheros de
+empaquetado vuelva a declarar una versión por su cuenta.
+
+> Nota de honestidad: `commit_version.bat:22` hace `findstr "__version__"
+> process_manager.py`, y **`process_manager.py` no existe** (es un fichero legacy ya
+> retirado y listado en `.gitignore`). Ese script está muerto desde antes de este
+> ciclo. No se ha tocado: no es una fuente de versión, es un *consumidor* de una, y
+> no puede desincronizar nada. Es deuda, no unacorrección de este ciclo.

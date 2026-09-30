@@ -14,15 +14,61 @@ def _data_dir() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import logging
+from logging.handlers import RotatingFileHandler
 
-logging.basicConfig(
-    filename=os.path.join(_app_dir(), 'woptimizer.log'),
-    level=logging.WARNING,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# TASK-028 (FIX-010): el contrato de log de `docs/ai/architecture.md` §5 dice que
+# los errores "se canalizan a woptimizer.log". Antes ese contrato se cumplia por
+# un `logging.basicConfig(...)` de NIVEL DE MODULO, o sea como efecto colateral
+# de importar `config`. Eso se rompe en silencio en cuanto alguien importa el
+# paquete sin pasar por `__main__` (la suite `run_tests.py` es el caso real: la
+# huella son 1,8 MB de avisos acumulados en `woptimizer.log`). Por eso ahora
+# el canal se declara, se invoca (idempotente) y se puede comprobar.
+#
+# `force=True` NO es cosmetico: `basicConfig()` es un no-op mudo si el root ya
+# tiene handlers, asi que sin el la segunda llamada no reinstala el fichero y
+# un handler ajeno sobrevive (y sus avisos se siguen yendo a stderr).
+LOG_FILE_NAME = 'woptimizer.log'
+LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# El log crecia sin limite (1,8 MB medidos, casi todo de la propia suite). Se
+# rota: el destino y el formato no cambian, solo deja de crecer sin control.
+LOG_MAX_BYTES = 1_048_576
+LOG_BACKUP_COUNT = 3
+
+
+def setup_logging(level: int = logging.WARNING) -> None:
+    """Canaliza los avisos a `woptimizer.log`. Idempotente: se puede llamar
+    desde `__main__`, desde la suite y desde quien importe el paquete.
+
+    `force=True` cierra y elimina los handlers previos del root, de modo que
+    la segunda llamada no duplica ni deja vivos los de una configuracion
+    anterior. Se declara aqui y no en el `__main__` porque `logger` vive aqui
+    y porque el contrato de `architecture.md` §5 no puede depender de que se
+    importe por un camino concreto.
+    """
+    handler = RotatingFileHandler(
+        os.path.join(_app_dir(), LOG_FILE_NAME),
+        maxBytes=LOG_MAX_BYTES,
+        backupCount=LOG_BACKUP_COUNT,
+        encoding='utf-8',
+    )
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    logging.basicConfig(
+        level=level,
+        format=LOG_FORMAT,
+        handlers=[handler],
+        force=True,
+    )
+
+
+# Lo importan notification_service.py:21, pack_service.py:8, process_service.py:7
+# y ui/app.py:41,90. NO se mueve ni se elimina: es el punto de contrato.
 logger = logging.getLogger('woptimizer')
 
 PROCESS_LIST_FILE = os.path.join(_app_dir(), 'saved_processes.json')
+# FIX-011 NO se aplica (TASK-028, veto del arquitecto): `PROCESS_LIST_FILE` NO
+# esta sin usar. La consumen `test_gaming_session.py:36-50`, `test_harness.py:37`,
+# `test_harness_v2.py:64` (los tres protegidos por FIX-014) y `smoke_check.py:23`,
+# que hace `assert` sobre el TEXTO FUENTE de esta linea. Se queda.
 PROFILES_FILE = os.path.join(_app_dir(), 'profiles.json')
 
 

@@ -58,7 +58,6 @@ class WOptimizerApp:
             self.root.destroy()
         except Exception:
             pass
-        import sys
         sys.exit(0)
 
     def hide_window(self):

@@ -1,6 +1,6 @@
 [project]
 name = "woptimizer"
-version = "3.0.0"
+version = "3.0.1.dev0"
 description = "Kill distractions, game faster."
 readme = "README.md"
 requires-python = ">=3.11"
