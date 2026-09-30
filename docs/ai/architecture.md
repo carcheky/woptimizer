@@ -204,6 +204,34 @@
           porque un detector que no ve nada y uno que ve de más dan el **mismo** verde, que es
           justo el fallo que este ciclo viene a cerrar. Matriz medida en
           [`testing-guide.md`](testing-guide.md).
+        - **El criterio válido, escrito aquí para que no dependa de leer el docstring:
+          configurar el logging al importar es lo que se ejecuta al importar el módulo, y eso
+          NO es "todo lo de fuera de una función **o una clase**".** Lo prohibido es la cima,
+          dentro de un `if`/`try`/`for`/`while`/`with` de nivel de módulo, y **el cuerpo de
+          una clase** (que se ejecuta al importarla, igual que la cima). Lo único permitido
+          es **dentro de una función**. La versión anterior de este §15 y del docstring de
+          `_configuraciones_de_logging` decían "una función **o una clase** (lo permitido)":
+          era un criterio **falso**, la sonda lo aplicaba y la documentación **mintió con el
+          detector** (iteración 4, S4).
+        - **Iteración 4 del ciclo 21, S3 y S4 (los dos huecos que dejó el detector de la
+          iteración 3, medidos por el `mutation-auditor`).**
+          1. **S3 — el logger nombrado dentro de un bloque.** El detector solo recogía
+             `X = logging.getLogger(...)` de `módulo.body` **directo**, así que
+             `if ...: logger = logging.getLogger(__name__)` seguido de un
+             `logger.addHandler(h)` a nivel de módulo **pasaba**: el mutador no reconocía el
+             receptor. Es el defecto de FIX-010 colándose por una indirección. Ahora se
+             recoge también en `if`/`try`/`for`/`while`/`with`/`match`, sin cruzar frontera
+             de función ni de clase.
+          2. **S4 — el cuerpo de una clase.** Toda `ClassDef` iba entera a `dentro` sin
+             mirar su cuerpo, y el cuerpo de una clase **sí se ejecuta al importar**. El
+             criterio de arriba era más fuerte que lo que se medía. Ahora el cuerpo de una
+             clase cuenta como `fuera`, y lo que hay dentro de un **método** sigue contando
+             como `dentro`.
+          Las dos direcciones están fijadas en las tablas `ILEGALES`/`LEGALES` de la sonda
+          (**14 ilegales, 10 legales**), incluidas las que fijan justo lo contrario: método
+          de clase = legal, función anidada en un `if` de módulo = legal, `lambda` = legal
+          (su cuerpo no corre al importar) y comprehension = ilegal (su elemento **sí** se
+          ejecuta al importar).
    - **Lo que este §15 **no** cubre, y por qué no es una tarea pendiente.** Un `.bat` o un
      `.spec` nuevo que declare una versión con un token que no sea `ver`/`version` escaparía al
      escáner de `test_la_consulta_de_version_no_puede_desincronizarse` (que exige literal

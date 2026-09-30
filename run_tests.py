@@ -5862,6 +5862,45 @@ def _git(args, env, cwd):
         return None, str(e)
 
 
+def _rasgos_del_esquema_v2_retirado(doc):
+    """Esquema v2 RETIRado presente en `doc`. -> (bool, rasgos_que_lo_delatan).
+
+    ITERACION 4. Esto NO es "el fichero tiene una clave rara": `Pack` es
+    `extra="allow"`, asi que un campo de usuario llamado `factory` o
+    `kill_low_chat` es un documento LEGITIMO que la app abre sin quejarse. La
+    sonda anterior hacia `{"factory","kill_low_chat"} & set(registro)` sobre
+    CUALQUIER registro, de modo que un solo campo de usuario declaraba que el
+    esquema retirado habia vuelto - y el mensaje pedia borrar el fichero del
+    usuario. Eso no es un falso positivo de test: es una sonda capaz de matar
+    los packs de alguien.
+
+    El criterio, entonces, es la COMBINACION, medido contra el
+    `docs/archive/legacy-root-data/profiles.json` real (420 bytes). Los rasgos
+    se cuentan **dentro del MISMO registro**, porque en el archivado asi es como
+    aparecen: el registro `__system_gaming__` lleva a la vez el nombre de la
+    clave, `factory`, `kill_low_chat` y `kind: "system"`. Dos rasgos ya bastan
+    para declararlo, y uno solo NO: un discriminante unico es fragil por
+    definicion (es exactamente el nombre que un usuario puede elegir).
+    """
+    if not isinstance(doc, dict) or not isinstance(doc.get("profiles"), dict):
+        return False, []
+    for nombre, registro in doc["profiles"].items():
+        if not isinstance(registro, dict):
+            continue
+        rasgos = []
+        if nombre == "__system_gaming__":
+            rasgos.append("la clave de registro se llama '__system_gaming__'")
+        if "factory" in registro:
+            rasgos.append("el campo 'factory' (el v2 se anidaba a si mismo)")
+        if "kill_low_chat" in registro:
+            rasgos.append("el campo 'kill_low_chat'")
+        if registro.get("kind") == "system":
+            rasgos.append("el campo 'kind' con valor 'system'")
+        if len(rasgos) >= 2:
+            return True, rasgos
+    return False, []
+
+
 def test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz():
     """M12/M13/M14/M15: la norma "nunca borrar, siempre archivar" no la vigilaba
     NADA, y su fallo es el peor de los silenciosos: sin la excepcion de
@@ -5984,38 +6023,91 @@ def test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz():
 
     # Claves que el esquema v2 usaba y `models.py` NO define (`extra="allow"`
     # las conservaria, y por eso un fichero v2 no se rompe: se arrastra).
+    #
+    # ITERACION 4, PARTE (a): la ruta viva es ESTADO LOCAL DEL USUARIO y hay
+    # estados que la app SOPORTA y esta sonda se negaba a soportar. Medido por
+    # el auditor: con un `profiles.json` invalido, o con uno vacio (0 bytes, lo
+    # que deja un corte de luz o un antivirus que lo trunca), la suite salia
+    # en ROJA. El propio mensaje reconocia el caso ("la app tampoco lo abriria:
+    # lo marcaria como danado y arrancaria con cero packs") y aun asi tumbaba
+    # la suite: un estado soportado no puede ser un fallo de test. Y lo grave
+    # no era el rojo, era la segunda frase del mensaje, que le decia al usuario
+    # que BORRARA su fichero de packs.
+    #
+    # Por eso a partir de aqui la sonda NO exige JSON valido: si el documento no
+    # se puede leer, no hay nada que afirmar (no es evidencia de nada) y se avisa
+    # por `print()`. Un fichero corrupto o truncado no puede ser el v2 retirado
+    # con forma de v2, y sobre todo no es asunto de la suite.
     viva = PROFILES_FILE
     with open(os.path.join(dir_arch, "profiles.json"), encoding="utf-8") as fh:
         crudo_archivado = fh.read()
+
+    # El detector se prueba CONTRA SI MISMO antes de mirar nada (parte b): una
+    # tabla de SI y otra de NO, porque un detector que no ve nada y uno que ve
+    # de mas dan el MISMO verde. La fila de SI son los bytes archivados REALES.
+    v2_doc = json.loads(crudo_archivado)
+    detectado, rasgos = _rasgos_del_esquema_v2_retirado(v2_doc)
+    assert detectado, (
+        "CONTROL ROTO (falso NEGATIVO): el detector no reconoce el esquema v2 RETIRADO ni "
+        "siquiera en el `profiles.json` archivado, que es la copia literal. Entonces "
+        "`assert not ...` de mas abajo pasaria SIEMPRE y la asercion no estaria midiendo "
+        f"nada. Rasgos que el detector ve en el archivado: {rasgos}"
+    )
+    for etiqueta, doc in (
+        ("campo de usuario 'factory' en su propio pack (extra=allow, documento legitimo)",
+         {"profiles": {"streaming": {"name": "Streaming", "factory": True}}}),
+        ("campo de usuario 'kill_low_chat' en su propio pack",
+         {"profiles": {"streaming": {"name": "Streaming", "kill_low_chat": False}}}),
+        ("un pack que se LLAMA '__system_gaming__' pero sin ningun campo del v2",
+         {"profiles": {"__system_gaming__": {"name": "Gaming", "apps": ["steam.exe"]}}}),
+        ("el esquema VIVO (raiz 'packs', la firma de models.py)",
+         {"packs": {"gaming": {"id": "gaming", "name": "Gaming", "is_gaming": True}}}),
+        ("el mismo campo de usuario en DOS packs distintos, cada uno por su lado",
+         {"profiles": {"a": {"factory": True}, "b": {"kill_low_chat": True}}}),
+    ):
+        falso, _ = _rasgos_del_esquema_v2_retirado(doc)
+        assert not falso, (
+            f"CONTROL ROTO (falso POSITIVO): el detector declara que el esquema v2 ha vuelto "
+            f"ante «{etiqueta}» ({doc!r}). Eso NO es un v2: es un fichero de usuario "
+            "legitimo que `Pack` acepta porque es `extra=\"allow\"`, y con el detector asi la "
+            "suite le diria a alguien que su configuracion esta rota y que la borre. Un "
+            "discriminante unico (un campo suelto) no puede ser el criterio."
+        )
+
     if os.path.exists(viva):
         with open(viva, encoding="utf-8") as fh:
             crudo_vivo = fh.read()
+        doc_vivo = None
+        motivo = ""
         try:
             doc_vivo = json.loads(crudo_vivo)
         except ValueError as e:
-            raise AssertionError(
-                f"el profiles.json de la ruta viva ({viva}) no es JSON ({e}). La app tampoco "
-                "lo abriria: lo marcaria como danado y arrancaria con cero packs. Es estado "
-                "local de esta maquina (lo ignora .gitignore): se borra y la app lo regenera."
-            ) from e
-        registros = doc_vivo.get("profiles") if isinstance(doc_vivo, dict) else None
-        encontrados = set()
-        if isinstance(registros, dict):
-            if "__system_gaming__" in registros:
-                encontrados.add("__system_gaming__")
-            for registro in registros.values():
-                if isinstance(registro, dict):
-                    encontrados |= {"factory", "kill_low_chat"} & set(registro)
-        assert not encontrados, (
-            f"el profiles.json de la RUTA VIVA ({viva}) es el esquema v2 RETIRADO: declara "
-            f"{sorted(encontrados)}, que no existen en models.py. La app lee esta ruta, no la "
-            "raiz, y `load()` tiene rama legacy: lo abriria de verdad y resucitaria el preset "
-            "de fabrica `__system_gaming__`. Es el archivo de docs/archive/legacy-root-data "
-            "copiado al sitio de lectura (el mutation-auditor lo midio: copia ahi -> suite en "
-            f"verde). Coincide byte a byte con el archivado: {crudo_vivo == crudo_archivado}. "
-            "El fichero de la ruta viva es estado local (lo ignora .gitignore): se borra y la "
-            "app lo regenera en el primer guardado."
-        )
+            motivo = f"no se puede leer como JSON ({e})"
+        except (OSError, UnicodeDecodeError) as e:
+            motivo = f"no se puede leer ({e})"
+        if doc_vivo is None:
+            # OBSERVACION, no asercion. Se escribe como hecho, nunca como orden.
+            print(f"  [aviso] Hay un profiles.json local en {viva} y {motivo}. La app lo "
+                  "tolera: lo marca como danado, arranca con cero packs y lo regenera en el "
+                  "primer guardado. La suite no afirma nada sobre el (estado local, "
+                  "gitignored, y esta sonda no lo lee como evidencia de nada).")
+        else:
+            es_v2, rasgos = _rasgos_del_esquema_v2_retirado(doc_vivo)
+            assert not es_v2, (
+                f"el profiles.json de la RUTA VIVA ({viva}) es el esquema v2 RETIRADO: el "
+                f"mismo registro acumula {rasgos}, y eso no lo puede inventar un documento "
+                "vivo. La app lee esta ruta, no la raiz, y `load()` tiene rama legacy: lo "
+                "abiria de verdad y resucitaria el preset de fabrica `__system_gaming__` con "
+                "claves que `models.py` no define. Es el archivo de "
+                "docs/archive/legacy-root-data copiado al sitio de lectura (medido por el "
+                f"mutation-auditor: copia ahi -> suite en rojo). Coincide byte a byte con el "
+                f"archivado: {crudo_vivo == crudo_archivado}. "
+                "COMO LLEGAR AQUI: `src/woptimizer/profiles.json` es estado local de esta "
+                "maquina (lo ignora .gitignore), lo escribe la propia app y la app lo tolera. "
+                "Esta sonda no lo borra, no lo renombra y no recomienda borrarlo; lo que dice "
+                "es que su contenido coincide con el esquema retirado, y la decision de que "
+                "hacer con el es del usuario."
+            )
 
     print("El archivo de docs/archive esta versionado, completo, sin volver a la raiz "
           "ni a la ruta viva que lee la app.")
@@ -6316,19 +6408,105 @@ def _es_get_logger(nodo):
         "logging.getLogger", "getLogger")
 
 
-def _configuraciones_de_logging(codigo, nombre="<memoria>"):
-    """Lineas de nivel de modulo que CONFIGURAN el logging. -> (fuera, dentro).
+def _bloques_de_ejecucion(stmt):
+    """Las listas de sentencias que `stmt` ejecuta cuando el modulo se importa.
 
-    `fuera` son los hallazgos a nivel de modulo (lo que esta sonda prohibe) y
-    `dentro` los que estan dentro de una funcion o una clase (lo permitido:
-    `setup_logging()` existe precisamente para configurar ahi, y se invoca
-    desde `__main__` y desde la suite).
+    Son `body`/`orelse`/`finalbody` de los compuestos (if, try, for, while,
+    with, match) mas los `handlers` de un `try` y los `cases` de un `match`.
+    Los dos ultimos no son `ast.stmt`, y por eso se ceden tal cual: quien
+    recurse ya sabe bajar a su `.body`.
+    """
+    for nombre in ("body", "orelse", "finalbody"):
+        for sub in getattr(stmt, nombre, None) or ():
+            if isinstance(sub, ast.stmt):
+                yield sub
+    for handler in getattr(stmt, "handlers", None) or ():
+        yield handler
+    for caso in getattr(stmt, "cases", None) or ():
+        yield caso
+
+
+def _plano_de_ejecucion(bloque, dentro_de_clase=False):
+    """`bloque` aplanado en el orden en que se EJECUTA, sin cruzar fronteras.
+
+    ITERACION 4, S3 y S4. El aplanado anterior era `arbol.body` a pelo, y eso
+    hacia dos-hole, los dos medidos por el mutation-auditor:
+
+      * (S3) `if __name__ == '__main__': logger = logging.getLogger(__name__)`
+        seguido de `logger.addHandler(h)` a nivel de modulo: el `Assign` del
+        logger esta anidado en el `if`, no se recogia, el mutador no
+        reconocia el receptor y la configuracion PASABA. Es el defecto de
+        FIX-010 colandose por una indireccion.
+      * (S4) el cuerpo de una CLASE va entero a `dentro`, sin mirar su
+        contenido, y el cuerpo de una clase SI se ejecuta al importar el
+        modulo. `class X: logging.basicConfig(...)` es tan configurable al
+        importar como `logging.basicConfig(...)` en la cima.
+
+    Ahora se entra en `if`/`try`/`for`/`while`/`with`/`match` a cualquier nivel
+    de bloque, y en el cuerpo de una clase, pero NUNCA en el de una funcion
+    (ahi no se ejecuta nada al importar), ni en el de otra clase anidada, ni en
+    el de una lambda o una comprehension.
+    """
+    for stmt in bloque:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            continue                                  # frontera dura
+        if isinstance(stmt, ast.ClassDef):
+            if dentro_de_clase:
+                continue                              # clase anidada: otro ámbito
+            yield from _plano_de_ejecucion(stmt.body, dentro_de_clase=True)
+            continue
+        yield stmt
+        yield from _plano_de_ejecucion(_bloques_de_ejecucion(stmt), dentro_de_clase)
+
+
+class _NodosEjecutados(ast.NodeVisitor):
+    """Recoge los nodos de lo que se EJECUTA al importar, sin los cuerpos.
+
+    `ast.walk` baja al subarbol ENTERO, de modo que una funcion anidada en un
+    `if` de nivel de modulo (`if __name__ == '__main__': def main(): ...`)
+    hacia que su cuerpo se escaneara como si se ejecutara al importar. Aqui se
+    entra en el cuerpo de una CLASE (que si se ejecuta, S4) pero no en el de una
+    funcion ni en el de una lambda (que no se ejecutan hasta que se llamen).
+    Una comprehension si se ejecuta, y por eso se recorre: `[logging.
+    basicConfig() for _ in (1,)]` configura el root de verdad al importar.
+    """
+
+    def __init__(self):
+        self.nodos = []
+
+    def visit_FunctionDef(self, nodo):
+        pass
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+    visit_Lambda = visit_FunctionDef
+
+    def generic_visit(self, nodo):
+        self.nodos.append(nodo)
+        super().generic_visit(nodo)
+
+
+def _configuraciones_de_logging(codigo, nombre="<memoria>"):
+    """Lineas que CONFIGURAN el logging AL IMPORTAR el modulo. -> (fuera, dentro).
+
+    `fuera` son las que se ejecutan al importar, y son las que prohibe §15: a
+    nivel de modulo, dentro de un `if`/`try`/`for`/`while`/`with` de nivel de
+    modulo, y **dentro del cuerpo de una clase**, porque el cuerpo de una clase
+    tambien se ejecuta al importarla (S4).
+
+    `dentro` son las que estan dentro de una **FUNCION**, y eso es lo
+    unicamente permitido: `setup_logging()` existe precisamente para configurar
+    ahi, y se invoca desde `__main__` y desde la suite. La version anterior de
+    este docstring decia "una funcion **o una clase**", que era un criterio
+    FALSO y por eso la documentacion mintio junto al detector (S4).
     """
     arbol = ast.parse(codigo, filename=nombre)
 
-    # (1) Los loggers NOMBRADOS a nivel de modulo: `X = logging.getLogger(...)`.
+    # (1) Los loggers NOMBRADOS a nivel de modulo: `X = logging.getLogger(...)`,
+    #     tambien si la asignacion esta dentro de un `if`/`try`/`for`/`while`
+    #     (S3). Sin esto, `if ...: logger = getLogger(__name__)` + un
+    #     `logger.addHandler()` al nivel de modulo se escapaba entero.
     loggers = set()
-    for stmt in arbol.body:
+    for stmt in _plano_de_ejecucion(arbol.body):
         if isinstance(stmt, ast.Assign):
             objetivos, valor = stmt.targets, stmt.value
         elif isinstance(stmt, ast.AnnAssign) and stmt.value is not None:
@@ -6345,38 +6523,50 @@ def _configuraciones_de_logging(codigo, nombre="<memoria>"):
         return (isinstance(nodo, ast.Attribute) and nodo.attr == "handlers"
                 and _es_logger(nodo.value))
 
-    def _motivos(nodo):
-        for n in ast.walk(nodo):
-            if isinstance(n, ast.Call):
-                func, ruta = n.func, _ruta_dotted(n.func)
-                if ruta:
-                    ultimo = ruta.rsplit(".", 1)[-1]
-                    cabecera = ruta.rsplit(".", 1)[0] if "." in ruta else None
-                    if ultimo in _FUNCIONES_DE_CONFIG and (
-                            cabecera in _FICIONES_DE_LOG or not cabecera):
-                        yield n.lineno, f"llamada de configuracion {ruta}()"
-                        continue
-                if (isinstance(func, ast.Attribute) and func.attr in _MUTADORES_DE_LOG
-                        and (_es_logger(func.value) or _es_lista_de_handlers(func.value))):
-                    yield n.lineno, f"mutador .{func.attr}() sobre un logger a nivel de modulo"
-            elif isinstance(n, ast.Assign):
-                for t in n.targets:
-                    if _es_lista_de_handlers(t):
+    def _motivos(bloque):
+        # `bloque` son sentencias YA APLANADAS por `_plano_de_ejecucion`, y el
+        # recolector `_NodosEjecutados` no entra en el cuerpo de una funcion
+        # (ni de una lambda), de modo que lo que llega aqui se EJECUTA al
+        # importar. El matiz es real y medido: con un `ast.walk` a pelo,
+        # `if True: def main(): logging.basicConfig(...)` marcaba la linea de
+        # la funcion, o sea un falso positivo legal que la iteracion 3 arrastraba.
+        for sentencia in bloque:
+            recolector = _NodosEjecutados()
+            recolector.visit(sentencia)
+            for n in recolector.nodos:
+                if isinstance(n, ast.Call):
+                    func, ruta = n.func, _ruta_dotted(n.func)
+                    if ruta:
+                        ultimo = ruta.rsplit(".", 1)[-1]
+                        cabecera = ruta.rsplit(".", 1)[0] if "." in ruta else None
+                        if ultimo in _FUNCIONES_DE_CONFIG and (
+                                cabecera in _FICIONES_DE_LOG or not cabecera):
+                            yield n.lineno, f"llamada de configuracion {ruta}()"
+                            continue
+                    if (isinstance(func, ast.Attribute) and func.attr in _MUTADORES_DE_LOG
+                            and (_es_logger(func.value) or _es_lista_de_handlers(func.value))):
+                        yield (n.lineno,
+                               f"mutador .{func.attr}() sobre un logger que se configura al "
+                               "importar")
+                elif isinstance(n, ast.Assign):
+                    for t in n.targets:
+                        if _es_lista_de_handlers(t):
+                            yield n.lineno, "asignacion a <logger>.handlers"
+                        elif isinstance(t, ast.Subscript) and _es_lista_de_handlers(t.value):
+                            yield n.lineno, "asignacion a <logger>.handlers[...]"
+                elif isinstance(n, ast.AugAssign):
+                    if _es_lista_de_handlers(n.target):
                         yield n.lineno, "asignacion a <logger>.handlers"
-                    elif isinstance(t, ast.Subscript) and _es_lista_de_handlers(t.value):
+                    elif (isinstance(n.target, ast.Subscript)
+                          and _es_lista_de_handlers(n.target.value)):
                         yield n.lineno, "asignacion a <logger>.handlers[...]"
-            elif isinstance(n, ast.AugAssign):
-                if _es_lista_de_handlers(n.target):
-                    yield n.lineno, "asignacion a <logger>.handlers"
-                elif isinstance(n.target, ast.Subscript) and _es_lista_de_handlers(n.target.value):
-                    yield n.lineno, "asignacion a <logger>.handlers[...]"
 
     fuera, dentro = [], []
     for stmt in arbol.body:
-        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            dentro += _motivos(stmt)
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            dentro += _motivos(_plano_de_ejecucion(stmt.body))
         else:
-            fuera += _motivos(stmt)
+            fuera += _motivos(_plano_de_ejecucion([stmt]))
     return fuera, dentro
 
 
@@ -6400,9 +6590,21 @@ def test_config_no_configura_nada_al_importarse():
     Por eso el criterio esta escrito arriba (configurar = adjuntar/fijar
     nivel/formato/reemplazar `handlers`; obtener el logger NO es configurar) y
     por eso el detector se prueba CONTRA SI MISMO en las dos direcciones, con
-    codigo sintetico: ILEGALES tiene que marcar las ocho y LEGALES no puede
+    codigo sintetico: ILEGALES tiene que marcar las catorce y LEGALES no puede
     marcar ninguna. Un detector que no ve nada y uno que ve de mas dan el
-    mismo verde, y sin las dos tablas no se sabe cual de los dos se tiene.
+    MISMO verde, y sin las dos tablas no se sabe cual de los dos se tiene.
+
+    ITERACION 4, S3 y S4 (los dos huecos que dejo el detector de la iteracion 3,
+    ambos medidos por el mutation-auditor):
+      * (S3) El logger asignado DENTRO de un `if`/`try`/`for`/`while` de nivel
+        de modulo no se recognia: `if __name__ == '__main__': logger =
+        getLogger(__name__)` + un `logger.addHandler(h)` al nivel de modulo
+        PASABA, y es el defecto de FIX-010 por indireccion.
+      * (S4) El CUERPO DE UNA CLASE contaba como permitido. No lo es: se ejecuta
+        al importar el modulo, igual que la cima. Y el docstring decia "una
+        funcion o una clase", o sea: el criterio era FALSO y la doc mintio con
+        el. El valido es "dentro de una FUNCION", y las tablas de aqui lo fijan
+        en las dos direcciones (metodo de clase = legal, cuerpo de clase = ilegal).
     """
     raiz = os.path.dirname(os.path.abspath(__file__))
     ruta_cfg = os.path.join(raiz, "src", "woptimizer", "config.py")
@@ -6439,23 +6641,52 @@ def test_config_no_configura_nada_al_importarse():
          "root = logging.getLogger()\nroot.handlers.clear()"),
         ("addHandler() sobre logging.getLogger(__name__)",
          "logger = logging.getLogger(__name__)\nlogger.addHandler(h)"),
+        # --- S3: el receptor se NOMBRA dentro de un bloque de nivel de modulo
+        ("addHandler() con el logger asignado dentro de un if de modulo (S3)",
+         "if __name__ == '__main__':\n    logger = logging.getLogger(__name__)\n"
+         "logger.addHandler(h)"),
+        ("setLevel() con el logger asignado dentro de un try de modulo (S3)",
+         "try:\n    logger = logging.getLogger('woptimizer')\nexcept Exception:\n"
+         "    logger = None\nlogger.setLevel(logging.DEBUG)"),
+        ("handlers.clear() con el logger asignado en un for de modulo (S3)",
+         "for _ in (1,):\n    logger = logging.getLogger()\nlogger.handlers.clear()"),
+        # --- S4: el CUERPO DE UNA CLASE se ejecuta al importar, como la cima
+        ("basicConfig() en el CUERPO de una clase (S4)",
+         "class Instala:\n    logging.basicConfig(force=True)"),
+        ("addHandler() en el cuerpo de una clase, logger nombrado en la clase (S4)",
+         "class Instala:\n    logger = logging.getLogger('woptimizer')\n"
+         "    logger.addHandler(h)"),
+        ("basicConfig() DENTRO de una comprehension de modulo (si se ejecuta)",
+         "arranque = [logging.basicConfig(force=True) for _ in (1,)]"),
     )
     for etiqueta, codigo in ILEGALES:
         halladas, _ = _configuraciones_de_logging(codigo, etiqueta)
         assert halladas, (
             f"CONTROL ROTO (falso NEGATIVO): el detector no marca «{etiqueta}» "
             f"({codigo!r}). Esa forma configura el logging al importarse, y es la que "
-            "M16b/M16c/M16d dejaron en verde. O el detector se ha quedado estrecho otra vez."
+            "M16b/M16c/M16d dejaron en verde, o la indireccion que S3 y S4 reabrieron. "
+            "O el detector se ha quedado estrecho otra vez."
         )
 
     LEGALES = (
+        ("configuracion DENTRO de una funcion",
+         "def setup():\n    logging.basicConfig(force=True)"),
         ("logger nombrado", "logger = logging.getLogger('woptimizer')"),
         ("logging.getLogger(__name__)", "import logging\nlogger = logging.getLogger(__name__)"),
         ("el root obtenido y nada mas", "root = logging.getLogger()"),
         ("handler construido sin adjuntar", "import logging\nh = logging.StreamHandler()"),
-        ("configuracion DENTRO de una funcion",
-         "def setup():\n    logging.basicConfig(force=True)"),
         ("constantes de formato", "LOG_FORMAT = '%(asctime)s - %(message)s'"),
+        # El cuerpo de una clase es ILEGAL, pero lo que hay DENTRO de un metodo
+        # sigue siendo legal: ahi no se ejecuta nada al importar (S4).
+        ("configuracion DENTRO de un metodo de clase",
+         "class Instala:\n    def setup(self):\n        logging.basicConfig(force=True)"),
+        ("configuracion DENTRO de una funcion anidada en un if de modulo",
+         "if __name__ == '__main__':\n    def main():\n"
+         "        logging.basicConfig(force=True)"),
+        ("atributo de clase que se LLAMA addHandler (no es el logging)",
+         "class T:\n    def addHandler(self, h):\n        pass\nT().addHandler(1)"),
+        ("basicConfig() dentro del cuerpo de una lambda (no se ejecuta al importar)",
+         "instala = lambda: logging.basicConfig(force=True)"),
     )
     for etiqueta, codigo in LEGALES:
         halladas, _ = _configuraciones_de_logging(codigo, etiqueta)
@@ -6467,7 +6698,8 @@ def test_config_no_configura_nada_al_importarse():
         )
 
     print("config.py no configura el logging al importarse (detector probado en las dos "
-          "direcciones: 8 ilegales marcados, 6 legales sin marcar).")
+          "direcciones: 14 ilegales marcados, 10 legales sin marcar; S3: el logger asignado "
+          "dentro de un if/try/for cuenta, S4: el cuerpo de una clase NO es un refugio).")
 
 
 if __name__ == "__main__":

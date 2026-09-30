@@ -88,12 +88,12 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 56 | `test_toggle_favorite_desmarca` | **TASK-027 (FIX-006):** la segunda pulsación de la estrella desmarca el favorito |
 | 57 | `test_logging_va_a_fichero_y_no_a_stderr` | **TASK-028 (FIX-010):** el aviso acaba DENTRO de `woptimizer.log` y **no** en `stderr` (afirma sobre contenido y con el control negativo del `StreamHandler` sembrado: mata la implementación sin `force=True`) |
 | 58 | `test_la_consulta_de_version_no_puede_desincronizarse` | **TASK-028 (FIX-018):** `pyproject.toml`, `__init__.py` y `tasks.json` declaran la **misma** versión, y no puede existir un cuarto sitio (escáner de `src/` con expectativa derivada del código) |
-| 59 | `test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz` | **TASK-028 iter 2 + iter 3:** el archivo de `docs/archive` está versionado, completo y **sin volver ni a la raíz ni a la ruta viva que lee la app** (`_app_dir()`, por contenido) |
+| 59 | `test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz` | **TASK-028 iter 2 + 3 + 4:** el archivo de `docs/archive` está versionado, completo y **sin volver ni a la raíz ni a la ruta viva que lee la app** (`_app_dir()`), por la **firma del esquema v2** (`profiles` + **dos** rasgos en el mismo registro) y **sin exigir JSON válido**: un fichero local corrupto, vacío o ilegible se **observa** y no tumba la suite |
 | 60 | `test_el_punto_de_entrada_declara_el_log_antes_de_los_servicios` | `__main__.main()` invoca `setup_logging()` **antes** de instanciar ningún servicio (AST, por **orden** de lineno; no ejecuta `main()`) |
 | 61 | `test_process_list_file_sigue_siendo_un_contrato` | `PROCESS_LIST_FILE` existe, vale lo que debe y la nombran sus tres consumidores vivos |
 | 62 | `test_la_documentacion_del_blindaje_no_puede_desfasarse` | las dos docs dicen el rango **medido con `ast`** y los 34 nombres **reales** del `frozenset` |
 | 63 | `test_el_log_rota_con_el_limite_declarado` | el handler es un `RotatingFileHandler` **exacto** con `maxBytes`/`backupCount` declarados (`isinstance` no lo distinguiría: hereda de `FileHandler`) |
-| 64 | `test_config_no_configura_nada_al_importarse` | `config.py` no **configura** el logging a nivel de módulo (adjuntar handler / fijar nivel o formato / reemplazar `handlers`), y el detector se prueba en las dos direcciones: 8 ilegales marcados, 6 legales sin marcar |
+| 64 | `test_config_no_configura_nada_al_importarse` | `config.py` no **configura** el logging **al importarse**: ni en la cima, ni dentro de un `if`/`try`/`for`/`while` de módulo, ni en el **cuerpo de una clase** (que sí se ejecuta al importar); dentro de una **función** sí. Detector probado en las dos direcciones: **14 ilegales marcados, 10 legales sin marcar** |
 | 65 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
 
 ### Notas de Aislamiento
@@ -352,7 +352,59 @@ script tiene que importar `run_tests` para reutilizar una sonda, que lance la so
 **subproceso** (`python -c "import run_tests; run_tests.<sonda>()"`, cwd = raíz del repo) y no en el
 propio proceso. Es exactamente la mecánica de `_mutmatrix_t028_iter3.py`.
 
-### Trampa del `__pycache__` al medir mutaciones (medida en este ciclo)
+### Sondas del ciclo 21, iteración 4: los **falsos positivos que matan datos del usuario** (TASK-028)
+
+La iteración 3 cerró huecos de **alcance** (la promesa era más fuerte que la sonda). La iteración 4
+cierra lo contrario y es más grave: **dos sondas afirmaban sobre ficheros del usuario**. Un test que
+mata de más no es "una guarda demasiado estricta": es una guarda que puede decirle a alguien que su
+configuración está rota. Estas cuatro se arreglan, no se documentan.
+
+**S1 (DATOS) — la sonda N1 tumbaba la suite ante un `profiles.json` corrupto o vacío, y pedía
+borrarlo.** El `except ValueError → raise AssertionError` sobre el `PROFILES_FILE` **real** convertía
+un estado que **la app ya tolera** (el corte de luz, el antivirus que trunca a 0 bytes, el editor que
+guarda a medias) en un fallo de la suite. El mensaje era lo peor: reconocía el caso ("la app tampoco lo
+abriría: lo marcaría como dañado y arrancaría con cero packs") y aun así terminaba con *"se borra y la
+app lo regenera"*. **Una sonda jamás debe terminar con una instrucción de borrar el fichero del
+usuario.** Ahora: si el documento no se puede leer, **no se afirma nada** y se avisa por `print()`
+como observación, con la ruta y el motivo. El JSON válido es un **requisito de la comprobación**, no
+una exigencia al usuario.
+
+**S2 (DATOS) — N1 declaraba "v2 retirado" ante un `profiles.json` legítimo con un campo de usuario
+llamado `factory` o `kill_low_chat`.** `Pack` es `extra="allow"`: esos nombres son un documento
+**válido** que la app abre sin quejarse, y la condición `{"factory","kill_low_chat"} & set(registro)`
+aplicada a cualquier registro bastaba para declararlo —y para pedirle que lo borrara. El criterio
+ahora es la **combinación**, medido contra el `docs/archive/legacy-root-data/profiles.json` real
+(420 B): los rasgos se cuentan **dentro del mismo registro** y hacen falta **dos o más** —
+la clave `__system_gaming__`, el campo `factory`, el campo `kill_low_chat`, y `kind: "system"`. El
+archivado acumula los cuatro. **Un discriminante único es frágil por definición**, porque es
+exactamente el nombre que un usuario puede elegir. El riesgo residual, dicho en voz alta: un pack de
+usuario que declarase **`factory` y `kill_low_chat` a la vez** en el mismo registro seguiría activando
+la guarda; es un precio conscientemente aceptado a cambio de no perder el v2 real.
+
+| Sonda | Invariante | Muerte **medida** (`_mutmatrix_t028_iter4.py`) | Controles **positivos** (lo que NO puede morir) |
+|---|---|---|---|
+| **N1** el v2 retirado no vuelve a la ruta que la app lee | si el documento de `PROFILES_FILE` se puede leer, su firma de v2 (raíz `profiles` + **dos** rasgos en el mismo registro) tiene que estar ausente | **M13c** (archivado byte a byte), **M13d** (el mismo v2 **reformateado**: `indent=1`, claves ordenadas), **M13e** (un v2 que **no** es el archivado: otro nombre de preset, `factory` propia) | **P1a** JSON inválido, **P1b** fichero **vacío (0 B)**, **P1c** JSON que no es un mapa → **VERDE**, con el aviso impreso. **P2a** campo de usuario `factory`, **P2b** `kill_low_chat`, **P2c** un pack que se llama `__system_gaming__` pero sin campos del v2, **P2d** un campo de usuario en cada uno de dos packs → **VERDE**. **P3a** el detector vuelto a "un campo basta" + un campo de usuario → **ROJO por el control positivo**; **P3b** el detector anulado (`return False, []`) → **ROJO por el control negativo**. |
+| **N7** `config.py` no configura nada al importarse | ninguna llamada que **configure** el logging se ejecute al importar: ni en la cima, ni en un `if`/`try`/`for`/`while`/`with` de módulo, ni en el **cuerpo de una clase** | **S3** (el logger nombrado dentro de un `try` de módulo + `addHandler` a nivel de módulo), **S4** (`addHandler` en el cuerpo de una clase) | **P7e** S3 revertido + tabla `ILEGALES` saltándose S3/S4 + mutante S3 → **ESCAPA (VERDE)**: prueba que la muerte la aporta el arreglo S3 y no otra cosa. **P7f** ídem con S4 → **ESCAPA**. **P7g/P7h** los dos revertidos **con** la tabla intacta → **ROJO por la propia autocomprobación** del detector (que es lo que se quiere: el detector se delata a sí mismo). |
+
+**La trampa del mutante S3 que casi mide lo contrario (medido, no supuesto).** La primera versión del
+mutante era `if __name__ == '__main__': logger_mut = logging.getLogger(...)` + `logger_mut
+.addHandler(...)`. Eso **no es un mutante válido**: al **importar** `config.py` el `__name__` no es
+`'__main__'`, la asignación no se ejecuta y el módulo revienta con `NameError: name 'logger_mut' is
+not defined` — la suite muere en **0,2 s** y sin ninguna aserción. Un mutante que revienta el módulo
+produce un **falso positivo de muerte** idéntico al de un mutante que muere de verdad. La forma
+correcta es la que asigna **siempre** al importar (`try/except` con la misma asignación en las dos
+ramas, y el `.addHandler()` al nivel de módulo después), que es además la forma realista.
+
+**Deuda de LECTURA, medida y NO arreglada (decisión del `mutation-auditor`, con SHA-256).**
+`test_headless_ui()` instancia `PackService()` **sin `data_path`** sobre el `profiles.json` real, lo
+que parece una escritura en estado del usuario. **Medido con SHA-256 antes/después en los tres
+escenarios** (legítimo, corrupto y v2): los bytes son **idénticos**, no se crea ningún `.bak` ni
+`.tmp`, y las 5 llamadas a `save()` están en **métodos de acción de usuario**, ninguna en el
+arranque. Es deuda de **lectura**, no de escritura, y **no se arregla**: tocarlo arriesga el
+arranque por un riesgo que no existe. Queda escrito para que el próximo que lo lea no lo confunda con
+un descuido.
+
+
 Python reutiliza un `.pyc` obsoleto cuando el mutante tiene la **misma longitud en bytes** y el
 **mismo segundo de `mtime`**. Purgar `__pycache__` entre mutaciones no es hygiene: sin purga, un
 veredicto de muerte puede salir **falso** (el test pasa contra el código viejo) y una muerte puede
