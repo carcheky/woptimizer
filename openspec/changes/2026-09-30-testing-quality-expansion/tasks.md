@@ -15,4 +15,4 @@
   - [x] Destruir root de forma limpia sin bloqueos.
 - [x] 4. Registrar los 2 nuevos tests en el bloque `if __name__ == '__main__':` de `run_tests.py`.
 - [x] 5. Actualizar la documentación viva en `docs/ai/testing-guide.md` (suite actualizada a 75 tests).
-- [ ] 6. Auditar la suite y nuevos tests con `mutation-auditor` (Paso 4).
+- [x] 6. Auditar la suite y nuevos tests con `mutation-auditor` (Paso 4).

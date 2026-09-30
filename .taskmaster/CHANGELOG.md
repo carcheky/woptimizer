@@ -1,3 +1,53 @@
+## [CYCLE-025] 2026-09-30 21:08 — testing-quality-expansion
+**Área**: Testing & Calidad
+**Change**: openspec/changes/2026-09-30-testing-quality-expansion/
+**Estado**: COMPLETED
+**Models**:
+- Paso 1 (Buscar): inherit
+- Paso 2 (Planear): architect-review → VISTO BUENO CON DIRECTRICES OBLIGATORIAS
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → VERDICT: PASS (7/7 mutantes eliminados)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| M1 (Strict bools) | Relajar a `is_favorite: bool = Field(default=False)` (permite coerción laxa de `"true"` o `1`) | killed | `test_models_strict_validation_and_contracts capturó coerción de is_favorite` |
+| M1b (Strict bools) | Relajar a `is_gaming: bool = Field(default=False)` (permite coerción laxa de `"true"` o `1`) | killed | `test_models_strict_validation_and_contracts capturó coerción de is_gaming` |
+| M2 (Literal action) | Cambiar tipo a `default_action: str = "start"` (permite `"purgar"` o `"KILL"`) | killed | `test_models_strict_validation_and_contracts capturó default_action inválida` |
+| M3a (Extra allow) | Cambiar a `ConfigDict(extra="ignore")` en `Pack` | killed | `test_models_strict_validation_and_contracts detectó pérdida de meta_custom` |
+| M3b (Extra allow) | Cambiar a `ConfigDict(extra="ignore")` en `AppData` | killed | `test_models_strict_validation_and_contracts detectó pérdida de legacy_profiles` |
+| M4 (Defaults) | Alterar `exe_path="unknown"` o `category="Otros"` en `ProcessInfo` | killed | `test_models_strict_validation_and_contracts detectó desalineación de defaults` |
+| M5 (Destrucción UI) | Omitir `self.current_view.destroy()` en `MainWindow._clear_content` | killed | `test_main_window_navigation_transitions detectó vista previa aún viva con winfo_exists()` |
+| M6 (Afordancia nav) | Invertir o alterar tokens de borde en `MainWindow._set_active_nav` | killed | `test_main_window_navigation_transitions detectó fallo de estilos activo/inactivo` |
+| M7 (Transición UI) | No instanciar o no reasignar `self.current_view` a la clase esperada | killed | `test_main_window_navigation_transitions detectó clase incorrecta en current_view` |
+
+### What
+- Implementación de la prueba discriminante `test_models_strict_validation_and_contracts()` en `run_tests.py`:
+  - Valida el rechazo de coerciones laxas (`"true"`, `"false"`, `1`, `0`) en `Pack.is_favorite` e `is_gaming` mediante `strict=True`.
+  - Valida la restricción estricta de `default_action` a `Literal["start", "kill"]`, rechazando valores no reconocidos (`"purgar"`, `"KILL"`, `""`, `None`).
+  - Valida la supervivencia y retención de metadatos adicionales en `Pack` y `AppData` vía `extra="allow"`.
+  - Valida los valores canónicos por defecto de `ProcessInfo` (`exe_path=""`, `category="⚪ Otros"`, `priority="none"`).
+- Implementación de la prueba headless de integración `test_main_window_navigation_transitions()` en `run_tests.py`:
+  - Instancia `MainWindow` sobre un contenedor headless con `root.withdraw()` y servicio de persistencia aislado (`_pack_service_temporal()`).
+  - Verifica la vista inicial `DashboardView` y el estado activo del botón de portada (`theme.ACCENT`, `border_width=2`).
+  - Navega a `PackManagerView` (`_show_packs()`), verificando la destrucción física del widget previo (`not winfo_exists()`) y la conmutación de estilos en `btn_nav_packs`.
+  - Navega a `ProcessManagerView` (`_show_process_manager()`), verificando destrucción previa, conmutación de estilo y bombeo en mainloop para la carga asíncrona de procesos.
+  - Navega de regreso a `DashboardView` (`_show_home()`) y ejecuta el cierre limpio de Tcl/Tk.
+- Registro de los nuevos tests en `run_tests.py` elevando la suite oficial a **75 tests** (73 backend + 2 headless UI).
+- Actualización de documentación viva en `docs/ai/testing-guide.md`.
+
+### Outcome
+- Commits:
+  - `d4feeb8` (plan: registrar TASK-034 en tasks.json y openspec)
+  - `2bc869e` (feat: pruebas de navegacion UI y contratos Pydantic)
+- Tests: 73 backend + 2 headless UI PASS (0 fallos).
+- Docs: `validate_docs.py` (70 OK, 0 FAIL).
+
+### Impact
+Se eliminan puntos ciegos críticos en la suite de pruebas sin abrir ventanas ni introducir lentitud. La navegación completa entre las tres pantallas principales y el esquema de modelos quedan cubiertos contra regresiones accidentales de tipado o ciclo de vida.
+
+---
+
 ## [CYCLE-024] 2026-09-30 20:53 — scan-latency-optimization
 **Área**: Rendimiento & Latencia
 **Change**: openspec/changes/2026-09-30-scan-latency-optimization/

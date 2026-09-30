@@ -1,3 +1,19 @@
+## CYCLE-025 - 2026-09-30
+
+**Testing & Calidad** — `TASK-034` (Expansión de calidad y pruebas headless de UI y modelos)
+
+### Añadido
+- **Prueba de transiciones completas de navegación headless en `MainWindow` (`test_main_window_navigation_transitions`).** Verifica el ciclo de vida completo de navegación entre vistas (`DashboardView`, `PackManagerView`, `ProcessManagerView`), la destrucción limpia de las vistas previas con `not winfo_exists()`, la actualización visual de los estados activo e inactivo de la barra de navegación (`theme.ACCENT` vs `theme.BORDER`), y el bombeo asíncrono seguro durante la carga de procesos sin bloqueos en runners headless.
+- **Sonda de validación estricta y contratos en modelos Pydantic (`test_models_strict_validation_and_contracts`).** Comprueba el rechazo estricto de tipos no booleanos (`"true"`, `1`, `"false"`, `0`) en `is_favorite` e `is_gaming` mediante `strict=True`, la restricción de `default_action` al enum literal `Literal["start", "kill"]`, la retención completa de metadatos adicionales desconocidos mediante `extra="allow"` en `Pack` y `AppData`, y los valores por defecto canónicos de `ProcessInfo`. Suite total: **73 tests backend + 2 headless UI**, 100% en verde.
+
+### Corregido
+- **Eliminación de puntos ciegos en la suite de pruebas.** Se detectó que las vistas de gestión de packs y de procesos nunca eran instanciadas en la suite de integración headless previa, dejando sin cobertura la navegación entre pestañas y la destrucción de widgets en memoria.
+
+### Impacto
+Blindaje absoluto de la navegación de interfaz y de la integridad del esquema de datos. Se garantiza que ninguna versión futura degrade el formato de guardado ni coaccione tipos booleanos en silencio, manteniendo la robustez del producto sin abrir ventanas molestas durante los tests.
+
+---
+
 ## CYCLE-024 - 2026-09-30
 
 **Rendimiento & Latencia** — `TASK-033` (Optimización de latencia en escaneo de procesos)

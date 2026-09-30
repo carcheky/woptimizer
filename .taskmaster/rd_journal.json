@@ -360,5 +360,22 @@
       "after": "72 backend + 1 headless UI, 0 fallos"
     },
     "impact": "Optimizacion de latencia y throughput en el escaneo de procesos (TASK-033): eliminacion del cuello de botella de ~31ms al quitar la consulta masiva de 'exe' en psutil.process_iter a favor de escaneo ligero ['pid', 'name'] con emision lazy de exe_path. Incorporacion de resolucion on-demand segura ProcessService.get_process_exe_path(pid) con degradacion fail-safe (NoSuchProcess, AccessDenied, ZombieProcess, OSError, ValueError), consumida defensivamente por ProcessManagerView.on_add_to_pack. Construccion de instancias con ProcessInfo.model_construct, precomputacion a nivel de modulo de _CAT_ORDER_IDX respetando las lineas 33-48 de SYSTEM_PROTECTED_PROCESSES, y normalizacion de nombres mediante corte de sufijo. Latencia minima de escaneo frio reducida a 5.53ms (~5.6x a ~8x de aceleracion). 6/6 mutantes eliminados por mutation-auditor (PASS)."
+  },
+  {
+    "cycle": 25,
+    "date": "2026-09-30T21:08:00",
+    "area": "Testing & Calidad",
+    "slug": "2026-09-30-testing-quality-expansion",
+    "task": "TASK-034",
+    "status": "COMPLETED",
+    "commits": [
+      "d4feeb8 (plan)",
+      "2bc869e (feat)"
+    ],
+    "tests": {
+      "before": "72 backend + 1 headless UI",
+      "after": "73 backend + 2 headless UI, 0 fallos"
+    },
+    "impact": "Expansion de calidad y pruebas headless (TASK-034): eliminacion de puntos ciegos en contratos de datos y ciclo de vida de UI. Incorporacion de test_models_strict_validation_and_contracts garantizando validacion booleana estricta (strict=True contra coerciones de 'true'/'1' en is_favorite e is_gaming), enums literales en default_action ('start'/'kill'), supervivencia de metadatos extra (extra='allow' en Pack y AppData) y defaults canonicos de ProcessInfo. Incorporacion de test_main_window_navigation_transitions validando la navegacion completa entre DashboardView, PackManagerView y ProcessManagerView, destruccion de vistas previas (not winfo_exists()), tokens de afordancia activa/inactiva de barra nav y bombeo asincrono de procesos. Suite elevada a 75 tests (73 backend + 2 UI). 7/7 mutantes aniquilados por mutation-auditor (PASS)."
   }
 ]
