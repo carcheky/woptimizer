@@ -5746,24 +5746,505 @@ def test_la_consulta_de_version_no_puede_desincronizarse():
         f"__init__.py dice {v_init!r}. Se declara UN solo valor en los dos sitios."
     )
 
-    # Y que no aparezca un TERCER sitio que vuelva a separarlos. Estos tres son
-    # los que participan en el empaquetado; hoy ninguno declara version
-    # (PyInstaller la toma del .exe) y la sonda lo deja fijado por escrito.
+    # M7: el TERCER sitio existia y esta sonda no lo miraba. Con
+    # `.taskmaster/tasks.json` a "0.0.1" la suite declaraba los tres sitios
+    # coherentes. Un test llamado "no_puede_desincronizarse" que deja vivo un
+    # desincronizador real es PEOR que no tener test: da la seguridad que el
+    # nombre promete y no existe.
+    import json as _json
+    with open(os.path.join(raiz, ".taskmaster", "tasks.json"), encoding="utf-8") as fh:
+        v_tasks = _json.load(fh).get("version")
+    assert v_tasks == v_pyproject, (
+        f"la version esta desincronizada: .taskmaster/tasks.json dice {v_tasks!r} y el resto "
+        f"dicen {v_pyproject!r}. Los tres sitios declaran el MISMO valor, incluido el tablero "
+        "de tareas, que es lo que lee el orquestador."
+    )
+
+    # Y que no aparezca un TERCER sitio que vuelva a separarlos. El filtro pasa
+    # de "la linea contiene 'version'" a DOS condiciones: la linea lleva un
+    # literal semver Y un token de version. Con `\b` no se cuela `Verificar` ni
+    # `servicio`; y asi entra `ver = "9.9.9"` en woptimizer.spec, que el filtro
+    # viejo noellia porque no decia la palabra "version" (M9).
+    semver = re.compile(r"\b\d+\.\d+\.\d+(?:\.dev\d+)?\b")
+    token_version = re.compile(r"(\bver\b|\bversions?\b|__version__|--version)", re.IGNORECASE)
     for nombre in ("woptimizer.spec", "build.bat", "force_build.py"):
         ruta = os.path.join(raiz, nombre)
         if not os.path.exists(ruta):
             continue
         with open(ruta, encoding="utf-8", errors="replace") as fh:
             for num, linea in enumerate(fh.read().splitlines(), 1):
-                if "version" not in linea.lower():
+                if not token_version.search(linea):
                     continue
-                for encontrada in re.findall(r"\b\d+\.\d+\.\d+(?:\.dev\d+)?\b", linea):
+                for encontrada in semver.findall(linea):
                     assert encontrada == v_pyproject, (
                         f"{nombre}:{num} declara otra version ({encontrada!r}); la "
                         f"unica buena es {v_pyproject!r}"
                     )
 
-    print("pyproject.toml y __init__.py declaran la MISMA version (FIX-018).")
+    # M10: un CUARTO sitio de version en cualquier `.py` del paquete. Hoy solo
+    # existe `__version__` en `__init__.py`; cualquier otra asignacion a nivel
+    # de modulo con nombre de version es un sitio que vuelve a desincronizarse
+    # sin que el escaner de arriba la mire (esos ficheros no se escanean).
+    import re as _re
+    # Que CONTENGA "version" (no que empiece por ella): `APP_VERSION` y `WOPT_VERSION`
+    # son el cuarto sitio de version que se_BUSCA_, no solo `__version__`.
+    nombre_version = _re.compile(r"^(?:__)?\w*version\w*$|^ver$", _re.IGNORECASE)
+    src_dir = os.path.join(raiz, "src", "woptimizer")
+    for dirpath, _dirs, files in os.walk(src_dir):
+        for fichero in files:
+            if not fichero.endswith(".py"):
+                continue
+            ruta_py = os.path.join(dirpath, fichero)
+            rel = os.path.relpath(ruta_py, raiz).replace("\\", "/")
+            with open(ruta_py, encoding="utf-8") as fh:
+                arbol_py = ast.parse(fh.read(), filename=ruta_py)
+            for stmt in arbol_py.body:
+                if not isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+                    continue
+                objetivos = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+                valor = stmt.value
+                if not isinstance(valor, ast.Constant) or not isinstance(valor.value, str):
+                    continue
+                for objetivo in objetivos:
+                    nombre = getattr(objetivo, "id", None)
+                    if not nombre or not nombre_version.match(nombre):
+                        continue
+                    assert rel == "src/woptimizer/__init__.py" and nombre == "__version__", (
+                        f"{rel} declara {nombre} = {valor.value!r} a nivel de modulo: ese es un "
+                        f"CUARTO sitio de version y puede desincronizarse de {v_pyproject!r} sin "
+                        "que nada lo note (M10). La unica version del paquete se declara una vez."
+                    )
+
+    print("pyproject.toml, __init__.py y tasks.json declaran la MISMA version (FIX-018).")
+
+
+# --- TASK-028 iteracion 2: cerrar los supervivientes del mutation-auditor --------
+# Esta iteracion NO reimplementa nada de TASK-028: vigila lo que TASK-028 AFIRMO.
+# Cada sonda lleva escrito que mutacion la mata, porque una guarda sin mutacion
+# asociada es un deseo (regla del ciclo #18).
+
+
+def _entorno_git_del_repo():
+    """(repo_root, env) con el MISMO `GIT_DIR` que usa `git_safe_commit.py`.
+
+    El `.git` de este repositorio NO vive en el arbol de trabajo: esta corrupto
+    por el VFS de Nextcloud. El historial real esta en
+    `%LOCALAPPDATA%\\woptimizer_git\\.git`. Sin montar aqui ese entorno,
+    `git check-ignore` responderia por OTRO repo y la sonda pasaria sin haber
+    mirado nada: verde por el motivo equivocado, que es el modo de fallo que
+    este ciclo esta cazando. La precedencia ("si el entorno ya trae GIT_DIR se
+    respeta") es la de `git_safe_commit.get_env()` y la via documentada en
+    AGENTS.md.
+    """
+    repo_root = os.path.dirname(os.path.abspath(__file__))
+    env = os.environ.copy()
+    env["GIT_DIR"] = env.get("GIT_DIR") or os.path.expandvars(r"%LOCALAPPDATA%\woptimizer_git\.git")
+    env["GIT_WORK_TREE"] = repo_root
+    return repo_root, env
+
+
+def _git(args, env, cwd):
+    """Ejecuta `git` y devuelve (rc, salida). `rc is None` = no llego a ejecutarse.
+
+    La distincion importa y no es decorativa: "git fallo" y "no pude ni
+    comprobar" NO son lo mismo. Una guarda que se salta sola cuando no puede
+    comprobar es una guarda que ya no guarda (y por eso N1 no hace `skip`:
+    falla fuerte, con el motivo a la vista).
+    """
+    import subprocess
+    try:
+        r = subprocess.run(
+            ["git"] + args, cwd=cwd, env=env, capture_output=True,
+            text=True, encoding="utf-8", errors="replace", timeout=120,
+        )
+        return r.returncode, ((r.stdout or "") + (r.stderr or "")).strip()
+    except Exception as e:
+        return None, str(e)
+
+
+def test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz():
+    """M12/M13/M14/M15: la norma "nunca borrar, siempre archivar" no la vigilaba
+    NADA, y su fallo es el peor de los silenciosos: sin la excepcion de
+    `.gitignore`, un `git add -A` se lleva el `profiles.json` archivado y este
+    **desaparece del historico sin error, sin aviso y sin WOPT_FAIL**. El
+    directorio seguiria existiendo en el disco de esta maquina: un archivo de
+    mentira, que es justo lo que la norma dice impedir.
+
+    LA TRAMPA DE `check-ignore` (medida, no supuesta). Sin `--no-index`, git
+    mira el indice y un fichero YA versionado nunca se reporta como ignorado:
+    la sonda pasaria aunque la excepcion este borrada, o sea sin distinguir
+    nada. Y con `--no-index -v` el codigo de salida es 0 tambien para un
+    patron NEGATIVO (imprime `!docs/...`): afirmar `rc == 0` seria afirmar lo
+    contrario de lo que se cree. Por eso va `-q --no-index`, donde rc=1
+    significa de verdad "esta ruta NO esta ignorada", y lleva un CONTROL
+    NEGATIVO: `saved_processes.json` si esta ignorado y tiene que dar rc=0. Sin
+    ese control, un `check-ignore` que no discrimina daria verde igual.
+    """
+    repo_root, env = _entorno_git_del_repo()
+    rel_dir = "docs/archive/legacy-root-data"
+    dir_arch = os.path.join(repo_root, "docs", "archive", "legacy-root-data")
+    archivados = ("README.md", "profiles.json", "inconsistencies_plan.md")
+
+    # CONTROL NEGATIVO: demuestra que `check-ignore` sabe decir "ignorado" aqui.
+    # Si esto falla, todas las aserciones de "no ignorado" de abajo no valen nada.
+    rc_ctrl, sal_ctrl = _git(["check-ignore", "-q", "--no-index", "saved_processes.json"], env, repo_root)
+    assert rc_ctrl == 0, (
+        "CONTROL ROTO: `git check-ignore` deberia responder rc=0 (SI ignorado) sobre "
+        f"saved_processes.json y respondio rc={rc_ctrl} ({sal_ctrl!r}). Sin este control, "
+        "las aserciones siguientes no probarian nada: una herramienta que no distingue "
+        "tambien daria verde."
+    )
+
+    for nombre in archivados:
+        ruta_rel = f"{rel_dir}/{nombre}"
+        ruta_abs = os.path.join(dir_arch, nombre)
+        assert os.path.isfile(ruta_abs), (
+            f"el archivo de docs/archive esta incompleto: falta {ruta_rel}. La norma del "
+            "propietario es no borrar nada; lo que se perdio no se puede archivar."
+        )
+        assert os.path.getsize(ruta_abs) > 0, (
+            f"{ruta_rel} esta VACIO (0 bytes): el README dice que es lo que se archivo y con "
+            "contenido byte a byte. Un archivo vacio es peor que no archivar, porque parece "
+            "cumplido (M14)."
+        )
+        rc, sal = _git(["check-ignore", "-q", "--no-index", ruta_rel], env, repo_root)
+        assert rc == 1, (
+            f"{ruta_rel} esta IGNORADO (rc={rc}, salida={sal!r}; rc=0 = ignorado, rc=1 = no "
+            "ignorado, rc=128 = error). El `.gitignore` lo declara con la regla `profiles.json` "
+            "y la UNICA excepcion que lo saca de ahi es la linea con `!`: sin ella el fichero "
+            "archivado es invisible para git y `git add -A` lo borra del historico en silencio (M12)."
+        )
+
+    # Y no basta con "no ignorado": tiene que estar EN EL INDICE. Son dos
+    # estados distintos (ignorado y sin versionar) y el segundo es el que
+    # borra el archivo del historico.
+    rc, sal = _git(["ls-files", "--error-unmatch", f"{rel_dir}/profiles.json"], env, repo_root)
+    assert rc == 0, (
+        f"{rel_dir}/profiles.json NO esta versionado (rc={rc}, {sal!r}). Que no este ignorado "
+        "no basta: si no esta en el indice, el proximo `git add -A` no lo resurrected, se lo "
+        "queda. El archivo existiria solo en esta maquina (M12)."
+    )
+
+    # El README no es decorativo: tiene que NOMBRAR lo que archiva.
+    with open(os.path.join(dir_arch, "README.md"), encoding="utf-8") as fh:
+        readme = fh.read()
+    for nombre in ("profiles.json", "inconsistencies_plan.md"):
+        assert nombre in readme, (
+            f"el README del archivo no menciona {nombre}: un README que no dice que es lo "
+            "archivado es el primero que se pierde (M15)"
+        )
+
+    # Y la norma es de una direccion: lo archivado no vuelve a la raiz.
+    for nombre, por_que in (
+        ("profiles.json", "`.gitignore` lo ignora por la regla `profiles.json`, asi que una "
+                          "copia en la raiz es INVISIBLE para git y desapareceria sin dejar rastro"),
+        ("inconsistencies_plan.md", "es el plan '100% Completado' que describe incidencias ya "
+                                    "resueltas y cita un `fallback.csv` que no existe: en la raiz, "
+                                    "junto a la documentacion viva, se leia como pendientes"),
+    ):
+        ruta_raiz = os.path.join(repo_root, nombre)
+        assert not os.path.exists(ruta_raiz), (
+            f"{nombre} ha vuelto a la raiz del repo: se ha desarchivado. {por_que} (M13)"
+        )
+
+    print("El archivo de docs/archive esta versionado, completo y sin volver a la raiz.")
+
+
+def test_el_punto_de_entrada_declara_el_log_antes_de_los_servicios():
+    """M4/M4b: `architecture.md` §15 declara que `setup_logging()` la invoca
+    `__main__.main()` ANTES de instanciar los servicios. Borrada esa llamada, la
+    app arranca SIN log a fichero: los `logger.warning` caen al `lastResort` de
+    la stdlib y salen por stderr. Verde.
+
+    POR QUE NO LO VEIA NADA, y es lo importante: `run_tests.py` se llama a si
+    mismo `setup_logging()` en su `__main__`, o sea que la suite se
+    autoconfigurea y el punto de entrada del producto le es invisible. Es un
+    validador que se deduce a si mismo, que es exactamente el fallo del ciclo
+    #15. Por eso esta sonda lee el AST del punto de entrada y no su propio
+    entorno de logging.
+
+    NO se ejecuta `main()` (arrancaria la UI y el bucle de eventos): se leen
+    los lineno de las llamadas. Dos mutaciones, dos muertes distintas: borrar la
+    llamada mata por AUSENCIA; moverla debajo de los servicios mata por ORDEN.
+    """
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    ruta_main = os.path.join(raiz, "src", "woptimizer", "__main__.py")
+    with open(ruta_main, encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read(), filename=ruta_main)
+
+    main = next((n for n in ast.walk(arbol)
+                 if isinstance(n, ast.FunctionDef) and n.name == "main"), None)
+    assert main is not None, f"{ruta_main} no define main(): no hay punto de entrada que vigilar"
+
+    def _llamadas(nombre):
+        return sorted(n.lineno for n in ast.walk(main)
+                      if isinstance(n, ast.Call) and getattr(n.func, "id", None) == nombre)
+
+    servicios = ("ProcessService", "PackService", "GamingService", "WOptimizerApp")
+    lineas_log = _llamadas("setup_logging")
+    lineas_servicio = sorted(l for s in servicios for l in _llamadas(s))
+
+    assert lineas_servicio, (
+        f"main() no instancia ningun servicio de {servicios}: la sonda no tendria contra que "
+        "afirmar el orden. Si esto salta, el punto de entrada cambio de forma y esta sonda "
+        "hay que reescribirla, no saltarsela."
+    )
+    assert lineas_log, (
+        f"__main__.main() NO llama a setup_logging(): la app arranca sin log a fichero y sus "
+        f"avisos salen por stderr (lastResort). El servicio se instancia en la linea "
+        f"{lineas_servicio[0]}: el canal se declara DESPUES de que el primer servicio pueda "
+        "avisar (M4b)"
+    )
+    assert min(lineas_log) < lineas_servicio[0], (
+        f"setup_logging() se invoca en la linea {min(lineas_log)} y el primer servicio se "
+        f"instancia en la {lineas_servicio[0]}: el canal de log se declara TARDE. Todo lo que "
+        "avise el servicio antes de esa llamada se pierde hacia stderr (M4b)"
+    )
+
+    print("__main__.main() declara el log antes de instanciar ningun servicio.")
+
+
+def test_process_list_file_sigue_siendo_un_contrato():
+    """M18: `PROCESS_LIST_FILE` se conservo con el veto de FIX-011 ("NO esta sin
+    usar: la consumen cinco sitios") y **no tenia ni un guard**: borrarla dejaba
+    la suite en verde.
+
+    Lo que se afirma, y por que en este orden:
+      (a) que la CONSTANTE existe, sobre el AST de `config.py`. Se afirma antes
+          de importarla a proposito: borrarla debe dar una ASERCION que lo diga,
+          no un `ImportError` que parece un fallo de otra cosa.
+      (b) que su VALOR es el que se pretendia, leido del modulo (no del texto:
+          el texto podria ser cualquier cosa).
+      (c) que los TRES consumidores nombrados la siguen usando, sobre SU propio
+          AST. Sin (a), (c) no se puede ni preguntar; sin (c), la constante
+          sobrevive por un motivo que nadie puede comprobar.
+
+    NOTA HONESTA (D1): el cuarto "consumidor" que citaba el comentario de
+    `config.py` era `smoke_check.py:23`, y ese script esta MUERTO: lee
+    `process_manager.py`, que no existe, y revienta en su linea 8 con
+    `FileNotFoundError` sin llegar nunca a la 23. Por eso no se cuenta aqui: un
+    guardia que no corre no vigila, y fingir que vigila es peor que no tenerlo.
+    """
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    ruta_cfg = os.path.join(raiz, "src", "woptimizer", "config.py")
+    with open(ruta_cfg, encoding="utf-8") as fh:
+        codigo_cfg = fh.read()
+    arbol = ast.parse(codigo_cfg, filename=ruta_cfg)
+
+    nodo = None
+    for cand in arbol.body:
+        if isinstance(cand, ast.Assign) and any(
+            getattr(t, "id", None) == "PROCESS_LIST_FILE" for t in cand.targets
+        ):
+            nodo = cand
+    assert nodo is not None, (
+        "PROCESS_LIST_FILE ha desaparecido de config.py. FIX-011 la veto por EN USO: la "
+        "consumen test_gaming_session.py, test_harness.py y test_harness_v2.py, los tres "
+        "protegidos por FIX-014. Borrarla rompe esos tres y no lo dice nadie."
+    )
+    segmento = ast.get_source_segment(codigo_cfg, nodo) or ""
+    assert "_app_dir(" in segmento and "saved_processes.json" in segmento, (
+        f"PROCESS_LIST_FILE ya no se construye con _app_dir()/saved_processes.json: "
+        f"{segmento!r}. Apuntar a otro sitio cambia donde esta el historial del usuario."
+    )
+
+    from woptimizer.config import PROCESS_LIST_FILE, _app_dir
+    esperado = os.path.join(_app_dir(), "saved_processes.json")
+    assert os.path.normcase(PROCESS_LIST_FILE) == os.path.normcase(esperado), (
+        f"PROCESS_LIST_FILE vale {PROCESS_LIST_FILE!r} y deberia valer {esperado!r}"
+    )
+
+    consumidores = ("test_gaming_session.py", "test_harness.py", "test_harness_v2.py")
+    for nombre in consumidores:
+        ruta = os.path.join(raiz, nombre)
+        assert os.path.isfile(ruta), f"ha desaparecido el consumidor protegido por FIX-014: {nombre}"
+        with open(ruta, encoding="utf-8") as fh:
+            arbol_t = ast.parse(fh.read(), filename=ruta)
+        nombres = {getattr(n, "id", None) for n in ast.walk(arbol_t)}
+        atributos = {getattr(n, "attr", None) for n in ast.walk(arbol_t)}
+        assert "PROCESS_LIST_FILE" in nombres or "PROCESS_LIST_FILE" in atributos, (
+            f"{nombre} ya no nombra PROCESS_LIST_FILE: el veto de FIX-011 se sostiene en que "
+            "estos tres tests la usan, no en que exista una constante (M18)"
+        )
+
+    print("PROCESS_LIST_FILE existe, vale lo que debe y la usan sus tres consumidores.")
+
+
+def test_la_documentacion_del_blindaje_no_puede_desfasarse():
+    """M10a/M10b/M10c/M11: FIX-020 dijo "documentacion sincronizada" y no lo
+    comprueba nadie. Cuatro mutaciones, cuatro verdes:
+
+      * la doc vuelve a decir `process_service.py:23-38`;
+      * una linea de comentario en el codigo desplaza el `frozenset` una linea
+        y las dos docs siguen afirmando `33-48` "medido con ast";
+      * el codigo pierde un nombre real (`securityhealthservice`, 34 -> 33) y
+        la transcripcion queda desfasada sin que se entere nadie.
+
+    La medicion sale del CODIGO con `ast` (rango y conjunto reales) y la
+    expectativa se deriva de ahi, NUNCA de la doc: un test que compara la doc
+    consigo mismo no distinguiria nada, que es el fallo que se esta corrigiendo.
+    """
+    import re
+
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    ruta_serv = os.path.join(raiz, "src", "woptimizer", "services", "process_service.py")
+    with open(ruta_serv, encoding="utf-8") as fh:
+        codigo_serv = fh.read()
+    arbol = ast.parse(codigo_serv, filename=ruta_serv)
+
+    nodo = None
+    for cand in arbol.body:
+        if isinstance(cand, ast.Assign) and any(
+            getattr(t, "id", None) == "SYSTEM_PROTECTED_PROCESSES" for t in cand.targets
+        ):
+            nodo = cand
+    assert nodo is not None, (
+        "SYSTEM_PROTECTED_PROCESSES no aparece a nivel de modulo en process_service.py: "
+        "las docs dicen donde vive y la sonda lo mide, asi que si se mueve hay que moverlas"
+    )
+    assert getattr(nodo.value, "id", None) == "frozenset" or getattr(
+        getattr(nodo.value, "func", None), "id", None
+    ) == "frozenset", (
+        f"SYSTEM_PROTECTED_PROCESSES ya no es un frozenset: el tipo importa porque es la "
+        f"frontera que la doc promete ({ast.dump(nodo.value)[:120]})"
+    )
+    elementos = nodo.value.args[0] if isinstance(nodo.value, ast.Call) else nodo.value
+    reales = {ast.literal_eval(e) for e in elementos.elts}
+
+    rango = f"process_service.py:{nodo.lineno}-{nodo.end_lineno}"
+    for doc in ("architecture.md", "data-models.md"):
+        with open(os.path.join(raiz, "docs", "ai", doc), encoding="utf-8") as fh:
+            texto = fh.read()
+        assert rango in texto, (
+            f"docs/ai/{doc} no dice el rango REAL del frozenset ({rango}, medido con ast). Una "
+            "medicion que nadie vuelve a medir no es una medicion: se desincroniza en silencio "
+            f"(M10a/M10b/M11). Contexto: el nodo ocupa las lineas {nodo.lineno}-{nodo.end_lineno}."
+        )
+
+    with open(os.path.join(raiz, "docs", "ai", "data-models.md"), encoding="utf-8") as fh:
+        texto_dm = fh.read()
+    ini = texto_dm.index("#### Los 34 nombres")
+    fin = texto_dm.index("Los que NO estan")
+    transcritos = set()
+    for linea in texto_dm[ini:fin].splitlines():
+        if linea.strip().startswith("- "):
+            transcritos |= set(re.findall(r"`([^`]+)`", linea))
+
+    assert transcritos == reales, (
+        "la transcripcion de data-models.md no es el frozenset real: sobran "
+        f"{sorted(transcritos - reales)} y faltan {sorted(reales - transcritos)}. La doc "
+        "transcribe la lista DE SEGURIDAD del producto: una nombre que sobra o falta es un "
+        "proceso de sistema que se puede cerrar (M10c)"
+    )
+
+    # El recuento declarado en las dos docs, contrastado con el codigo.
+    m_dm = re.search(r"frozenset` de \*\*(\d+)\*\* entradas", texto_dm)
+    assert m_dm and int(m_dm.group(1)) == len(reales), (
+        f"data-models.md declara {m_dm.group(1) if m_dm else '?'} entradas y el codigo tiene "
+        f"{len(reales)}"
+    )
+    with open(os.path.join(raiz, "docs", "ai", "architecture.md"), encoding="utf-8") as fh:
+        texto_ar = fh.read()
+    m_ar = re.search(r"`frozenset` de (\d+) nombres", texto_ar)
+    assert m_ar and int(m_ar.group(1)) == len(reales), (
+        f"architecture.md declara {m_ar.group(1) if m_ar else '?'} nombres y el codigo tiene "
+        f"{len(reales)}"
+    )
+
+    print(f"Las dos docs dicen el rango {rango} y los {len(reales)} nombres reales.")
+
+
+def test_el_log_rota_con_el_limite_declarado():
+    """M3b: `architecture.md` §15 declara que el log rota, y no lo comprobaba
+    nadie. El `isinstance(h, logging.FileHandler)` de la sonda T1 NO lo
+    distingue, porque `RotatingFileHandler` **hereda** de `FileHandler`: cambiar
+    `RotatingFileHandler` por un `FileHandler` plano (y volver a crecer 1,8 MB)
+    dejaba la suite en verde.
+
+    Por eso aqui se afirma el TIPO EXACTO (`type(h) is RotatingFileHandler`, no
+    `isinstance`) y los ATRIBUTOS que hacen que rote, contra las constantes
+    declaradas en `config.py` (codigo, no doc).
+    """
+    import logging
+    from logging.handlers import RotatingFileHandler
+    from woptimizer.config import LOG_BACKUP_COUNT, LOG_MAX_BYTES, setup_logging
+
+    root = logging.getLogger()
+    handlers_prev = root.handlers[:]
+    level_prev = root.level
+    try:
+        root.handlers.clear()
+        setup_logging()
+        tipos = [type(h) for h in root.handlers]
+        assert tipos == [RotatingFileHandler], (
+            f"el root debe tener EXACTAMENTE un RotatingFileHandler y tiene {tipos}. "
+            "isinstance(h, FileHandler) no lo distingue porque RotatingFileHandler hereda de "
+            "FileHandler: un FileHandler plano pasaria ese isinstance y el log volveria a "
+            "crecer sin limite (M3b)"
+        )
+        h = root.handlers[0]
+        assert h.maxBytes == LOG_MAX_BYTES and h.backupCount == LOG_BACKUP_COUNT, (
+            f"la rotacion esta mal ajustada: maxBytes={h.maxBytes} (declarado {LOG_MAX_BYTES}), "
+            f"backupCount={h.backupCount} (declarado {LOG_BACKUP_COUNT})"
+        )
+        assert LOG_MAX_BYTES > 0 and LOG_BACKUP_COUNT > 0, (
+            f"rotar con maxBytes={LOG_MAX_BYTES} y backupCount={LOG_BACKUP_COUNT} no rota nada"
+        )
+    finally:
+        for h in root.handlers:
+            if not any(h is p for p in handlers_prev):
+                h.close()
+        root.handlers[:] = handlers_prev
+        root.setLevel(level_prev)
+
+    print("El log rota de verdad: tipo exacto y limites medidos contra el codigo.")
+
+
+def test_config_no_configura_nada_al_importarse():
+    """M16: `architecture.md` §15 afirma que "`config.py` no configura nada al
+    importarse". Reinyectar `logging.basicConfig(...)` a nivel de modulo dejaba
+    la suite en verde, y no por casualidad: la sonda T1 **limpia los handlers
+    DESPUES de importar**, asi que por construccion no puede verlo. Es el
+    patron de validador que se deduce a si mismo otra vez, por el otro lado.
+
+    Aqui se mira el AST: ninguna llamada a `basicConfig` fuera de una funcion.
+    Y se lleva un CONTROL que demuestra que el detector SI la encuentra dentro
+    de `setup_logging`: sin ese control, "no hay ninguna" seria el verde de un
+    detector muerto.
+    """
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    ruta_cfg = os.path.join(raiz, "src", "woptimizer", "config.py")
+    with open(ruta_cfg, encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read(), filename=ruta_cfg)
+
+    def _basic_config_en(nodo):
+        return [
+            n.lineno for n in ast.walk(nodo)
+            if isinstance(n, ast.Call)
+            and (getattr(n.func, "attr", None) == "basicConfig"
+                 or getattr(n.func, "id", None) == "basicConfig")
+        ]
+
+    fuera, dentro = [], []
+    for stmt in arbol.body:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            dentro += _basic_config_en(stmt)
+        else:
+            fuera += _basic_config_en(stmt)
+
+    assert not fuera, (
+        f"config.py llama a basicConfig en la(s) linea(s) {fuera} a NIVEL DE MODULO: el canal "
+        "de log vuelve a configurarse como efecto colateral de importar, que es exactamente el "
+        "defecto que FIX-010 cerro. Se rompe en silencio en cuanto alguien importa el paquete "
+        "sin pasar por __main__ (M16)"
+    )
+    assert dentro, (
+        "CONTROL ROTO: el detector no encuentra NI UNA llamada a basicConfig en config.py, ni "
+        "siquiera dentro de setup_logging(). Un detector que no ve nada no puede probar que no "
+        "haya nada: la asercion de arriba pasaria siempre."
+    )
+
+    print("config.py no configura el logging al importarse (ni dentro de setup_logging no se pierde).")
 
 
 if __name__ == "__main__":
@@ -5850,6 +6331,14 @@ if __name__ == "__main__":
     # no puede desincronizarse entre pyproject.toml y __init__.py).
     test_logging_va_a_fichero_y_no_a_stderr()
     test_la_consulta_de_version_no_puede_desincronizarse()
+    # TASK-028 iteracion 2: los 16 supervivientes del mutation-auditor. Cada
+    # una con la mutacion que mata escrita en su docstring.
+    test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz()
+    test_el_punto_de_entrada_declara_el_log_antes_de_los_servicios()
+    test_process_list_file_sigue_siendo_un_contrato()
+    test_la_documentacion_del_blindaje_no_puede_desfasarse()
+    test_el_log_rota_con_el_limite_declarado()
+    test_config_no_configura_nada_al_importarse()
     print("\n--- Running Headless UI Test ---")
     test_headless_ui()
     print("\nALL TESTS PASSED.")

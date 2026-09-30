@@ -275,6 +275,43 @@ permisos del filesystem. Por eso P3 (que sí usa solo-lectura) pone el discrimin
 - `assert cat != "? Otros"` en `test_no_system_process_is_killable` **dejó de comprobar nada** al arreglar el literal (FIX-005): comparaba contra un texto que ya no existía en el código. Ahora compara contra `CATEGORY_ORDER[-1]`, el centinela **vivo**.
 - El centinela de los tests se construye por codepoint (`chr(0x26AA) + " Otros"`), nunca pegando el glifo, para que el propio test no dependa de cómo se escribió el emoji en el editor.
 
+### Sondas del ciclo 21: cerrar los 16 supervivientes del `mutation-auditor` (TASK-028 iter. 2)
+
+El `mutation-auditor` rompió el código a propósito sobre copias en `%TEMP%` y devolvió **16
+supervivientes** y **4 afirmaciones documentales falsas**. Tabla medida por este ciclo
+(21 mutaciones, **21 muertas, 0 supervivientes**; `MUT-0` va aparte porque necesita un repo git
+propio, no una mutación de fichero):
+
+| Sonda | Invariante | Muerte (medida) | Por qué esa aserción y no otra |
+|---|---|---|---|
+| **N1** el archivo de `docs/archive` está versionado y no vuelve a la raíz | la norma "nunca borrar, siempre archivar" produce un archivo **en el histórico**, no en el disco de una máquina | **M12** (borrar la excepción `!` de `.gitignore`), **M12b** (dejarlo fuera del índice con `git rm --cached` en un repo scratch), **M13/M13b** (devolver `profiles.json` o `inconsistencies_plan.md` a la raíz), **M14** (README vacío), **M15** (borrar el directorio), **M15b** (README que ya no nombra lo archivado) | **La trampa de `check-ignore`, medida:** sin `--no-index` git mira el índice y un fichero **ya versionado** nunca sale como ignorado (la sonda pasaría con la excepción borrada, o sea sin distinguir nada); y con `--no-index -v` el código de salida es **0 también para un patrón negativo**. Por eso va `-q --no-index` (rc=1 = no ignorado) **con un control negativo** (`saved_processes.json` sí ignorado → rc=0): sin ese control, una herramienta que no distingue daría verde igual. Además el entorno de git se monta como `git_safe_commit.get_env()` (el `.git` real está desacoplado en `%LOCALAPPDATA%`), y **si `git` no se puede ejecutar la sonda falla fuerte**: una guarda que se salta sola cuando no puede comprobar ya no guarda. |
+| **N2** la versión no puede desincronizarse (ampliada) | la versión vive en **tres** sitios y no puede haber un cuarto | **M7** (`tasks.json` a `0.0.1`), **M9** (`ver = "9.9.9"` en `woptimizer.spec`), **M10** (`APP_VERSION` a nivel de módulo en `config.py`) | El filtro del escáner de empaquetado pasó de "la línea contiene `version`" a **dos condiciones** (literal semver **y** token de versión, con `\b` para que no entren `Verificar` ni `servicio`): el viejo no veía `ver =`. El escáner de `src/` cubre el **cuarto sitio** en cualquier `.py`, con expectativa derivada del código. |
+| **N3** el punto de entrada declara el log antes de los servicios | `setup_logging()` la invoca `__main__.main()` **antes** de instanciar nada | **M4** (borrar la llamada), **M4b** (moverla debajo) | Lee el **AST** y compara **lineno contra lineno**. No se ejecuta `main()` (abriría la UI). Sin esto la suite es un **validador que se deduce a sí mismo**: `run_tests.py` se llama a sí mismo `setup_logging()`, o sea que el punto de entrada del producto le era invisible. |
+| **N4** `PROCESS_LIST_FILE` sigue siendo un contrato | la constante existe, vale lo que debe y la usan sus consumidores reales | **M18** (borrarla), **M18b** (apuntarla a otro sitio), **M18c** (un consumidor deja de nombrarla) | Afirma la **existencia sobre el AST antes de importarla**, para que borrarla dé una **aserción** y no un `ImportError` que parece otra cosa. Y nombra a los **tres** consumidores vivos: el cuarto (`smoke_check.py`) está muerto y no se cuenta (D1). |
+| **N5** la documentación del blindaje no puede desfasarse | el rango y los 34 nombres de `data-models.md` y `architecture.md` son los **reales** | **M10a** (la doc vuelve a decir `23-38`), **M11** (un comentario desplaza el rango a `33-49`), **M10c** (el código pierde `securityhealthservice`), **M10c-bis** (la doc lo pierde) | Mide con `ast` y **deriva la expectativa del código**, nunca de la doc: un test que compara la doc consigo misma no distinguiría nada, que es justo el defecto que se está corrigiendo. |
+| **N6** el log rota con el límite declarado | el handler es un `RotatingFileHandler` con `maxBytes`/`backupCount` | **M3b** (`FileHandler` plano, bien construido) | `type(h) is RotatingFileHandler`, **no** `isinstance`: `RotatingFileHandler` **hereda** de `FileHandler`. Contraste medido: con el mutante aplicado, la sonda vieja (T1) **sigue en verde**; sin N6, la rotación no está probada. |
+| **N7** `config.py` no configura nada al importarse | no hay `basicConfig` fuera de una función | **M16** (reinyectarlo a nivel de módulo) | AST **más un control** que demuestra que el detector encuentra `basicConfig` dentro de `setup_logging`: sin ese control, "no hay ninguna" sería el verde de un detector muerto. |
+
+**Mutantes EQUIVALENTES (no se testean, y no es "sin cobertura").** El arquitecto decidió no
+testearlos y la auditoría lo **confirma con medición**:
+
+- **M17a (FIX-012):** `True if X else True == True` para todo `X`. Un test ahí sería decorativo.
+- **M17b (FIX-016):** el `import sys` local de `quit_app()` se usa una sola vez, después del import.
+
+Un fix equivalente por construcción **no necesita** guarda; lo que no puede es llevar el nombre de
+una que no vigila. Queda escrito aquí para que la diferencia entre "sin cobertura" y "no hace
+falta" no se pierda en el siguiente ciclo.
+
+### Trampa del `__pycache__` al medir mutaciones (medida en este ciclo)
+Python reutiliza un `.pyc` obsoleto cuando el mutante tiene la **misma longitud en bytes** y el
+**mismo segundo de `mtime`**. Purgar `__pycache__` entre mutaciones no es hygiene: sin purga, un
+veredicto de muerte puede salir **falso** (el test pasa contra el código viejo) y una muerte puede
+atribuirse a la mutación equivocada. La segunda trampa es la repo scratch: el `.git` de este
+proyecto es un **fichero** (puntero al gitdir desacoplado), así que copiar el árbol a `%TEMP%` y
+correr `git init`/`git add`/`git rm` ahí cae al **índice real** y modifica el staging del
+proyecto. Se excluye el fichero `.git` de la copia y se verifica `git rev-parse
+--absolute-git-dir` antes de tocar nada.
+
 ## Deuda técnica: tests heredados v2
 En la raíz del repo conviven **11 ficheros `test_*.py` heredados** que están **muertos**:
 

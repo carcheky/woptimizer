@@ -66,9 +66,19 @@ logger = logging.getLogger('woptimizer')
 
 PROCESS_LIST_FILE = os.path.join(_app_dir(), 'saved_processes.json')
 # FIX-011 NO se aplica (TASK-028, veto del arquitecto): `PROCESS_LIST_FILE` NO
-# esta sin usar. La consumen `test_gaming_session.py:36-50`, `test_harness.py:37`,
-# `test_harness_v2.py:64` (los tres protegidos por FIX-014) y `smoke_check.py:23`,
-# que hace `assert` sobre el TEXTO FUENTE de esta linea. Se queda.
+# esta sin usar. La consumen `test_gaming_session.py:36-50`, `test_harness.py:37`
+# y `test_harness_v2.py:64`, los tres protegidos por FIX-014. Se queda.
+#
+# CORRECCION (TASK-028 iteracion 2, hallazgo D1 del mutation-auditor): este
+# comentario decia ademas que `smoke_check.py:23` hacia `assert` sobre el TEXTO
+# FUENTE de esta linea, y **eso era falso**. Ese script esta MUERTO: lee
+# `process_manager.py`, que no existe, y revienta en su linea 8 con
+# `FileNotFoundError` sin llegar nunca a la 23. O sea que el cuarto "consumidor"
+# no existe, y la razon que se daba para no borrar la constante era, en una
+# cuarta parte, inventada. Los consumidores VIVOS son los tres de arriba, y el
+# guardia de verdad es `test_process_list_file_sigue_siendo_un_contrato` en
+# `run_tests.py` (afirma que la constante existe, vale lo que debe y la nombran
+# los tres), no un script que nadie ejecuta.
 PROFILES_FILE = os.path.join(_app_dir(), 'profiles.json')
 
 

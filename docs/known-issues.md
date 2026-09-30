@@ -473,6 +473,48 @@ en `run_tests.py`; matriz de mutación en `_mutmatrix_t027_iter2.py` (21 mutacio
 en la iteración 3) y `_mutmatrix_t027_iter3.py` (5 mutaciones, 5 muertas), y la
 tabla en `docs/ai/testing-guide.md`.
 
+## Trampa #18: PowerShell parsea el bloque entero ANTES de ejecutar: una regex inline tumba todo
+
+**Medido en el ciclo 21** (2026-09-30), y lo encontraron tres actores independientes en la misma tarde:
+`openspec-dev` ("Shell escaping mangled it"), `mutation-auditor` ("PowerShell quoting is fighting the
+regex") y el propio orquestador. No es un incidente aislado: es el fallo por defecto.
+
+```powershell
+# FALLA
+python -c "import re; print(re.findall(r'\"([a-z]+)\"', 'k=\"v\"'))"
+# ParserError: Falta ] al final del atributo o literal de tipo.   (senala el corchete, NO la causa)
+```
+
+**Por qué es peor que un error de escapado normal.** PowerShell **analiza el bloque entero antes de
+ejecutar ninguna línea**. Un solo `ParserError` aborta *todas* las líneas del comando, incluidas las
+correctas: no hay resultados parciales. Y el mensaje apunta a una posición engañosa (el corchete de la
+regex), así que depurar el escapado consume iteraciones que vuelven a perder el bloque completo. El
+propio mensaje sale con los caracteres de la regex ya reinterpretados, así que ni se lee bien.
+
+**El patrón que funciona** (here-string → fichero → ejecutar):
+
+```powershell
+$code = @'
+import re
+print("findall:", re.findall(r'"([a-z]+)"', 'key="value" other="x"'))
+'@
+Set-Content -Path probe.py -Value $code -Encoding UTF8
+python probe.py
+# findall: ['value', 'x']    exit=0
+```
+
+**Regla:** en cuanto el inline deje de ser trivial —una regex, dos tipos de comilla, una barra
+invertida, un f-string con llaves— pasa a fichero de una vez. No dediques iteraciones al escapado.
+
+**Corolario de la misma clase, en Python:** al mutar código, **purga `__pycache__` entre mutaciones**.
+Python reutiliza un `.pyc` obsoleto si el mutante tiene la misma longitud en bytes y el mismo segundo de
+mtime, y entonces el veredicto es FALSO. Contamina además el mutante *siguiente*, que es exactamente
+como se cuela un "sobreviviente" que no existe. Le costó un lote entero al `mutation-auditor` del ciclo 21.
+
+**No confundir con la Trampa #16** (consola `cp1252`): aquella es Python *escribiendo* emoji y flechas;
+esta es PowerShell *parseando* antes de que Python exista. `cp1252` se arregla con ASCII en `print()`;
+esta se arregla con ficheros.
+
 ## Resumen de reglas para IA que modifique este proyecto
 
 1. **NUNCA uses `$pid` en scripts PowerShell** — usa `$procId` u otro nombre
@@ -491,3 +533,8 @@ tabla en `docs/ai/testing-guide.md`.
 11. **NUNCA simules con un doble un caso de seguridad que necesita un objeto real del sistema de
    ficheros** (junction, permisos, hard link): constrúyelo, y si no puedes, falla en voz alta
    (Trampa #17)
+12. **NUNCA pases una regex a `python -c` desde PowerShell** — PowerShell parsea el bloque entero
+   antes de ejecutar, así que un solo `ParserError` aborta también las líneas correctas y no hay
+   resultados parciales. Escribe un fichero `.py` y ejecútalo. Y al mutar código, **purga
+   `__pycache__` entre mutaciones**: si el mutante tiene la misma longitud y el mismo segundo de
+   mtime, Python reutiliza un `.pyc` obsoleto y el veredicto es falso (Trampa #18)

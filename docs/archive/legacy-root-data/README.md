@@ -41,7 +41,7 @@ un único preset de sistema:
 
 | Fichero | Decisión | Motivo |
 |---|---|---|
-| `test_profiles_task1.json` (raíz) | **Se queda** | Lo consume `verify_task1.py:12` (`TEST_FILE = "test_profiles_task1.json"`, pasado a `PackService(data_path=…)`). **Está versionado**: borrarlo rompe ese script y es un cambio real de repo. |
+| `test_profiles_task1.json` (raíz) | **Se queda** | Lo consume `verify_task1.py`: `:12` define `TEST_FILE = "test_profiles_task1.json"` y `:15` lo pasa a `PackService(data_path=TEST_FILE)`. **Está versionado**: borrarlo rompe ese script y es un cambio real de repo. *(Corrección TASK-028 iteración 2: este README decía "verificado en `verify_task1.py:12` → pasado a `PackService(data_path=.)`"; la instanciación es la línea **15** y recibe la **variable**, no un `.`.)* |
 | `saved_processes.json` (raíz, 38 KB) | **Se queda** | Está en `.gitignore:8`: es estado local de **la máquina del usuario** (su historial de procesos), no un residuo del repositorio. Borrarlo sería tocarle el disco al usuario, no limpiar el repo. |
 
 ---

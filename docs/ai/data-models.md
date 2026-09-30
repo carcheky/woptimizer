@@ -529,6 +529,15 @@ alguien los registra por error en el JSON.
 encargo de TASK-028 citaba 23-38, que era otro tramo del fichero). Coincidencia
 **exacta** sobre el nombre normalizado, nunca por subcadena:
 
+> ⚠️ **Esta transcripción y ese rango están CONTRASTADOS, no afirmados** (TASK-028
+> iteración 2, hallazgos M10a-M10c/M11). `test_la_documentacion_del_blindaje_no_puede_desfasarse`
+> vuelve a medir con `ast` la ubicación y el rango reales del `frozenset`, exige que
+> **las dos** docs (`architecture.md` y esta) digan ese mismo rango, y compara los
+> tokens de estos cuatro bullets con el `frozenset` real, elemento a elemento; los
+> recuentos declarados ("34") se contrastan con `len(frozenset)`. Antes el "medido
+> con `ast`" era una medición que se hacía a sí misma y se quedaba en un fichero
+> que nadie contrastaba: cuatro mutaciones, cuatro verdes.
+
   - **Nucleo irrompible**: `csrss`, `lsass`, `winlogon`, `smss`, `services`, `wininit`, `registry`, `memcompression`, `system`, `system idle process`.
   - **Sesion de usuario y escritorio**: `dwm`, `sihost`, `conhost`, `openconsole`, `dllhost`, `ctfmon`, `fontdrvhost`, `spoolsv`, `lsaiso`, `ngciso`, `shellexperiencehost`, `startmenuexperiencehost`, `searchhost`, `searchindexer`, `runtimebroker`, `taskhostw`, `textinputhost`, `systemsettings`.
   - **Audio y dispositivos**: `audiodg`.
@@ -536,7 +545,9 @@ encargo de TASK-028 citaba 23-38, que era otro tramo del fichero). Coincidencia
 
 ⚠️ **Los que NO estan, y por qué su ausencia no es un agujero.** `svchost` y
 `explorer` **no** están en la lista (verificado en caliente:
-`is_system_protected('svchost')` → `False`), y sí están en
+`ProcessService.is_system_protected('svchost')` → `False`; es un `@staticmethod`
+de `ProcessService` (`process_service.py:330-336`), **no** una función de
+módulo — corrección TASK-028 iteración 2, hallazgo **D4**), y sí están en
 `🔴 Sistema de Windows` en `assets/process_db.json`. Por eso existe la
 **barrera de categoría roja** (G-2, `architecture.md` §11): una lista negra de
 nombres no es una garantía, porque depende de que alguien se acuerde de añadir

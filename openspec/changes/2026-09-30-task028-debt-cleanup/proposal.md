@@ -97,13 +97,25 @@ a stderr — que es exactamente el fallo silencioso que hay que cazar.
 | `test_gaming_session.py` | 36, 37, 38, 39, 46, 48, 50 | **Sí** (FIX-014) |
 | `test_harness.py` | 37 | **Sí** (FIX-014) |
 | `test_harness_v2.py` | 64 | **Sí** (FIX-014) |
-| `smoke_check.py` | **23** | No, pero es un `assert` sobre el **texto fuente** |
+| `smoke_check.py` | **23** | ❌ **Ninguno: el script está MUERTO** (ver la nota de corrección de abajo) |
 
-`smoke_check.py:23` es el caso duro:
+> ⚠️ **Corrección del ciclo 21 (hallazgo D1 del `mutation-auditor`, medido el 2026-09-30).**
+> Esta tabla daba por hecho que `smoke_check.py` era un cuarto consumidor **vivo**, y que su
+> línea 23 era "el caso duro" porque rompía por **texto** y no por `ImportError`. **Las dos
+> cosas son falsas.** `smoke_check.py:7-8` lee `process_manager.py`, un fichero que este repo
+> ya retiró, y revienta con `FileNotFoundError` **antes de llegar a la línea 23**: el `assert`
+> nunca se ejecuta. Los consumidores **reales** son los tres de las filas de arriba (FIX-014),
+> y el guardia que hoy vigila la constante es
+> `test_process_list_file_sigue_siendo_un_contrato` (`run_tests.py`). La decisión de fondo
+> —**no borrar** la constante— sigue siendo correcta, pero por los tres consumidores vivos, no
+> por un cuarto que no corre.
+
+`smoke_check.py:23` es el caso duro (así seyardó en su día; **hoy no se ejecuta**):
 ```python
 assert "PROCESS_LIST_FILE = os.path.join(_app_dir()" in code
 ```
-Borrar la constante **rompe el smoke check por texto**, no por ImportError, que es más difícil de ver.
+Borrar la constante **rompería** el smoke check por texto si alguien lo ejecutara, no por
+ImportError, que es más difícil de ver.
 
 Además FIX-011 **contradice FIX-014** en la misma tarea: uno pide borrar lo que el otro manda preservar.
 
@@ -342,8 +354,18 @@ proveniencia de la categoría. No se duplican.
    invocado desde `__main__.py:main()` **y** desde `run_tests.py`.
 2. `test_logging_va_a_fichero_y_no_a_stderr` pasa, y **falla** si `force=True` se sustituye por un
    `basicConfig` sin `force` (se elimina el test, no la guarda).
-3. `smoke_check.py` sigue en verde **sin tocarlo**: prueba viviente de que `PROCESS_LIST_FILE` no se
-   borró (FIX-011 rechazado).
+3. ~~`smoke_check.py` sigue en verde **sin tocarlo**~~ — **CRITERIO MUERTO, retirado el
+   2026-09-30** (ciclo 21, hallazgo **D2** del `mutation-auditor`). Es **imposible**: el script
+   lee `process_manager.py` en su línea 8, ese fichero no existe, y revienta con
+   `FileNotFoundError` **sin llegar nunca a su línea 23**, que es donde estaba el `assert` sobre
+   el texto fuente. No tiene ruta de ejecución verde, y el único modo de "cumplirlo" sería
+   recrear `process_manager.py` (resucitar el programa legacy que este repo ya retiró).
+   **Sustituido por:** `test_process_list_file_sigue_siendo_un_contrato` en `run_tests.py`
+   (`openspec/changes/2026-09-30-close-task028-survivors/`), que afirma lo que el criterio
+   quería afirmar — que `PROCESS_LIST_FILE` no se borró — con un guardia que **se ejecuta**:
+   existencia y valor de la constante, y los tres consumidores reales nombrados.
+   El §2 de este documento ("`smoke_check.py:23` es un `assert` sobre el texto fuente") queda
+   igualmente **refutado**, y así se corrigió también en el comentario de `config.py`.
 4. Los 11 `test_*.py` del root siguen ahí, byte a byte (`git status` no los lista).
 5. `procesos.csv` **no se ha modificado** y `assets/process_db.json` sigue con **73 entradas**
    (FIX-013 fuera de alcance; si alguien lo toca, este criterio salta).

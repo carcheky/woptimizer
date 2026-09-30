@@ -92,6 +92,10 @@ filas malformadas** con la descripción sin comillas.
 `assert "PROCESS_LIST_FILE = os.path.join(_app_dir()" in code`. Borrarla rompe el smoke check y
 contradice FIX-014 en la misma tarea.
 
+> ⚠️ **Corregido el 2026-09-30 (D1).** Los **tres primeros** son consumidores vivos. El cuarto,
+> `smoke_check.py`, **está muerto**: lee `process_manager.py` (inexistente) en su línea 8 y nunca
+> alcanza la 23. La decisión de no borrar se sostiene en los tres, no en el cuarto.
+
 - [ ] **NO** eliminar la constante. Como mucho, un comentario de deprecación que nombre a los
       4 consumidores.
 - [ ] **NO** borrar `saved_processes.json` (37.997 B): está en `.gitignore:8` y es estado local del
@@ -103,7 +107,10 @@ contradice FIX-014 en la misma tarea.
 
 - [ ] `python run_tests.py` en verde.
 - [ ] `python verify_ui_syntax.py` y `python validate_docs.py` en verde.
-- [ ] `python smoke_check.py` en verde **sin haberlo tocado** (criterio 3).
+- [ ] ~~`python smoke_check.py` en verde **sin haberlo tocado** (criterio 3)~~ — **IMPOSIBLE,
+      retirado el 2026-09-30 (D2).** El script lee `process_manager.py` en su línea 8 y ese
+      fichero no existe: `FileNotFoundError` antes de llegar a su línea 23. No tiene ruta verde.
+      Sustituido por `test_process_list_file_sigue_siendo_un_contrato` (ciclo 21), que sí corre.
 - [ ] `python .taskmaster/git_safe_commit.py "chore(task028): ..."` con salida **0**.
 - [ ] `mutation-auditor` sobre las 2 sondas nuevas (T1, T2). T3 solo si se desbloquea R1.
 - [ ] Marcar `"status": "completed"` en `.taskmaster/tasks.json` (Paso 3, no este agente).
