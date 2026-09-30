@@ -1,3 +1,28 @@
+## CYCLE-023 - 2026-09-30
+
+**Base de Datos & Procesos** — `TASK-032` (Expansión de la base de procesos)
+
+### Añadido
+- **8 nuevos procesos del sistema catalogados (`process_db.json`).** Escaneo real en Windows que incorpora launchers, herramientas de soporte y bloatware seguro a la base de conocimiento local (total: 81 entradas):
+  - `braveupdate` (🟢 Productividad, high): servicio de actualización en segundo plano de Brave.
+  - `xboxgamebarwidgets` (🔴 Overlays e Info, none): widgets del Game Bar de Windows (blindado bajo barrera roja G-2).
+  - `xboxpcappft` (🟡 Launchers Gaming, none): launcher y runtime de la app Xbox en PC.
+  - `whatsapp.root` (🟡 Chat y Comunicación, low): cliente de mensajería UWP de WhatsApp.
+  - `crossdeviceresume` (🟢 Sincronización, high): servicio de continuidad multidispositivo Phone Link.
+  - `lightingservice` (🔴 Overlays e Info, none): control RGB de ASUS Aura / Armoury Crate (blindado bajo barrera roja G-2).
+  - `powertoys.mousewithoutbordershelper` (🟢 Productividad, high): servicio auxiliar de Microsoft PowerToys.
+  - `acpowernotification` (🟢 Productividad, high): notificador de estado de batería/corriente OEM de ASUS.
+- **Sonda de integridad de esquema en `run_tests.py`.** Nueva prueba `test_process_db_schema_integrity` que valida exhaustivamente que toda entrada contenga claves normalizadas sin `.exe`, categorías pertenecientes a `PROCESS_CATEGORIES`, prioridades válidas (`high`, `medium`, `low`, `none`) y descripciones no vacías. Total suite: **71 tests backend + 1 headless UI**, todos en verde.
+
+### Corregido
+- **Cierre del mutante superviviente S1.** `mutation-auditor` identificó que una entrada podía omitir `priority` o `description` sin que los tests previos lo detectaran. La nueva sonda elimina este punto ciego, aniquilando 11/11 mutantes.
+- **Blindaje anti-brick estricto verificado.** Se validó que ninguna de las 8 nuevas entradas colisione con `SYSTEM_PROTECTED_PROCESSES` (34 procesos críticos de Windows) ni pueda comprometer la estabilidad del sistema operativo.
+
+### Impacto
+La base de datos local amplía su cobertura de procesos residentes comunes en Windows 11 sin añadir peso ni llamadas externas. La integridad de datos queda asegurada mediante verificación estricta de esquema y blindaje anti-brick verificado por pruebas de mutación.
+
+---
+
 ## CYCLE-022 - 2026-09-30
 
 **Diseño & Front-End** — `TASK-029` (UI-001 a UI-012)

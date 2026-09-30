@@ -325,5 +325,23 @@
       "after": "63 backend + 1 headless UI, 0 fallos"
     },
     "impact": "Sistema de diseno y refresco visual del front (TASK-029, UI-001 a UI-012). Centralizacion de tokens en ui/theme.py (colores semanticos, escala de 6 fuentes, 3 radios, contrastes WCAG AA). Resolucion de contradiccion de marca: Opcion A Gaming = verde #1DB954 y rojo exclusivo para peligro (#c22d2d). Generacion y cableado de assets/woptimizer.ico en ventana y system tray. Barra de navegacion con altura fija de 44px (pack_propagate(False)), hover y estado activo desacoplado. Portada (DashboardView) con banda de telemetria permanente en reposo sin psutil, etiquetas descriptivas ('N apps · M categorias · KILL') y reutilizacion de widgets. Tarjeta del pack Gaming destacada con acento y badge PRESET verde. Reemplazo de CTkInputDialog huerfano por NewPackModal acoplado al toplevel sin messagebox. Botones interactivos con objetivos de puntero minimos de 28x28px. Cabeceras de categorias con fondo, hover y contador. 6 tests discriminantes nuevos validados con 100% de letalidad por mutation-auditor (PASS)."
+  },
+  {
+    "cycle": 23,
+    "date": "2026-09-30T20:35:00",
+    "area": "Base de Datos & Procesos",
+    "slug": "2026-09-30-process-db-expansion",
+    "task": "TASK-032",
+    "status": "COMPLETED",
+    "commits": [
+      "f2adf2b (plan)",
+      "3e24a1e (feat)",
+      "091386c (test)"
+    ],
+    "tests": {
+      "before": "63 backend + 1 headless UI",
+      "after": "71 backend + 1 headless UI, 0 fallos"
+    },
+    "impact": "Expansion de la base de procesos (TASK-032): integracion de 8 nuevos procesos reales del sistema en assets/process_db.json (81 entradas totales): braveupdate, xboxgamebarwidgets, xboxpcappft, whatsapp.root, crossdeviceresume, lightingservice, powertoys.mousewithoutbordershelper, acpowernotification. Blindaje anti-brick estricto con cero solapamientos con SYSTEM_PROTECTED_PROCESSES. Cierre del mutante superviviente S1 mediante la sonda test_process_db_schema_integrity() en run_tests.py garantizando claves en minusculas sin .exe, campos category, priority y description obligatorios con tipos y enums cerrados. 11/11 mutantes aniquilados por mutation-auditor (PASS)."
   }
 ]

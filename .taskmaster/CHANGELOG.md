@@ -1,3 +1,47 @@
+## [CYCLE-023] 2026-09-30 20:35 — process-db-expansion
+**Área**: Base de Datos & Procesos
+**Change**: openspec/changes/2026-09-30-process-db-expansion/
+**Estado**: COMPLETED
+**Models**:
+- Paso 1 (Buscar): inherit
+- Paso 2 (Planear): architect-review / process-db-updater
+- Paso 3 (Ejecutar): process-db-updater & openspec-dev → IMPLEMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → VERDICT: PASS (11/11 mutantes eliminados)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| M1a (Anti-brick) | Inyectar `csrss` cerrable (`Productividad`/`high`) | killed | `test_no_system_process_is_killable detectó proceso crítico closable` |
+| M1b (Anti-brick) | Inyectar `lsass` con semáforo no-rojo | killed | `test_no_system_process_is_killable detectó proceso vigilado sin rojo` |
+| M2a (Categoría) | Modificar categoría de `braveupdate` a `? Otros` | killed | `test_category_emoji_alignment detectó categoría huérfana` |
+| M2b (Categoría) | Modificar categoría de `braveupdate` a `⚪ Otros` (espacio erróneo) | killed | `test_category_emoji_alignment detectó categoría no presente en PROCESS_CATEGORIES` |
+| M2c (Categoría) | Glifo alterado `🟩 Productividad` | killed | `test_category_emoji_alignment detectó glifo no alineado con config` |
+| M3a (Categoría) | Eliminar `category` de `braveupdate` | killed | `test_category_emoji_alignment / test_process_db_schema_integrity detectó campo faltante` |
+| M3b (S1, Prioridad) | Eliminar `priority` de `braveupdate` | killed | `test_process_db_schema_integrity detectó ausencia de campo obligatorio 'priority'` |
+| M3c (S1, Descripción) | Eliminar `description` de `braveupdate` | killed | `test_process_db_schema_integrity detectó ausencia de campo obligatorio 'description'` |
+| M3d (S1, Prioridad) | `priority: "invalido"` en `braveupdate` | killed | `test_process_db_schema_integrity detectó prioridad fuera de {'high','medium','low','none'}` |
+| M-KeyExe (Esquema) | Clave con extensión `.exe` | killed | `test_process_db_schema_integrity detectó clave terminada en .exe` |
+| M-DescEmpty (Esquema) | `description: ""` vacía | killed | `test_process_db_schema_integrity detectó descripción vacía` |
+
+### What
+- Expansión de `assets/process_db.json` con 8 nuevas entradas reales obtenidas por escaneo con `psutil`: `braveupdate`, `xboxgamebarwidgets`, `xboxpcappft`, `whatsapp.root`, `crossdeviceresume`, `lightingservice`, `powertoys.mousewithoutbordershelper`, `acpowernotification` (total: 81 entradas).
+- Blindaje anti-brick estricto: cero colisiones con `SYSTEM_PROTECTED_PROCESSES:33-48`. Procesos de hardware y overlays asignados a `🔴 Overlays e Info` (`priority: "none"`), quedando blindados ante Gaming Mode por la barrera roja G-2.
+- Detección y erradicación del mutante superviviente S1: implementación de la sonda `test_process_db_schema_integrity()` en `run_tests.py` (L343) que valida estructura de diccionario, claves normalizadas sin `.exe`, categorías cerradas en `PROCESS_CATEGORIES`, prioridades válidas y descripciones no vacías.
+- Actualización de documentación técnica en `docs/ai/data-models.md` y `docs/ai/testing-guide.md` (suite actualizada a 72 tests).
+
+### Outcome
+- Commits:
+  - `f2adf2b` (plan)
+  - `3e24a1e` (feat: expandir process_db.json a 81 entradas)
+  - `091386c` (fix: cerrar mutante S1 con test_process_db_schema_integrity)
+- Tests: 71 backend + 1 headless UI PASS (0 fallos).
+- Docs: `validate_docs.py` (66 OK, 0 FAIL).
+
+### Impact
+Ampliación segura y verificada de la base de conocimiento local de procesos de Windows sin alterar contratos arquitectónicos ni runtime de ejecución. La nueva sonda de esquema previene corrupciones y omisiones silenciosas de metadatos en futuros ciclos.
+
+---
+
 ## [CYCLE-022] 2026-09-30 20:15 — ui-visual-refresh
 **Área**: Diseño & UI / Micro-UX
 **Change**: openspec/changes/2026-09-29-ui-visual-refresh/

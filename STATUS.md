@@ -4,21 +4,21 @@
 
 ---
 
-## 🟢 Salud General del Sistema
+### 🟢 Salud General del Sistema
 - **Sintaxis Estática UI:** 🟢 Pasa al 100% (`verify_ui_syntax.py`, 8 módulos)
-- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **64 tests**: 63 backend + 1 headless UI)
+- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **72 tests**: 71 backend + 1 headless UI)
 - **Micro-Benchmark Base:** 182 ms (Init) | 16.4 ms (Escaneo 326 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
 - **Compilación PyInstaller:** 🟡 Al día con el ciclo #11, **pendiente de regenerar**
-- **Base de Datos de Procesos:** 73 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
-- **Versionado:** 🟢 Al día en git (`16ef4dc` feat(ui): TASK-029).
+- **Base de Datos de Procesos:** 81 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
+- **Versionado:** 🟢 Al día en git (`091386c` fix(tests): TASK-032).
 
 ---
 
 ### 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 22 (`rd_journal.json` actualizado).
-- **Ciclo Actual #23:** Paso 1 — Selección de nueva tarea en el backlog.
-- **Última Acción:** Ciclo #22 TASK-029 — Sistema de diseño y refresco visual del front (`ui/theme.py`, `woptimizer.ico`, Opción A verde, `NewPackModal`, hit targets ≥28x28). **63 tests backend + 1 UI en verde, Paso 4 = PASS.**
+- **Ciclos Completados:** 23 (`rd_journal.json` actualizado).
+- **Ciclo Actual #24:** Paso 1 — Selección de nueva tarea en el backlog (Área 4: Rendimiento & Latencia).
+- **Última Acción:** Ciclo #23 TASK-032 — Expansión de process_db.json a 81 entradas (+8 procesos), cierre del mutante S1 con test_process_db_schema_integrity(). **71 tests backend + 1 UI en verde, Paso 4 = PASS (11/11 mutantes eliminados).**
 
 ---
 
@@ -32,7 +32,7 @@
 7. **[Ciclo #7 - Rendimiento & Latencia]:** Hashmap O(1) + meta-cache + TTL 2s en ProcessService. Lectura cacheada 0.003 ms (~5000x).
 8. **[Ciclo #8 - Gaming & Telemetría UX]:** `NotificationService` con toasts nativos de Windows vía `pystray.Icon.notify()`. 4 tests nuevos. `pystray` y `Pillow` declarados en `pyproject.toml`. Smoke test de build OK.
 9. **[Ciclo #9 - Base de Datos & Procesos]:** 🔴 **Bug crítico corregido** — 6 de 8 categorías del JSON no existían en `config.py` por emojis invertidos, dejando todos esos procesos en "? Otros" sin semáforo. Segundo bug en `get_safety_badge`: la prioridad se evaluaba antes que la categoría. +14 procesos (navegadores, launchers, IA) = 48 total. 2 tests de regresión.
-10: 10. **[Ciclo #10 - Testing & Calidad]:** 🔴 **Segundo bug real corregido** — `model_copy()` de Pydantic v2 es *shallow*, así que las listas del pack Gaming se compartían con el global `DEFAULT_GAMING_PACK`. La UI muta in situ (`on_add_to_pack`), contaminando el global y volviendo **"Restaurar por defecto" un no-op silencioso**. Fix: `model_copy(deep=True)`. +8 tests para invariantes sin cobertura tras la migración v2→v3: `GamingService.should_kill_for_gaming`, CRUD de `PackService`, cache TTL y kill recursivo.
+10. **[Ciclo #10 - Testing & Calidad]:** 🔴 **Segundo bug real corregido** — `model_copy()` de Pydantic v2 es *shallow*, así que las listas del pack Gaming se compartían con el global `DEFAULT_GAMING_PACK`. La UI muta in situ (`on_add_to_pack`), contaminando el global y volviendo **"Restaurar por defecto" un no-op silencioso**. Fix: `model_copy(deep=True)`. +8 tests para invariantes sin cobertura tras la migración v2→v3: `GamingService.should_kill_for_gaming`, CRUD de `PackService`, cache TTL y kill recursivo.
 11. **[Ciclo #11 - Resiliencia & Robustez]:** 🔴 **El pipeline podía "completar" ciclos sin versionar nada** — `git_safe_commit.py`, la única puerta de versionado, salía con **código 0 ante cualquier fallo de commit**. El CHANGELOG MANDATORY registraba hashes que podían no existir y `validate_docs.py` no podía detectarlo. Rehecho con contrato de 4 códigos de salida y líneas canónicas `WOPT_*`, validación real del repo (sin fallback al `.git` corrupto del VFS) y flag `--verify`. El arquitecto corrigió 3 errores de la propuesta, el más grave: decidir "nada que comitear" buscando `"nothing to commit"` depende de `LANG` y **en un Windows en español ese texto nunca aparece**, lo que habría convertido un árbol limpio en un fallo → ahora se decide con `git diff --cached --quiet`. Checkpoint de empaquetado cerrado: `dist/woptimizer.exe` regenerado (25.65 MB) con los fixes de los ciclos #9 y #10.
 12. **[Ciclo #12 - Gaming & Telemetría UX]:** 🔴 **Regresión silenciosa de la reescritura v2→v3** — el patrón de doble pulsación para acciones destructivas (nacido de un incidente real: un `messagebox` que se abría *detrás* de la ventana) se perdió al reescribir, y **5 acciones destructivas quedaron sin confirmar nada**. La grave: "Cerrar Seleccionados" mata N procesos de un solo clic, agravada porque `refresh_dashboard` coloca los packs de dos en dos en la misma fila, así que el botón Gaming tenía un pack vecino pegado. Implementado **en un solo sitio**: `ui/confirmation.py` con `DoubleTapGuard` (máquina de estado pura, testeable headless) y `Confirmable` (mixin). `PackManagerView` recibió su `status_label`, que no tenía. Documentada la **Trampa #14**, que cierra la laguna #13 → #14.
 13. **[Ciclo #13 - Base de Datos & Procesos]:** 🛡️ **Blindaje anti-brick** — el escaneo real encontró 122 procesos sin registrar de 131. Se clasificaron en tres familias: los de sistema (prohibidos), el bloatware real (**+25 entradas**, 48 → 73: PowerToys, Armoury Crate, language servers, audio) y los del usuario (fuera). Añadido `SYSTEM_PROTECTED_PROCESSES` (34 nombres) aplicado por **tres vías**: al cargar la DB, al resolver metadatos, y en el propio kill —porque un `lsass.exe` escrito a mano en un pack también debe ser indestructible—. **Verificado: 0 procesos de sistema registrados como cerrables.**
@@ -42,19 +42,20 @@
 17. **[Ciclo #17 - Pipeline]:** 🧬 **El bucle pasa de 3 a 4 pasos: alguien rompe el código a propósito para ver si los tests se enteran.** `run_tests.py` en verde dice que el código hace lo que el test comprueba, **no** que el test compruebe algo — la cobertura mide ejecución, no verificación. Nuevo agente `mutation-auditor` con una tabla de 12 mutaciones canónicas de este repo, que trabaja solo sobre copias y tiene prohibido reparar lo que encuentra. **Su primer arranque devolvió FAIL**: encontró 3 tests de los ciclos 14-15 que pasan con el bug puesto, incluido el de escritura atómica (mira que exista un `.tmp`, así que si la atomicidad desaparece y el `.tmp` nunca se crea, el assert sigue verde) y el de errores de permisos (acepta igual "no intentó guardar" que "intentó y falló"). También reparadas 5 referencias a `tm.py` en `AGENTS.md` que mandaban usar un comando no funcional. Sin cambios en `src/`.
 18. **[Ciclo #21 - Resiliencia & Deuda Técnica]:** 🧹 **Saneamiento de deuda técnica (TASK-028, FIX-010 al FIX-020)** — `setup_logging` explícito con `force=True` y rotación de archivo sin ensuciar stderr; sincronización de versión `3.0.1.dev0` con test AST; perfiles legacy v2 archivados en `docs/archive/legacy-root-data/` con README; limpias redundancias en `quit_app` e `is_expanded`. 57 tests backend + 1 UI en verde y mutaciones auditadas con PASS.
 19. **[Ciclo #22 - Diseño & UI / Micro-UX]:** 🎨 **Sistema de diseño y refresco visual del front (TASK-029, UI-001 a UI-012)** — tokens centralizados en `ui/theme.py` (colores semánticos, 6 fuentes, 3 radios, WCAG AA); resolución de contradicción de marca (Opción A: Gaming verde `#1DB954`, peligro rojo `#c22d2d`); icono oficial `woptimizer.ico` en ventana y tray; barra de navegación fija a 44px; telemetría en reposo en `DashboardView` sin `psutil`; `NewPackModal` sin `messagebox`; hit targets ≥28x28px y descripciones responsive (`wraplength=380`). 63 tests backend + 1 UI en verde y Paso 4 = PASS (6/6 mutantes eliminados).
+20. **[Ciclo #23 - Base de Datos & Procesos]:** 📦 **Expansión y esquema estricto de process_db.json (TASK-032)** — 8 nuevos procesos reales añadidos (+8: braveupdate, xboxgamebarwidgets, xboxpcappft, whatsapp.root, crossdeviceresume, lightingservice, powertoys.mousewithoutbordershelper, acpowernotification = 81 total) con cero solapamiento con procesos protegidos. Cierre del mutante S1 mediante `test_process_db_schema_integrity` en `run_tests.py` para asegurar que ningún proceso omita campos requeridos o asigne prioridades erróneas. 71 tests backend + 1 UI en verde y Paso 4 = PASS (11/11 mutantes eliminados).
 
 ---
 
 ## 🗂️ Rotación de Áreas (Matriz ID)
 | # | Área | Último ciclo | Subagente |
 |---|------|:---:|---|
-| 1 | Resiliencia & Robustez | **#21** | `openspec-dev` |
+| 1 | Resiliencia & Robustez | #21 | `openspec-dev` |
 | 2 | Gaming & Telemetría UX | #20 | `openspec-dev` |
-| 3 | Base de Datos & Procesos | #13 | `process-db-updater` |
+| 3 | Base de Datos & Procesos | **#23** | `process-db-updater` |
 | 4 | Rendimiento & Latencia | #7 | `openspec-dev` |
 | 5 | Testing & Calidad | #10 | `openspec-dev` |
 
-> **Tarea activa: `TASK-029`** (sistema de diseño y refresco visual del front). Es la última tarea pendiente del backlog de la auditoría `bugfix-audit-v3` y tiene prioridad sobre la rotación. `TASK-025`, `TASK-026`, `TASK-027` y `TASK-028` están cerrados.
+> **Próxima área en rotación: Área 4 (Rendimiento & Latencia).** Último ciclo abordado: #7 (`TASK-018` Hashmap O(1) + cache TTL 2s en `ProcessService`).
 
 ---
 
