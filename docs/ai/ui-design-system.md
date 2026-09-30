@@ -323,6 +323,7 @@ Previamente existía asimetría entre vistas y acciones:
 
 2. **Gestor de Packs (`PackManagerView`):**
    - **Guarda preventiva en `start_pack`:** Si `not pack.apps`, la UI cancela confirmaciones pendientes y emite de inmediato `self._inline_status(*mensaje_sin_apps(pack.name, "start"))` sin crear un hilo innecesario. Aquí la **acción** es arrancar, así que el verbo es "iniciar" aunque el pack sea gaming con `default_action="kill"`: quien decide el verbo es el formateador, y quien dice qué acción se ejecuta es el método.
+     - Eso no es una convención sin medir: `test_el_feedback_de_pack_dice_la_verdad` pasa un `Pack(is_gaming=True, default_action="kill", apps=[])` por `start_pack` y exige el texto **"no tiene apps que iniciar"**. El caso anterior (pack normal) no distinguía nada, porque `default_action` vale `"start"` de serie y las dos cableaciones dan el mismo texto; con el gaming de apagar, cablear `pack.default_action` produce **"apagar"** y el test muere por aserción. Si "corregir" esa línea a `pack.default_action` parece más coherente, es la suite la que lo dice que no.
    - **Guarda preventiva en `kill_pack`:** el pack no gaming y sin apps se avisa con `mensaje_sin_apps(pack.name, pack.default_action)`. La comprobación vive **una vez** en `_aviso_pack_inerte(pack)` y se llama en los **dos** puntos donde `kill_pack` lee el pack (antes de `_require_double_tap` y tras el re-fetch por `id`): el literal estaba duplicado byte a byte dentro del mismo método, que es la forma más barata de tener dos verdades.
    - **Gaming inerte:** un `is_gaming` con 0 apps **y** 0 categorías se diagnostica con `mensaje_gaming_inerte(nombre)` (ROJO, `⛔`) en `_aviso_pack_inerte`, también antes de `_require_double_tap`. Con ambas listas vacías `should_kill_for_gaming` cae a `False` para todo lo no protegido: es **inerte por construcción**. Un gaming con apps **o** con categorías no es inerte y no avisa.
    - **Arranque (`start_pack._run`):**
@@ -440,15 +441,33 @@ puros, los mismos que el resto del módulo:
   ("Segunda pulsación para apagar 0 apps de 'X'") es la fealdad que la guarda evita.
   Sin hilo, sin `after`, sin worker: ya estamos en el hilo principal dentro de un callback.
 
-**El canal de la Portada es `_show_aviso_banner`, no `_inline_status`.** `_inline_status`
-pinta el fondo con `CANCEL` (`#5a4a1e`), la familia del aviso de "confirmación pendiente":
-un aviso permanente con ese fondo se lee como "espera la segunda pulsación"; y **nunca se
+**El canal de la Portada es `_show_aviso_banner`, no `_inline_status`.** Hay **dos**
+`_inline_status` y confundirlos es como nació la incidencia de contraste que quedó
+transcrita en `deuda-ciclo-26.md` (fila 8): el de la **base** (`ui/confirmation.py`) solo
+configura `text` y `text_color` del label — **no pinta ningún fondo**; el **override** de la
+Portada (`ui/views/dashboard_view.py`) sí configura `fg_color=CANCEL` (`#5a4a1e`), la familia
+del aviso de "confirmación pendiente". Todo lo que sigue habla del override. Un aviso
+permanente con ese fondo se lee como "espera la segunda pulsación"; y **nunca se
 auto-oculta** (llama a `pack()` y no a `_reprogramar_autoocultado()`), con lo que dejaría
 el aviso pegado contra la regla de `_on_expirado`. `_show_aviso_banner` publica sobre
 `theme.SURFACE_ALT` y programa el auto-ocultado, como las otras dos puertas. Las tres
 comparten ahora la única línea de publicación, `_publicar_en_banner` (fondo, texto, color,
 `pack(...)` y `_reprogramar_autoocultado()`): el bloque era de cuatro líneas y estaba
 copiado en dos sitios, y la tercera puerta iba a ser la tercera copia.
+
+Por dónde sale, entonces, cada diagnóstico, y por qué ninguno cae sobre `CANCEL`:
+
+| diagnóstico | canal | fondo real | color |
+|---|---|---|---|
+| Gaming inerte en la **Portada** | `_show_aviso_banner` → `_publicar_en_banner` | `theme.SURFACE_ALT` | `theme.WARNING` |
+| Gaming inerte en el **Gestor** | `_inline_status` **de la base** (`confirmation.py`) | ninguno: el de reposo (`transparent`) | `ROJO` |
+| Aviso de pack sin apps | igual, el de la vista que lo publica | el de reposo de su label | `AMBAR` / `theme.WARNING` |
+
+Lo mide `test_el_feedback_de_pack_dice_la_verdad`: el bloque (f) para la mitad banner
+(`status_banner_frame.cget("fg_color") == theme.SURFACE_ALT`) y el bloque de contrato de
+canal de la guarda de `start_pack` para la mitad inline (el `fg_color` del label del Gestor
+sigue siendo el de reposo tras publicar el diagnóstico ROJO). Si alguien pintara el canal
+inline con `CANCEL`, el test muere con `Reposo: 'transparent', despues: '#5a4a1e'`.
 
 Dos reglas que no se pueden relajar:
 

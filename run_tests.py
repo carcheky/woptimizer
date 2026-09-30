@@ -8094,7 +8094,7 @@ def test_el_feedback_de_pack_dice_la_verdad():
     from woptimizer.ui.views.dashboard_view import DashboardView
     from woptimizer.ui.views.pack_manager_view import PackManagerView
     from woptimizer.ui.confirmation import (
-        AMBAR, MSG_PACK_INEXISTENTE, ROJO, VERDE, VENTANA_MS, VENTANA_MS_PORTADA,
+        AMBAR, CANCEL, MSG_PACK_INEXISTENTE, ROJO, VERDE, VENTANA_MS, VENTANA_MS_PORTADA,
     )
     from woptimizer.ui import theme
 
@@ -8462,12 +8462,50 @@ def test_el_feedback_de_pack_dice_la_verdad():
         # --- la guarda preventiva de `start_pack` (ventana real, widget real)
         pm_real = PackManagerView(root, ps, pack_s, ns, gs)
         pm_real.pack()
+        # Fondo de REPOSO del label del Gestor, antes de que ningun
+        # `_inline_status` lo toque. Lo afirma el bloque de contrato de canal de
+        # mas abajo: el canal inline no pinta fondo, solo texto y color.
+        fondo_reposo = pm_real.status_label.cget("fg_color")
         pm_real.start_pack(Pack(id="vacio", name="Pack Vacio", apps=[]))
         assert pm_real.status_label.cget("text") == (
             "⚠️ 'Pack Vacio' no tiene apps que iniciar. "
             "Añádelas desde el Gestor de Procesos."
         ), f"aviso preventivo de pack vacio: {pm_real.status_label.cget('text')!r}"
         assert pm_real.status_label.cget("text_color") == AMBAR
+
+        # El MISMO aviso con un pack de la otra familia: gaming, `default_action="kill"`
+        # y sin apps. El verbo lo decide el METODO (`start_pack` ES arrancar), no el
+        # `default_action` del pack. Sin este caso la suite no distingue las dos
+        # cableaciones: el pack de arriba trae `default_action="start"` de serie, asi
+        # que "start" y `pack.default_action` dan el mismo texto y la convencion
+        # queda sin medir. Con el gaming de apagar, cablear `pack.default_action`
+        # devuelve "apagar" y este bloque muere.
+        pm_real.start_pack(Pack(id="g_vacio", name="Gaming Vacio Start",
+                                is_gaming=True, default_action="kill", apps=[]))
+        assert pm_real.status_label.cget("text") == (
+            "⚠️ 'Gaming Vacio Start' no tiene apps que iniciar. "
+            "Añádelas desde el Gestor de Procesos."
+        ), (
+            "arrancar dice INICIAR aunque el pack sea de apagar: el verbo lo decide "
+            "el metodo que se esta ejecutando, no el default_action del pack. Con la "
+            f"otra cableacion sale 'apagar': {pm_real.status_label.cget('text')!r}"
+        )
+        assert pm_real.status_label.cget("text_color") == AMBAR
+
+        # Contrato de CANAL (deuda 8 del ciclo 26): el diagnostico inline no puede
+        # caer sobre el fondo CANCEL. `Confirmable._inline_status` solo configura
+        # texto y color; el CANCEL lo pinta el OVERRIDE de la Portada, y el
+        # diagnostico no pasa por ahi (la mitad banner se mide en el bloque (f)).
+        # Se compara contra el fondo de REPOSO, no contra el anterior: si el
+        # canal pintara CANCEL, el color ya seria CANCEL de antes y la comparacion
+        # de "antes/despues" seria verde por construccion.
+        pm_real._inline_status("⛔ El Gaming Mode de 'Gaming Vacio Start' no tiene "
+                               "nada que cerrar.", ROJO)
+        assert pm_real.status_label.cget("fg_color") == fondo_reposo, (
+            "el canal inline no pinta fondo: el diagnostico ROJO caeria sobre el "
+            f"{CANCEL!r} de la confirmacion pendiente. Reposo: {fondo_reposo!r}, "
+            f"despues: {pm_real.status_label.cget('fg_color')!r}"
+        )
         pm_real.destroy()
 
         # -----------------------------------------------------------------
