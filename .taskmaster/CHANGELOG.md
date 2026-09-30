@@ -1,3 +1,52 @@
+## [CYCLE-026] 2026-09-30 23:40 — pack-telemetry-feedback
+**Área**: Testing & Calidad
+**Change**: openspec/changes/2026-09-30-pack-telemetry-feedback/
+**Estado**: IMPLEMENTADO (iteración 3) — el veredicto del Paso 4 lo da el `mutation-auditor`, no la implementación
+**Models**:
+- Paso 1 (Buscar): heredado del ciclo
+- Paso 2 (Planear): architect-review → VISTO BUENO CON DIRECTRICES OBLIGATORIAS
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO (iteración 3)
+- Paso 4 (Auditar tests): mutation-auditor → FAIL (iter 1), FAIL (iter 2), pendiente (iter 3)
+
+### Historial de las tres iteraciones
+| iter | veredicto | qué encontró |
+|---|---|---|
+| 1 | FAIL | `kill_pack` pintaba `"<tick> 0 procesos cerrados (0.0 MB liberados)"` en VERDE Gaming con `killed == 0`; la guarda AST era una lista de 3-4 nombres de método |
+| 2 | FAIL (80 mutaciones, 58 muertas, **21 supervivientes**) | El fix de la iteración 1 announcementaba lo que hacía pero dejaba **una tercera puerta** (`on_kill_selected`) mintiendo en verde, el bloque de cancelación del temporizador **duplicado byte a byte** con la sonda instrumentando solo una mitad, cuatro ramas sin ejecutar, y cinco afirmaciones documentales falsas |
+| 3 | pendiente | Cierre de los 21 supervivientes + corrección de las cinco afirmaciones |
+
+### Mutaciones verificadas a mano en la iteración 3
+Reproducidas con un script temporal que reescribe `src/`, corre la suite y revierte (`_matrix_c26.py` es el utillaje del auditor; este era propio y no se dejó en el árbol porque muta el árbol real en sitio).
+
+| # | Mutación | Veredicto | Muere por |
+|---|---|---|---|
+| 1 | `on_kill_selected` vuelve a su texto con tick en verde | killed | `test_el_gestor_de_procesos_tampoco_miente`: "cerrar cero procesos no puede decir '0 cerrados' con tick" |
+| 2 | El formateador de la tercera puerta se ignora (`max(killed, 1)`) | killed | El texto deja de ser `"...0 procesos cerrados, 3 protegidos..."` |
+| 3 | Se borra la cancelación del auto-ocultado | killed | "el banner nuevo debe cancelar el auto-ocultado anterior (job1)" |
+| 4 | El auto-ocultado se va a 60 s | killed | "el auto-ocultado de 5000 ms tiene que seguir existiendo" |
+| 5 | Se quita el `_timers_ui.discard` | killed | "el handle viejo tiene que salir de `_timers_ui`" |
+| 6 | `clasificar_cierre` exige dos cerrados para dar éxito | killed | "cerrar UN proceso es exito" (el caso `killed == 1`) |
+| 7 | La rama `nada` del banner se pone en verde | killed | `texto_banner == "⚠️ Nada que cerrar: ..."` (texto exacto) |
+| 8 | La rama no-gaming de la portada se invierte | killed | "la portada cierra el pack gaming por la puerta que respeta keepers" |
+| 9 | Se invierte el orden de la 4-tupla en el worker de la portada | killed | "el worker tiene que leer la 4-tupla en el orden (killed, failed, skipped, freed_mb)" |
+| 10 | `_show_banner` deja de refrescar la barra de reposo | killed | "_show_banner tiene que refrescar la barra de reposo" |
+| 11 | El Gaming Mode deja de anotar su resumen | killed | "la barra de reposo debe decir como quedo el Gaming Mode" |
+| 12 | `execute_pack` deja de avisar del pack no gaming y vacío | killed | "un pack no gaming y vacio se corta en silencio" |
+| 13 | `kill_pack` deja de avisar del pack inexistente | killed | `AttributeError: 'NoneType' object has no attribute 'is_gaming'` |
+| 14 | La tercera puerta no refresca la lista a los 1000 ms | killed | "tras publicar el cierre se programa UN refresco a 1000 ms" |
+| 15 | El sustantivo parametrizable se ignora (se cablea `"procesos"`) | killed | "el sustantivo se usa de verdad, no esta cableado" |
+
+**15 mutaciones, 15 muertas, 0 supervivientes.** La 15 sobrevivió en la primera pasada y era un
+mutante **equivalente** (el único llamante pasaba `"procesos"`): se añadió la comprobación con el
+otro sustantivo, `"apps"`, que es lo que demuestra que el parámetro existe.
+
+### Pendiente de este pase
+- `CHANGELOG.md` y esta entrada cierran el pase, pero **no cierran el ciclo**: el Paso 4 sigue
+  siendo del `mutation-auditor` y TASK-035 sigue sin marcarse como `completed` en
+  `.taskmaster/tasks.json` a propósito.
+
+---
+
 ## [CYCLE-025] 2026-09-30 21:08 — testing-quality-expansion
 **Área**: Testing & Calidad
 **Change**: openspec/changes/2026-09-30-testing-quality-expansion/

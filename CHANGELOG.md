@@ -1,3 +1,27 @@
+## CYCLE-026 - 2026-09-30
+
+**Testing & Calidad** — `TASK-035` (Telemetría y feedback visual unificado en ejecución de packs)
+
+### Añadido
+- **El Gestor de Procesos entra en el contrato de feedback honesto (`test_el_gestor_de_procesos_tampoco_miente`).** Es la **tercera** puerta de cierre (mata uno a uno lo que el usuario marcó a mano) y era la más grave: pintaba `"<tick> 0 cerrados, 0 fallidos."` con `killed == 0`. La sonda entra por `on_kill_selected` de verdad (doble pulsación, hilo secundario real, `after` encolado) y afirma texto y color exactos en los cuatro desenlaces. No mata ningún proceso: el `ProcessService` es un doble.
+- **`mensaje_cierre_pack` admite un sustantivo parametrizable** (`"procesos"` por defecto, `"apps"` cuando toque), para que ninguna vista duplique el texto del formateador.
+- **`DashboardView.AUTOOCULTADO_MS`** pasa de literal suelto a constante compartida.
+
+### Corregido
+- **La tercera puerta de feedback mentía en verde.** `ProcessManagerView.on_kill_selected` se alimentaba del formateador común (`mensaje_cierre_pack`) y con `killed == 0` ya no hay tick ni verde; además `skipped` dejó de confundirse con `failed` y se programa el refresco de la lista a 1000 ms. Es el bug que motivó el ciclo 26, vivo en la vista que nadie había tocado.
+- **El bloque de cancelación del temporizador del banner estaba duplicado byte a byte** en `_show_start_banner` y en `_show_banner` — la puerta que el gamer ve tras pulsar "Apagar". Se extrajo a `_reprogramar_autoocultado()`: una sola verdad y un solo sitio que testear, y el escenario con reloj simulado se monta ahora en las dos puertas.
+- **La guarda AST comparaba raíces, no pares.** `self.pack_service.get_all_packs()` y `self.process_service.get_process_exe_path(1)` pasaban; ahora la lista de lo permitido son pares `(raiz, metodo)`. También baja por `ast.Subscript`, por el que `self.__dict__['status_label'].configure(...)` — la misma llamada de widget por la puerta de atrás — colaba.
+- **La guarda AST no leía el Gestor de Procesos.** Entra `ProcessManagerView._do_load` y `on_kill_selected`; para que el worker de carga no toque la vista, la agrupación pura se movió al módulo (`_agrupar`) y la publicación va a un método (`_apply_load`).
+- **Cuatro ramas sin ejecutar:** la no-gaming de `execute_pack` (nunca se ejecutaba), `killed == 1` (que `clasificar_cierre` con `killed > 1` degradaba a "nada"), `failed != skipped` (que hacía invisible intercambiar el orden de la 4-tupla) y `"✅" not in texto` en las ramas `nada` y `fallo` del banner.
+- **Dos guardas preventivas sin cobertura:** `execute_pack` con pack no gaming y vacío, y `kill_pack` con pack inexistente.
+- **Código muerto:** el alias `_show_kill_banner` (nadie lo llamaba; lo único que lo sostenía era su nombre en la lista blanca de la guarda) se borró de los dos sitios.
+- **Cinco afirmaciones documentales que mentían**, corregidas en `docs/ai/ui-design-system.md`: citaban un test inexistente (`test_pack_execution_ui_telemetry_feedback`), dabnn "todo lo que cuelgue de `self` es infracción" cuando la guarda comparaba la raíz, implicaban cobertura de workers que no se leían, dabnn por cierto el alcance del bloque de temporizadores, y dabnn "las dos alimentan el mismo formateador" sin advertir de que el formateador común no basta y de que la rama no-gaming nunca se ejecutaba.
+
+### Impacto
+Ninguna puerta de feedback puede celebrar en verde un cierre que no ocurrió, y las tres se alimentan del mismo clasificador. La invariante de hilos-secondary-aporta-only-`after(0, ...)` cubre ahora las cinco vistas con worker, con una lista de lo permitido que significa algo. Suite: **77 tests → 78 tests**, más 15 mutaciones verificadas a mano (15 muertas, 0 supervivientes).
+
+---
+
 ## CYCLE-025 - 2026-09-30
 
 **Testing & Calidad** — `TASK-034` (Expansión de calidad y pruebas headless de UI y modelos)

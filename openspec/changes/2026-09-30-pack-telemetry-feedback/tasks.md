@@ -1,10 +1,10 @@
 # Tareas: TASK-035 — Telemetría y Feedback Visual Unificado en Ejecución de Packs
 
-> **Estado: cerrada (ciclo 26, iteración 3).** El `mutation-auditor` dio FAIL dos
-> veces sobre esta change. Los literales verdes de abajo se sustituyeron por el
-> formateador común tras la primera auditoría; la tercera puerta de feedback
-> (`ProcessManagerView.on_kill_selected`) y la rama no-gaming de la portada se
-> cerraron en la iteración 3. Detalle en `docs/ai/ui-design-system.md`.
+> **Estado: implementada (ciclo 26, iteración 3); el cierre lo da el Paso 4.** El
+> `mutation-auditor` dio FAIL dos veces sobre esta change. Los literales verdes de abajo
+> se sustituyeron por el formateador común tras la primera auditoría; la tercera puerta
+> de feedback (`ProcessManagerView.on_kill_selected`) y la rama no-gaming de la portada
+> se cerraron en la iteración 3. Detalle en `docs/ai/ui-design-system.md`.
 
 - [x] 1. Auditoría arquitectónica previa con `architect-review`.
 - [x] 2. Implementar `_show_start_banner` en `DashboardView` (`src/woptimizer/ui/views/dashboard_view.py`):
@@ -25,4 +25,4 @@
   - [x] `test_los_workers_de_pack_solo_publican_por_after`: pares `(raiz, metodo)`, descenso por `ast.Subscript`, y alcance explícito de los cinco workers de vista.
 - [x] 6. Registrar los tests en `run_tests.py` y en la tabla de `docs/ai/testing-guide.md`.
 - [x] 7. Actualizar `docs/ai/ui-design-system.md` y `docs/ai/testing-guide.md`, incluidas las afirmaciones que mentían (nombre de test inexistente, cobertura de la guarda, alcance del bloque de temporizadores, y "las dos alimentan el mismo formateador").
-- [x] 8. Auditar con `mutation-auditor` (Paso 4) — **3 vueltas**: iteración 1 (FAIL), iteración 2 (FAIL), iteración 3 (cierre). El veredicto final lo da el `mutation-auditor`, no la implementación.
+- [ ] 8. Auditar con `mutation-auditor` (Paso 4) — **3 vueltas**: iteración 1 (FAIL), iteración 2 (FAIL), iteración 3 (implementada y verificada a mano con 15/15 mutaciones muertas). **Sigue abierto**: el veredicto del Paso 4 lo da el `mutation-auditor`, no la implementación. Por eso TASK-035 sigue sin marcarse como `completed` en `.taskmaster/tasks.json`.
