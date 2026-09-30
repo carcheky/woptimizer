@@ -2,17 +2,25 @@
 
 **Ciclo #26 / TASK-035 · decisión de `architect-review` · sin cambios en `src/`**
 
+> ⚠️ **Tabla histórica, medidas ANTES de la decisión.** Los números de línea caducaron
+> al ejecutarse (CYCLE-026 cambió el código), y la última fila ya **no es cierta**: la
+> duplicación byte a byte del literal la eliminó TASK-036, hoy hay una sola llamada.
+> Se conserva como el estado que motivó la decisión. **Ancla por símbolo, no por línea**:
+> `DashboardView.execute_pack`, `PackManagerView._aviso_pack_inerte` y
+> `PackManagerView.start_pack`.
+
 Medido antes de decidir (no deducido del enunciado):
 
-| puerta | pack no-gaming sin apps | fichero:línea |
+| puerta | pack no-gaming sin apps | símbolo (anclaje vigente) |
 |---|---|---|
-| Portada, ambas ramas | `return` mudo, ni aviso ni confirmación | `src/woptimizer/ui/views/dashboard_view.py:296-297` |
-| Gestor, `kill_pack` | avisa en ÁMBAR, dos veces en el mismo método | `src/woptimizer/ui/views/pack_manager_view.py:462-465` y `:476-478` |
-| Gestor, `start_pack` | avisa en ÁMBAR | `src/woptimizer/ui/views/pack_manager_view.py:498-500` |
+| Portada, ambas ramas | `return` mudo, ni aviso ni confirmación | `DashboardView.execute_pack` |
+| Gestor, `kill_pack` | avisa en ÁMBAR, dos veces en el mismo método | `PackManagerView._aviso_pack_inerte` |
+| Gestor, `start_pack` | avisa en ÁMBAR | `PackManagerView.start_pack` |
 
-Son **cuatro** comportamientos, no tres: el literal `"⚠️ '{pack.name}' no tiene apps que apagar."`
-está **duplicado byte a byte dentro del mismo método** (`pack_manager_view.py:464` y `:477`).
-Un cuarto texto más en la Portada serían cinco.
+Eran **cuatro** comportamientos, no tres: el literal `"⚠️ '{pack.name}' no tiene apps que
+apagar."` estaba **duplicado byte a byte dentro del mismo método** (los dos puntos de la
+doble guarda de `_aviso_pack_inerte`). Un cuarto texto más en la Portada habrían sido cinco.
+**Cerrado:** ambas ramas de la Portada avisan, y la duplicación ya no existe.
 
 ---
 

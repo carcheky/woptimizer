@@ -16,9 +16,9 @@
 
 ### 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 25 (`rd_journal.json` actualizado).
-- **Ciclo Actual #26:** Paso 1 — Selección de nueva tarea en el backlog (Área 2: Gaming & Telemetría UX).
-- **Última Acción:** Ciclo #25 TASK-034 — Expansión de calidad y pruebas headless: validación estricta de contratos en modelos Pydantic (strict booleans, Literals, extra='allow') y transiciones de navegación en MainWindow headless. **73 tests backend + 2 UI en verde, Paso 4 = PASS (7/7 mutantes eliminados).**
+- **Ciclos Completados:** 26 (`rd_journal.json` actualizado).
+- **Ciclo Actual #27:** Paso 1 — Selección de nueva tarea en el backlog (backlog vacío → rotación por áreas).
+- **Última Acción:** Ciclo #26 TASK-035 + TASK-036 — Telemetría y feedback de packs. 🔴 **Cerrado tras 7 rondas de auditoría de mutación (FAIL, FAIL, FAIL, PARTIAL, FAIL, FAIL, PASS): 43/43 mutaciones de `src/` aniquiladas por aserción, 0 supervivientes.** Nació de un bug real: la UI pintaba "OK, N procesos cerrados" en verde aunque no se hubiera cerrado nada. Ahora las tres puertas de cierre (Portada, Gestor de Packs, Gestor de Procesos) alimentan un único clasificador de desenlaces, y un pack sin apps avisa en vez de callarse. Se encontraron por el camino dos bugs vivos más: la puerta de **Apagar** decía "iniciar" a un pack recién creado, y el segundo punto de su doble guarda no tenía ni un test.
 
 ---
 

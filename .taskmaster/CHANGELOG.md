@@ -1,20 +1,57 @@
-## [CYCLE-026] 2026-09-30 23:40 — pack-telemetry-feedback
-**Área**: Testing & Calidad
+## [CYCLE-026] 2026-09-30 23:05 — pack-telemetry-feedback
+**Área**: Gaming & Telemetría UX
 **Change**: openspec/changes/2026-09-30-pack-telemetry-feedback/
-**Estado**: IMPLEMENTADO (iteración 4) — el veredicto del Paso 4 lo da el `mutation-auditor`, no la implementación
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
 **Models**:
-- Paso 1 (Buscar): heredado del ciclo
-- Paso 2 (Planear): architect-review → VISTO BUENO CON DIRECTRICES OBLIGATORIAS, y en la iteración 4 **decisión de producto** (`decision-portada-pack-vacio.md`, TASK-036) sin cambios en `src/`
-- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO (iteraciones 1 a 4)
-- Paso 4 (Auditar tests): mutation-auditor → FAIL (iter 1), FAIL (iter 2), FAIL (iter 3, 3 supervivientes), pendiente (iter 4)
+- Paso 1 (Buscar): heredado del turno (backlog vacío → rotación; `TASK-035` ya `completed` en `tasks.json` pero **sin** entrada en el journal, changelogs ni Paso 4: ciclo a medias heredado de la sesión anterior)
+- Paso 2 (Planear): architect-review → VISTO BUENO; además **decisión de producto** en la iteración 4 (`decision-portada-pack-vacio.md`, `TASK-036`, commit `4ce17ea`) con 9 criterios discriminantes y 8 mutaciones exigidas, sin cambios en `src/`
+- Paso 3 (Ejecutar): openspec-dev → iteraciones 1 a 6
+- Paso 4 (Auditar tests): mutation-auditor → **7 rondas**: FAIL, FAIL, FAIL, PARTIAL, FAIL, FAIL, **PASS**
+- Stepper: MiniMax-M3.1 (orquestador)
 
-### Historial de las cuatro iteraciones
+### Historial de las seis iteraciones
 | iter | veredicto | qué encontró |
 |---|---|---|
 | 1 | FAIL | `kill_pack` pintaba `"<tick> 0 procesos cerrados (0.0 MB liberados)"` en VERDE Gaming con `killed == 0`; la guarda AST era una lista de 3-4 nombres de método |
 | 2 | FAIL (80 mutaciones, 58 muertas, **21 supervivientes**) | El fix de la iteración 1 announcementaba lo que hacía pero dejaba **una tercera puerta** (`on_kill_selected`) mintiendo en verde, el bloque de cancelación del temporizador **duplicado byte a byte** con la sonda instrumentando solo una mitad, cuatro ramas sin ejecutar, y cinco afirmaciones documentales falsas |
 | 3 | FAIL (3 supervivientes) | La ronda 3 cerró las tres puertas de feedback, el formateador común, los temporizadores de las dos puertas, el umbral `killed == 1`, el orden de la 4-tupla, el alcance de la guarda AST y el alias muerto. Quedaron 3 de severidad ALTA: la **rama `start` sin ejecutar**, la **guarda AST que era una red y el doc la llamaba muro**, y el **sustantivo probado solo en la rama éxito**; más tres afirmaciones documentales falsas más (`len(to_kill)`, la matriz de mutaciones inflada e irreproducible, y "las dos vistas") |
-| 4 | pendiente | Las tres de ALTA cerradas con test, la decisión de producto TASK-036 ejecutada (aviso del pack inerte + diagnóstico del gaming inerte + cláusula de MB), la matriz reparada y las 7 incidencias de deuda escritas con severidad |
+| 4 | PARTIAL → FAIL → FAIL → **PASS** | Cerró las tres de ALTA con test y ejecutó la decisión de producto TASK-036. Las rondas 4 y 5 model's Subsequentaron dos bugs vivos más: **D5** (el verbo de la puerta de apagar salía de `pack.default_action`, así que un pack recién creado decía "iniciar" al pulsar **Apagar** — la primera acción de un usuario recién instalado) y **K-a** (el **segundo** punto de la doble guarda de `kill_pack` sin un solo test, con el doc afirmándolo guardado, y mutarlo lanzaba un apagado con lista vacía tras consumir la doble pulsación). Ronda 6: **P-d** (tarjeta con `"KILL"` congelado), el **default silencioso** de `VERBOS`, y el **nº de tests caducado en tres ficheros sin declarar**. Ronda 7: **PASS**, 43/43 mutaciones de `src/` aniquiladas por `AssertionError`. |
+
+### Iteración 7 — cierre (VIGENTE, amplía la tabla de la iteración 4)
+Ronda final del `mutation-auditor`: **46 mutaciones + 15 controles negativos de validador**,
+**43 muertes de `src/` por `AssertionError`**, 0 supervivientes de producción.
+Clasificación exigida por el Stepper: **0 sin cobertura**, 1 equivalente (mutante propio del
+auditor), 2 inertes/manipulación de detector. La matriz del dev (`_matrix_c26.py`) da **30/30**
+y fue reproducida con un driver independiente, no aceptada como fuente.
+
+| Foco | Veredicto | Evidencia |
+|---|---|---|
+| K-a (2º punto de la doble guarda) | **MUERE por aserción** | `llamadas_cierre == 0`: "el pack perdió sus apps ENTRE las dos pulsaciones: la segunda guarda de kill_pack tiene que avisar, no lanzar kill_pack_apps([]) después de haber co…" |
+| K-a · control de carga | **VIVE por diseño, y es lo correcto** | con solo 2 lecturas **y** sin la aserción `lecturas == 3` la prueba pasa: esa aserción es lo único que distingue "midió el 2º punto" de "midió el 1º por accidente". Comprobado en las dos direcciones |
+| P-d (tarjeta) | **MUERE** × 4 | literal `KILL`/`START`/vacío y `upper()`→`lower()`; vía real `refresh_dashboard` → `cget("text")` |
+| `VERBOS` sin default silencioso | **MUERE** × 5 | `.get` con default, verbo cableado en ambas puertas, `KeyError` silenciado, verbo como clave del mapa, default del modelo a `"kill"` |
+| Guard del cableado (posición) | **CONFIRMADO** | sin el guard, D5-e muere por `KeyError`; con el guard primero, muere por `AssertionError` nombrando fichero y línea. El dev lo movió al principio por esto y el auditor lo verificó |
+| Regresión R5 | **21/21 MUEREN** | 0 crashes, 0 anclas caducadas |
+| Call-sites y hilos | **sin sexto lado** | 3 call-sites / 4 invocaciones de la familia `(texto, color)`, 2 de `es_pack_inerte`, 9 `Thread` en `src/` (3 fuera de vistas + 6 en 5 métodos de 3 clases), ninguno fuera de `PERMITIDOS` |
+| `validate_docs.py` check 7 | **13/15 controles limpios** | 28 en `AGENTS.md`, invocación borrada, `def` sin invocar, fila de tabla borrada, línea de `README` borrada, fichero ausente, forma alternativa, fila duplicada → todos FAIL con mensaje útil |
+
+**Deuda nueva, no bloqueante** (el auditor la measured y no la considera oculta):
+- **MEDIA**: `validate_docs.py` revienta con `SyntaxError`/`FileNotFoundError` si `run_tests.py`
+  no se parsea, y su rama `if n_tests is None:` es **código muerto** —`_recuento_de_tests` lanza,
+  nunca devuelve `None`. Guarda que no guarda. No produce falso verde (rc=1), es agujero de
+  diagnóstico, no de detección.
+- **BAJA**: residuo cosmético en el mensaje del check 7 (`invocado y NO definido: .`).
+- **BAJA**: el guard AST de los llamantes tiene **lista de ficheros fija**; un tercer módulo que
+  cablee un verbo no lo encuentra.
+- **BAJA**: el guard AST no tiene prueba de sí mismo (`G-1`, guard→rama muerta, vive con código sano).
+- **Anclas caducadas fuera del alcance del dev** (las cierra el orquestador):
+  `decision-portada-pack-vacio.md:9-15` —además de caducado, **falso**: afirma una duplicación
+  byte a byte que TASK-036 eliminó— y `docs/ai/data-models.md:377-378` (`pack_manager_view.py:100`
+  → hoy `:227`; `gaming_service.py:16` → hoy un comentario).
+
+**Correcciones al propio briefing del orquestador** (registradas para que no se repitan):
+el conteo de formateadores es **4**, no 5 (el auditor erró en R5/R6; verificado con `ast` sobre
+`feedback.py`), y el briefing-guía decía "4 S1-*" cuando el repo tiene 3 (S1-a/b/c).
 
 ### Iteración 3 — mutaciones verificadas a mano (TABLA RETIRADA, ver nota)
 Reproducidas con un script temporal que reescribía `src/` **en el sitio del árbol real**. Esa
