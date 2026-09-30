@@ -706,6 +706,30 @@
         "run_tests.py y validate_docs.py en verde al 100%"
       ],
       "notes": "Ciclo #26 del motor autónomo de I+D (Área 2: Gaming & Telemetría UX). Unifica la experiencia de telemetría y feedback visual en ejecución de packs."
+    },
+    {
+      "id": "TASK-036",
+      "title": "La Portada avisa cuando un pack no puede hacer nada (pack vacío y Gaming inerte)",
+      "description": "Decisión de producto de architect-review (decision-portada-pack-vacio.md): con un pack no-gaming sin apps, DashboardView.execute_pack hoy hace return en silencio (dashboard_view.py:296-297) mientras que las dos puertas del Gestor de Packs avisan, y el propio test afirma ese silencio. Se unifica en un formateador puro de ui/feedback.py (sin quinto desenlace en clasificar_cierre: un pack vacío no produce resultado, no se llama a ningún servicio) y se añade el diagnóstico del Gaming Mode inerte (0 apps y 0 categorías), que hoy cae en la puerta real y muestra un 0 de blindaje como si fueran apps ya cerradas. Además se omite la cláusula de MB liberados cuando freed_mb <= 0, como ya hace format_kill_result.",
+      "complexity": 3,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [
+        "TASK-035"
+      ],
+      "module": "src/woptimizer/ui/feedback.py",
+      "acceptance_criteria": [
+        "execute_pack con pack no-gaming sin apps pinta exactamente el aviso 'no tiene apps que {apagar|iniciar}. Añádelas desde el Gestor de Procesos.' en theme.WARNING, sin lanzar worker, sin encolar nada por after y sin armar doble pulsación: la guarda va ANTES de _require_double_tap",
+        "El aviso en la Portada se publica por _show_aviso_banner con fg_color theme.SURFACE_ALT y auto-ocultado a 5000 ms; NO se reusa _inline_status, cuyo fondo CANEL es el de confirmación pendiente y que nunca se auto-oculta (dashboard_view.py:128-132)",
+        "La frase vive en UNA sola función pura de ui/feedback.py compartida por los cuatro call-sites (Portada kill/start, Gestor kill_pack x2, Gestor start_pack) y el literal duplicado de pack_manager_view.py:464 y :477 desaparece",
+        "clasificar_cierre NO gana un quinto desenlace: sigue clasificando solo resultado real (killed, failed); el pack vacío es pre-condición y tiene su propio formateador",
+        "Pack gaming con 0 apps Y 0 target_categories muestra el diagnóstico con ⛔ (ROJO inline / theme.WARNING en banner, por la restricción de contraste 3.07:1 < 4.5:1 ya documentada en feedback.py:117-119) antes de la doble pulsación; un gaming con apps O con categorías NO avisa",
+        "clausula_mb(freed_mb) devuelve cadena vacía con freed_mb <= 0 y los cuatro textos de éxito/parcial quedan sin MB; ningún test existente fija por texto exacto un caso killed>0 con freed_mb==0, y se añade el caso nuevo",
+        "run_tests.py invierte el assert que AFIRMA el silencio (run_tests.py:8578-8596) y añade los 5 casos de la tabla de la decisión: default_action start, gaming sano, gaming inerte, igualdad del texto entre las dos familias, y fondo + auto-ocultado de _show_aviso_banner",
+        "docs/ai/ui-design-system.md registra el aviso, el diagnóstico y la cláusula MB; el código, el test y el doc entran en el MISMO commit",
+        "Las 7 incidencias declaradas por openspec-dev quedan escritas con severidad en openspec/changes/2026-09-30-pack-telemetry-feedback/deuda-ciclo-26.md y resumidas en la sección Deuda Técnica Conocida de STATUS.md; ninguna existe solo en un mensaje de agente"
+      ],
+      "notes": "Ciclo #26, escalado por mutation-auditor: la pregunta (silencio o aviso) es de producto, no de bug, y la decidió architect-review. Veredicto: AVISO en las DOS ramas, con formateador puro compartido, y el Gaming inerte como diagnóstico aparte. Tres hallazgos que cambian el encargo: (1) el literal del Gestor está DUPLICADO dentro de kill_pack (pack_manager_view.py:464 y :477), así que son cuatro comportamientos y no tres; (2) execute_pack corta ANTES de _require_double_tap, luego el silencio no solo oculta el resultado, también hace que la pulsación no deje ningún rastro; (3) reutilizar _inline_status en la Portada sería un error de canal: su fondo CANCEL es el de confirmación pendiente y nunca auto-oculta. El test que hoy afirma el silencio es el que fija la mentira, así que código, test y doc van en un solo commit. Mutaciones exigidas al auditor: M-A (volver al return mudo), M-B (verbo cableado), M-C (color), M-D (guarda después de la doble pulsación), M-E (borrar el diagnóstico), M-F (or en vez de and en es_pack_inerte), M-G (reusar _inline_status) y M-H (borrar la cláusula de MB). Sin esas ocho, el arreglo es código muerto con test verde. Nota de trazabilidad: tasks.md:28 dice que TASK-035 sigue sin marcarse completed y tasks.json dice lo contrario: el orquestador decide cuál vale."
     }
   ]
 }
