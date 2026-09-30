@@ -327,11 +327,52 @@ Previamente existía asimetría entre vistas y acciones:
    - **Arranque (`start_pack._run`):**
      * `failed == 0`: `self.after(0, self._inline_status, f"🚀 {started} apps iniciadas · '{nombre}'.", VERDE)`
      * `failed > 0`: `self.after(0, self._inline_status, f"⚠️ '{nombre}': {started} iniciadas, {failed} con error.", AMBAR)`
-   - **Apagado (`kill_pack._run`):**
-     * `self.after(0, self._inline_status, f"✅ {killed} procesos cerrados ({freed_mb:.1f} MB liberados) · '{nombre}'.", VERDE)`
+   - **Apagado (`kill_pack._run`):** el mensaje **no se escribe en la vista**, se calcula en
+     `ui/feedback.py` (`mensaje_cierre_pack`) a partir de la 4-tupla que devuelven las **dos**
+     puertas de cierre y se publica entero:
+     `texto, color = mensaje_cierre_pack(nombre, killed, failed, skipped, freed_mb)` y después
+     `self.after(0, self._inline_status, texto, color)`.
+
+### El cierre dice la verdad: cuatro desenlaces, verde solo con éxito (ciclo 26)
+
+`kill_pack` tiene **dos puertas** —`gaming_service.execute_gaming_pack(pack)` si `is_gaming`, o
+`process_service.kill_pack_apps(apps)` si no— y **las dos devuelven la misma 4-tupla**
+`(killed, failed, skipped, freed_mb)`. El texto se formatea **una sola vez**, en
+`ui/feedback.py`, y ambas ramas lo reciben. Es deliberado: es la forma de no repetir el fallo del
+ciclo 14, donde un camino evaluaba `p.name` y el otro `p.full_name` y uno de los dos dejaba de
+proteger en silencio. Aquí ninguna puerta puede mentir por su cuenta porque las dos alimentan el
+mismo formateador.
+
+`ui/feedback.py` es **puro**: solo importa `typing`, `ui.confirmation` y `ui.theme`. Ni `tkinter`,
+ni `psutil`, ni `json`, ni `services`. `clasificar_cierre(killed, failed)` es el clasificador
+ÚNICO de las dos vistas, con cuatro desenlaces:
+
+| Desenlace | Cuándo | Gestor de Packs (`_inline_status`) | Portada (`_show_banner`) |
+|---|---|---|---|
+| **éxito** | `killed > 0`, `failed == 0` | `"✅ N procesos cerrados (X MB liberados) · 'pack'."` en **VERDE** | `"⚡ N procesos cerrados · X MB liberados"` en `GAMING`/`ACCENT` |
+| **parcial** | `killed > 0`, `failed > 0` | `"⚠️ 'pack': N cerrados, M con error (X MB liberados)."` en ÁMBAR | `"⚠️ N procesos cerrados · X MB liberados · M con error."` en `WARNING` |
+| **nada** | `killed == 0`, `failed == 0` | `"⚠️ 'pack': 0 procesos cerrados, K protegidos o ya cerrados."` en ÁMBAR | `"⚠️ Nada que cerrar: K ya cerrados o protegidos."` en `WARNING` |
+| **fallo** | `killed == 0`, `failed > 0` | `"⛔ No se cerró nada de 'pack': M con error."` en ROJO | `"⛔ No se cerró nada: M procesos con error."` en `WARNING` |
+
+Dos reglas que no se pueden relajar:
+
+- **El verde es una promesa, no un adorno.** Con cero cerrados no hay tick ni verde. Antes
+  (ciclo 26, `mutation-auditor` con sonda en runtime) `kill_pack` pintaba
+  `"✅ 0 procesos cerrados (0.0 MB liberados)"` en VERDE Gaming con un pack sin apps vivas: todo en
+  `keepers`, pack ya vacío, rutas muertas. Es la misma clase que el contador `started` del ciclo 20.
+- **`skipped` no es "fallaron".** `kill_processes` lo suma por blindaje `is_system_protected`
+  (TASK-024) o por `NoSuchProcess` (ya no estaba), y `execute_gaming_pack` le suma además los
+  descartes del filtro de `keepers` (G9). Por eso el mensaje dice "protegidos o ya cerrados".
+
+`_show_banner` mantiene la firma anterior y **añade** `failed` y `skipped` con valor por defecto
+`0`, de modo que una llamada antigua no rompe; el worker `_run_kill` sí los pasa.
+
+La portada **no** usa `theme.DANGER` en el desenlace "fallo" a propósito: `#c22d2d` sobre
+`SURFACE_ALT` da **3.07:1** y el design system exige 4.5:1 (§4 Accesibilidad). El fallo se
+distingue por el texto (`⛔`), no inventándose un par de color que no cumple.
 
 ### Invariantes de Hilos y Red de Seguridad
 - **Cero mutaciones directas de widgets desde hilos secundarios:** Todo worker de fondo (`_run`, `_run_kill`, `_run_start`) delega las mutaciones exclusivamente a través de `self.after(0, callback, *args)`.
-- **Análisis AST estricto:** La suite de pruebas (`test_pack_execution_ui_telemetry_feedback`) verifica mediante introspección del árbol sintáctico que ningún worker secundario llama a métodos de interfaz gráfica de forma síncrona.
-- **Gestión de temporizadores:** `_banner_timer` se cancela explícitamente antes de programar uno nuevo, y `_hide_banner` lo limpia a `None`. `destroy()` cancela el timer pendiente antes de `cancel_on_destroy()`.
+- **Análisis AST exhaustivo, no una lista de nombres:** la sonda `test_pack_execution_ui_telemetry_feedback` analiza el **objetivo real de cada `threading.Thread(target=...)`** de `execute_pack`, `kill_pack` y `start_pack`. Dentro de ese `def` se permite una lista **corta y explícita** —`after`, `process_service`, `gaming_service`, `pack_service`, `notification_service`— y **todo lo demás que cuelgue de `self` es infracción**, incluidos los métodos de widget que no estaban en la lista anterior y las **escrituras** en `self.<attr>`. Se exige que **cada** `self.after` del worker lleve `0` ms y un callback de la lista blanca, no solo el primero que aparece: con `self.master.after` en *una* de las dos ramas, el guard antiguo pasaba. `self.master.after` cae solo por la regla (su raíz sobre `self` es `master`). La guarda se prueba **contra sí misma** con código sintáctico en las dos direcciones (3 infracciones que tiene que ver, 2 ramas en las que tiene que ver *las dos*, y un worker conforme que no puede marcar). **Lo que la guarda NO comprueba**: que el `after` se ejecute de verdad en el hilo principal, ni el resultado de la operación. Eso lo cubren las sondas dinámicas con hilo secundario real.
+- **Gestión de temporizadores:** `_banner_timer` se cancela explícitamente antes de programar uno nuevo, y `_hide_banner` lo limpia a `None`. `destroy()` cancela el timer pendiente antes de `cancel_on_destroy()`. El auto-ocultado son **5000 ms** exactos, y la sonda lo mide con un **reloj simulado** (t0 primer banner, t=1000 segundo banner, lectura a t=5500, auto-ocultado a t=6500): sin esperar 5,5 s reales. Si se quita la cancelación, el temporizador viejo apaga a los 5000 ms el banner del *segundo* mensaje; si el auto-ocultado desaparece o se va a 60 s, la lectura de t=6500 lo delata.
 

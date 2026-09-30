@@ -9,6 +9,7 @@ from woptimizer.services.notification_service import NotificationService
 from woptimizer.models import Pack
 from woptimizer.config import ordenar_categorias
 from woptimizer.ui.confirmation import AMBAR, ROJO, VERDE, MSG_PACK_INEXISTENTE, Confirmable
+from woptimizer.ui.feedback import mensaje_cierre_pack
 from woptimizer.ui import theme
 
 
@@ -478,11 +479,17 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
         apps = list(pack.apps)
         nombre = pack.name
         def _run():
+            # TASK-035 / ciclo 26: el mensaje sale de la TUPLA REAL, no de un
+            # literal. Las dos puertas (gaming y normal) devuelven la misma
+            # 4-tupla y `mensaje_cierre_pack` es la unica que la formatea, de
+            # modo que ninguna de las dos puede mentir por su cuenta. Con 0
+            # cerrados el texto NO lleva tick y el color NO es verde.
             if pack.is_gaming:
-                killed, _failed, _skipped, freed_mb = self.gaming_service.execute_gaming_pack(pack)
+                killed, failed, skipped, freed_mb = self.gaming_service.execute_gaming_pack(pack)
             else:
-                killed, _failed, _skipped, freed_mb = self.process_service.kill_pack_apps(apps)
-            self.after(0, self._inline_status, f"✅ {killed} procesos cerrados ({freed_mb:.1f} MB liberados) · '{nombre}'.", VERDE)
+                killed, failed, skipped, freed_mb = self.process_service.kill_pack_apps(apps)
+            texto, color = mensaje_cierre_pack(nombre, killed, failed, skipped, freed_mb)
+            self.after(0, self._inline_status, texto, color)
             self.notification_service.notify_pack_activated(nombre, killed, freed_mb)
         threading.Thread(target=_run, daemon=True).start()
 

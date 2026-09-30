@@ -26,7 +26,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 ## Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **76 tests**: 73 de backend + 3 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **77 tests**: 73 de backend + 4 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
 
 | # | Test | Qué valida |
 |---|------|-----------|
@@ -104,8 +104,9 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 72 | `test_scan_latency_and_lazy_exe_resolution` | **TASK-033:** optimización de latencia en `ProcessService` (`psutil.process_iter(['pid', 'name'])`, `exe_path=""` lazy, `model_construct`, precomputación `_CAT_ORDER_IDX`, `get_process_exe_path(pid)` on-demand con degradación segura y benchmark < 25 ms) |
 | 73 | `test_models_strict_validation_and_contracts` | **TASK-034:** validación estricta de modelos Pydantic (`strict=True` en `is_favorite`/`is_gaming`, `default_action` restringido a `Literal["start", "kill"]`, `extra="allow"` en `Pack` y `AppData`, y defaults canónicos de `ProcessInfo`) |
 | 74 | `test_main_window_navigation_transitions` | **TASK-034:** ciclo de vida y navegación headless en `MainWindow` (transiciones Dashboard -> Packs -> ProcessManager -> Dashboard, destrucción de vistas previas con `winfo_exists()`, activación de estilos nav y recarga asíncrona) |
-| 75 | `test_pack_execution_ui_telemetry_feedback` | **TASK-035:** telemetría y feedback visual de packs (análisis AST de `self.after(0, ...)` en workers de fondo, validación de `_show_start_banner` en DashboardView con invalidación de caché y colores semánticos, y `_inline_status` en PackManagerView con protección de pack vacío) |
-| 76 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
+| 75 | `test_los_workers_de_pack_solo_publican_por_after` | **TASK-035 ciclo 26 (S2, S3):** el worker de `execute_pack`, `kill_pack` y `start_pack` solo **publica**: la lista de lo permitido sobre `self` es corta y explícita (`after` + los cuatro colaboradores) y todo lo demás, incluidas las escrituras en `self.<attr>`, es infracción. Exige que **cada** `self.after` lleve 0 ms y un callback de la lista blanca. La guarda se prueba **contra sí misma** (3 infracciones sintéticas, 1 worker conforme, y el caso de las dos ramas con `self.master.after` en una) |
+| 76 | `test_el_feedback_de_pack_dice_la_verdad` | **TASK-035 ciclo 26 (S1, S4, S5, S9):** el feedback de cierre dice la verdad en los **cuatro** desenlaces y por las **dos** puertas (gaming y normal), con el worker real, doble pulsación, hilo secundario real y `self.after` encolado; la barra de reposo se afirma por su **texto**; los temporizadores se miden con un **reloj simulado** (t0, t=1000, t=5500, t=6500) |
+| 77 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
 
 ### Notas de Aislamiento
 - Los tests de `PackService` usan `tempfile.NamedTemporaryFile` (helper `_pack_service_temporal()`) para no modificar `profiles.json` real. `test_pack_service_backup_and_recovery` limpia además los `.bak` y `.tmp` que genera, y restaura los permisos de solo lectura que usa para probar el `PermissionError`.
@@ -132,6 +133,90 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 - **Esperar a que el callback se APLIQUE, no a que se postee.** En el arnés sin Tk no hace falta `mainloop`, pero el mismo error conceptual sigue vigente: `posts` (quién encoló) y las escrituras de las propiedades (quién publicó) se cuentan por separado, y la aserción de identidad de hilo va **antes** que la de recuento, porque su mensaje nombra la mutación exacta.
 - **Las comprobaciones estáticas van primero, sin Tk**, para que una regresión falle en milisegundos con un mensaje legible.
 - **Nada de assert con tupla.** `assert (a, b), msg` es una tupla siempre verdadera: es la forma más rápida de escribir un test que no comprueba nada.
+
+## Ciclo 26: el feedback que mentía en verde y las guardas que no guardaban (TASK-035)
+
+`mutation-auditor` dio **FAIL** al ciclo 25 con 19 supervivientes. Dos no eran huecos de
+cobertura sino **bugs vivos, demostrados en runtime**: `kill_pack` pintaba
+`"✅ 0 procesos cerrados (0.0 MB liberados)"` en VERDE Gaming con un pack sin apps vivas (todo
+en `keepers`, pack vacío, rutas muertas), y la guarda `ast` que el doc daba por "estricta" era
+una lista de 3-4 nombres de método, por la que un `self.status_label.configure(...)` desde el
+hilo pasaba. **Una afirmación documental falsa se arregla como un bug**, no se matiza.
+
+### 1. Un test que se llama a sí mismo no verifica nada (S9)
+
+La sonda anterior hacía esto tres veces:
+
+```python
+pm._inline_status("✅ 5 procesos cerrados (180.2 MB liberados) · 'Gaming'.", VERDE)
+assert pm.status_label.cget("text") == "✅ 5 procesos cerrados (180.2 MB liberados) · 'Gaming'."
+```
+
+Es afirmar que el código hace lo que el código acaba de escribir: **100% de cobertura, 0 de
+verificación**. Peor, su docstring decía "kill_pack exitoso actualiza status_label…" siendo que
+**nunca llamaba a `kill_pack`** (`grep` de la suite: 0 llamadas). El arreglo no es "añadir más
+aserciones": es entrar por el camino real. Ahora la sonda pulsa **dos veces** (el contrato de
+doble pulsación), el worker corre en un hilo secundario real, el `after` **encola** y el test
+hace de bucle de eventos: `join(20)` y aplicación en el principal de lo entregado. Lo que se
+afirma es el **texto y el color que produjo el código**, en los cuatro desenlaces y por las dos
+puertas de cierre.
+
+| Lo que se afirma | Mutante que muere |
+|---|---|
+| `color == VERDE` solo con `killed > 0` | color forzado a VERDE siempre |
+| `"✅" not in texto` con 0 cerrados | vuelta al literal incondicional |
+| `"0 procesos cerrados" in texto` y `"4" in texto` | `"apps cerradas: len(apps)"` |
+| el gaming va por `execute_gaming_pack` y **no** por `kill_pack_apps` | rama gaming muerta o intercambiada |
+| `color == ROJO` cuando `failed > 0` y nada se cerró | todo en ámbar |
+
+### 2. Un reloj simulado, porque el doble anterior no ordenaba el tiempo (S5)
+
+`_FakeScheduler.fire_due(ms)` dispara por `delay <= elapsed`. Con dos temporizadores de 5000 ms
+(el viejo sin cancelar y el nuevo) **vencerían los dos en el mismo `fire_due(5000)`** y el bug
+sería invisible. El doble nuevo (`_Reloj`, dentro de la sonda) guarda un **plazo absoluto** por
+job y `avanzar(ms)` mueve el reloj. Con él se mide el escenario exacto del auditor sin esperar
+5,5 s: t0 primer banner, t=1000 segundo banner, **t=5500** el banner del segundo mensaje tiene
+que seguir en pantalla (el viejo lo apagaría a los 5000 ms desde t0) y **t=6500** tiene que
+haber saltado el auto-ocultado de 5000 ms (si desaparece o se va a 60 s, no).
+
+Matriz `_matrix_c26.py` (utillaje de diagnóstico en la raíz, con prefijo `_`; copia del árbol a
+`%TEMP%` sin `.git`, `__pycache__` purgada, sondas en **subproceso** — nunca en el proceso que
+importa `run_tests`, por la trampa del `sys.stdout` de este repo). **12 mutaciones, 12 muertes,
+0 supervivientes**:
+
+| Mutante | Muere por |
+|---|---|
+| `kill_pack`: color forzado a VERDE | `color != VERDE` con 0 cerrados |
+| `kill_pack`: vuelta al literal incondicional | `"✅" not in texto` |
+| `kill_pack`: vuelve a tirar `failed`/`skipped` | `"4" in texto` (los que quedaron intactos) |
+| `clasificar_cierre` dice siempre `EXITO` | idem, por la vía del clasificador |
+| `_show_start_banner` sin `_update_resting_bar()` | el **texto** de `resting_label` sigue con el snapshot viejo |
+| sin cancelar el `_banner_timer` previo | a t=5500 el banner ya está oculto |
+| auto-ocultado a 60 s | a t=6500 no ha vencido nada |
+| el worker toca `self.status_label` | la guarda `ast` |
+| `self.master.after` en **una** de las dos ramas | la guarda `ast` por rama |
+| la portada tira `failed`/`skipped` en `_run_kill` | el banner del worker real de `execute_pack` dice 0 intactos |
+| la guarda `ast` anulada (`return []`) | sus propios controles sintéticos |
+| la guarda mira solo el **primer** `self.after` | el control de las dos ramas |
+
+### 3. La guarda `ast` es ahora exhaustiva, y eso obliga a decir qué NO comprueba
+
+Del objetivo real de cada `threading.Thread(target=...)` se permite una lista **corta y
+explícita** —`after`, `process_service`, `gaming_service`, `pack_service`, `notification_service`—
+y **todo lo demás que cuelgue de `self` es infracción**, incluidos los métodos de widget que
+nadie escribió en la lista y las escrituras en `self.<attr>`. `self.master.after` cae por la
+regla (su raíz sobre `self` es `master`). Se exige que **cada** `self.after` del worker lleve 0
+ms y un callback de la lista blanca, no solo el primero que aparece.
+
+Una guarda así **se prueba contra sí misma** antes de que la use: tres infracciones sintéticas
+que tiene que ver, un worker conforme que no puede marcar, y el caso de las dos ramas. Un
+detector que no ve nada y uno que ve de más dan **el mismo verde**, y sin las dos direcciones
+no se sabe cuál de los dos se tiene.
+
+**Lo que la guarda NO comprueba, escrito para que nadie lo lea como más:** que el `after` se
+ejecute de verdad en el hilo principal, ni el resultado de la operación. Eso lo cubre la sonda
+dinámica con hilo secundario real. Un doc que promete más de lo que el guard comprueba es la
+misma clase de defecto que el bug que el guard no veía.
 
 ## Sondas de mutación: cada test nombra la mutación que mata (TASK-030)
 Regla del ciclo #18: **un criterio sin mutación asociada es un deseo**. La tabla está medida

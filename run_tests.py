@@ -7620,124 +7620,393 @@ def test_main_window_navigation_transitions():
     print("test_main_window_navigation_transitions OK.")
 
 
-def test_pack_execution_ui_telemetry_feedback():
-    """TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.
+def test_los_workers_de_pack_solo_publican_por_after():
+    """TASK-035 / cierre del ciclo 26 (S2, S3): el hilo secundario solo PUBLICA.
 
-    Discriminadores:
-      1. AST Analysis: en dashboard_view.py y pack_manager_view.py, los workers
-         en segundo plano (_run_kill, _run_start, _run) despachan mutaciones de UI
-         exclusivamente a traves de self.after(0, ...), sin llamadas directas a widgets.
-      2. Dynamic Headless DashboardView:
-         - _show_start_banner con failed=0 muestra texto con theme.ACCENT, invalida
-           cache de procesos y refresca resting_bar.
-         - _show_start_banner con failed>0 muestra texto con theme.WARNING.
-         - _show_banner (kill) muestra telemetria de RAM con theme.ACCENT y theme.GAMING.
-         - Cancelacion limpia de timer previo de auto-ocultacion.
-      3. Dynamic Headless PackManagerView:
-         - start_pack con pack sin apps emite aviso inline ambar preventivo inmediatamente.
-         - start_pack exitoso / fallido actualiza status_label con VERDE / AMBAR via self.after.
-         - kill_pack exitoso actualiza status_label con metricas de procesos y MB liberados.
+    El `mutation-auditor` del ciclo 26 dio FAIL a la guarda anterior y con razon:
+    era una lista de 3-4 nombres de metodo, asi que un
+    `self.status_label.configure(...)` desde el worker pasaba la suite, y con
+    `self.master.after` en UNA sola de las dos ramas del worker Tambien (el guard
+    solo miraba los `self.after` que encontraba y con dos ramas bastaba una
+    valida). El doc de `ui-design-system.md` afirmaba que el analisis era
+    "estricto" y no lo era: la afirmacion tambien era falsa.
+
+    Aqui la lista de lo permitido es CORTA Y EXPLICITA
+    (`after`, `process_service`, `gaming_service`, `pack_service`,
+    `notification_service`) y todo lo demas que cuelgue de `self` es infraccion,
+    incluidos los metodos de widget que nadie escribio en la lista y las
+    ESCRITURAS en `self.<attr>`. Se aplica al **objetivo real** de cada
+    `threading.Thread(target=...)` de `execute_pack`, `kill_pack` y `start_pack`,
+    y exige que CADA `self.after` del worker lleve 0 ms y un callback de la lista
+    blanca, no solo el primero.
+
+    **La guarda se prueba contra si misma** (control del detector, no del
+    fichero): tres infracciones sinteticas que tiene que ver, un worker conforme
+    que no puede marcar, y el caso de las DOS ramas, donde el worker tiene una
+    rama buena y otra con `self.master.after`: ese es precisamente el agujero que
+    el guard per-nodo no veia.
+
+    LO QUE NO COMPRUEBA (y por eso no hay que leerlo como mas de lo que es): que
+    el `after` se ejecute de verdad en el hilo principal, ni el resultado de la
+    operacion. Eso lo cubre `test_el_feedback_de_pack_dice_la_verdad`, con hilo
+    secundario real.
     """
-    print("Testing pack execution UI telemetry and feedback (TASK-035)...")
-    import ast
+    print("Testing that pack workers only publish via self.after (TASK-035 / cycle 26)...")
+
+    # =================================================================
+    # 0. EL DETECTOR CONTRA SI MISMO (S2, S3)
+    # =================================================================
+    # Lo unico que un worker puede hacer con la vista es PUBLICAR por
+    # `self.after(0, ...)`. Lo demas (tocar widgets, escribir en `self`) esta
+    # prohibido, y la lista de lo permitido es CORTA A PROPOSITO: cualquier
+    # llamada nueva sobre `self` tiene que pasar por esta lista para no ser una
+    # infraccion silenciosa.
+    PERMITIDOS = {"after", "process_service", "gaming_service", "pack_service", "notification_service"}
+    CALLBACKS = {"_inline_status", "_show_banner", "_show_kill_banner", "_show_start_banner"}
+
+    def _raiz_de_self(expresion):
+        """`(atributo, ruta)` de una expresion que cuelga de `self`; `(None, [])` si no cuelga.
+
+        Ejemplos: `self.after` -> `("after", ["after"])`;
+        `self.status_label.configure` -> `("status_label", ["status_label", "configure"])`;
+        `self.master.after` -> `("master", ["master", "after"])`.
+        """
+        ruta = []
+        nodo = expresion
+        while isinstance(nodo, ast.Attribute):
+            ruta.append(nodo.attr)
+            nodo = nodo.value
+            if isinstance(nodo, ast.Name) and nodo.id == "self":
+                return ruta[-1], list(reversed(ruta))
+        return None, []
+
+    def _infracciones(worker, etiqueta):
+        """Todas las violaciones del invariante en UN worker. Lista vacia = conforme."""
+        malos = []
+        for call in [n for n in ast.walk(worker) if isinstance(n, ast.Call)]:
+            raiz, ruta = _raiz_de_self(call.func)
+            if raiz is None:
+                continue
+            if raiz not in PERMITIDOS:
+                malos.append(f"{etiqueta}:L{call.lineno} self.{'.'.join(ruta)}(...) desde el hilo secundario")
+                continue
+            if raiz != "after":
+                continue
+            if not call.args or not (isinstance(call.args[0], ast.Constant) and call.args[0].value == 0):
+                malos.append(f"{etiqueta}:L{call.lineno} self.after debe ser de 0 ms")
+            elif (len(call.args) < 2 or not isinstance(call.args[1], ast.Attribute)
+                    or call.args[1].attr not in CALLBACKS):
+                malos.append(f"{etiqueta}:L{call.lineno} self.after debe publicar en {sorted(CALLBACKS)}")
+        for nodo in ast.walk(worker):
+            if isinstance(nodo, ast.Assign):
+                objetivos = nodo.targets
+            elif isinstance(nodo, (ast.AugAssign, ast.AnnAssign)):
+                objetivos = [nodo.target]
+            else:
+                objetivos = []
+            for t in objetivos:
+                if isinstance(t, ast.Attribute):
+                    raiz, ruta = _raiz_de_self(t)
+                    if raiz is not None:
+                        malos.append(f"{etiqueta}:L{nodo.lineno} escribe self.{'.'.join(ruta)} desde el hilo secundario")
+        return malos
+
+    # Control 1: las tres infracciones que la guarda VIEJA no veia.
+    codigo_malo = (
+        "def _run(self):\n"
+        "    self.status_label.configure(text='x')\n"
+        "    self.master.after(0, self._show_banner, 1)\n"
+        "    self._last_gaming_summary = 'x'\n"
+    )
+    malos = _infracciones(ast.parse(codigo_malo).body[0], "CONTROL")
+    assert len(malos) == 3, f"el detector no ve las tres infracciones de control: {malos}"
+    assert any("status_label" in m for m in malos), f"no ve un metodo de widget: {malos}"
+    assert any("master" in m for m in malos), f"no ve self.master.after: {malos}"
+    assert any("escribe" in m for m in malos), f"no ve una escritura en self: {malos}"
+
+    # Control 2: el worker CONFORME no puede marcar nada (si no, el guard no guardaba nada).
+    codigo_bueno = (
+        "def _run(self):\n"
+        "    killed, failed, skipped, freed = self.process_service.kill_pack_apps([])\n"
+        "    texto, color = mensaje_cierre_pack('X', killed, failed, skipped, freed)\n"
+        "    self.after(0, self._inline_status, texto, color)\n"
+        "    self.notification_service.notify_pack_activated('X', killed, freed)\n"
+    )
+    assert _infracciones(ast.parse(codigo_bueno).body[0], "CONTROL") == [], (
+        "el detector marca de mas: un worker que solo publica por self.after(0, ...) es conforme"
+    )
+
+    # Control 3 (S3): con la guarda VIEJA (per-nodo) este worker pasaba. La
+    # rama buena no absuelve la rama mala.
+    codigo_dos_ramas = (
+        "def _run(self):\n"
+        "    if algo:\n"
+        "        self.after(0, self._show_banner, 1)\n"
+        "    else:\n"
+        "        self.master.after(0, self._show_banner, 1)\n"
+        "        self.after(60000, self._hide_banner)\n"
+    )
+    malos_ramas = _infracciones(ast.parse(codigo_dos_ramas).body[0], "CONTROL-RAMAS")
+    assert len(malos_ramas) == 2, (
+        f"la guarda tiene que afirmar sobre TODAS las ramas del worker, no sobre la "
+        f"primera que encuentra: {malos_ramas}"
+    )
+
+    # -----------------------------------------------------------------
+    # 1. La guarda aplicada al codigo real
+    # -----------------------------------------------------------------
+    raiz_repo = os.path.dirname(os.path.abspath(__file__))
+
+    def _arbol_de(nombre_fichero):
+        with open(os.path.join(raiz_repo, "src", "woptimizer", "ui", "views", nombre_fichero),
+                  "r", encoding="utf-8") as fh:
+            return ast.parse(fh.read(), nombre_fichero)
+
+    def _metodo(arbol, clase, nombre):
+        for node in ast.walk(arbol):
+            if isinstance(node, ast.ClassDef) and node.name == clase:
+                for item in node.body:
+                    if isinstance(item, ast.FunctionDef) and item.name == nombre:
+                        return item
+        return None
+
+    def _anidados(metodo):
+        """Los `def` anidados del metodo, a cualquier profundidad de bloques.
+
+        No se baja dentro de uno encontrado: un `def` dentro del worker es cosa
+        suya, no un worker de la vista.
+        """
+        encontrados = {}
+
+        def _bajar(bloque):
+            for item in bloque:
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    encontrados.setdefault(item.name, item)
+                    continue
+                for hijo in ast.iter_child_nodes(item):
+                    if isinstance(hijo, ast.stmt):
+                        _bajar([hijo])
+
+        _bajar(metodo.body)
+        return encontrados
+
+    def _workers(metodo, etiqueta):
+        """Los workers REALES: los `def` que se pasan a `threading.Thread(target=...)`."""
+        anidados = _anidados(metodo)
+        nombres = []
+        for node in ast.walk(metodo):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "Thread"):
+                for kw in node.keywords:
+                    if kw.arg == "target" and isinstance(kw.value, ast.Name):
+                        nombres.append(kw.value.id)
+        assert nombres, f"{etiqueta} no lanza ningun threading.Thread: no hay worker que guardar"
+        workers = []
+        for nombre in nombres:
+            assert nombre in anidados, f"{etiqueta} pasa {nombre!r} a Thread y no es un def anidado"
+            workers.append(anidados[nombre])
+        return workers
+
+    arbol_dash = _arbol_de("dashboard_view.py")
+    arbol_pm = _arbol_de("pack_manager_view.py")
+
+    exec_pack = _metodo(arbol_dash, "DashboardView", "execute_pack")
+    assert exec_pack is not None, "DashboardView.execute_pack no encontrado"
+    kill_pack = _metodo(arbol_pm, "PackManagerView", "kill_pack")
+    start_pack = _metodo(arbol_pm, "PackManagerView", "start_pack")
+    assert kill_pack is not None, "PackManagerView.kill_pack no encontrado"
+    assert start_pack is not None, "PackManagerView.start_pack no encontrado"
+
+    for metodo, etiqueta in ((exec_pack, "DashboardView.execute_pack"),
+                             (kill_pack, "PackManagerView.kill_pack"),
+                             (start_pack, "PackManagerView.start_pack")):
+        for worker in _workers(metodo, etiqueta):
+            infracciones = _infracciones(worker, etiqueta)
+            assert not infracciones, (
+                "el worker toca la vista fuera de self.after(0, ...): " + "; ".join(infracciones)
+            )
+            publica = [n for n in ast.walk(worker) if isinstance(n, ast.Call)
+                       and isinstance(n.func, ast.Attribute) and n.func.attr == "after"
+                       and isinstance(n.func.value, ast.Name) and n.func.value.id == "self"]
+            assert publica, f"{etiqueta}: el worker no publica nada por self.after(0, ...)"
+
+    print("test_los_workers_de_pack_solo_publican_por_after OK (guarda AST exhaustiva).")
+
+
+def test_el_feedback_de_pack_dice_la_verdad():
+    """TASK-035 / cierre del ciclo 26 (S1, S4, S5, S9): el feedback no miente.
+
+    El `mutation-auditor` del ciclo 26 demostro en RUNTIME que `kill_pack`
+    pintaba `"<tick> 0 procesos cerrados (0.0 MB liberados)"` en VERDE Gaming
+    aunque no hubiera cerrado NADA (todo en `keepers`, pack vacio, rutas
+    muertas). Es la misma clase que el contador `started` del ciclo 20: la UI
+    miente en verde. El arreglo es `ui/feedback.py` (texto y color por resultado
+    real) y esta sonda afirma sobre **el texto y el color que produjo el codigo**
+    en los cuatro desenlaces y en las **dos** puertas de cierre.
+
+    Que esta sonda llame al CODIGO y no a si misma es el punto (S9): antes
+    hacia `pm._inline_status("...literal...", VERDE)` y comprobaba que el label
+    mostrara ese literal, que es afirmar que el codigo hace lo que el codigo
+    acaba de escribir (100% cobertura, 0 verificacion). Ahora entra
+    `kill_pack`/`start_pack`/`execute_pack` de verdad, con doble pulsacion, con
+    hilo secundario real, y el test hace de bucle de eventos: aplica en el hilo
+    principal lo que el secundario encolo por `self.after(0, ...)`.
+
+    Ademas mide lo que las aserciones viejas no miraban:
+
+      * la **barra de reposo** se afirma sobre su TEXTO con un doble cuyo
+        snapshot cambia entre llamadas, no sobre el timestamp de cache (que solo
+        delata el efecto colateral de `invalidate_cache`);
+      * los **temporizadores** se miden con un reloj SIMULADO y no con 5,5 s de
+        espera real: t0 primer banner, t=1000 segundo banner, lectura a t=5500
+        (el temporizador viejo, sin cancelar, apagaria aqui el banner del
+        SEGUNDO mensaje) y auto-ocultado a t=6500 (si desaparece o se va a 60 s,
+        salta).
+    """
+    print("Testing honest pack execution feedback (TASK-035 / cycle 26)...")
+    import collections
     import customtkinter as ctk
     from woptimizer.models import Pack
     from woptimizer.services.process_service import ProcessService
     from woptimizer.services.gaming_service import GamingService
     from woptimizer.services.notification_service import NotificationService
+    from woptimizer.ui.views import dashboard_view as dash_mod
+    from woptimizer.ui.views import pack_manager_view as pmv_mod
     from woptimizer.ui.views.dashboard_view import DashboardView
     from woptimizer.ui.views.pack_manager_view import PackManagerView
-    from woptimizer.ui.confirmation import AMBAR, VERDE
+    from woptimizer.ui.confirmation import AMBAR, ROJO, VERDE, VENTANA_MS, VENTANA_MS_PORTADA
     from woptimizer.ui import theme
 
-    # -------------------------------------------------------------
-    # 1. AST Analysis
-    # -------------------------------------------------------------
-    raiz = os.path.dirname(os.path.abspath(__file__))
+    # -----------------------------------------------------------------
+    # 2. Arneses sin Tk para la parte dinamica
+    # -----------------------------------------------------------------
+    class _Reloj:
+        """Doble de `TkScheduler` con reloj ABSOLUTO.
 
-    # 1.1 dashboard_view.py
-    path_dash = os.path.join(raiz, "src", "woptimizer", "ui", "views", "dashboard_view.py")
-    with open(path_dash, "r", encoding="utf-8") as f:
-        tree_dash = ast.parse(f.read(), path_dash)
+        `_FakeScheduler` dispara por `delay <= elapsed`, que no ordena el reloj:
+        el temporizador viejo (5000) y el nuevo (5000) vencerian los dos en el
+        mismo `fire_due(5000)` y el bug no se veria. Aqui cada job tiene un
+        plazo absoluto, que es lo que reproduce el fallo medido por el auditor
+        (t0 primer banner, t=1000 segundo banner, lectura a t=5500).
+        """
 
-    def _find_func(tree, class_name, func_name):
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef) and node.name == class_name:
-                for item in node.body:
-                    if isinstance(item, ast.FunctionDef) and item.name == func_name:
-                        return item
-        return None
+        def __init__(self):
+            self.jobs = []
+            self.ahora = 0
+            self._contador = 0
 
-    def _find_inner_funcs(func_node):
-        inners = {}
-        for item in func_node.body:
-            if isinstance(item, ast.FunctionDef):
-                inners[item.name] = item
-            elif isinstance(item, ast.If):
-                for sub in item.body + item.orelse:
-                    if isinstance(sub, ast.FunctionDef):
-                        inners[sub.name] = sub
-        return inners
+        def schedule(self, delay_ms, callback):
+            self._contador += 1
+            handle = f"job{self._contador}"
+            self.jobs.append({"id": handle, "vence": self.ahora + delay_ms, "cb": callback, "vivo": True})
+            return handle
 
-    exec_pack_node = _find_func(tree_dash, "DashboardView", "execute_pack")
-    assert exec_pack_node is not None, "DashboardView.execute_pack no encontrado"
-    dash_inners = _find_inner_funcs(exec_pack_node)
-    assert "_run_kill" in dash_inners, "_run_kill debe estar definido dentro de execute_pack"
-    assert "_run_start" in dash_inners, "_run_start debe estar definido dentro de execute_pack"
+        def cancel(self, handle):
+            for job in self.jobs:
+                if job["id"] == handle:
+                    job["vivo"] = False
+                    return
+            raise AssertionError(f"Se cancelo un handle que no existe: {handle!r}")
 
-    for worker_name, target_cb in [("_run_kill", "_show_banner"), ("_run_start", "_show_start_banner")]:
-        worker = dash_inners[worker_name]
-        after_calls = []
-        direct_ui_calls = []
-        for call in [n for n in ast.walk(worker) if isinstance(n, ast.Call)]:
-            if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name) and call.func.value.id == "self":
-                if call.func.attr == "after":
-                    after_calls.append(call)
-                elif call.func.attr in ("_show_banner", "_show_kill_banner", "_show_start_banner", "_inline_status"):
-                    direct_ui_calls.append(call.func.attr)
+        def vivos(self):
+            return [j for j in self.jobs if j["vivo"]]
 
-        assert not direct_ui_calls, f"Llamada directa de UI prohibida en {worker_name}: {direct_ui_calls}"
-        assert len(after_calls) >= 1, f"{worker_name} debe invocar self.after(0, ...)"
+        def avanzar(self, ms):
+            self.ahora += ms
+            vencidos = [j for j in self.jobs if j["vivo"] and j["vence"] <= self.ahora]
+            for job in vencidos:
+                job["vivo"] = False
+            for job in vencidos:
+                job["cb"]()
+            return [j["id"] for j in vencidos]
 
-        call = after_calls[0]
-        assert len(call.args) >= 2, f"self.after en {worker_name} debe recibir delay y callback"
-        assert isinstance(call.args[0], ast.Constant) and call.args[0].value == 0, (
-            f"El delay de self.after en {worker_name} debe ser 0 ms"
-        )
-        assert isinstance(call.args[1], ast.Attribute) and call.args[1].attr in (target_cb, "_show_kill_banner"), (
-            f"Callback en self.after({worker_name}) debe ser {target_cb}, obtenido {ast.dump(call.args[1])}"
-        )
+    class _ProcesosConReloj:
+        """Doble de `ProcessService` para la vista: snapshot cambiante + contadores."""
 
-    # 1.2 pack_manager_view.py
-    path_pm = os.path.join(raiz, "src", "woptimizer", "ui", "views", "pack_manager_view.py")
-    with open(path_pm, "r", encoding="utf-8") as f:
-        tree_pm = ast.parse(f.read(), path_pm)
+        def __init__(self, cuantos):
+            self.snapshot = [object() for _ in range(cuantos)]
+            self.invalidadas = 0
+            self.lecturas = 0
 
-    for method_name in ("kill_pack", "start_pack"):
-        m_node = _find_func(tree_pm, "PackManagerView", method_name)
-        assert m_node is not None, f"PackManagerView.{method_name} no encontrado"
-        pm_inners = _find_inner_funcs(m_node)
-        assert "_run" in pm_inners, f"_run worker no encontrado en PackManagerView.{method_name}"
-        worker = pm_inners["_run"]
+        def get_running_processes(self):
+            self.lecturas += 1
+            return list(self.snapshot)
 
-        after_calls = []
-        direct_ui_calls = []
-        for call in [n for n in ast.walk(worker) if isinstance(n, ast.Call)]:
-            if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name) and call.func.value.id == "self":
-                if call.func.attr == "after":
-                    after_calls.append(call)
-                elif call.func.attr in ("_inline_status", "_show_banner", "_show_start_banner"):
-                    direct_ui_calls.append(call.func.attr)
+        def invalidate_cache(self):
+            self.invalidadas += 1
 
-        assert not direct_ui_calls, f"Llamada directa de UI prohibida en {method_name}._run: {direct_ui_calls}"
-        assert len(after_calls) >= 1, f"{method_name}._run debe invocar self.after(0, self._inline_status, ...)"
-        for ac in after_calls:
-            assert isinstance(ac.args[0], ast.Constant) and ac.args[0].value == 0
-            assert isinstance(ac.args[1], ast.Attribute) and ac.args[1].attr == "_inline_status"
+    class _Label:
+        """Doble de `status_label`: graba lo que la vista escribe, con su color."""
 
-    # -------------------------------------------------------------
-    # 2. Dynamic Headless Testing
-    # -------------------------------------------------------------
+        def __init__(self):
+            self.escrituras = []
+
+        def winfo_exists(self):
+            return 1
+
+        def configure(self, **kw):
+            self.escrituras.append((kw.get("text"), kw.get("text_color")))
+
+        @property
+        def texto(self):
+            return self.escrituras[-1][0] if self.escrituras else None
+
+        @property
+        def color(self):
+            return self.escrituras[-1][1] if self.escrituras else None
+
+    class _ProcesosGestor:
+        def __init__(self):
+            self.cierre = (0, 0, 0, 0.0)
+            self.arranque = (0, 0)
+            self.llamadas_cierre = 0
+            self.llamadas_arranque = 0
+            self.apps = None
+
+        def kill_pack_apps(self, apps):
+            self.llamadas_cierre += 1
+            self.apps = list(apps)
+            return self.cierre
+
+        def start_pack_apps(self, apps):
+            self.llamadas_arranque += 1
+            self.apps = list(apps)
+            return self.arranque
+
+        def get_running_processes(self):
+            # La barra de reposo de la portada lo pide; con lista vacia la
+            # telemetria dice 0, que es lo que se espera en el arnés.
+            return []
+
+    class _GamingGestor:
+        def __init__(self):
+            self.cierre = (0, 0, 0, 0.0)
+            self.llamadas = 0
+
+        def execute_gaming_pack(self, pack):
+            self.llamadas += 1
+            return self.cierre
+
+    class _Notis:
+        def __init__(self):
+            self.eventos = []
+
+        def notify_pack_activated(self, nombre, killed, freed_mb):
+            self.eventos.append(("kill", nombre, killed, freed_mb))
+
+        def notify_apps_launched(self, nombre, started, failed):
+            self.eventos.append(("start", nombre, started, failed))
+
+    class _Packs:
+        def __init__(self, pack):
+            self.pack = pack
+
+        def get_all_packs(self):
+            return {self.pack.id: self.pack}
+
+    # -----------------------------------------------------------------
+    # 3. Parte dinamica CON ventana real (DashboardView + guarda preventiva)
+    # -----------------------------------------------------------------
     pack_s, tmp_path = _pack_service_temporal()
     root = ctk.CTk()
     root.withdraw()
@@ -7746,32 +8015,41 @@ def test_pack_execution_ui_telemetry_feedback():
         gs = GamingService(ps, pack_s)
         ns = NotificationService()
 
-        # --- A. DashboardView testing ---
         dash = DashboardView(root, ps, pack_s, ns, gs)
         dash.pack()
 
-        ps.get_running_processes()
-        assert ps._proc_cache is not None, "Precondicion: la cache debe estar poblada"
-        ts_before = ps._proc_cache_ts
-
-        # 1) Start banner exitoso (failed == 0)
+        # --- S4: la barra de reposo se refresca DE VERDAD, no por efecto colateral
+        reloj_procesos = _ProcesosConReloj(3)
+        dash.process_service = reloj_procesos
+        dash._update_resting_bar()
+        antes = dash.resting_label.cget("text")
+        assert "3 procesos activos" in antes, f"precondicion del arnes: {antes!r}"
+        reloj_procesos.snapshot = [object()]        # el mundo cambio entre llamadas
+        reloj_procesos.invalidadas = 0
         dash._show_start_banner(launched=3, failed=0, pack_name="Trabajo")
-        # invalidate_cache() borra la cache, _update_resting_bar() la repuebla:
-        # verificamos que el timestamp cambio (invalidacion + refresco real).
-        assert ps._proc_cache_ts != ts_before, "_show_start_banner debe invalidar y refrescar cache"
-        assert dash.status_label.cget("text") == "🚀 Pack 'Trabajo' iniciado (3 apps)."
-        assert dash.lbl_banner.cget("text") == "🚀 Pack 'Trabajo' iniciado (3 apps)."
+        assert reloj_procesos.invalidadas == 1, (
+            f"_show_start_banner debe invalidar la cache una vez, no "
+            f"{reloj_procesos.invalidadas}"
+        )
+        despues = dash.resting_label.cget("text")
+        assert "1 procesos activos" in despues, (
+            "la barra de reposo no se refresco: sigue mostrando el snapshot viejo "
+            f"(antes={antes!r}, despues={despues!r})"
+        )
+        assert despues != antes, "el texto de la barra de reposo no cambio"
+        assert dash.status_label.cget("text") == "🚀 Pack 'Trabajo' iniciado (3 apps).", (
+            f"texto del banner de arranque: {dash.status_label.cget('text')!r}"
+        )
         assert dash.status_label.cget("text_color") == theme.ACCENT
-        assert dash._banner_timer is not None, "_banner_timer debe quedar programado"
-        primer_timer = dash._banner_timer
+        assert dash.lbl_banner.cget("text") == dash.status_label.cget("text")
 
-        # 2) Start banner con fallos parciales (failed > 0)
         dash._show_start_banner(launched=2, failed=1, pack_name="Herramientas")
-        assert dash.status_label.cget("text") == "⚠️ Pack 'Herramientas': 2 apps iniciadas, 1 fallaron."
+        assert dash.status_label.cget("text") == (
+            "⚠️ Pack 'Herramientas': 2 apps iniciadas, 1 fallaron."
+        ), f"texto del banner con fallos: {dash.status_label.cget('text')!r}"
         assert dash.status_label.cget("text_color") == theme.WARNING
-        assert dash._banner_timer != primer_timer, "El timer previo debe reemplazarse al mostrar nuevo banner"
 
-        # 3) Kill banner (dashboard kill feedback)
+        # --- el banner de cierre tampoco puede mentir con 0 cerrados (S1, misma clase)
         dash._show_banner(killed=4, freed_mb=128.5, is_gaming=False)
         assert "4 procesos cerrados · 128.5 MB liberados" in dash.status_label.cget("text")
         assert dash.status_label.cget("text_color") == theme.ACCENT
@@ -7780,38 +8058,269 @@ def test_pack_execution_ui_telemetry_feedback():
         assert "6 procesos cerrados · 256.0 MB liberados" in dash.status_label.cget("text")
         assert dash.status_label.cget("text_color") == theme.GAMING
 
-        # 4) Auto-ocultacion / _hide_banner
+        dash._show_banner(killed=0, freed_mb=0.0, is_gaming=True, failed=0, skipped=6)
+        assert dash.status_label.cget("text_color") == theme.WARNING, (
+            "con 0 procesos cerrados la portada no puede pintar su color de marca: "
+            f"{dash.status_label.cget('text')!r}"
+        )
+        assert "6" in dash.status_label.cget("text"), (
+            f"el banner debe decir cuantos quedaron intactos: {dash.status_label.cget('text')!r}"
+        )
+
+        dash._show_banner(killed=0, freed_mb=0.0, is_gaming=True, failed=2, skipped=0)
+        assert dash.status_label.cget("text_color") == theme.WARNING
+        assert "2" in dash.status_label.cget("text"), (
+            f"el banner de fallo debe decir cuantos fallaron: {dash.status_label.cget('text')!r}"
+        )
+
+        # --- S5: temporizadores con RELOJ SIMULADO (sin 5,5 s de espera real)
+        reloj = _Reloj()
+        # `after` y `after_cancel` de la vista pasan a ser la MISMA puerta que el
+        # planificador: en la app son el mismo `after` de Tk.
+        dash.after_cancel = reloj.cancel
+        dash._init_confirmable(dash.status_label, window_ms=VENTANA_MS_PORTADA, scheduler=reloj)
+
+        def _banner_visible():
+            return dash.status_banner_frame.winfo_manager() != ""
+
         dash._hide_banner()
+        assert not _banner_visible(), "precondicion del arnes: el banner arranca oculto"
+
+        # t0: primer mensaje
+        dash._show_start_banner(launched=3, failed=0, pack_name="Trabajo")
+        primero = dash._banner_timer
+        assert primero is not None, "el banner tiene que programar su auto-ocultado"
+        # t = 1000: segundo mensaje, que cancela el temporizador anterior
+        reloj.avanzar(1000)
+        dash._show_start_banner(launched=2, failed=1, pack_name="Herramientas")
+        segundo = dash._banner_timer
+        cancelados = [j["id"] for j in reloj.jobs if not j["vivo"]]
+        assert primero in cancelados, (
+            f"el banner nuevo debe cancelar el auto-ocultado anterior ({primero}); sin "
+            f"eso, a los 5000 ms el temporizador viejo apaga el banner del SEGUNDO "
+            f"mensaje. Jobs vivos: {reloj.vivos()}"
+        )
+        # t = 5500: el viejo habria vencido (t0+5000) y el nuevo no (1000+5000)
+        vencidos = reloj.avanzar(4500)
+        assert not vencidos, (
+            f"nada puede vencer a t=5500 con el temporizador viejo cancelado: {vencidos}"
+        )
+        assert _banner_visible(), (
+            "a t=5500 el banner del segundo mensaje tiene que seguir en pantalla"
+        )
+        assert "Herramientas" in dash.status_label.cget("text")
+        # t = 6500: el auto-ocultado nuevo (5000 ms) se cumple
+        vencidos = reloj.avanzar(1000)
+        assert segundo in vencidos, (
+            f"el auto-ocultado de 5000 ms tiene que seguir existiendo (vencidos={vencidos})"
+        )
+        assert not _banner_visible(), "el banner debe ocultarse solo a los 5000 ms"
         assert dash._banner_timer is None, "_hide_banner debe limpiar _banner_timer"
 
-        # --- B. PackManagerView testing ---
-        pm = PackManagerView(root, ps, pack_s, ns, gs)
-        pm.pack()
+        # --- la guarda preventiva de `start_pack` (ventana real, widget real)
+        pm_real = PackManagerView(root, ps, pack_s, ns, gs)
+        pm_real.pack()
+        pm_real.start_pack(Pack(id="vacio", name="Pack Vacio", apps=[]))
+        assert pm_real.status_label.cget("text") == (
+            "⚠️ 'Pack Vacio' no tiene apps que iniciar."
+        ), f"aviso preventivo de pack vacio: {pm_real.status_label.cget('text')!r}"
+        assert pm_real.status_label.cget("text_color") == AMBAR
+        pm_real.destroy()
 
-        # 1) start_pack con pack sin apps emite aviso inline ambar preventivo y no lanza worker
-        pack_vacio = Pack(id="vacio", name="Pack Vacio", apps=[])
-        pm.start_pack(pack_vacio)
-        assert pm.status_label.cget("text") == "⚠️ 'Pack Vacio' no tiene apps que iniciar."
-        assert pm.status_label.cget("text_color") == AMBAR
+        # -----------------------------------------------------------------
+        # 4. Los workers REALES de PackManagerView, sin Tk (S1, S9)
+        # -----------------------------------------------------------------
+        # No se llama a `_inline_status` con un literal y se comprueba que el
+        # label lo muestre: eso seria afirmar que el codigo hace lo que el codigo
+        # acaba de escribir. Aqui entra `kill_pack`/`start_pack`, pulsa dos veces
+        # (contrato de doble pulsacion), el worker corre en un hilo real y el
+        # test hace de bucle de eventos.
+        cola = collections.deque()
+        principal = threading.get_ident()
+        hilos = []
 
-        # 2) Inline status despacho start exitoso
-        pm._inline_status("🚀 3 apps iniciadas · 'Trabajo'.", VERDE)
-        assert pm.status_label.cget("text") == "🚀 3 apps iniciadas · 'Trabajo'."
-        assert pm.status_label.cget("text_color") == VERDE
+        class _HiloEspia(threading.Thread):
+            def __init__(self, *a, **k):
+                super().__init__(*a, **k)
+                hilos.append(self)
 
-        # 3) Inline status despacho start con fallos
-        pm._inline_status("⚠️ 'Trabajo': 2 iniciadas, 1 con error.", AMBAR)
-        assert pm.status_label.cget("text") == "⚠️ 'Trabajo': 2 iniciadas, 1 con error."
-        assert pm.status_label.cget("text_color") == AMBAR
+        class _ShimThreading:
+            Thread = _HiloEspia
 
-        # 4) Inline status despacho kill con telemetria de RAM liberada
-        pm._inline_status("✅ 5 procesos cerrados (180.2 MB liberados) · 'Gaming'.", VERDE)
-        assert pm.status_label.cget("text") == "✅ 5 procesos cerrados (180.2 MB liberados) · 'Gaming'."
-        assert pm.status_label.cget("text_color") == VERDE
+        def _gestor(pack, procs, gaming):
+            v = PackManagerView.__new__(PackManagerView)
+            v.status_label = _Label()
+            v.pack_service = _Packs(pack)
+            v.process_service = procs
+            v.gaming_service = gaming
+            v.notification_service = _Notis()
+            v.refresh_packs = lambda: None
 
-        # 5) Limpieza en destroy
+            def after_falso(ms, func=None, *args):
+                cola.append((ms, func, args, threading.get_ident()))
+
+            v.after = after_falso
+            v._init_confirmable(v.status_label, window_ms=VENTANA_MS, scheduler=_Reloj())
+            return v
+
+        def _correr(v, metodo, *args, doble=False, callback=None):
+            """Ejecuta la accion y aplica en el PRINCIPAL lo que el secundario encolo."""
+            esperado = callback(v) if callback is not None else v._inline_status
+            antes_hilos, antes_cola = len(hilos), len(cola)
+            if doble:
+                metodo(v, *args)                     # 1a pulsacion: solo arma
+                assert len(hilos) == antes_hilos, (
+                    "la primera pulsacion no debe lanzar el worker: mata apps de un clic"
+                )
+                assert len(cola) == antes_cola, "la primera pulsacion no publica feedback de cierre"
+                metodo(v, *args)                     # 2a pulsacion: ejecuta
+            else:
+                metodo(v, *args)
+            nuevos = hilos[antes_hilos:]
+            assert len(nuevos) == 1, f"se esperaba 1 worker secundario, se crearon {len(nuevos)}"
+            nuevos[0].join(20)
+            assert not nuevos[0].is_alive(), "el worker secundario no termino"
+            pendientes = list(list(cola)[antes_cola:])
+            assert pendientes, "el worker no publico feedback por self.after(0, ...)"
+            for ms, func, args, ident in pendientes:
+                assert ms == 0, f"el after debe ser de 0 ms, no de {ms}"
+                assert ident != principal, (
+                    "el after se encolo desde el principal: entonces el secundario no publico nada"
+                )
+                assert func == esperado, f"el after debe publicar en {esperado}, no en {func}"
+                func(*args)
+            return v
+
+        threading_real = pmv_mod.threading
+        threading_real_dash = dash_mod.threading
+        pmv_mod.threading = _ShimThreading
+        dash_mod.threading = _ShimThreading
+        try:
+            # (0) El worker REAL de la portada. Sin esto, tirar `failed` y
+            # `skipped` en `_run_kill` seria invisible: las aserciones del
+            # banner llamaban a `_show_banner` directamente, con los valores
+            # puestos a mano, y el worker no contaba para nada.
+            procs_portada, gaming_portada = _ProcesosGestor(), _GamingGestor()
+            gaming_portada.cierre = (0, 0, 6, 0.0)      # todo en keepers
+            dash.process_service = procs_portada
+            dash.gaming_service = gaming_portada
+            dash.notification_service = _Notis()
+            dash.after = lambda ms, func=None, *a: cola.append((ms, func, a, threading.get_ident()))
+            pack_portada = Pack(id="gaming", name="Gaming Mode", is_gaming=True, default_action="kill")
+            _correr(dash, DashboardView.execute_pack, pack_portada, doble=True,
+                    callback=lambda v: v._show_banner)
+            assert gaming_portada.llamadas == 1 and procs_portada.llamadas_cierre == 0, (
+                "la portada cierra el pack gaming por la puerta que respeta keepers"
+            )
+            assert dash.status_label.cget("text_color") == theme.WARNING, (
+                "el worker de la portada no puede pintar el color de marca con 0 "
+                f"cerrados: {dash.status_label.cget('text')!r}"
+            )
+            assert "6" in dash.status_label.cget("text"), (
+                "el worker de la portada tiene que entregarle a `_show_banner` el "
+                f"resultado completo: {dash.status_label.cget('text')!r}"
+            )
+            del dash.after
+
+            APPS = [r"C:\Juegos\juego.exe"]
+            pack_normal = Pack(id="trabajo", name="Trabajo", apps=list(APPS))
+            pack_gaming = Pack(id="gaming", name="Gaming Mode", is_gaming=True)
+
+            # (1) CIERRE NORMAL CON EXITO REAL -> VERDE
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            procs.cierre = (3, 0, 0, 128.5)
+            v = _correr(_gestor(pack_normal, procs, gaming), PackManagerView.kill_pack,
+                        "trabajo", doble=True)
+            assert v.status_label.texto == (
+                "✅ 3 procesos cerrados (128.5 MB liberados) · 'Trabajo'."
+            ), f"mensaje de exito real: {v.status_label.texto!r}"
+            assert v.status_label.color == VERDE
+            assert procs.llamadas_cierre == 1 and procs.apps == APPS, (
+                "el pack se cierra con SUS apps, no con un atajo"
+            )
+            assert gaming.llamadas == 0, "un pack normal no pasa por la puerta del Gaming Mode"
+            assert v.notification_service.eventos == [("kill", "Trabajo", 3, 128.5)], (
+                f"el toast debe llevar el resultado real: {v.notification_service.eventos}"
+            )
+
+            # (2) NADA CERRADO POR LA PUERTA NORMAL (todo en keepers / ya cerrado)
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            procs.cierre = (0, 0, 4, 0.0)
+            v = _correr(_gestor(pack_normal, procs, gaming), PackManagerView.kill_pack,
+                        "trabajo", doble=True)
+            texto, color = v.status_label.texto, v.status_label.color
+            assert color != VERDE, (
+                f"con 0 procesos cerrados el feedback no puede ser VERDE: {texto!r}"
+            )
+            assert color == AMBAR, f"sin cierre y sin error, el feedback es de atencion: {color!r}"
+            assert "✅" not in texto, (
+                f"no se puede poner un tick de exito sin haber cerrado nada: {texto!r}"
+            )
+            assert "0 procesos cerrados" in texto, f"el mensaje debe decir 0: {texto!r}"
+            assert "4" in texto, (
+                f"el mensaje debe decir cuantos quedaron intactos, no inventarlos: {texto!r}"
+            )
+
+            # (3) LA MISMA MENTIRA POR LA PUERTA GAMING (keepers + categorias)
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            gaming.cierre = (0, 0, 6, 0.0)
+            v = _correr(_gestor(pack_gaming, procs, gaming), PackManagerView.kill_pack,
+                        "gaming", doble=True)
+            texto, color = v.status_label.texto, v.status_label.color
+            assert gaming.llamadas == 1 and procs.llamadas_cierre == 0, (
+                "un pack gaming se cierra por execute_gaming_pack, que respeta keepers "
+                "y la barrera de categoria roja"
+            )
+            assert color == AMBAR and "✅" not in texto, (
+                f"la puerta gaming tampoco puede mentir en verde: {texto!r} / {color!r}"
+            )
+            assert "0 procesos cerrados" in texto and "6" in texto, (
+                f"el gaming tiene que decir lo mismo que la puerta normal: {texto!r}"
+            )
+
+            # (4) FALLO: no se pudo cerrar NADA
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            procs.cierre = (0, 2, 0, 0.0)
+            v = _correr(_gestor(pack_normal, procs, gaming), PackManagerView.kill_pack,
+                        "trabajo", doble=True)
+            texto, color = v.status_label.texto, v.status_label.color
+            assert color == ROJO, f"un cierre fallido es un bloqueo, no un aviso: {color!r}"
+            assert "✅" not in texto and "2" in texto, (
+                f"el fallo debe decir cuantos fallaron: {texto!r}"
+            )
+
+            # (5) PARCIAL: cerro algo y algo fallo -> ni tick ni verde
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            procs.cierre = (2, 1, 0, 64.0)
+            v = _correr(_gestor(pack_normal, procs, gaming), PackManagerView.kill_pack,
+                        "trabajo", doble=True)
+            texto, color = v.status_label.texto, v.status_label.color
+            assert color == AMBAR and "✅" not in texto, (
+                f"un cierre parcial no se celebra como exito: {texto!r} / {color!r}"
+            )
+            assert "2 cerrados" in texto and "1 con error" in texto, f"detalle del parcial: {texto!r}"
+
+            # (6) `start_pack` por el mismo camino real
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            procs.arranque = (3, 0)
+            v = _correr(_gestor(pack_normal, procs, gaming), PackManagerView.start_pack, pack_normal)
+            assert v.status_label.texto == "🚀 3 apps iniciadas · 'Trabajo'.", (
+                f"arranque sin errores: {v.status_label.texto!r}"
+            )
+            assert v.status_label.color == VERDE
+            assert procs.llamadas_arranque == 1 and procs.apps == APPS
+
+            procs.arranque = (2, 1)
+            v = _correr(_gestor(pack_normal, procs, gaming), PackManagerView.start_pack, pack_normal)
+            assert v.status_label.texto == (
+                "⚠️ 'Trabajo': 2 iniciadas, 1 con error."
+            ), f"arranque con errores: {v.status_label.texto!r}"
+            assert v.status_label.color == AMBAR
+        finally:
+            pmv_mod.threading = threading_real
+            dash_mod.threading = threading_real_dash
+
         dash.destroy()
-        pm.destroy()
 
     finally:
         try:
@@ -7825,7 +8334,7 @@ def test_pack_execution_ui_telemetry_feedback():
             except OSError:
                 pass
 
-    print("test_pack_execution_ui_telemetry_feedback OK.")
+    print("test_el_feedback_de_pack_dice_la_verdad OK (TASK-035, cierre del ciclo 26).")
 
 
 if __name__ == "__main__":
@@ -7934,7 +8443,10 @@ if __name__ == "__main__":
     test_models_strict_validation_and_contracts()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
-    # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs
-    test_pack_execution_ui_telemetry_feedback()
+    # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.
+    # Ciclo 26: el mutation-auditor dio FAIL y la sonda se partio en dos, la
+    # guarda AST por un lado y la honestidad del feedback por otro.
+    test_los_workers_de_pack_solo_publican_por_after()
+    test_el_feedback_de_pack_dice_la_verdad()
     test_headless_ui()
     print("\nALL TESTS PASSED.")

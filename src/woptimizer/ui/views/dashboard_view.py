@@ -6,6 +6,7 @@ from woptimizer.services.gaming_service import GamingService
 from woptimizer.services.notification_service import NotificationService
 from woptimizer.models import Pack
 from woptimizer.ui.confirmation import AMBAR, CANCEL, MSG_EXPIRADO, VENTANA_MS_PORTADA, Confirmable
+from woptimizer.ui.feedback import mensaje_banner_cierre
 from woptimizer.ui import theme
 
 class DashboardView(Confirmable, ctk.CTkFrame):
@@ -160,14 +161,19 @@ class DashboardView(Confirmable, ctk.CTkFrame):
                 pass
         self._banner_timer = self._schedule_ui(5000, self._hide_banner)
 
-    def _show_banner(self, killed: int, freed_mb: float, is_gaming: bool):
+    def _show_banner(self, killed: int, freed_mb: float, is_gaming: bool,
+                     failed: int = 0, skipped: int = 0):
         """Muestra el banner de feedback con los datos de RAM liberada.
 
         Debe llamarse siempre desde el hilo principal (usar self.after(0, ...)).
+
+        TASK-035 / ciclo 26: `failed` y `skipped` ya no se tiran. Con 0 procesos
+        cerrados el banner dice lo que paso y baja a `theme.WARNING`: el verde
+        Gaming o el azul de acento son marcas de EXITO y no se conceden cuando
+        no se ha cerrado nada.
         """
         fg = theme.SURFACE_ALT
-        txt = theme.GAMING if is_gaming else theme.ACCENT
-        msg = f"⚡ {killed} procesos cerrados · {freed_mb:.1f} MB liberados"
+        msg, txt = mensaje_banner_cierre(killed, failed, skipped, freed_mb, is_gaming)
         if is_gaming:
             self._last_gaming_summary = f"{killed} cerrados, {freed_mb:.1f} MB"
         self._update_resting_bar()
@@ -290,11 +296,13 @@ class DashboardView(Confirmable, ctk.CTkFrame):
                 return
 
             def _run_kill(p: Pack):
+                # Las dos puertas devuelven la misma 4-tupla y el texto se
+                # calcula una sola vez en `ui/feedback.py` (ciclo 26).
                 if p.is_gaming:
-                    killed, _failed, _skipped, freed_mb = self.gaming_service.execute_gaming_pack(p)
+                    killed, failed, skipped, freed_mb = self.gaming_service.execute_gaming_pack(p)
                 else:
-                    killed, _failed, _skipped, freed_mb = self.process_service.kill_pack_apps(p.apps)
-                self.after(0, self._show_banner, killed, freed_mb, p.is_gaming)
+                    killed, failed, skipped, freed_mb = self.process_service.kill_pack_apps(p.apps)
+                self.after(0, self._show_banner, killed, freed_mb, p.is_gaming, failed, skipped)
                 self.notification_service.notify_pack_activated(p.name, killed, freed_mb)
 
             threading.Thread(target=_run_kill, args=(pack,), daemon=True).start()
