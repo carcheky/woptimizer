@@ -8763,12 +8763,18 @@ def test_el_gestor_de_procesos_tampoco_miente():
         v = ProcessManagerView.__new__(ProcessManagerView)
         v.status_label = _Label()
         v.btn_kill = None
+        # 3 casillas marcadas, pero 4 PIDs: `discord` no esta en `grouped_processes`
+        # (puede haber muerto entre el snapshot y la pulsacion). El aviso de
+        # confirmacion cuenta CASILLAS y el resultado tambien, asi que el texto
+        # dice '3 seleccionadas' aunque se cierren 4 procesos. Con `len(to_kill)`
+        # el texto decia '4 seleccionadas' y la confirmacion decia 3.
         v.checkboxes = {"chrome": _Casilla(True), "steam": _Casilla(True),
                         "discord": _Casilla(True)}
         v.grouped_processes = {
             "chrome": [ProcessInfo(name="chrome", full_name="chrome.exe", pid=11),
                        ProcessInfo(name="chrome", full_name="chrome.exe", pid=12)],
-            "steam": [ProcessInfo(name="steam", full_name="steam.exe", pid=13)],
+            "steam": [ProcessInfo(name="steam", full_name="steam.exe", pid=13),
+                      ProcessInfo(name="steam", full_name="steam.exe", pid=14)],
         }
         v.process_service = _Procesos()
         v.process_service.cierre = cierre
@@ -8800,8 +8806,9 @@ def test_el_gestor_de_procesos_tampoco_miente():
         nuevos[0].join(20)
         assert not nuevos[0].is_alive(), "el worker secundario no termino"
         assert v.process_service.llamadas == 1
-        assert v.process_service.recibidos == [11, 12, 13], (
-            f"se cierran los procesos marcados, no otros: {v.process_service.recibidos}"
+        assert v.process_service.recibidos == [11, 12, 13, 14], (
+            f"se cierran los PIDs de las casillas marcadas, ni uno mas ni uno menos: "
+            f"{v.process_service.recibidos}"
         )
         pendientes = list(cola)[antes_cola:]
         assert len(pendientes) == 1, f"el worker debe publicar una sola vez: {pendientes}"

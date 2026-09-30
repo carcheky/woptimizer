@@ -354,8 +354,12 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
 
         def _kill():
             killed, failed, skipped, freed_mb = self.process_service.kill_processes(to_kill)
+            # `len(selected_keys)`, no `len(to_kill)`: el usuario marco N CASILLAS y
+            # cada una puede traer varios PIDs. El aviso de confirmacion cuenta
+            # casillas, asi que el resultado tiene que contar las mismas, o el
+            # usuario ve "3 apps seleccionadas" y luego "4 seleccionadas".
             self.after(0, self._publicar_cierre, killed, failed, skipped, freed_mb,
-                       len(to_kill))
+                       len(selected_keys))
             self.notification_service.notify_kill_result(killed, failed, freed_mb)
 
         threading.Thread(target=_kill, daemon=True).start()
