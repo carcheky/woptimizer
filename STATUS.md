@@ -6,7 +6,7 @@
 
 ### 🟢 Salud General del Sistema
 - **Sintaxis Estática UI:** 🟢 Pasa al 100% (`verify_ui_syntax.py`, 8 módulos)
-- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **75 tests**: 73 backend + 2 headless UI)
+- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **78 tests**: 73 backend + 5 headless UI. El número lo deriva `validate_docs.py` con `ast` desde `run_tests.py` y lo compara con los tres ficheros que lo declaran, así que ya no puede volver a caducar solo)
 - **Micro-Benchmark Base:** 182 ms (Init) | 4.97 ms (Escaneo 325 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
 - **Compilación PyInstaller:** 🟡 Al día con el ciclo #11, **pendiente de regenerar**
 - **Base de Datos de Procesos:** 81 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)

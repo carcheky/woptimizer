@@ -183,9 +183,10 @@ def mensaje_banner_cierre(killed: int, failed: int, skipped: int, freed_mb: floa
 # constructor privado para que no puedan divergir.
 # ---------------------------------------------------------------------------
 
-#: `Pack.default_action` es `Literal["start", "kill"]` (`models.py:54`), asi que
-#: el mapa es TOTAL por construccion: no hay un tercer verbo posible. El
-#: `default` del `get` es solo para que un valor futuro no reviente la UI.
+#: `Pack.default_action` es `Literal["start", "kill"]` (`models.py`), asi que el
+#: mapa es TOTAL por construccion: no hay un tercer verbo posible, y por eso
+#: `_verbo` NO lleva `default` (ver su docstring). La clave es la ACCION; el
+#: valor es el verbo. Un verbo NUNCA es una clave.
 VERBOS = {"kill": "apagar", "start": "iniciar"}
 
 
@@ -206,8 +207,39 @@ def _verbo(accion: str) -> str:
     Quien llama pasa la accion, nunca el verbo: en la Portada es
     `pack.default_action` (que es lo que decide la rama), y en `start_pack` es
     `"start"`, porque ese metodo ES arrancar aunque el pack sea gaming.
+
+    UNA ACCION DESCONOCIDA ES UN FALLO, NO UN "apagar" (TASK-036, iter 7).
+    Con `VERBOS.get(accion, VERBOS["kill"])` un cableado erroneo --cablear un
+    VERBO donde va una ACCION, que es el bug que motivo este ciclo-- caia en
+    silencio a "apagar"; y como la respuesta correcta de la puerta de apagar ES
+    "apagar", la mentira era invisible. Medido: meter "apagar", "stop" o "Kill"
+    en la puerta de apagar NO MATABA la suite entera.
+
+    **Por que fallo duro y no un tercer desenlace** ("verbo desconocido" que la
+    vista muestre al usuario, en vez de mentir):
+
+    1. El dominio es TOTAL y lo garantiza el modelo, no este modulo:
+       `default_action: Literal["start", "kill"]`, todo pack entra por
+       `Pack(**validado)` en `pack_service`, y un `ValidationError` ahi se
+       clasifica como CORRUPCION (TASK-031). O sea: una accion desconocida no
+       puede llegar por datos, solo por un error de cableado, que es un fallo de
+       programacion, no una situacion que el usuario pueda provocar.
+    2. Un tercer desenlace mete un error de programacion DENTRO de una frase
+       dirigida al usuario ("no tiene apps que <verbo desconocido>"), con su
+       color y su politica: es una mentira nueva en lugar de la que se quita,
+       y este modulo es puro, sin logger al que escribir.
+    3. Una `KeyError` no se puede silenciar con un `.get`, que es justo lo que
+       la hacia invisible. Y el fallo sale en el sitio donde se cablea, no
+       semanas despues en un texto que nadie sabe de donde salio.
     """
-    return VERBOS.get(accion, VERBOS["kill"])
+    if accion not in VERBOS:
+        raise KeyError(
+            "feedback._verbo: accion desconocida {!r}. El mapa de ACCIONES es "
+            "{!r} (quien llama pasa la ACCION, nunca el verbo, y un verbo nunca "
+            "es una clave: cablear 'apagar' aqui es un bug, no una entrada "
+            "nueva).".format(accion, sorted(VERBOS))
+        )
+    return VERBOS[accion]
 
 
 def _frase_sin_apps(nombre: str, accion: str) -> str:
@@ -234,7 +266,8 @@ def mensaje_sin_apps(nombre: str, default_action: str) -> Tuple[str, str]:
     no un verbo: el mapeo accion -> verbo vive aqui dentro y en ningun otro
     sitio. En la Portada lo que se pasa es `pack.default_action`, que es lo que
     decide la rama; en `start_pack` se pasa `"start"` porque arrancar es lo que
-    ese metodo hace.
+    ese metodo hace. Cualquier otro valor es un `KeyError` con el nombre de la
+    puerta y la accion recibida (ver `_verbo`), no un verbo por defecto.
 
     El color es el de ATENCION en las dos familias: nunca verde (no hubo exito)
     ni rojo (no hubo error). En la Portada el mismo par se publica con

@@ -8099,6 +8099,55 @@ def test_el_feedback_de_pack_dice_la_verdad():
     from woptimizer.ui import theme
 
     # -----------------------------------------------------------------
+    # 0. ESTATICO Y PRIMERO (TASK-036 iter 7, c-bis): EL CONTRATO DE LOS
+    # LLAMANTES. "Quien llama pasa la ACCION, nunca el verbo" es lo que
+    # promete el docstring de `_verbo`, y hasta ahora no lo comprobaba NADIE:
+    # con `VERBOS.get(accion, VERBOS["kill"])` un verbo cableado en el sitio
+    # de la accion caia en silencio a "apagar", que es la respuesta correcta
+    # de la puerta de apagar, asi que era invisible.
+    #
+    # Va PRIMERO y sin Tk por la regla de `testing-guide.md` ("las
+    # comprobaciones estaticas van primero, sin Tk, para que una regresion
+    # falle en milisegundos con un mensaje legible"): si un llamante cablea un
+    # verbo, esto muere nombrando fichero y linea, en vez de dejar que el
+    # `KeyError` de `_verbo` reviente mas abajo con un traceback sin contexto.
+    # -----------------------------------------------------------------
+    import ast as _ast
+    from woptimizer.ui import feedback as fb
+    acciones_validas = set(fb.VERBOS)
+    verbos_del_mapa = set(fb.VERBOS.values())
+    assert not (acciones_validas & verbos_del_mapa), (
+        "una palabra no puede ser ACCION y verbo a la vez en el mapa de "
+        f"`VERBOS`: {acciones_validas & verbos_del_mapa}"
+    )
+    base_ui = os.path.dirname(fb.__file__)
+    for relativo in ("views/dashboard_view.py", "views/pack_manager_view.py"):
+        with open(os.path.join(base_ui, relativo), encoding="utf-8") as fh:
+            arbol = _ast.parse(fh.read())
+        for llamada in _ast.walk(arbol):
+            if not isinstance(llamada, _ast.Call):
+                continue
+            nombre = getattr(llamada.func, "id", None)
+            if nombre not in ("mensaje_sin_apps", "mensaje_banner_sin_apps"):
+                continue
+            arg = llamada.args[1] if len(llamada.args) > 1 else None
+            if isinstance(arg, _ast.Constant) and isinstance(arg.value, str):
+                if arg.value not in acciones_validas:
+                    raise AssertionError(
+                        f"{relativo}:L{llamada.lineno} {nombre} recibe {arg.value!r}, que no "
+                        f"es una ACCION (acciones: {sorted(acciones_validas)}). Quien llama "
+                        "pasa la ACCION, nunca el verbo"
+                    )
+            elif isinstance(arg, _ast.Attribute) and arg.attr == "default_action":
+                pass
+            else:
+                raise AssertionError(
+                    f"{relativo}:L{llamada.lineno} el segundo argumento de {nombre} no es ni "
+                    "una ACCION literal ni `pack.default_action`, asi que el contrato del "
+                    f"docstring no se puede comprobar: {arg!r}"
+                )
+
+    # -----------------------------------------------------------------
     # 2. Arneses sin Tk para la parte dinamica
     # -----------------------------------------------------------------
     class _Reloj:
@@ -9085,6 +9134,263 @@ def test_el_feedback_de_pack_dice_la_verdad():
                 "el aviso va antes de la doble pulsacion: no se arma 'Segunda "
                 "pulsacion para apagar 0 apps' de un pack que no tiene nada"
             )
+
+            # =============================================================
+            # (iter 7) LAS CUATRO AFIRMACIONES QUE EL CIERRE DE AUDITORIA
+            # ENCONTRO SIN RESPALDO. Las cuatro son la MISMA clase de fallo que
+            # motivo este ciclo: el codigo (o el doc) afirma algo que ningun
+            # test mide, asi que el siguiente rewrite lo rompe en silencio.
+            # El contrato de los llamantes (c-bis) NO esta aqui: se ejecuta al
+            # principio de la sonda, antes de nada, para que si un llamante
+            # cablea un verbo el fallo nombre el fichero y la linea en vez de
+            # dejar que reviente el `KeyError` de `_verbo` mas abajo.
+            # =============================================================
+
+            # (iter 7, a) EL SEGUNDO PUNTO DE GUARDA DE `kill_pack`.
+            # `_aviso_pack_inerte` se llama en DOS puntos (antes de armar la
+            # doble pulsacion y despues del re-fetch por `id`) y el codigo lo
+            # afirma: "por eso esta en un metodo y no en dos literales". El
+            # `mutation-auditor` lo muto en el SEGUNDO y el mutante vivio: un
+            # pack que pierde las apps entre las dos pulsaciones llegaba a
+            # `kill_pack_apps([])` DESPUES de haber consumido la doble
+            # pulsacion. O sea, la defensa de dos puntos tenia un punto de ancho
+            # y el doc decia que no.
+            #
+            # No vale llamar a `_aviso_pack_inerte` con un pack vacio: eso mide
+            # el PRIMER punto (que es lo que hacia la iteracion 6). Aqui entra
+            # por `kill_pack` de verdad, con doble pulsacion, y el escenario
+            # exige TRES lecturas, que es lo que hace ALCANZABLE el segundo
+            # punto: la 1a pulsacion y la cima de la 2a ven el pack CON apps
+            # (por eso se arma la confirmacion), y el re-fetch posterior ve el
+            # pack SIN ellas.
+            class _PacksQuePierdenLasApps:
+                """Doble de `PackService`: el pack pierde las apps entre pulsaciones.
+
+                Un `Pack` NUEVO en cada lectura, no una lista mutada en sitio:
+                `kill_pack` re-lee por `id` y lo que cambia entre lecturas es lo
+                que el usuario quito del pack, no la referencia que el test
+                guarda. Ademas lleva la cuenta, porque sin el recuento de
+                lecturas el bloque pasaria aunque el arnes no llegara al
+                segundo punto (es decir, aunque midiera el primero por
+                accidente).
+                """
+
+                def __init__(self):
+                    self.lecturas = 0
+
+                def get_all_packs(self):
+                    self.lecturas += 1
+                    apps = list(APPS) if self.lecturas <= 2 else []
+                    return {"trabajo": Pack(id="trabajo", name="Trabajo", apps=apps,
+                                            default_action="kill")}
+
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            procs.cierre = (0, 0, 0, 0.0)
+            v = _gestor(pack_normal, procs, gaming)
+            packs_perdidos = _PacksQuePierdenLasApps()
+            v.pack_service = packs_perdidos
+            antes_hilos, antes_cola = len(hilos), len(cola)
+            PackManagerView.kill_pack(v, "trabajo")          # 1a pulsacion: solo arma
+            assert packs_perdidos.lecturas == 1, (
+                "la 1a pulsacion lee el pack una vez y solo eso; si lee mas, el "
+                f"escenario ya no mide el segundo punto (lecturas={packs_perdidos.lecturas})"
+            )
+            assert v._guard.is_pending(), (
+                "el arnes no llego a la confirmacion: sin la doble pulsacion el "
+                "segundo punto de guarda de `kill_pack` no existe que medir"
+            )
+            assert len(hilos) == antes_hilos, (
+                "la 1a pulsacion no puede lanzar el worker: mata apps de un clic"
+            )
+            PackManagerView.kill_pack(v, "trabajo")          # 2a: consume y ejecuta
+            assert packs_perdidos.lecturas == 3, (
+                "el arnes no llego al re-fetch por id (3a lectura): sin el, el "
+                "bloque estaria afirmando el PRIMER punto de guarda con otro "
+                f"nombre. Lecturas: {packs_perdidos.lecturas}"
+            )
+            assert not v._guard.is_pending(), (
+                "la 2a pulsacion tiene que CONSUMIR la confirmacion antes de "
+                f"llegar al re-fetch (estado: {v._guard.token!r})"
+            )
+            assert procs.llamadas_cierre == 0, (
+                "el pack perdió sus apps ENTRE las dos pulsaciones: la segunda "
+                "guarda de `kill_pack` tiene que avisar, no lanzar "
+                f"kill_pack_apps({procs.apps!r}) despues de haber consumido la "
+                "doble pulsacion"
+            )
+            assert len(hilos) == antes_hilos, (
+                "el aviso del pack ya vacio no lanza worker: no hay nada que apagar"
+            )
+            assert len(cola) == antes_cola, (
+                "el aviso del pack ya vacio se publica en el hilo principal, sin "
+                "encolar feedback de cierre por after"
+            )
+            assert v.status_label.texto == (
+                "⚠️ 'Trabajo' no tiene apps que apagar. "
+                "Añádelas desde el Gestor de Procesos."
+            ), (
+                "el segundo punto de guarda muestra el mismo aviso que el "
+                f"primero: {v.status_label.texto!r}"
+            )
+            assert v.status_label.color == AMBAR, (
+                f"el aviso del Gestor es AMBAR: {v.status_label.color!r}"
+            )
+
+            # (iter 7, b) LA TARJETA DE LA PORTADA. `_get_pack_button_text` es
+            # donde el usuario lee lo que va a hacer el boton ANTES de pulsar, y
+            # `execute_pack` decide con `pack.default_action`. Mutar el verbo a
+            # un "KILL" literal dejaba TODA la suite en verde: no habia ni un
+            # test que atara la tarjeta al dato. Se afirma por la via real
+            # (`refresh_dashboard` -> boton real -> `cget("text")`) y en las
+            # DOS ramas y en las DOS direcciones, que es lo que distingue "atado
+            # al dato" de "acertado hoy".
+            class _PacksFavoritos:
+                def __init__(self, packs):
+                    self.packs = packs
+
+                def get_all_packs(self):
+                    return {p.id: p for p in self.packs}
+
+            tarjeta_start = Pack(id="t_start", name="Arranque", is_favorite=True,
+                                 apps=list(APPS), default_action="start")
+            tarjeta_kill = Pack(id="t_kill", name="Apagado", is_favorite=True,
+                                apps=list(APPS), default_action="kill")
+            tarjeta_gaming = Pack(id="gaming", name="Gaming Mode", is_favorite=True,
+                                  is_gaming=True, apps=list(APPS),
+                                  default_action="kill",
+                                  target_categories=[CATEGORIA_MEDIA])
+            pack_service_real = dash.pack_service
+            dash.pack_service = _PacksFavoritos([tarjeta_start, tarjeta_kill,
+                                                 tarjeta_gaming])
+            dash.process_service = _ProcesosGestor()
+            try:
+                dash.refresh_dashboard()
+                textos_tarjeta = {
+                    pid: btn.cget("text")
+                    for pid, btn in dash._buttons_by_pack_id.items()
+                }
+            finally:
+                dash.pack_service = pack_service_real
+            assert set(textos_tarjeta) == {"t_start", "t_kill", "gaming"}, (
+                "la tarjeta tiene que salir del boton REAL que construye "
+                f"`refresh_dashboard`: {sorted(textos_tarjeta)}"
+            )
+            assert "START" in textos_tarjeta["t_start"], (
+                "un pack de arrancar no puede anunciarse como 'KILL': la tarjeta "
+                f"tiene que decir lo que el boton va a hacer. Dice: "
+                f"{textos_tarjeta['t_start']!r}"
+            )
+            assert "KILL" in textos_tarjeta["t_kill"] and "START" not in textos_tarjeta["t_kill"], (
+                f"un pack de apagar no puede anunciarse como 'START': "
+                f"{textos_tarjeta['t_kill']!r}"
+            )
+            assert "KILL" in textos_tarjeta["gaming"] and "START" not in textos_tarjeta["gaming"], (
+                "la tarjeta del Gaming Mode sale del MISMO dato que decide la "
+                "rama (`default_action`), no de un literal congelado en la "
+                f"vista: {textos_tarjeta['gaming']!r}"
+            )
+            # El control NEGATIVO del arnés: el mismo texto con el otro dato
+            # tiene que cambiar. Si `_get_pack_button_text` ignorase el pack,
+            # los tres textos serian iguales y las tres aserciones de arriba
+            # pasarian por construccion.
+            assert textos_tarjeta["t_start"] != textos_tarjeta["t_kill"], (
+                "las tarjetas de arrancar y de apagar no pueden decir lo mismo: "
+                "el arnés no distinguiria un verbo cableado de uno correcto"
+            )
+            # Y el gaming de ARRANQUE (posible: `is_gaming` y `default_action`
+            # son campos independientes) tiene que decir START, no KILL.
+            gaming_de_arranque = Pack(id="g_start", name="Gaming Arranque",
+                                      is_favorite=True, is_gaming=True,
+                                      apps=list(APPS), default_action="start",
+                                      target_categories=[CATEGORIA_MEDIA])
+            dash.pack_service = _PacksFavoritos([gaming_de_arranque])
+            try:
+                dash.refresh_dashboard()
+                texto_gaming_arranque = dash._buttons_by_pack_id["g_start"].cget("text")
+            finally:
+                dash.pack_service = pack_service_real
+            assert "START" in texto_gaming_arranque, (
+                "un Gaming Mode con `default_action='start'` se INICIA, asi que "
+                "su tarjeta no puede prometer 'KILL': "
+                f"{texto_gaming_arranque!r}"
+            )
+
+            # (iter 7, c) UNA ACCION DESCONOCIDA ES UN FALLO, NO UN "apagar".
+            # Con `VERBOS.get(accion, VERBOS["kill"])` un cableado erroneo caia
+            # en silencio a "apagar", que es justo la respuesta correcta de la
+            # puerta de apagar, asi que el error era invisible (medido: "apagar",
+            # "stop" o "Kill" en esa puerta NO mataban la suite). El contrato de
+            # los llamantes ya esta comprobado en estatico mas arriba; aqui se
+            # comprueba la FRONTERA, que es donde el default silencioso vivía.
+            for verbo in sorted(fb.VERBOS.values()):
+                try:
+                    fb.mensaje_sin_apps("X", verbo)
+                except KeyError as exc:
+                    assert verbo in str(exc), (
+                        "el fallo tiene que NOMBRAR la accion recibida, o el "
+                        f"cableado erroneo no se localiza: {exc}"
+                    )
+                    assert "feedback._verbo" in str(exc), (
+                        f"el fallo tiene que nombrar la puerta: {exc}"
+                    )
+                else:
+                    raise AssertionError(
+                        f"cablear el VERBO {verbo!r} en la puerta tiene que fallar, "
+                        "no devolver un 'apagar' silencioso: ese default es lo que "
+                        "hacia invisible el bug del ciclo"
+                    )
+            for accion_equivoca in ("stop", "Kill", "apagar", "iniciar", ""):
+                try:
+                    fb._verbo(accion_equivoca)
+                except KeyError:
+                    pass
+                else:
+                    raise AssertionError(
+                        f"una accion desconocida {accion_equivoca!r} tiene que ser "
+                        "un fallo, no un verbo por defecto"
+                    )
+            # Y el camino bueno no se ha roto al endurecer la puerta.
+            assert fb._verbo("kill") == "apagar" and fb._verbo("start") == "iniciar", (
+                "las dos acciones validas tienen que seguir dando su verbo"
+            )
+            assert fb.mensaje_sin_apps("X", "kill")[0].endswith(
+                "no tiene apps que apagar. Añádelas desde el Gestor de Procesos."
+            ), "el camino bueno de la puerta de apagar cambio de texto"
+
+            # (iter 7, d) LA CADENA CAUSAL, POR LA VIA REAL. El doc y el
+            # comentario de la iteracion 6 afirman que "un pack recien creado
+            # nace con `default_action='start'`" y que por eso el bug estaba
+            # vivo. Esa frase no la media NINGUN test: cambiar el default del
+            # modelo a "kill" dejaba los 78 tests en verde. Aqui entra
+            # `create_user_pack` DE VERDAD (no un `Pack(...)` con literales) y el
+            # pack que devuelve se pasa por la puerta de APAGAR, de modo que la
+            # cadena entera queda atada de una vez: si el default del modelo se
+            # mueve, el aviso de la puerta de apagar deja de decir "apagar".
+            assert pack_s.create_user_pack("recien_real", "Recien Real", []), (
+                "precondicion del arnes: el pack recien creado tiene que existir"
+            )
+            recien_real = pack_s.get_all_packs()["recien_real"]
+            assert recien_real.default_action == "start", (
+                "un pack recien creado nace con `default_action='start'` (el "
+                "default del modelo) y no con 'kill': es lo que hace que "
+                "cablear `pack.default_action` en la puerta de apagar diga "
+                f"'iniciar'. default_action={recien_real.default_action!r}"
+            )
+            v = _gestor(recien_real, _ProcesosGestor(), _GamingGestor())
+            antes_hilos = len(hilos)
+            PackManagerView.kill_pack(v, "recien_real")
+            assert len(hilos) == antes_hilos, (
+                "un pack recien creado y sin apps no puede lanzar worker"
+            )
+            assert v.status_label.texto == (
+                "⚠️ 'Recien Real' no tiene apps que apagar. "
+                "Añádelas desde el Gestor de Procesos."
+            ), (
+                "cadena completa: `create_user_pack` nace con 'start' y aun asi la "
+                "puerta de APAGAR avisa de 'apagar'. Si el texto dice 'iniciar', "
+                f"el verbo vuelve a estar cableado al pack: {v.status_label.texto!r}"
+            )
+            assert v.status_label.color == AMBAR
         finally:
             pmv_mod.threading = threading_real
             dash_mod.threading = threading_real_dash

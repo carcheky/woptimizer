@@ -28,6 +28,18 @@ Probar `process_service` y `pack_service` con tests independientes en `run_tests
 ## Suite de Tests Actual (`run_tests.py`)
 Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **78 tests**: 73 de backend + 5 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
 
+> **Ese 78 no se escribe a mano, y por eso ya no puede caducar solo.** Fallo medido en el cierre
+> del ciclo 26: esta tabla decía 78, `STATUS.md` decía 75 y `AGENTS.md` y `README.md` decían 28 —
+> y `validate_docs.py` corría 72 comprobaciones **ninguna** de las cuales miraba un número de
+> tests, así que informaba "72 OK, 0 FAIL" con los tres ficheros caducados. Es la clase "el
+> validador deduce de lo que valida" que este repo ya sufriría dos veces. Desde la iteración 7,
+> `validate_docs.py` deriva el número **con `ast`** —los `def test_*` de módulo y las llamadas
+> del `__main__`—, exige que `defined == invoked` (un test definido y no invocado pasa en verde
+> porque no corre nunca), lo compara con `STATUS.md`, `AGENTS.md`, `README.md` **y con el número
+> de filas de esta tabla**. Si añades un test y no lo declaras, el validador falla; si el patrón
+> de un fichero cambia y el validador ya no encuentra lo que debe leer, también falla en vez de
+> dar verde por omisión.
+
 | # | Test | Qué valida |
 |---|------|-----------|
 | 1 | `test_models` | Instanciación de `ProcessInfo`, `Pack`, `AppData` y valores por defecto Pydantic |
@@ -105,7 +117,7 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 73 | `test_models_strict_validation_and_contracts` | **TASK-034:** validación estricta de modelos Pydantic (`strict=True` en `is_favorite`/`is_gaming`, `default_action` restringido a `Literal["start", "kill"]`, `extra="allow"` en `Pack` y `AppData`, y defaults canónicos de `ProcessInfo`) |
 | 74 | `test_main_window_navigation_transitions` | **TASK-034:** ciclo de vida y navegación headless en `MainWindow` (transiciones Dashboard -> Packs -> ProcessManager -> Dashboard, destrucción de vistas previas con `winfo_exists()`, activación de estilos nav y recarga asíncrona) |
 | 75 | `test_los_workers_de_pack_solo_publican_por_after` | **TASK-035 ciclo 26 (S2, S3; iter 3 y 4):** el worker de `execute_pack`, `kill_pack`, `start_pack`, **`ProcessManagerView._do_load` y `ProcessManagerView.on_kill_selected`** —cinco métodos de tres clases de vista— solo **publica**. La lista de lo permitido son **pares `(raiz, metodo)`**, no raíces: con raíces, `self.pack_service.get_all_packs()` y `self.process_service.get_process_exe_path(1)` colaban. Baja por `ast.Subscript` (iter 3) y desde la iteración 4 también por `getattr`/`setattr`/`delattr`, por `ast.Delete` y por los **argumentos** de las llamadas permitidas: sin eso, `getattr(self, 'status_label').configure(...)`, `setattr(self, '_last_gaming_summary', 'x')`, `del self._last_gaming_summary` y `kill_pack_apps(self.status_label)` pasaban las cuatro. Exige que **cada** `self.after` lleve 0 ms y un callback de la lista blanca. La guarda se prueba **contra sí misma** (8 infracciones sintéticas, 1 worker conforme, y el caso de las dos ramas con `self.master.after` en una) |
-| 76 | `test_el_feedback_de_pack_dice_la_verdad` | **TASK-035 ciclo 26 (S1, S4, S5, S9; iter 3) + TASK-036 (iter 4, 5 y 6):** el feedback de cierre dice la verdad en los **cuatro** desenlaces, por las **tres** puertas (gaming, pack normal y la no-gaming de la portada, que hasta la iteración 3 no se ejecutaba nunca), con el worker real, doble pulsación, hilo secundario real y `self.after` encolado. Desde la iteración 4 también entra por el worker de la **rama `start`** de `execute_pack` (que tampoco se ejecutaba nunca). Afirma el **texto exacto** (no "dice algo con 6"), incluido `killed == 1` como éxito, `"✅" not in texto` en las ramas `nada` y `fallo`, y la **omisión de la cláusula de MB con `freed_mb <= 0`**. Y afirma el **aviso del pack que no puede hacer nada** (vacío y Gaming inerte) por sus dos familias, con el color exacto, sin worker, sin nada encolado y **sin doble pulsación armada**, más el gaming sano con apps o con categorías (que no debe avisar). La barra de reposo se afirma por su **texto** (procesos activos y resumen del Gaming Mode) y los temporizadores se miden con un **reloj simulado de plazo absoluto** (t0, t=1000, t=5500, t=6500) en las **tres** puertas del banner, afirmando además que en `_timers_ui` queda exactamente un handle. **Iteración 5, dos bloques nuevos:** (a) el **verbo atado al método** en `start_pack` se afirma con un pack de la familia *opuesta* (gaming, `default_action="kill"`, sin apps), porque el pack vacío que ya había traía `default_action="start"` de serie y no distinguía `"start"` de `pack.default_action`; (b) el **contrato de canal no vacío** del aviso inline, que compara el `fg_color` del `status_label` **contra el fondo de reposo** (no contra el anterior: si el canal pintara `CANCEL`, el color ya sería `CANCEL` de antes y la comparación sería verde por construcción) y por eso detecta y descarta su propia versión vacía. **Iteración 6:** `kill_pack` con un pack **no gaming, vacío y `default_action="start"`** afirma el verbo **"apagar"**: el verbo lo decide la puerta, no el dato del pack (mata D5) |
+| 76 | `test_el_feedback_de_pack_dice_la_verdad` | **TASK-035 ciclo 26 (S1, S4, S5, S9; iter 3) + TASK-036 (iter 4, 5 y 6):** el feedback de cierre dice la verdad en los **cuatro** desenlaces, por las **tres** puertas (gaming, pack normal y la no-gaming de la portada, que hasta la iteración 3 no se ejecutaba nunca), con el worker real, doble pulsación, hilo secundario real y `self.after` encolado. Desde la iteración 4 también entra por el worker de la **rama `start`** de `execute_pack` (que tampoco se ejecutaba nunca). Afirma el **texto exacto** (no "dice algo con 6"), incluido `killed == 1` como éxito, `"✅" not in texto` en las ramas `nada` y `fallo`, y la **omisión de la cláusula de MB con `freed_mb <= 0`**. Y afirma el **aviso del pack que no puede hacer nada** (vacío y Gaming inerte) por sus dos familias, con el color exacto, sin worker, sin nada encolado y **sin doble pulsación armada**, más el gaming sano con apps o con categorías (que no debe avisar). La barra de reposo se afirma por su **texto** (procesos activos y resumen del Gaming Mode) y los temporizadores se miden con un **reloj simulado de plazo absoluto** (t0, t=1000, t=5500, t=6500) en las **tres** puertas del banner, afirmando además que en `_timers_ui` queda exactamente un handle. **Iteración 5, dos bloques nuevos:** (a) el **verbo atado al método** en `start_pack` se afirma con un pack de la familia *opuesta* (gaming, `default_action="kill"`, sin apps), porque el pack vacío que ya había traía `default_action="start"` de serie y no distinguía `"start"` de `pack.default_action`; (b) el **contrato de canal no vacío** del aviso inline, que compara el `fg_color` del `status_label` **contra el fondo de reposo** (no contra el anterior: si el canal pintara `CANCEL`, el color ya sería `CANCEL` de antes y la comparación sería verde por construcción) y por eso detecta y descarta su propia versión vacía. **Iteración 6:** `kill_pack` con un pack **no gaming, vacío y `default_action="start"`** afirma el verbo **"apagar"**: el verbo lo decide la puerta, no el dato del pack (mata D5). **Iteración 7, cuatro bloques** (todos con el mismo arnés de doble de servicio, doble pulsación, hilo secundario y `after` encolado): (a) el **segundo** punto de guarda de `_aviso_pack_inerte`, al que el auditor de cierre mutó y el mutante sobrevivió — entra por `kill_pack` con un doble que entrega el pack **con** apps en las dos primeras lecturas y **sin** apps en el re-fetch, cuenta las lecturas y exige aviso, cero `kill_pack_apps` y cero worker (mata K-a); (b) la **tarjeta de la Portada** atada al `default_action` real por la vía real (`refresh_dashboard` → botón real → `cget("text")`), en las dos ramas y las dos direcciones, con un Gaming Mode de `default_action="start"` como control (mata P-d-a/b); (c) el **contrato de los llamantes** con una guarda `ast` que corre **primero** —el segundo argumento de `mensaje_sin_apps`/`mensaje_banner_sin_apps` tiene que ser una ACCION literal o `pack.default_action`— más la frontera: una acción desconocida (`"apagar"`, `"stop"`, `"Kill"`, `""`) es un `KeyError` con el nombre de la puerta, no un `"apagar"` silencioso (mata D5-c/e/f); (d) la **cadena causal** `create_user_pack` → `default_action="start"` → verbo de la puerta de apagar, medida con el `PackService` real y no con un `Pack(...)` de literales (mata D5-d) |
 | 77 | `test_el_gestor_de_procesos_tampoco_miente` | **TASK-035 ciclo 26 iter 3:** la **tercera** puerta de feedback, `ProcessManagerView.on_kill_selected`, que el fix de la iteración 2 y la guarda AST no tocaban y que pintaba `"<tick> 0 cerrados, 0 fallidos."` con `killed == 0`. Entra por `on_kill_selected` de verdad (doble pulsación, hilo secundario real, `after` encolado) y afirma texto y color exactos en los cuatro desenlaces; comprueba que se cierran los PIDs marcados, que el refresco de la lista se programa a 1000 ms y no al instante, y que `skipped` no se confunde con `failed`. **No mata ningún proceso**: el `ProcessService` es un doble |
 | 78 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
 
@@ -196,9 +208,11 @@ ciclo en cada mutación).
 > en silencio, y la salida se filtra a ASCII. Una tabla de mutaciones que nadie puede
 > reproducir es peor que no tenerla: parece cobertura y no lo es.
 
-**21 mutaciones, 21 muertes, 0 supervivientes** (ejecutadas el 2026-10-01, salida literal de
-`python _matrix_c26.py`). La fila **D5** es de la iteración 6 y las **D1–D4** son de la iteración 5;
-su salida va en la tabla siguiente porque las midió el `mutation-auditor` y el dev, no `_matrix_c26.py`.
+**30 mutaciones, 30 muertes, 0 supervivientes** (ejecutadas el 2026-10-01, salida literal de
+`python _matrix_c26.py`). La fila **D5** es de la iteración 6 y las **K-a, P-d-a/b y D5-c/d/e/f**
+son de la iteración 7 (las afirmaciones que el cierre de auditoría encontró sin respaldo);
+**D1/D2** son de la iteración 5 y se han rescueado aquí. **D3/D4 no son reproducibles** y el
+doc lo declara más abajo en vez de fingir una tabla que nadie puede correr.
 
 | Mutante | Muere por |
 |---|---|
@@ -218,6 +232,15 @@ su salida va en la tabla siguiente porque las midió el `mutation-auditor` y el 
 | **S2-c** la guarda vuelve a mirar solo `call.func` | su control: "no ve `self.<attr>` como ARGUMENTO de una llamada permitida" |
 | **S3** el sustantivo se cablea en la rama `nada` | "el sustantivo también se usa en la rama 'nada'" |
 | **D5** `_aviso_pack_inerte` vuelve a cablear el verbo a `pack.default_action` | "el verbo lo decide la PUERTA que se está pulsando (aquí apagar), no el `default_action` del pack" |
+| **K-a** desaparece el **segundo** punto de guarda de `_aviso_pack_inerte` (el del re-fetch) | "el pack perdió sus apps ENTRE las dos pulsaciones: la segunda guarda de `kill_pack` tiene que avisar" — **era el superviviente real**: lo midió el auditor de cierre, y el mutante no es equivalente (es alcanzable y cambia el comportamiento) |
+| **P-d-a** la tarjeta de la Portada vuelve al literal `KILL` (rama normal) | "un pack de arrancar no puede anunciarse como 'KILL'" |
+| **P-d-b** la tarjeta del Gaming Mode vuelve al `KILL` congelado en la vista | "un Gaming Mode con `default_action='start'` se INICIA, así que su tarjeta no puede prometer 'KILL'" |
+| **D5-c** `_verbo` vuelve al `get` con el default silencioso | "cablear el VERBO 'apagar' en la puerta tiene que fallar, no devolver un 'apagar' silencioso" |
+| **D5-d** el default del modelo pasa a `"kill"` (mata la cadena causal) | "un pack recién creado nace con `default_action='start'` y no con 'kill'" |
+| **D5-e** un llamante cablea un verbo donde va la acción | la guarda `ast` de los llamantes, que corre **primero**: "pack_manager_view.py:L482 mensaje_sin_apps recibe 'apagar', que no es una ACCION" |
+| **D5-f** "arreglar" el fallo duro metiendo el verbo como clave del mapa | "una palabra no puede ser ACCION y verbo a la vez en el mapa de `VERBOS`" |
+| **D1** `start_pack` vuelve a cablear el verbo al pack | el aviso preventivo de `start_pack` con el gaming de apagar ("no tiene apps que iniciar") |
+| **D2** `start_pack` cablea el verbo a `"kill"` a pelo | el mismo aviso preventivo: sale "apagar" |
 | **R-1** `clasificar_cierre` dice siempre `EXITO` | "nada que cerrar dice exactamente eso" |
 | **R-2** `_show_banner` deja de refrescar la barra de reposo | "tiene que refrescar la barra de reposo: antes …, después …" |
 | **R-3** se borra la cancelación del auto-ocultado previo | "el banner nuevo debe cancelar el auto-ocultado anterior" |
@@ -231,7 +254,21 @@ cláusula de MB siempre escrita.
 
 #### Iteración 5 — D1 a D4, medidas sobre copia en `%TEMP%` (2026-10-01)
 
-Salida literal (script de una sola pasada, control primero, `src/` **nunca** mutado en sitio).
+> ⚠️ **Esta tabla estaba documentada y NO era reproducible.** El script de una sola
+> pasada que la produjo no quedó en el repo, así que nadie podía volver a correrla: una
+> tabla de mutaciones que solo existe en un markdown es exactamente lo que este mismo
+> doc condena en `:194-197`. La iteración 7 lo resuelve partida en dos, y lo dice:
+> **D1 y D2 SÍ son reproducibles** — mutan código de `src/`, así que se han incorporado a
+> `_matrix_c26.py` (30 mutaciones, salida literal arriba) con ancla al código de hoy.
+> **D3 y D4 NO son reproducibles y no se pueden volver reproducibles tal cual**:
+> mutaban el **arnés de la propia sonda** (el `_inline_status` del doble y la aserción
+> del canal vacío) en su versión de la iteración 5, que la iteración 7 reescribió. Anclarlas
+> hoy significaría inventar una mutación distinta y llamarla D3/D4, que es peor que
+> declararlas no reproducibles. Se conservan como **registro histórico** de por qué el
+> contrato de canal no vacío se midió entonces; quien necesite volver a medirlas debe
+> escribir un script nuevo, y ese script es suyo, no una reconstrucción de este bloque.
+
+Salida literal de aquella medición (script de una sola pasada, control primero, `src/` **nunca** mutado en sitio).
 **4 mutaciones, 4 muertes, 0 supervivientes.** Las cuatro van contra el código que la iteración 5
 escribió: el verbo atado al método en `start_pack` y el contrato de canal no vacío.
 
@@ -272,6 +309,28 @@ tiene que decir **"apagar"**. Sin ese caso, `_aviso_pack_inerte` podía seguir c
 con el gaming inerte y con un id inexistente. Un pack recién creado nace con `default_action="start"`
 (`on_new_pack` → `create_user_pack(pack_id, name, [])` → modelo por defecto), así que el bug era la
 **primera acción de un usuario recién instalado**: "Apagar" respondía "no tiene apps que **iniciar**".
+
+> **Esa última frase la sustained el comentario de la sonda y este doc, y no la medía nadie.**
+> Cambiar el default del modelo (`models.py`: `default_action: Literal["start", "kill"] = "start"`)
+> a `"kill"` dejaba los 78 tests en verde. La iteración 7 la ata por la **vía real**: la sonda
+> llama a `create_user_pack` de verdad, exige `default_action == "start"` en lo que devuelve y pasa
+> ese mismo pack por la puerta de apagar exigiendo el texto "apagar". Mutante **D5-d** de
+> `_matrix_c26.py`, MUERE. Lo que sigue siendo verdad sin medición es la consecuencia: el bug era
+> visible para un usuario recién instalado **si pulsaba apagar sin apps**; que lo hiciera o no, eso
+> ya no lo afirma nadie.
+
+**K-a (iteración 7) — el punto que el cierre de auditoría encontró sin respaldo.** `_aviso_pack_inerte`
+tiene dos puntos de comprobación y el código lo decía ("por eso está en un método y no en dos
+literales"). El auditor mutó el **segundo** y el mutante **vivió**: con un pack que tiene apps en la
+primera lectura y ninguna en la segunda, el usuario veía "no tiene apps que apagar"; mutado, se
+lanzaba `kill_pack_apps([])` **después** de consumir la doble pulsación. El caso nuevo no puede llamar
+a `_aviso_pack_inerte` con un pack vacío, porque eso mide el **primer** punto (y es lo que hacía la
+iteración 6). Entra por `kill_pack` con doble pulsación y un doble de servicio que entrega el pack
+**con** apps en las dos primeras lecturas y **sin** apps en el re-fetch por `id`: tres lecturas, que es
+lo que hace alcanzable el segundo punto. El bloque además **cuenta las lecturas** y exige que la
+confirmación esté armada y consumida, porque si el arnés no llegara al re-fetch el bloque estaría
+afirmando el primer punto con otro nombre — el mismo falso verde que produce un fixture que no llega.
+Mutante **K-a** de `_matrix_c26.py`, MUERE.
 
 ### 3. La guarda `ast` compara **pares**, y eso obliga a decir qué NO comprueba
 

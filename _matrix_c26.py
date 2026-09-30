@@ -23,12 +23,32 @@ HOY, y un ancla que no encuentra el fichero es un ERROR DURO (no una mutacion
 saltada en silencio), que es la unica forma de que la tabla no vuelva a caducar
 sin que nadie se entere.
 
-VERSION ITERACION 6 (21 mutaciones). La iteracion 5 (DEV-1 atado en las tres
-direcciones + el contrato de canal no vacuo) anadio D1-D4 a la tabla que lleva
-el `mutation-auditor`; aqui se anade D5, el superviviente que cerro el ciclo: el
-espejo de `start_pack` en `_aviso_pack_inerte`. Las sondas siguen siendo las
-TRES, porque el caso nuevo vive dentro de la sonda
-`test_el_feedback_de_pack_dice_la_verdad`, que ya era una de ellas.
+VERSION ITERACION 7 (30 mutaciones). La iteracion 6 anadio D5, el superviviente
+que cerro el ciclo 26; aqui se anaden las SIETE de la iteracion 7, que son las
+afirmaciones que el cierre de auditoria encontro SIN RESPALDO, y ademas D1 y D2,
+que la iteracion 5 habia medido con un script que no quedo en el repo y que aqui
+vuelven a ser reproducibles:
+
+* **K-a**: el SEGUNDO punto de guarda de `_aviso_pack_inerte`, el que el
+  auditor muto y que VIVIO. No es un mutante equivalente: un pack que pierde
+  las apps entre las dos pulsaciones llegaba a `kill_pack_apps([])` DESPUES de
+  consumir la doble pulsacion.
+* **P-d-a / P-d-b**: la tarjeta de la Portada vuelve a decir un literal en vez
+  de `default_action` (rama normal y rama gaming).
+* **D5-c/d/e/f**: el `default` silencioso de `_verbo` vuelve, el default del
+  modelo se mueve (mata la cadena causal `create_user_pack` -> `start`), un
+  llamante cablea un verbo donde va la accion, y el "arreglo" que mete el verbo
+  como clave del mapa.
+
+Y **D1/D2** (las dos de la iteracion 5 que son de codigo de `src/`) salen de la
+tabla del doc y entran aqui, con ancla al codigo de hoy: una tabla que nadie puede
+reproducir es peor que no tenerla. **D3 y D4 NO entran**, y el doc lo dice
+explicito: mutaban el arnes de la propia sonda en su version de la iteracion 5, que
+la iteracion 7 reescribio, y un ancla hacia un fichero que ya no existe seria
+inventarse la tabla en vez de reproducirla.
+
+Las sondas siguen siendo las TRES, porque los casos nuevos viven dentro de la
+sonda `test_el_feedback_de_pack_dice_la_verdad`, que ya era una de ellas.
 
 Copia el arbol a %TEMP% (sin `.git`), aplica una mutacion cada vez, purga
 `__pycache__` y corre las TRES sondas de TASK-035 en un subproceso. Un mutante
@@ -221,6 +241,81 @@ MUTACIONES = [
      "run_tests.py",
      "        malos = []\n        for call in [n for n in ast.walk(worker) if isinstance(n, ast.Call)]:",
      "        return []\n        malos = []\n        for call in [n for n in ast.walk(worker) if isinstance(n, ast.Call)]:"),
+
+    # ------------------------------------------------------------------
+    # ITERACION 7: las cuatro afirmaciones que el cierre de auditoria
+    # encontro SIN RESPALDO. K-a es el superviviente real (el auditor lo
+    # muto y vivio); P-d y D5-c/d/e son los huecos que el mismo barrido
+    # dejo ver. Las siete mueren por `test_el_feedback_de_pack_dice_la_verdad`,
+    # que es la sonda que ya tenia el arnes (doble de servicio, doble
+    # pulsacion, hilo secundario y `after` encolado) para poder entrar por
+    # la puerta de verdad.
+    # ------------------------------------------------------------------
+    ("K-a  el SEGUNDO punto de guarda de _aviso_pack_inerte desaparece",
+     "src/woptimizer/ui/views/pack_manager_view.py",
+     "        aviso_inerte = self._aviso_pack_inerte(pack)\n"
+     "        if aviso_inerte is not None:\n"
+     "            self._inline_status(*aviso_inerte)\n"
+     "            return\n"
+     "        apps = list(pack.apps)\n",
+     "        if False:  # K-a: sin segundo punto de guarda\n"
+     "            pass\n"
+     "        apps = list(pack.apps)\n"),
+
+    ("P-d-a la tarjeta de la Portada vuelve al literal KILL (rama normal)",
+     "src/woptimizer/ui/views/dashboard_view.py",
+     "        return f\"{pack.name}\\n({len(pack.apps)} apps · {pack.default_action.upper()})\"",
+     "        return f\"{pack.name}\\n({len(pack.apps)} apps · KILL)\""),
+
+    ("P-d-b la tarjeta del Gaming Mode vuelve al KILL congelado en la vista",
+     "src/woptimizer/ui/views/dashboard_view.py",
+     "            return (f\"{pack.name}\\n({len(pack.apps)} apps · {cats} categorías · \"\n"
+     "                    f\"{pack.default_action.upper()})\")",
+     "            return f\"{pack.name}\\n({len(pack.apps)} apps · {cats} categorías · KILL)\""),
+
+    ("D5-c _verbo vuelve al get con el default silencioso",
+     "src/woptimizer/ui/feedback.py",
+     "    if accion not in VERBOS:\n"
+     "        raise KeyError(\n"
+     "            \"feedback._verbo: accion desconocida {!r}. El mapa de ACCIONES es \"\n"
+     "            \"{!r} (quien llama pasa la ACCION, nunca el verbo, y un verbo nunca \"\n"
+     "            \"es una clave: cablear 'apagar' aqui es un bug, no una entrada \"\n"
+     "            \"nueva).\".format(accion, sorted(VERBOS))\n"
+     "        )\n"
+     "    return VERBOS[accion]\n",
+     "    return VERBOS.get(accion, VERBOS[\"kill\"])\n"),
+
+    ("D5-d el default del modelo pasa a 'kill' (mata la cadena causal)",
+     "src/woptimizer/models.py",
+     "    default_action: Literal[\"start\", \"kill\"] = \"start\"",
+     "    default_action: Literal[\"start\", \"kill\"] = \"kill\""),
+
+    ("D5-e un llamante cablea un VERBO donde va la ACCION",
+     "src/woptimizer/ui/views/pack_manager_view.py",
+     "            return mensaje_sin_apps(pack.name, \"kill\")",
+     "            return mensaje_sin_apps(pack.name, \"apagar\")"),
+
+    ("D5-f 'arreglar' el fallo duro metiendo el verbo como clave del mapa",
+     "src/woptimizer/ui/feedback.py",
+     "VERBOS = {\"kill\": \"apagar\", \"start\": \"iniciar\"}",
+     "VERBOS = {\"kill\": \"apagar\", \"start\": \"iniciar\", \"apagar\": \"apagar\"}"),
+
+    # ------------------------------------------------------------------
+    # D1 y D2 (iteracion 5) rescatan de "NO REPRODUCIBLE" las dos mutaciones
+    # que SI son de codigo de `src/`. D3 y D4 no entran aqui: mutaban el
+    # arnes de la propia sonda (version de la iteracion 5, reescrita en la 7),
+    # y un ancla hacia un fichero que ya no existe seria fabricar una tabla.
+    # Ver `docs/ai/testing-guide.md`.
+    # ------------------------------------------------------------------
+    ("D1   start_pack vuelve a cablear el verbo al pack (pack.default_action)",
+     "src/woptimizer/ui/views/pack_manager_view.py",
+     "            self._inline_status(*mensaje_sin_apps(pack.name, \"start\"))",
+     "            self._inline_status(*mensaje_sin_apps(pack.name, pack.default_action))"),
+
+    ("D2   start_pack cablea el verbo a 'kill' a pelo",
+     "src/woptimizer/ui/views/pack_manager_view.py",
+     "            self._inline_status(*mensaje_sin_apps(pack.name, \"start\"))",
+     "            self._inline_status(*mensaje_sin_apps(pack.name, \"kill\"))"),
 ]
 
 

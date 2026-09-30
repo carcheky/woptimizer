@@ -285,9 +285,19 @@ class DashboardView(Confirmable, ctk.CTkFrame):
                     )
 
     def _get_pack_button_text(self, pack: Pack) -> str:
+        # TASK-036 iter 7: el verbo de la tarjeta sale del PACK en las DOS
+        # ramas. La tarjeta es lo primero que el usuario lee antes de pulsar, y
+        # `execute_pack` decide con `pack.default_action`: si la tarjeta dice
+        # "KILL" y el boton arranca, la tarjeta miente. El literal "KILL" de la
+        # rama gaming era un hecho congelado en la vista (mismo patron que el
+        # `default` silencioso de `_verbo`: cierto hoy, falso en cuanto el dato
+        # se mueve). Con `DEFAULT_GAMING_PACK`, que nace con
+        # `default_action="kill"`, el texto es EXACTAMENTE el de antes: lo que
+        # cambia es que ya no es una afirmacion que esta vista mantiene sola.
         if pack.is_gaming:
             cats = len(pack.target_categories)
-            return f"{pack.name}\n({len(pack.apps)} apps · {cats} categorías · KILL)"
+            return (f"{pack.name}\n({len(pack.apps)} apps · {cats} categorías · "
+                    f"{pack.default_action.upper()})")
         return f"{pack.name}\n({len(pack.apps)} apps · {pack.default_action.upper()})"
 
     def _create_favorite_button(self, pack: Pack, row: int, col: int) -> ctk.CTkButton:

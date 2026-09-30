@@ -324,8 +324,9 @@ Previamente existía asimetría entre vistas y acciones:
 2. **Gestor de Packs (`PackManagerView`):**
    - **Guarda preventiva en `start_pack`:** Si `not pack.apps`, la UI cancela confirmaciones pendientes y emite de inmediato `self._inline_status(*mensaje_sin_apps(pack.name, "start"))` sin crear un hilo innecesario. Aquí la **acción** es arrancar, así que el verbo es "iniciar" aunque el pack sea gaming con `default_action="kill"`: quien decide el verbo es el formateador, y quien dice qué acción se ejecuta es el método.
      - Eso no es una convención sin medir: `test_el_feedback_de_pack_dice_la_verdad` pasa un `Pack(is_gaming=True, default_action="kill", apps=[])` por `start_pack` y exige el texto **"no tiene apps que iniciar"**. El caso anterior (pack normal) no distinguía nada, porque `default_action` vale `"start"` de serie y las dos cableaciones dan el mismo texto; con el gaming de apagar, cablear `pack.default_action` produce **"apagar"** y el test muere por aserción. Si "corregir" esa línea a `pack.default_action` parece más coherente, es la suite la que lo dice que no.
-   - **Guarda preventiva en `kill_pack`:** el pack no gaming y sin apps se avisa con `mensaje_sin_apps(pack.name, "kill")`. La comprobación vive **una vez** en `_aviso_pack_inerte(pack)` y se llama en los **dos** puntos donde `kill_pack` lee el pack (antes de `_require_double_tap` y tras el re-fetch por `id`): el literal estaba duplicado byte a byte dentro del mismo método, que es la forma más barata de tener dos verdades.
+   - **Guarda preventiva en `kill_pack`:** el pack no gaming y sin apps se avisa con `mensaje_sin_apps(pack.name, "kill")`. La comprobación vive **una vez** en `_aviso_pack_inerte(pack)` y se llama en los **dos** puntos donde `kill_pack` lee el pack (antes de `_require_double_tap` y tras el re-fetch por `id`): el literal estaba duplicado byte a byte dentro del mismo método, que es la forma más barata de tener dos verdades. Los dos puntos están medidos; el segundo por su propia vía (ver "El pack que no puede hacer nada", mutante `K-a`).
      - El verbo también lo decide el **método**, por el mismo argumento que en `start_pack` y su espejo: `_aviso_pack_inerte` es la puerta de **apagar** y solo la de apagar, así que cablea `"kill"` y **no** `pack.default_action`. Un pack recién creado nace con `default_action="start"` (`on_new_pack` → `create_user_pack(pack_id, name, [])` → el default del modelo), de modo que cablear el pack hacía que la primera acción de un usuario recién instalado —pulsar **⛔ Apagar**— respondiera *"no tiene apps que **iniciar**"*. Lo mide `test_el_feedback_de_pack_dice_la_verdad` con un pack **no gaming, vacío y `default_action="start"`** en `kill_pack`, que exige el texto **"no tiene apps que apagar"**: mutado a `pack.default_action` **o** a `"start"`, el mutante muere por esa aserción. El pack es **no gaming a propósito**, para que el diagnóstico del gaming inerte no se adelante y el assert muera por el verbo y por nada más.
+     - **La cadena causal del "nace con `start`" también está medida, por la vía real.** La afirmación anterior la sostenía el comentario de la sonda y este doc, pero ningún test la miraba: cambiar el default del modelo (`models.py`, `default_action: Literal["start", "kill"] = "start"`) a `"kill"` dejaba la suite entera en verde. Desde la iteración 7 la sonda llama a `create_user_pack` **de verdad** (no un `Pack(...)` con literales), exige `default_action == "start"` en el pack que devuelve y pasa ese mismo pack por la puerta de **apagar** exigiendo el texto "apagar". Así la cadena entera —default del modelo → pack recién creado → verbo de la puerta de apagar— queda atada; mutante `D5-d` de `_matrix_c26.py`, MUERE.
    - **Gaming inerte:** un `is_gaming` con 0 apps **y** 0 categorías se diagnostica con `mensaje_gaming_inerte(nombre)` (ROJO, `⛔`) en `_aviso_pack_inerte`, también antes de `_require_double_tap`. Con ambas listas vacías `should_kill_for_gaming` cae a `False` para todo lo no protegido: es **inerte por construcción**. Un gaming con apps **o** con categorías no es inerte y no avisa.
    - **Arranque (`start_pack._run`):**
      * `failed == 0`: `self.after(0, self._inline_status, f"🚀 {started} apps iniciadas · '{nombre}'.", VERDE)`
@@ -422,21 +423,80 @@ puros, los mismos que el resto del módulo:
 | Gaming Mode inerte | `"⛔ El Gaming Mode de '{nombre}' no tiene nada que cerrar: 0 apps y 0 categorías configuradas. Revísalo en el Gestor de Packs."` | `ROJO` | `theme.WARNING` |
 
 - El **verbo se mapea dentro del formateador** a partir de la acción que se está
-  ejecutando (`VERBOS` en `feedback.py`): en la Portada, `pack.default_action`, que es
-  lo que decide la rama; en `start_pack`, `"start"`, porque arrancar es lo que ese método
-  hace aunque el pack sea gaming. Quien llama pasa la **acción**, nunca el verbo, y nunca
-  un literal de frase.
+  ejecutando (`VERBOS` en `feedback.py`). Hay **tres** fuentes de la acción, no dos:
+  en la Portada, `DashboardView.execute_pack` pasa `pack.default_action`, que es lo que
+  decide la rama; en `PackManagerView.start_pack`, `"start"`, porque arrancar es lo que
+  ese método hace aunque el pack sea gaming; y en `PackManagerView._aviso_pack_inerte`,
+  `"kill"`, porque ese helper es la puerta de apagar y solo la de apagar. Quien llama
+  pasa la **acción**, nunca el verbo, y nunca un literal de frase. Una acción que no
+  esté en el mapa es un `KeyError` con el nombre de la puerta y la acción recibida, no un
+  verbo por defecto (ver más abajo).
 - **Una sola frase para las dos familias**, construida por `_frase_sin_apps` y
-  `_frase_gaming_inerte`. Los cuatro call-sites (`execute_pack`, `kill_pack` ×2,
-  `start_pack`) piden el par; ninguno escribe la frase. El literal del Gestor estaba
-  **duplicado byte a byte dentro del mismo método** (`pack_manager_view.py:464` y `:477`),
-  y esa duplicación es la que hizo que "un cuarto texto en la Portada" fueran cinco.
+  `_frase_gaming_inerte`. El inventario, contado por `grep` y no de memoria: la familia
+  tiene **cuatro** formateadores que devuelven `(texto, color)` —`mensaje_sin_apps`,
+  `mensaje_banner_sin_apps`, `mensaje_gaming_inerte` y `mensaje_banner_gaming_inerte`—
+  sobre **dos** frases privadas, y **una** guarda, `es_pack_inerte`, evaluada en **dos**
+  call-site (`DashboardView.execute_pack` y `PackManagerView._aviso_pack_inerte`).
+  Quien **pide** el par son **tres** call-site —`execute_pack`, `_aviso_pack_inerte`
+  (invocado **dos** veces desde `kill_pack`) y `start_pack`—, es decir **cuatro
+  invocaciones**. La versión anterior de esta línea decía "los cuatro call-sites":
+  son cuatro *invocaciones* de tres *call-sites*, y `_aviso_pack_inerte` es un método,
+  no un sitio de llamada.
+  El literal del Gestor estaba **duplicado byte a byte dentro del mismo método** (las dos
+  ramas de `PackManagerView._aviso_pack_inerte`, se ancla por símbolo y no por número de
+  línea: la línea cambia con cada edición y el número ya caducó una vez), y esa
+  duplicación es la que hizo que "un cuarto texto en la Portada" fueran cinco.
+- **Los dos puntos de guarda de `_aviso_pack_inerte` están los dos medidos.** El
+  auditor de cierre mutó el **segundo** (el del re-fetch por `id`, posterior a la doble
+  pulsación) y el mutante **vivió**: un pack que pierde sus apps entre las dos
+  pulsaciones llegaba a `kill_pack_apps([])` *después* de haber consumido la doble
+  pulsación, y el usuario veía el desenlace de un cierre vacío en vez del aviso. Hoy
+  `test_el_feedback_de_pack_dice_la_verdad` lo mide por la vía real —entra por `kill_pack`
+  con doble pulsación y un doble de servicio que entrega el pack **con** apps en las dos
+  primeras lecturas y **sin** apps en el re-fetch, y exige el aviso, cero llamadas a
+  `kill_pack_apps` y cero workers—, y la matriz de la iteración 7 lo reproduce
+  (`_matrix_c26.py`, mutante `K-a`, MUERE). Un doc que afirma una defensa de dos puntos
+  sin medir el segundo es exactamente la clase de fallo que este ciclo vino a cerrar.
+- **La tarjeta de la Portada no puede mentir con el verbo.** `_get_pack_button_text`
+  toma el verbo de `pack.default_action` en las **dos** ramas, incluida la gaming: antes
+  era un `"KILL"` literal congelado en la vista, cierto hoy y falso en cuanto el dato se
+  mueve. Con `DEFAULT_GAMING_PACK` (que nace con `default_action="kill"`) el texto es
+  idéntico al de antes; lo que cambia es que ya no es una afirmación que la vista
+  mantiene sola. Lo afirma `test_el_feedback_de_pack_dice_la_verdad` por la vía real
+  (`refresh_dashboard` → botón real → `cget("text")`), en las dos ramas y en las dos
+  direcciones, con un Gaming Mode de `default_action="start"` como control: mutantes
+  `P-d-a` y `P-d-b` de `_matrix_c26.py`, ambos MUEREN.
 - **El gaming inerte es un diagnóstico, no un desenlace**: sin él, caía en la puerta real
   y pintaba `"⚠️ Nada que cerrar: 0 ya cerrados o protegidos."`, donde el `0` es el
   contador de blindaje, no de apps. El usuario leía "ya estaban cerrados" y culpaba al
   sistema operativo.
 - **Nunca verde** el aviso de apps vacías (no hubo éxito) ni **nunca `DANGER`** en
   banner (`#c22d2d` sobre `SURFACE_ALT` = 3.07:1 < 4.5:1).
+- **Una acción desconocida en `VERBOS` es un `KeyError`, no un verbo por defecto.** La
+  versión anterior usaba `VERBOS.get(accion, VERBOS["kill"])`, y eso hacía invisible el
+  bug que motivó el ciclo: como la respuesta correcta de la puerta de apagar **es**
+  "apagar", un cableado erróneo (cablear un verbo donde va una acción) producía la
+  respuesta correcta y nadie se enteraba. Medido: meter `"apagar"`, `"stop"` o `"Kill"`
+  en la puerta de apagar **no mataba** la suite. Ahora `_verbo` lanza `KeyError` con el
+  nombre de la puerta y la acción recibida.
+  **Por qué fallo duro y no un tercer desenlace "verbo desconocido" que la vista
+  muestre:** (1) el dominio es **total** y lo garantiza el modelo, no este módulo
+  —`default_action: Literal["start", "kill"]`, todo pack entra por `Pack(**validado)` y
+  un `ValidationError` ahí ya se clasifica como corrupción—, así que una acción
+  desconocida no puede llegar por datos sino por un error de cableado, que es un fallo
+  de programación y no una situación del usuario; (2) un tercer desenlace mete un error
+  de programación **dentro de una frase dirigida al usuario** ("no tiene apps que
+  &lt;verbo desconocido&gt;"), con su color y su política: es una mentira nueva en lugar
+  de la que se quita, y `feedback.py` es puro y no tiene logger; (3) una `KeyError` no
+  se puede silenciar con un `.get`, que es justo lo que la hacía invisible.
+  El contrato del docstring ("quien llama pasa la acción, nunca el verbo") está atado en
+  **dos** sitios: una guarda `ast`, al principio de `test_el_feedback_de_pack_dice_la_verdad`
+  y antes de cualquier llamada, que exige que el segundo argumento de
+  `mensaje_sin_apps`/`mensaje_banner_sin_apps` sea una ACCION literal o
+  `pack.default_action` (mutantes `D5-e` y `D5-f` de `_matrix_c26.py`, MUEREN), y la
+  frontera, que exige el `KeyError` (mutante `D5-c`, MUERE). La guarda va primero a
+  propósito: si un llamante cablea un verbo, el fallo tiene que nombrar fichero y línea,
+  no reventar más abajo con un traceback sin contexto.
 - **Guarda antes de `_require_double_tap`, en las dos puertas.** Armar la confirmación
   sobre un pack imposible no deja nada que confirmar, y el texto que produciría
   ("Segunda pulsación para apagar 0 apps de 'X'") es la fealdad que la guarda evita.

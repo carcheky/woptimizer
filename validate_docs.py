@@ -4,8 +4,45 @@ y que la estructura openspec/ esta completa. Sin dependencias externas.
 """
 import os
 import re
+import ast
 import json
 import sys
+
+
+def _recuento_de_tests(ruta_run_tests):
+    """`(defined, invoked, solo_definidos, solo_invocados)` de `run_tests.py`.
+
+    DERIVADO con `ast`, nunca escrito a mano: una constante en el validador
+    seria la misma mentira que corrige, un nivel mas arriba. `defined` son las
+    funciones `test_*` de modulo; `invoked`, las llamadas que hace el bloque
+    `if __name__ == "__main__":`. Se exigen las dos cifras porque basta con lo
+    de siempre para que un test exista en el fichero y no se ejecute nunca.
+    """
+    with open(ruta_run_tests, encoding="utf-8") as f:
+        arbol = ast.parse(f.read())
+    defined = {
+        nodo.name for nodo in arbol.body
+        if isinstance(nodo, ast.FunctionDef) and nodo.name.startswith("test_")
+    }
+    cuerpo_main = None
+    for nodo in arbol.body:
+        if not isinstance(nodo, ast.If):
+            continue
+        comparacion = nodo.test
+        if (isinstance(comparacion, ast.Compare)
+                and isinstance(comparacion.left, ast.Name)
+                and comparacion.left.id == "__name__"):
+            cuerpo_main = nodo.body
+            break
+    invocados = set()
+    for stmt in (cuerpo_main or []):
+        for nodo in ast.walk(stmt):
+            if (isinstance(nodo, ast.Call)
+                    and isinstance(nodo.func, ast.Name)
+                    and nodo.func.id.startswith("test_")):
+                invocados.add(nodo.func.id)
+    return (len(defined), len(invocados),
+            sorted(defined - invocados), sorted(invocados - defined))
 
 
 def main():
@@ -277,6 +314,86 @@ def main():
             errors.append("mkdocs.yml: nav incompleta")
     else:
         errors.append("mkdocs.yml: NO EXISTE")
+
+    # 7. El RECUENTO DE TESTS no puede volver a caducar solo.
+    # Fallo medido: `STATUS.md` decia 75, `AGENTS.md` y `README.md` decian 28, y
+    # la verdad eran 78. Peor: este validador corria 72 comprobaciones y NINGUNA
+    # miraba un numero de tests, asi que daba "72 OK, 0 FAIL" con los tres
+    # ficheros caducados. Es la clase "el validador deduce de lo que valida"
+    # que este repo ya sufrio dos veces: si nadie mira el numero, nadie se
+    # avisa de que caduco.
+    #
+    # El numero exigido se DERIVA del codigo con `ast` (los `def test_*` de
+    # modulo y las llamadas del `__main__`), no de una constante escrita a mano:
+    # una constante seria el mismo bug un nivel mas arriba. Ademas se exige que
+    # `defined == invoked`, que es lo que hacia que un test nuevo "existiera"
+    # sin ejecutarse nunca.
+    n_tests = _recuento_de_tests(os.path.join(root, "run_tests.py"))
+    if n_tests is None:
+        errors.append(
+            "run_tests.py: NO SE PUEDE DERIVAR el numero de tests. Sin el ancla no "
+            "hay forma de saber si los ficheros que lo declaran estan caducados"
+        )
+    else:
+        defined, invoked, solo_definidos, solo_invocados = n_tests
+        if solo_definidos or solo_invocados:
+            huerfanos = (["definido y NO invocado: " + ", ".join(solo_definidos)]
+                        if solo_definidos else []) + \
+                       ["invocado y NO definido: " + ", ".join(solo_invocados)]
+            errors.append(
+                f"run_tests.py: {defined} test(s) definidos y {invoked} invocado(s) en el "
+                f"`__main__`. {' | '.join(huerfanos)}. Un test definido y no invocado "
+                "pasa en verde porque no corre nunca"
+            )
+        else:
+            ok.append(f"run_tests.py: {defined} tests definidos = {invoked} invocados (derivado con ast)")
+
+        for relativo, patron in (
+            ("STATUS.md", r"run_tests\.py`?,?\s*\*\*(?P<num>\d+)\s+tests"),
+            ("AGENTS.md", r"run_tests\.py\s+#\s*(?P<num>\d+)\s+tests"),
+            ("README.md", r"run_tests\.py\s*#\s*(?P<num>\d+)\s+tests"),
+        ):
+            ruta_doc = os.path.join(root, relativo)
+            if not os.path.exists(ruta_doc):
+                errors.append(f"{relativo}: NO EXISTE, no se puede comprobar el recuento de tests")
+                continue
+            with open(ruta_doc, encoding="utf-8") as f:
+                cuerpo = f.read()
+            encontrados = [int(m.group("num")) for m in re.finditer(patron, cuerpo)]
+            if not encontrados:
+                errors.append(
+                    f"{relativo}: no declara el numero de tests de `run_tests.py` con la "
+                    f"forma que este check lee ({patron}). Si el texto cambio, cambia el "
+                    "patron aqui tambien: un validador que no encuentra lo que valida "
+                    "no es un validador"
+                )
+            elif any(n != defined for n in encontrados):
+                errors.append(
+                    f"{relativo}: declara {encontrados} tests y la verdad son {defined} "
+                    "(derivado de run_tests.py con ast). Actualiza el numero"
+                )
+            else:
+                ok.append(f"{relativo}: declara los {defined} tests que run_tests.py tiene de verdad")
+
+        # La tabla de `docs/ai/testing-guide.md` tiene una fila por test: si el
+        # recuento de la tabla no es el del codigo, la tabla es la que caduca.
+        guia = os.path.join(root, "docs", "ai", "testing-guide.md")
+        if os.path.exists(guia):
+            with open(guia, encoding="utf-8") as f:
+                cuerpo_guia = f.read()
+            filas = re.findall(r"^\|\s*(\d+)\s*\|\s*`test_", cuerpo_guia, re.MULTILINE)
+            if len(filas) != defined:
+                errors.append(
+                    f"docs/ai/testing-guide.md: la tabla tiene {len(filas)} filas de test y "
+                    f"run_tests.py tiene {defined}. Una tabla de una fila menos que el codigo "
+                    "se lee como si todo estuviera medido"
+                )
+            else:
+                ok.append(
+                    f"docs/ai/testing-guide.md: {len(filas)} filas de test, una por test definido"
+                )
+        else:
+            errors.append("docs/ai/testing-guide.md: NO EXISTE, no se puede comprobar la tabla")
 
     # Reporte
     print("=" * 60)
