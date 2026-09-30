@@ -7391,6 +7391,235 @@ def test_scan_latency_and_lazy_exe_resolution():
     print(f"Optimizacion de escaneo OK (latencia minima: {tiempo_min*1000:.2f} ms).")
 
 
+def test_models_strict_validation_and_contracts():
+    """TASK-034: Validacion estricta y contratos de modelos Pydantic.
+
+    Discriminadores:
+      1. Strict booleans: "true", "false", 1, 0, "si" levantan ValidationError
+         en Pack.is_favorite y Pack.is_gaming. Controles positivos con bool reales.
+      2. Literal default_action: "purgar", "KILL", "", "stop", None levantan
+         ValidationError. "start" y "kill" permitidos y validados.
+      3. extra='allow': campos adicionales en Pack y AppData sobreviven a la
+         construccion y aparecen en model_dump().
+      4. Defaults ProcessInfo: exe_path="", category="\u26aa Otros",
+         priority="none", description="Sin descripci\u00f3n".
+    """
+    print("Testing models strict validation and contracts (TASK-034)...")
+    from pydantic import ValidationError
+    from woptimizer.models import Pack, AppData, ProcessInfo
+
+    # 1. Strict booleans en Pack (is_favorite e is_gaming)
+    valores_invalidos = ["true", "false", 1, 0, "si", "no", 1.0]
+
+    for val in valores_invalidos:
+        # is_favorite invalido
+        try:
+            Pack(id="test_fav", name="Test Fav", is_favorite=val)
+            assert False, f"Pack no debe aceptar is_favorite={val!r} (debe ser booleano estricto)"
+        except ValidationError:
+            pass
+
+        # is_gaming invalido
+        try:
+            Pack(id="test_game", name="Test Game", is_gaming=val)
+            assert False, f"Pack no debe aceptar is_gaming={val!r} (debe ser booleano estricto)"
+        except ValidationError:
+            pass
+
+    # Controles positivos: booleanos reales
+    p_fav_true = Pack(id="fav_t", name="Fav True", is_favorite=True, is_gaming=False)
+    assert p_fav_true.is_favorite is True
+    assert p_fav_true.is_gaming is False
+
+    p_game_true = Pack(id="game_t", name="Game True", is_favorite=False, is_gaming=True)
+    assert p_game_true.is_favorite is False
+    assert p_game_true.is_gaming is True
+
+    # 2. Literal default_action en Pack
+    acciones_invalidas = ["purgar", "KILL", "", "stop", "START", None, 123]
+    for acc in acciones_invalidas:
+        try:
+            Pack(id="test_act", name="Test Act", default_action=acc)
+            assert False, f"Pack no debe aceptar default_action={acc!r} (debe ser 'start' o 'kill')"
+        except ValidationError:
+            pass
+
+    # Controles positivos: 'start' y 'kill'
+    p_act_start = Pack(id="act_s", name="Act Start", default_action="start")
+    assert p_act_start.default_action == "start"
+
+    p_act_kill = Pack(id="act_k", name="Act Kill", default_action="kill")
+    assert p_act_kill.default_action == "kill"
+
+    # 3. extra='allow' en Pack y AppData
+    pack_extra = Pack(
+        id="pack_ext",
+        name="Pack Extra",
+        meta_custom="custom_value_123",
+        extra_numeric=42,
+        tags=["fast", "gaming"]
+    )
+    dump_pack = pack_extra.model_dump()
+    assert "meta_custom" in dump_pack, "meta_custom debe sobrevivir en Pack con extra='allow'"
+    assert dump_pack["meta_custom"] == "custom_value_123"
+    assert dump_pack.get("extra_numeric") == 42
+    assert dump_pack.get("tags") == ["fast", "gaming"]
+
+    appdata_extra = AppData(
+        packs={"p1": p_fav_true},
+        legacy_profiles={"legacy_p": {}},
+        version_custom="2.5.0"
+    )
+    dump_appdata = appdata_extra.model_dump()
+    assert "legacy_profiles" in dump_appdata, "legacy_profiles debe sobrevivir en AppData con extra='allow'"
+    assert "version_custom" in dump_appdata, "version_custom debe sobrevivir en AppData con extra='allow'"
+    assert dump_appdata["version_custom"] == "2.5.0"
+
+    # 4. Defaults de ProcessInfo
+    proc = ProcessInfo(name="notepad", full_name="notepad.exe", pid=9999)
+    assert proc.exe_path == "", f"ProcessInfo.exe_path default debe ser '', obtenido {proc.exe_path!r}"
+    assert proc.category == "\u26aa Otros", f"ProcessInfo.category default debe ser '\u26aa Otros', obtenido {proc.category!r}"
+    assert proc.priority == "none", f"ProcessInfo.priority default debe ser 'none', obtenido {proc.priority!r}"
+    assert proc.description == "Sin descripci\u00f3n", f"ProcessInfo.description default debe ser 'Sin descripci\u00f3n', obtenido {proc.description!r}"
+
+    print("test_models_strict_validation_and_contracts OK.")
+
+
+def test_main_window_navigation_transitions():
+    """TASK-034: Ciclo de vida y transiciones de navegacion headless en MainWindow.
+
+    Discriminadores:
+      1. Montaje headless con root = ctk.CTk() y root.withdraw().
+      2. Persistencia aislada sobre JSON temporal con _pack_service_temporal().
+      3. Vista inicial es DashboardView con btn_nav_home activo (ACCENT, border_width=2).
+      4. Transicion _show_packs(): destruccion real de vista anterior (not winfo_exists()),
+         current_view es PackManagerView, btn_nav_packs activo.
+      5. Transicion _show_process_manager(): destruccion de vista anterior, current_view
+         es ProcessManagerView, btn_nav_procs activo, bombeo en mainloop hasta poblar
+         procesos de forma asincrona.
+      6. Transicion _show_home(): retorno limpio a DashboardView y reactivacion de btn_nav_home.
+      7. Limpieza garantizada en finally de root.destroy() y eliminacion de JSON temporal.
+    """
+    print("Testing MainWindow navigation transitions headless (TASK-034)...")
+    import customtkinter as ctk
+    from woptimizer.services.process_service import ProcessService
+    from woptimizer.services.gaming_service import GamingService
+    from woptimizer.services.notification_service import NotificationService
+    from woptimizer.ui.main_window import MainWindow
+    from woptimizer.ui.views.dashboard_view import DashboardView
+    from woptimizer.ui.views.pack_manager_view import PackManagerView
+    from woptimizer.ui.views.process_manager_view import ProcessManagerView
+    from woptimizer.ui import theme
+
+    def _es_activo(btn):
+        bc = btn.cget("border_color")
+        color_ok = (bc == theme.ACCENT) or (isinstance(bc, (list, tuple)) and theme.ACCENT in bc)
+        return color_ok and btn.cget("border_width") == 2
+
+    def _es_inactivo(btn):
+        bc = btn.cget("border_color")
+        color_ok = (bc == theme.BORDER) or (isinstance(bc, (list, tuple)) and theme.BORDER in bc)
+        return color_ok and btn.cget("border_width") == 1
+
+    pack_s, tmp_path = _pack_service_temporal()
+    root = ctk.CTk()
+    root.withdraw()
+
+    errores = []
+    try:
+        ps = ProcessService()
+        gs = GamingService(ps, pack_s)
+        ns = NotificationService()
+
+        win = MainWindow(root, ps, pack_s, gs, ns)
+        win.pack(fill="both", expand=True)
+
+        def paso1():
+            try:
+                # 1. Estado inicial: DashboardView y btn_nav_home activo
+                assert isinstance(win.current_view, DashboardView), (
+                    f"Vista inicial esperada DashboardView, obtenido: {type(win.current_view).__name__}"
+                )
+                assert _es_activo(win.btn_nav_home), "btn_nav_home debe estar activo en la vista inicial"
+                assert _es_inactivo(win.btn_nav_packs), "btn_nav_packs debe estar inactivo en la vista inicial"
+                assert _es_inactivo(win.btn_nav_procs), "btn_nav_procs debe estar inactivo en la vista inicial"
+
+                # 2. Navegacion a Packs: _show_packs()
+                vista_home = win.current_view
+                win._show_packs()
+                assert not vista_home.winfo_exists(), "La vista DashboardView previa debe destruirse al navegar a Packs"
+                assert isinstance(win.current_view, PackManagerView), (
+                    f"Vista actual esperada PackManagerView, obtenido: {type(win.current_view).__name__}"
+                )
+                assert _es_activo(win.btn_nav_packs), "btn_nav_packs debe estar activo al mostrar Packs"
+                assert _es_inactivo(win.btn_nav_home), "btn_nav_home debe quedar inactivo"
+                assert _es_inactivo(win.btn_nav_procs), "btn_nav_procs debe quedar inactivo"
+
+                # 3. Navegacion a Process Manager: _show_process_manager()
+                vista_packs = win.current_view
+                win._show_process_manager()
+                assert not vista_packs.winfo_exists(), "La vista PackManagerView previa debe destruirse al navegar a Procesos"
+                assert isinstance(win.current_view, ProcessManagerView), (
+                    f"Vista actual esperada ProcessManagerView, obtenido: {type(win.current_view).__name__}"
+                )
+                assert _es_activo(win.btn_nav_procs), "btn_nav_procs debe estar activo al mostrar Procesos"
+                assert _es_inactivo(win.btn_nav_home), "btn_nav_home debe quedar inactivo"
+                assert _es_inactivo(win.btn_nav_packs), "btn_nav_packs debe quedar inactivo"
+
+                # Esperar en mainloop a que el hilo secundario pueble los procesos
+                root.after(350, paso2)
+            except Exception as e:
+                errores.append(e)
+                try:
+                    root.quit()
+                    root.destroy()
+                except Exception:
+                    pass
+
+        def paso2():
+            try:
+                assert len(win.current_view.processes) > 0, "ProcessManagerView debe haber cargado al menos un proceso vivo"
+
+                # 4. Retorno a Home: _show_home()
+                vista_procs = win.current_view
+                win._show_home()
+                assert not vista_procs.winfo_exists(), "La vista ProcessManagerView previa debe destruirse al retornar a Home"
+                assert isinstance(win.current_view, DashboardView), (
+                    f"Vista actual esperada DashboardView tras retorno, obtenido: {type(win.current_view).__name__}"
+                )
+                assert _es_activo(win.btn_nav_home), "btn_nav_home debe estar activo al retornar a Home"
+                assert _es_inactivo(win.btn_nav_packs), "btn_nav_packs debe quedar inactivo"
+                assert _es_inactivo(win.btn_nav_procs), "btn_nav_procs debe quedar inactivo"
+            except Exception as e:
+                errores.append(e)
+            finally:
+                try:
+                    root.quit()
+                    root.destroy()
+                except Exception:
+                    pass
+
+        root.after(50, paso1)
+        root.mainloop()
+
+        if errores:
+            raise errores[0]
+
+    finally:
+        try:
+            root.quit()
+            root.destroy()
+        except Exception:
+            pass
+        if os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    print("test_main_window_navigation_transitions OK.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -7493,6 +7722,9 @@ if __name__ == "__main__":
     test_woptimizer_ico_exists_and_valid()
     # TASK-033: Optimizacion de latencia y throughput en el escaneo de procesos
     test_scan_latency_and_lazy_exe_resolution()
-    print("\n--- Running Headless UI Test ---")
+    # TASK-034: Validacion estricta y contratos de modelos Pydantic
+    test_models_strict_validation_and_contracts()
+    print("\n--- Running Headless UI Tests ---")
+    test_main_window_navigation_transitions()
     test_headless_ui()
     print("\nALL TESTS PASSED.")

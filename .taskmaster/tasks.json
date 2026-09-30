@@ -677,7 +677,7 @@
       "description": "Añadir pruebas discriminantes headless para transiciones completas de navegación en MainWindow (_show_home, _show_packs, _show_process_manager) y validación estricta de contratos en modelos Pydantic (strict booleans, literals, extra=allow).",
       "complexity": 3,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "run_tests.py",
       "acceptance_criteria": [
