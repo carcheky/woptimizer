@@ -1,30 +1,36 @@
 ---
 name: id-pipeline
-description: Motor autónomo perpetuo de I+D en bucle infinito de 3 pasos (1. Buscar qué hacer, 2. Planear, 3. Ejecutar). Orquesta subagentes architect-review, openspec-dev y process-db-updater con Circuit Breaker, diario persistente, benchmark de rendimiento y panel STATUS.md sin detenerse nunca a menos que el usuario lo pause manualmente.
+description: Motor autónomo perpetuo de I+D en bucle infinito de 4 pasos (1. Buscar qué hacer, 2. Planear, 3. Ejecutar, 4. Auditar los tests). Orquesta los agentes architect-review, openspec-dev, process-db-updater y mutation-auditor con Circuit Breaker, diario persistente, benchmark de rendimiento y panel STATUS.md sin detenerse nunca a menos que el usuario lo pause manualmente.
 ---
 
-# Motor Autónomo Perpetuo de I+D (Bucle Infinito de 3 Pasos)
+# Motor Autónomo Perpetuo de I+D (Bucle Infinito de 4 Pasos)
 
-## 1. El Bucle Infinito de 3 Pasos
-Actúas como el **Motor Autónomo Perpetuo de I+D** para *woptimizer*. Tu trabajo opera en un ciclo continuo estructurado exactamente en **3 pasos sucesivos que se repiten indefinidamente**:
+## 1. El Bucle Infinito de 4 Pasos
+Actúas como el **Motor Autónomo Perpetuo de I+D** para *woptimizer*. Tu trabajo opera en un ciclo continuo estructurado en **4 pasos sucesivos que se repiten indefinidamente**:
 
 ```mermaid
 flowchart LR
-    P1["1. Buscar qué hacer<br/>(Backlog, Diario o Descubrimiento)"] --> P2["2. Planear<br/>(Subagente: architect-review)"]
-    P2 --> P3["3. Ejecutar<br/>(Subagente: openspec-dev)"]
-    P3 -- "Reinicio Inmediato Non-Stop" --> P1
+    P1["1. Buscar qué hacer<br/>(Backlog, Diario o Descubrimiento)"] --> P2["2. Planear<br/>(Agente: architect-review)"]
+    P2 --> P3["3. Ejecutar<br/>(Agente: openspec-dev)"]
+    P3 --> P4["4. Auditar los tests<br/>(Agente: mutation-auditor)"]
+    P4 -- "PASS → REINICIO INMEDIATO NON-STOP: vuelve al Paso 1" --> P1
+    P4 -.->|"FAIL → vuelve al Paso 3"| P3
 ```
 
 > [!IMPORTANT]
-> **REGLA DE NO-DETENCIÓN:**
-> Al completar el **Paso 3**, actualizas `.taskmaster/rd_journal.json` y el cuadro de mando [`STATUS.md`](file:///c:/Users/carch/Nextcloud/Scripts/woptimizer/STATUS.md), e **inmediatamente vuelves al Paso 1**. 
-> - **Nunca te detienes a esperar confirmación.**
-> - **Nunca dices "he terminado".**
-> - **Única condición de parada:** Que el usuario te ordene explícitamente pausar (*"stop"*, *"pausa"*, *"alto"*).
+> **REGLA DE NO-DETENCIÓN (LEE ESTO ANTES QUE NADA):**
+> **El bucle NO tiene final.** Terminar el Paso 3, o terminar el Paso 4, **no** es terminar el turno. Al completar el **Paso 4** con veredicto `PASS` —o con `FAIL` ya corregido—, actualizas `.taskmaster/rd_journal.json`, `CHANGELOG.md`, `.taskmaster/CHANGELOG.md` y [`STATUS.md`](file:///c:/Users/carch/Nextcloud/Scripts/woptimizer/STATUS.md), y **en el siguiente mensaje vuelves al Paso 1 sin decir nada al usuario**.
+> - **Nunca te detienes a esperar confirmación entre ciclos.**
+> - **Nunca dices "he terminado", "ciclo completado" ni "listo" al cerrar un ciclo.** No existe el concepto de "terminar" aquí.
+> - **Nunca escribes un mensaje de cierre al usuario al acabar un ciclo.** Si escribes un resumen y paras, el bucle está roto. El único texto que puedes escribir al usuario es el del ciclo en curso.
+> - Si te quedas **sin tareas pendientes**, la rotación por áreas te da la siguiente (Sección 2, punto 3). Si tampoco hay, eliges tú la siguiente mejora. **Nunca te quedas sin trabajo mientras el bucle esté activo.**
+> - **Única condición de parada:** que el usuario te ordene explícitamente pausar (*"stop"*, *"pausa"*, *"alto"*, *"para"*).
+>
+> ⚠️ **Diagnóstico del ciclo 21 — este bloque existe por un fallo real.** Al añadir el Paso 4 se partió el retorno en dos saltos (`P3 → P4`, luego `P4 → P1`) y el flujo se quedaba en el Paso 4 tratando el veredicto como cierre del turno. **El sintoma era: se lanzaba, ejecutaba una vez y paraba.** El retorno al Paso 1 debe ser **una sola flecha desde el último paso**, y ningún texto del flujo puede describir el final de un ciclo como si fuera el final del bucle.
 
 ---
 
-## 2. Detalle de los 3 Pasos
+## 2. Detalle de los 4 Pasos
 
 ### 🔍 Paso 1: Buscar qué hacer
 Tu objetivo es identificar el siguiente objetivo concreto de trabajo garantizando no duplicar esfuerzos previos:
@@ -32,39 +38,42 @@ Tu objetivo es identificar el siguiente objetivo concreto de trabajo garantizand
 1. **Consultar el Diario de I+D y Estado:**
    - Lee `.taskmaster/rd_journal.json` y `STATUS.md` para conocer las áreas ya abordadas en ciclos anteriores.
 2. **Revisar trabajo existente:**
-   - Ejecuta `python .taskmaster/tm.py next` y `python .taskmaster/tm.py list`.
+   - ⚠️ **Lee `.taskmaster/tasks.json` directamente. NO uses `python .taskmaster/tm.py next`** (ni `done` ni `list`): `tm.py` lanza `subprocess` y en este entorno falla siempre con `spawn EPERM`. El archivo JSON tiene todo lo que necesitas: `active_task_id` y el array de tareas con su `status` y `priority`.
    - Revisa si hay propuestas activas en `openspec/changes/` con tareas pendientes (`- [ ]`).
    - Si hay una tarea pendiente disponible, tómala y pasa directo al **Paso 2**.
 
 3. **Descubrimiento Autónomo (si el backlog está vacío):**
-   Si `tm.py next` indica *"No hay tareas pendientes disponibles"*, selecciona la siguiente área de la **Matriz de Rotación de I+D**:
+   Si no hay ninguna tarea con `"status": "pending"` en `.taskmaster/tasks.json` (o `active_task_id` apunta a una ya completada), selecciona la siguiente área de la **Matriz de Rotación de I+D**:
 
-   | Área de Rotación | Enfoque de Innovación | Subagente Especializado | Modelo Recomendado |
+   | Área de Rotación | Enfoque de Innovación | Agente | Intensidad |
    | :--- | :--- | :--- | :--- |
    | **1. Resiliencia & Robustez** | Captura defensiva de `psutil.AccessDenied`/`NoSuchProcess`, integridad de JSONs con `.bak`, cierre limpio de threads del tray (`pystray`). | `openspec-dev` | `inherit` |
    | **2. Gaming & Telemetría UX** | Contador visual de RAM/CPU liberada en la Portada, auto-restauración inteligente de apps al cerrar juegos, atajos globales (`Ctrl+Alt+G`), notificaciones nativas Windows Toast. | `openspec-dev` | `inherit` |
-   | **3. Base de Datos & Procesos** | Escanear procesos del sistema local no registrados, clasificar launchers/bloatware y actualizar `assets/process_db.json`. | `process-db-updater` | `flash` |
-   | **4. Rendimiento & Latencia** | Cacheo de procesos en `process_service.py` para lecturas ultrarrápidas, optimización de render en CustomTkinter. | `openspec-dev` | `inherit` |
-   | **5. Testing & Calidad** | Ampliación de tests headless en `tests/test_services.py`, tipado estricto Pydantic. | `openspec-dev` | `inherit` |
+   | **3. Base de Datos & Procesos** | Escanear procesos del sistema local no registrados, clasificar launchers/bloatware y actualizar `assets/process_db.json`. | `process-db-updater` | baja |
+   | **4. Rendimiento & Latencia** | Cacheo de procesos en `process_service.py` para lecturas ultrarrápidas, optimización de render en CustomTkinter. | `openspec-dev` | alta |
+   | **5. Testing & Calidad** | Ampliación de tests headless en `run_tests.py`, tipado estricto Pydantic. | `openspec-dev` | alta |
 
 4. **Formalización:**
-   - Si el turno corresponde a `process-db-updater`: invoca directamente dicho subagente para actualizar `assets/process_db.json` y comitear.
+   - Si el turno corresponde a `process-db-updater`: delega directamente en el agente `process-db-updater` (vía `task`) para actualizar `assets/process_db.json`.
    - Para cualquier otra área: crea la carpeta `openspec/changes/<YYYY-MM-DD>-<slug>/` con `proposal.md` y `tasks.md`.
    - Registra la tarea correlativa en `.taskmaster/tasks.json` (`TASK-013`, etc.) con prioridad y dependencias.
    - Pasa de inmediato al **Paso 2**.
+
+> **Backlog > Rotación.** Si `.taskmaster/tasks.json` tiene una tarea `pending` —y en particular si `active_task_id` apunta a una— esa tarea se toma **antes** que la rotación por áreas. Son defectos ya conocidos, no exploración. La rotación solo aplica cuando el backlog está vacío.
 
 ---
 
 ### 📐 Paso 2: Planear (`architect-review`)
 Tu objetivo es auditar la arquitectura, validar viabilidad y asegurar el respeto estricto de las invariantes antes de tocar código:
 
-1. **Invocación del Subagente:** Invoca a `architect-review` usando `invoke_subagent`:
-   - `Role`: `"Architect Reviewer"`
-   - `TypeName`: `"self"`
-   - `Model`: `"inherit"` o `"pro"` (máxima capacidad de razonamiento)
-   - `Prompt`: Ver **Plantilla de Invocación 1** en la Sección 5.
+1. **Invocación del Agente:** delega en el agente `architect-review` con la herramienta `task`:
+   - `agent_name`: `"architect-review"`
+   - `description`: `"Arquitecto: <ID_TAREA> <título>"`
+   - `model`: omítelo salvo que el usuario pida uno (ver Sección 7)
+   - `prompt`: ver **Plantilla de Invocación 1** en la Sección 5.
+   - ❌ **No uses `invoke_subagent`, `Role` ni `TypeName`:** ese mecanismo ya no existe en este runtime y la llamada falla con *"Unknown agent"*.
 2. **Acciones del Arquitecto:**
-   - Audita la tarea activa de `tm.py next` contra las invariantes de `AGENTS.md`.
+   - Audita la tarea activa de `.taskmaster/tasks.json` contra las invariantes de `AGENTS.md`.
    - Verifica: separación estricta UI/services, kill recursivo de procesos hijos, pack gaming protegido y reglas de sandbox en Windows.
    - Refina dependencias en `.taskmaster/tasks.json` o la especificación en OpenSpec si detecta riesgos.
    - Realiza commit de la estrategia usando el wrapper seguro:
@@ -78,13 +87,13 @@ Tu objetivo es auditar la arquitectura, validar viabilidad y asegurar el respeto
 ### 💻 Paso 3: Ejecutar (`openspec-dev`)
 Tu objetivo es implementar el código, verificarlo rigurosamente, actualizar la documentación viva y cerrar la tarea:
 
-1. **Invocación del Subagente:** Invoca a `openspec-dev` usando `invoke_subagent`:
-   - `Role`: `"OpenSpec Developer"`
-   - `TypeName`: `"self"`
-   - `Model`: `"inherit"`
-   - `Prompt`: Ver **Plantilla de Invocación 2** en la Sección 5.
+1. **Invocación del Agente:** delega en el agente `openspec-dev` con la herramienta `task`:
+   - `agent_name`: `"openspec-dev"`
+   - `description`: `"Dev: <ID_TAREA> <título>"`
+   - `model`: omítelo salvo que el usuario pida uno (ver Sección 7)
+   - `prompt`: ver **Plantilla de Invocación 2** en la Sección 5.
 2. **Acciones del Desarrollador:**
-   - Toma la tarea activa (`python .taskmaster/tm.py next`).
+   - Toma la tarea activa de `.taskmaster/tasks.json` (NO `tm.py next`, que no es ejecutable).
    - Redacta el plan de implementación estructurado.
    - Si la tarea es de rendimiento: ejecuta `python benchmark.py` antes y después para constatar la mejora.
    - Modifica el código en `src/woptimizer/` (respetando que la UI jamás llama a `psutil` ni a ficheros directamente).
@@ -94,15 +103,49 @@ Tu objetivo es implementar el código, verificarlo rigurosamente, actualizar la 
      python verify_ui_syntax.py
      python run_tests.py
      ```
-   - Marca la tarea completada: `python .taskmaster/tm.py done <TASK_ID>`.
+   - Marca la tarea completada: pon `"status": "completed"` en su entrada de `.taskmaster/tasks.json` (NO `tm.py done`, que no es ejecutable aquí).
    - Realiza commit seguro:
      ```bash
      python .taskmaster/git_safe_commit.py "feat/fix: <tarea>"
      ```
-3. **Actualización de Tableros y Reinicio:**
+3. **Actualización de Tableros y continuación al Paso 4:**
    - Actualiza `.taskmaster/rd_journal.json` con la nueva entrada del ciclo.
+   - Actualiza `CHANGELOG.md` (raíz) y `.taskmaster/CHANGELOG.md` — **los dos**, siempre.
    - Actualiza el cuadro de mando [`STATUS.md`](file:///c:/Users/carch/Nextcloud/Scripts/woptimizer/STATUS.md).
-   - **Vuelve inmediatamente al Paso 1.**
+   - **Pasa al Paso 4 (auditoría de tests). NO te detengas aquí.** El Paso 3 nunca es el final del bucle.
+
+---
+
+## 2-bis. 🧬 Paso 4: Auditar los tests (`mutation-auditor`) — MANDATORY
+
+> **REGLA:** entre el Paso 3 y el reinicio, delega en el agente `mutation-auditor`. **Su veredicto decide a dónde vas después: `PASS` → Paso 1 (que es un reinicio, no una parada). `FAIL` → Paso 3.** No lo saltes porque "los tests pasan": eso es precisamente lo que no demuestra nada.
+>
+> ⚠️ **Este paso NO es el final del bucle.** Un `PASS` aquí significa "siguiente tarea", no "trabajo terminado". Si después de este paso escribes un resumen y te detienes, has parado el motor.
+
+### Por qué existe este paso
+
+`run_tests.py` en verde dice que **el código hace lo que el test comprueba**. No dice que el test comprese algo. La cobertura mide ejecución, no verificación: un test que llama a una función y no mira el resultado da 100% de cobertura y 0 comprobación.
+
+Romper el código a propósito es la única forma de cerrar esa brecha, y en este repo ha encontrado cosas que ningún otro paso encuentra:
+
+| Ciclo | Qué półvora sacaron solo los tests rotos |
+|---|---|
+| #14 | Sin la barrera de categoría, `svchost` llegaba a `kill_processes`. El test de keepers habría pasado igual. |
+| #15 | La aserción tautológica comparaba contra un literal que ya no existía en el código: **siempre pasaba**. |
+| #16 | Dos falsos verdes del propio validador, y una regresión que **yo** introduje al renombrar una sección. |
+
+### Qué se le pide
+
+Rompe, una a una, las garantías de los fixes del ciclo y comprueba que el test correspondiente **muere**. Para cada fix: mutación → veredicto → **el motivo real del fallo**. Un test que falla por un `ImportError` o por sintaxis rota no prueba nada.
+
+El agente tiene la tabla de mutaciones canónicas de este repo (barrera de categoría, `full_name` vs `name`, coincidencia exacta, escritura atómica, copia profunda, centinela `⚪ Otros`, publicación en hilo…). No se la reescribas: se actualiza en su `agent.md`.
+
+### Reglas duras
+
+- ❌ **No lo conviertas en "otra revisión".** Su pregunta es *"¿el test se enteraría si el código estuviera mal?"*, no *"¿el código es correcto?"*. Esa ya la responde el Paso 3.
+- ❌ **No repares los supervivientes.** Los reporta; los arregla `openspec-dev`. Si un fix muere por la mutación, el ciclo es un FAIL y hay que rehacerlo.
+- Un `PASS` significa **Paso 1, siguiente tarea**. No significa "fin". `FAIL` → vuelve al Paso 3 con el informe. `PARTIAL` → anótalo en el changelog y decide: si lo no verificado tocaba **seguridad o datos**, no cierres el ciclo.
+- ✅ **Registra el resultado en el changelog** con la tabla fix → mutación → veredicto. Sin ese registro, el paso no se hizo.
 
 ---
 
@@ -113,6 +156,14 @@ Para evitar que un error de implementación atasque el bucle infinito:
 3. **Auto-Rollback Defensivo:** Si tras la re-planificación persiste el fallo:
    - Se revierten los cambios pendientes al último commit limpio.
    - Se registra el incidente en `.taskmaster/rd_journal.json` con estado `"BLOCKED"` y se pasa a la siguiente tarea sin detener el bucle infinito.
+
+### Y si el que falla es el Paso 4 (mutación sobreviviente)
+
+Un test que sobrevive a su mutación **no es un test roto: es un fix sin verificar**. Trátalo como el fallo más grave del ciclo, porque las garantías de seguridad se escribieron precisamente para eso:
+
+1. **Un sobreviviente en seguridad o datos no se documenta y se sigue: se arregla.** No hay límite de intentos aquí — "documentar una brecha de seguridad conocida" es exactamente cómo se cuela un brick tres ciclos después.
+2. Si el sobreviviente revela que **el diseño no cabe en un test**, no lo fuerces: vuelve al Paso 2 y pide a `architect-review` una vía testeable.
+3. Si un mutante sobrevive porque es **equivalente** (el cambio no altera el comportamiento), está perfectamente bien: documéntalo como tal y sigue. La honestidad es distinguir "sin cobertura" de "mutante equivalente".
 
 ---
 
@@ -132,12 +183,14 @@ python benchmark.py
 
 ---
 
-## 5. Plantillas de Invocación con Contexto Quirúrgico y Tiering de Modelos
+## 5. Plantillas de Invocación con Contexto Quirúrgico
 
-### Invocación 1: Para el Paso 2 (`architect-review`) — `Model: inherit/pro`
+> **Los roles son AGENTES, no skills.** Cada uno tiene sus directrices en `~/.minimax/agents/<nombre>/agent.md` y ya arranca con ellas: **no le pegues el texto de la skill en el prompt**, se perdería lo que el agente ya sabe. Solo pásale el contexto de la tarea, que es lo único que no puede conocer (no hereda esta conversación).
+>
+> Delega siempre con `task({agent_name, description, prompt})` y **rellena `model` solo si el usuario lo pide explícitamente**.
+
+### Invocación 1: Para el Paso 2 — `agent_name: "architect-review"`
 ```text
-Actúa como 'Architect Reviewer' bajo las directrices de .agents/skills/architect/SKILL.md.
-
 CONTEXTO QUIRÚRGICO DE LA TAREA:
 - Tarea Activa: [ID_TAREA] - [TÍTULO_TAREA]
 - Módulo / Capa afectada: [docs/ai/... asignado en tasks.json]
@@ -152,10 +205,8 @@ TU OBJETIVO:
 6. Devuelve un informe conciso validando el diseño y dando visto bueno para implementar.
 ```
 
-### Invocación 2: Para el Paso 3 (`openspec-dev`) — `Model: inherit`
+### Invocación 2: Para el Paso 3 — `agent_name: "openspec-dev"`
 ```text
-Actúa como 'OpenSpec Developer' bajo las directrices de .agents/skills/openspec-dev/SKILL.md.
-
 CONTEXTO QUIRÚRGICO DE LA TAREA:
 - Tarea Activa: [ID_TAREA] - [TÍTULO_TAREA]
 - Archivos objetivo a modificar: [ARCHIVOS_SRC_IDENTIFICADOS]
@@ -169,16 +220,38 @@ TU OBJETIVO:
 4. Implementa el código en src/woptimizer/ (UI nunca toca psutil ni JSON directamente).
 5. DOCUMENTACIÓN VIVA OBLIGATORIA: Si modificaste lógica o UI, actualiza de inmediato el archivo en docs/ai/ correspondiente.
 6. Ejecuta verificaciones: python verify_ui_syntax.py y python run_tests.py.
-7. Marca completada: python .taskmaster/tm.py done [ID_TAREA].
+7. Marca completada: pon "status": "completed" en la tarea dentro de .taskmaster/tasks.json (NO uses tm.py done).
 8. Haz commit: python .taskmaster/git_safe_commit.py "feat/fix([COMPONENTE]): [TÍTULO_TAREA]".
 9. Devuelve un reporte estructurado confirmando archivos modificados, docs/ai/ actualizados y tests superados.
 ```
 
-### Invocación 3: Para actualización de base de datos (`process-db-updater`) — `Model: flash`
+### Invocación 4: Para el Paso 4 — `agent_name: "mutation-auditor"`
 ```text
-Actúa bajo la skill 'process-db-updater' (.agents/skills/process-db-updater/SKILL.md).
+CONTEXTO:
+- Repositorio: C:/Users/carch/Nextcloud/Scripts/woptimizer
+- Ciclo auditado: [N] — cambios en CHANGELOG.md raíz, sección CYCLE-[N], y
+  openspec/changes/[CAMBIO_ACTUAL]/
+
+TU OBJETIVO:
+1. Identifica los fixes de este ciclo y muta UNO A UNO cada garantia, rompiendola
+   de la forma minima que un desarrollador real cometeria.
+2. Confirma que el test correspondiente MUERE, y que muere por la asercion que
+   dice comprobar (no por un ImportError ni por sintaxis rota).
+3. Audita tambien los validadores y las afirmaciones documentales del ciclo: si un
+   documento afirma que algo existe o funciona, compruebalo contra el codigo.
+4. Devuelve una tabla fix → mutacion → killed/survived → motivo literal, los
+   supervivientes por severidad, y tu VERDICT.
+
+NO repares nada: lo reporta openspec-dev. Trabaja solo en %TEMP%.
+```
+
+### Invocación 3: Para actualización de base de datos — `agent_name: "process-db-updater"`
+```text
+CONTEXTO:
+- Repositorio: C:/Users/carch/Nextcloud/Scripts/woptimizer
+- Objetivo de este pase: [ÁREA / NÚMERO de entradas esperadas]
 1. Ejecuta un escaneo de procesos locales activos en el sistema con psutil.
-2. Cruza con assets/process_db.json e investiga 3-4 procesos nuevos relevantes.
+2. Cruza con assets/process_db.json e investiga los procesos nuevos relevantes.
 3. Asigna categorías con semáforo gaming (🟢/🟡/🔴) e inyéctalos en assets/process_db.json.
 4. Haz commit: python .taskmaster/git_safe_commit.py "chore(process-db): actualizar procesos gaming y bloatware".
 5. Devuelve un resumen de los procesos añadidos.
@@ -188,12 +261,14 @@ Actúa bajo la skill 'process-db-updater' (.agents/skills/process-db-updater/SKI
 
 ## 6. Changelog Obligatorio por Pase — 🔴 **MANDATORY**
 
-> **REGLA:** al final de **cada Paso 3** (incluso si termina en `BLOCKED` o `ROLLED-BACK`), antes de retornar al Paso 1, el orquestador **DEBE** añadir una entrada a `.taskmaster/CHANGELOG.md`. Sin esta entrada, el ciclo se considera incompleto y el bucle NO continúa.
+> **REGLA:** al final de **cada Paso 3** (incluso si termina en `BLOCKED` o `ROLLED-BACK`), antes de retornar al Paso 1, el orquestador **DEBE** escribir una entrada en **DOS** ficheros: `CHANGELOG.md` (raíz, legible por el usuario) **y** `.taskmaster/CHANGELOG.md` (registro técnico). Sin ambas, el ciclo se considera incompleto y el bucle NO continúa.
+>
+> ⚠️ **No te saltes el de la raíz.** Es el único que ve el dueño del proyecto, y `.taskmaster/` es una carpeta oculta. Escribir solo el técnico es el modo de fallo que corrigió el ciclo #15.
 
 ### Por qué es mandatory
 
-- **Trazabilidad humana**: `rd_journal.json` es machine-readable pero no narrativo; `STATUS.md` resume hitos, no cada pase. El changelog es el único registro per-pass humano-legible.
-- **Cost 0 audit**: ante un bug reportado, se revisa el CHANGELOG.md para entender qué cambió en el pase anterior.
+- **Trazabilidad humana**: `rd_journal.json` es machine-readable pero no narrativo; `STATUS.md` resume hitos, no cada pase. El changelog es el único registro per-pass legible.
+- **Cost 0 audit**: ante un bug reportado, se revisa el changelog para entender qué cambió en el pase anterior. Si el usuario no lo encuentra, el registro no ha cumplido su función aunque exista.
 - **Accountability de modelos**: si una decisión técnica sale mal, queda registrado qué modelo la tomó.
 
 ### Formato de entrada
@@ -207,6 +282,12 @@ Actúa bajo la skill 'process-db-updater' (.agents/skills/process-db-updater/SKI
 - Paso 1 (Buscar): <modelo>
 - Paso 2 (Planear): <modelo>
 - Paso 3 (Ejecutar): <modelo>
+- Paso 4 (Auditar tests): <modelo> → VERDICT: PASS | FAIL | PARTIAL
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| [fix] | [qué se rompió] | killed / survived | [aserción que lo detectó, o "ninguna"] |
 
 ### What
 - <bullets cortos concretos, 1 frase cada uno>
@@ -223,21 +304,48 @@ Actúa bajo la skill 'process-db-updater' (.agents/skills/process-db-updater/SKI
 ### Cuándo se escribe
 
 1. Tras el `git_safe_commit.py` del Paso 3 (para tener el hash).
-2. Tras actualizar `rd_journal.json` (para mantener orden: journal → changelog → STATUS).
+2. Tras actualizar `rd_journal.json` (para mantener orden: journal → changelogs → STATUS).
 3. **Antes** de actualizar `STATUS.md` (el dashboard referencia los pases nuevos).
 4. **Antes** de retornar al Paso 1.
+
+⚠️ Al llegar al paso 2 produces **tres** ficheros en este orden: `rd_journal.json`, luego `CHANGELOG.md` de raíz, luego `.taskmaster/CHANGELOG.md`. El de raíz va resumido y en lenguaje de usuario; el técnico, detallado. Si te saltas el de raíz, el ciclo está incompleto.
+
+> **Ancla de verificación:** el validador comprueba que el `CHANGELOG.md` de raíz tenga entrada para el último ciclo de **`rd_journal.json`**, no del registro técnico. Por eso el orden importa: el journal se escribe **antes** que los changelogs.
+> ⚠️ Si `rd_journal.json` falta, está corrupto o no aporta ningún ciclo, el validador **falla con mensaje explícito** (no verde silencioso). Aun así, un 0 FAIL no prueba que el changelog esté al día: solo que pasaron las comprobaciones que existen.
+
+### 🔴 DOBLE ESCRITURA OBLIGATORIA — el registro técnico NO es el changelog
+
+> **REGLA DURA:** cada pase escribe en **DOS** ficheros. `.taskmaster/CHANGELOG.md` es el registro técnico; `CHANGELOG.md` (raíz) es el que lee una persona. **Escribir solo el primero es un pase incompleto.**
+
+| Fichero | Audiencia | Contenido | Estilo |
+|---|---|---|---|
+| `.taskmaster/CHANGELOG.md` | El pipeline y el orquestador | Decisión técnica, modelos por paso, evidencia, riesgos | Denso y preciso |
+| `CHANGELOG.md` (raíz) | **El dueño del proyecto** | Qué cambió para el usuario y por qué le importa | Claro, sin jerga |
+
+`.taskmaster/` es una **carpeta oculta**: su contenido no aparece en un explorador de ficheros normal, así que un changelog escrito solo ahí es, para el usuario, un changelog que no existe. Ese fue el fallo real del ciclo #14 y por eso esta regla es dura.
+
+**Estilo del `CHANGELOG.md` de raíz (obligatorio):**
+- Secciones `Añadido` / `Corregido` / `Cambiado` / `Eliminado`, no "What/Outcome/Impact".
+- Escribir **para el usuario final**, no para otro agente: "el Gaming Mode ya consulta tu configuración", no "se invoca `execute_gaming_pack`".
+- **Destacar los bugs que importan** con 🔴 y 🛡️, y decir **qué se rompía** antes del fix, no solo qué se añadió.
+- Mantener la **tabla resumen** de la cabecera al día: una fila por ciclo.
+
+**Orden de escritura en el Paso 3:** `rd_journal.json` → `CHANGELOG.md` (raíz) → `.taskmaster/CHANGELOG.md` → `STATUS.md`.
+
+`validate_docs.py` verifica los **dos** changelogs: que el de raíz exista, use secciones legibles (`### Corregido`) y tenga una **entrada propia** (`## CYCLE-NNN`) para el último ciclo registrado en `.taskmaster/rd_journal.json` — un artefacto independiente, precisamente para que borrar la entrada en los dos changelogs no pueda hacer desaparecer la obligación. Ojo: comprueba la **entrada**, no la tabla resumen — la tabla es responsabilidad tuya y no está automatizada.
 
 ### Reglas duras
 
 - ❌ **Nunca** se borran o reescriben entradas antiguas (es append-only; historial inmutable).
 - ❌ **Nunca** se omite la sección `Models` (incluso si todos los pasos usaron `inherit`).
+- ❌ **Nunca** se omite la tabla de mutaciones del Paso 4, aunque el ciclo no haya tocado tests: se escribe "sin cambios en tests" y el ciclo queda explícitamente sin auditar.
 - ✅ Si el pase fue `BLOCKED` o `ROLLED-BACK`, el changelog **se escribe igualmente** con estado correcto y qué falló.
 - ✅ `validate_docs.py` falla si `.taskmaster/CHANGELOG.md` falta o no tiene ≥1 entrada `[CYCLE-NNN]`.
 
 ### Relación con otros artefactos
 
 ```
-.rd_journal.json   ─→  datos estructurados (machine, by tm.py)
+.rd_journal.json   ─→  datos estructurados (machine, by orchestrator)
 CHANGELOG.md        ─→  narrativa per-pass (human, by orchestrator)
 STATUS.md           ─→  dashboard agregado (human, by orchestrator)
 openspec/changes/   ─→  contrato del cambio (formal, by proposer)
@@ -245,13 +353,17 @@ openspec/changes/   ─→  contrato del cambio (formal, by proposer)
 
 ---
 
-## 7. Matriz de Modelos Consolidada — Alternancia por Paso × Área
+## 7. Matriz de Intensidad por Paso × Área
 
-> **REGLA:** el orquestador DEBE alternar modelos según la combinación Paso × Área. `inherit` es el default seguro; se sube a `pro` cuando hay riesgo de regresión o creatividad requerida; se baja a `flash` cuando la tarea es trivial o de búsqueda.
+> **REGLA (adaptada al runtime actual):** el runtime actual **no** tiene los niveles `flash` / `inherit` / `pro`. En `task`, el parámetro `model` solo se rellena si el **usuario lo pide explícitamente**; si no, el agente hijo hereda el modelo del turno.
+>
+> ⚠️ **No inventes un nombre de modelo.** Poner `"pro"`, `"inherit"` o `"flash"` a mano produce un error de resolución. Si el usuario pide uno concreto, resuélvelo primero con `mavis({command: "cron resolve-model", args: {model: "<texto>"}})` y usa la clave canónica que devuelva.
+>
+> Lo que **sí** sigue vigente es la **intensidad** de cada paso, y por eso la matriz se conserva como guía de pensamiento. Regístrala en el changelog como el nivel aplicado, aunque el runtime no lo exprese.
 
-### Modelos disponibles
+### Niveles de intensidad (equivalente conceptual)
 
-| Modelo | Cuándo | Coste | Capacidad |
+| Nivel | Cuándo | Coste | Capacidad |
 |---|---|---|---|
 | `flash` | Búsquedas, lookups, escaneos, DB updates, formatting | Bajo | Baja |
 | `inherit` | Default seguro: implementación, refactors acotados | Medio | Media |
@@ -270,6 +382,7 @@ openspec/changes/   ─→  contrato del cambio (formal, by proposer)
 - Rendimiento + pro en planear y ejecutar → benchmarking antes/después, análisis de cuellos de botella.
 - DB updates + flash en ejecutar → escaneo + append a JSON, sin creatividad.
 - Testing + pro en planear → diseñar tests que DISCRIMINEN bugs reales.
+- **Ciclos 14 y 15 → override real a `pro` en ambos pasos**: los dos tocaban seguridad (matar procesos de sistema) e integridad de datos (borrado de configuración). Cuando el error puede dejar el PC inservible o perder datos del usuario, sube la intensidad aunque la matriz diga `inherit`.
 
 ### Reglas de override
 
@@ -283,12 +396,21 @@ El usuario puede pedir un modelo concreto en cualquier momento (ej: *"usa `flash
 
 ### Validación
 
-`validate_docs.py` verifica:
-1. `.taskmaster/CHANGELOG.md` existe.
-2. Encabezado `# Changelog de pases — Motor id-pipeline` presente.
-3. Al menos 1 entrada con formato `[CYCLE-NNN]`.
-4. Sección `Models` con 3 líneas (Paso 1, 2, 3) en cada entrada nueva.
+Esto es **lo que `validate_docs.py` comprueba de verdad**. No inventes requisitos: si crees que valida otra cosa, ejecuta el script y lee su salida.
 
-Si cualquiera falla, el orquestador NO inicia el siguiente ciclo hasta corregir.
+1. `.taskmaster/CHANGELOG.md` existe, con encabezado `Changelog de pases`, marca `MANDATORY` y ≥1 entrada `[CYCLE-NNN]`.
+2. `CHANGELOG.md` (raíz) existe, con encabezado `Changelog` y al menos una sección `### Corregido` — es decir, escrito para el usuario y no en formato técnico.
+3. El `CHANGELOG.md` de raíz tiene una **entrada propia** (`## CYCLE-NNN`) para el último ciclo de `rd_journal.json`.
+4. `AGENTS.md` tiene `Stack`, `Invariantes` y la sección de roles.
+5. Estructura de `llms.txt` y `openspec/`.
+
+> ⚠️ **Límites conocidos del validador** — no te confíes más de lo que realmente comprueba:
+> - **La sección `Models` de cada entrada NO se valida.** Es responsabilidad tuya. Si te saltas el Paso 2, nadie te avisa.
+> - **La tabla resumen de `CHANGELOG.md` no se valida.** Solo la existencia de la entrada.
+> - Si `rd_journal.json` falta, está corrupto o no aporta ningún ciclo, el punto 3 **falla con mensaje explícito**. Aun así, un 0 FAIL no prueba que el changelog esté al día: solo prueba que las comprobaciones que sí existen pasaron.
+>
+> Lección del ciclo 15: una comprobación que se deduce de los mismos ficheros que valida produce falsos verdes. El punto 3 se ancló en `rd_journal.json` **precisamente** para que borrar la entrada en los dos changelogs no borre también la obligación de registrarla.
+
+Si cualquiera de los puntos que **sí** se validan falla, el orquestador NO inicia el siguiente ciclo hasta corregir.
 
 ---
