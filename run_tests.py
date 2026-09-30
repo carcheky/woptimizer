@@ -7288,6 +7288,109 @@ def test_woptimizer_ico_exists_and_valid():
     print("test_woptimizer_ico_exists_and_valid OK (assets/woptimizer.ico valido y multi-tamano).")
 
 
+def test_scan_latency_and_lazy_exe_resolution():
+    """TASK-033: Optimizacion de latencia y throughput en ProcessService.
+
+    Discriminadores:
+      1. get_running_processes() retorna ProcessInfo con exe_path="" (escaneo lazy de 'exe').
+      2. get_process_exe_path(os.getpid()) resuelve la ruta absoluta real (sys.executable).
+      3. get_process_exe_path() con PID <= 0 o PID inexistente retorna "" fail-safe sin excepcion.
+      4. on_add_to_pack en UI resuelve la ruta on-demand con get_process_exe_path cuando exe_path=="".
+      5. Benchmark de latencia de escaneo por debajo de 25 ms.
+    """
+    print("Testing optimizacion de escaneo y resolucion lazy de exe (TASK-033)...")
+    import sys
+    import time
+    from woptimizer.services.process_service import ProcessService, _CAT_ORDER_IDX
+    from woptimizer.config import CATEGORY_ORDER
+    from woptimizer.models import Pack, ProcessInfo
+    from woptimizer.ui.views.process_manager_view import ProcessManagerView
+
+    # Verificacion de indice precomputado
+    assert len(_CAT_ORDER_IDX) == len(CATEGORY_ORDER), "Indice de categorias desincronizado"
+
+    ps = ProcessService()
+
+    # 1) Escaneo lazy: todos los procesos vivos se devuelven con exe_path=""
+    procs = ps.get_running_processes(force_refresh=True)
+    assert len(procs) > 0, "Debe haber al menos un proceso en ejecucion"
+    for p in procs:
+        assert p.exe_path == "", (
+            f"El escaneo masivo no debe resolver exe_path ansiosamente (pid={p.pid}, exe={p.exe_path})"
+        )
+        assert p.name != "", "El nombre del proceso no debe estar vacio"
+
+    # 2) Resolucion lazy bajo demanda: PID propio debe resolver a sys.executable
+    mi_pid = os.getpid()
+    mi_exe = ps.get_process_exe_path(mi_pid)
+    assert mi_exe != "", "get_process_exe_path(os.getpid()) no debe ser vacio"
+    assert os.path.normcase(os.path.realpath(mi_exe)) == os.path.normcase(os.path.realpath(sys.executable)), (
+        f"get_process_exe_path({mi_pid}) devolvio {mi_exe!r}, se esperaba {sys.executable!r}"
+    )
+
+    # 3) Degradacion fail-safe para PIDs invalidos o inexistentes
+    assert ps.get_process_exe_path(-999) == "", "PID negativo debe retornar ''"
+    assert ps.get_process_exe_path(0) == "", "PID 0 debe retornar ''"
+    assert ps.get_process_exe_path(99999999) == "", "PID inexistente debe retornar ''"
+
+    # 4) Integracion UI: on_add_to_pack resuelve lazy si exe_path esta vacio
+    class _CasillaFalsa:
+        def __init__(self, v): self.v = v
+        def get(self): return self.v
+
+    class _VarFalsa:
+        def __init__(self, v): self.v = v
+        def get(self): return self.v
+
+    class _LabelFalso:
+        def __init__(self): self.textos = []
+        def configure(self, **kw):
+            if "text" in kw: self.textos.append(kw["text"])
+
+    class _PackServiceMock:
+        def __init__(self, packs): self.packs = packs; self.saves = 0
+        def get_all_packs(self): return self.packs
+        def save(self): self.saves += 1
+
+    pack_destino = Pack(id="test_lazy", name="Pack Lazy")
+    vista = ProcessManagerView.__new__(ProcessManagerView)
+    vista.process_service = ps
+    vista.grouped_processes = {
+        "python_self": [ProcessInfo(
+            name="python",
+            full_name="python.exe",
+            pid=mi_pid,
+            exe_path="",  # Vacio como viene de get_running_processes
+            category="\U0001F7E2 Productividad",
+            priority="none",
+            description="Interprete"
+        )]
+    }
+    vista.checkboxes = {"python_self": _CasillaFalsa(True)}
+    vista.pack_var = _VarFalsa("Pack Lazy")
+    vista.status_label = _LabelFalso()
+    vista.pack_service = _PackServiceMock({"test_lazy": pack_destino})
+
+    vista.on_add_to_pack()
+    assert len(pack_destino.apps) == 1, f"Se esperaba 1 app anadida, obtenido {pack_destino.apps}"
+    assert os.path.normcase(os.path.realpath(pack_destino.apps[0])) == os.path.normcase(os.path.realpath(sys.executable)), (
+        f"on_add_to_pack debio resolver la ruta absoluta on-demand: {pack_destino.apps[0]}"
+    )
+
+    # 5) Benchmark de rendimiento: latencia < 25 ms
+    ps.get_running_processes(force_refresh=True)  # Calentamiento
+    tiempos = []
+    for _ in range(5):
+        t0 = time.perf_counter()
+        ps.get_running_processes(force_refresh=True)
+        tiempos.append(time.perf_counter() - t0)
+    tiempo_min = min(tiempos)
+    assert tiempo_min < 0.025, (
+        f"Latencia de escaneo excesiva: {tiempo_min*1000:.2f} ms (limite: 25.0 ms)"
+    )
+    print(f"Optimizacion de escaneo OK (latencia minima: {tiempo_min*1000:.2f} ms).")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -7388,6 +7491,8 @@ if __name__ == "__main__":
     test_hit_targets_minimum()
     test_semantic_color_contract()
     test_woptimizer_ico_exists_and_valid()
+    # TASK-033: Optimizacion de latencia y throughput en el escaneo de procesos
+    test_scan_latency_and_lazy_exe_resolution()
     print("\n--- Running Headless UI Test ---")
     test_headless_ui()
     print("\nALL TESTS PASSED.")

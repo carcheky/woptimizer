@@ -656,7 +656,7 @@
       "description": "Optimizar get_running_processes eliminando la sobrecarga de 25-30ms de exe en psutil.process_iter a favor de resolución perezosa bajo demanda con get_process_exe_path(pid), construcción con model_construct, precomputación de _CAT_ORDER_IDX y corte seguro de sufijos .exe.",
       "complexity": 3,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "src/woptimizer/services/process_service.py",
       "acceptance_criteria": [

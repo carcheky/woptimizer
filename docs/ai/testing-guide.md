@@ -26,7 +26,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 ## Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **72 tests**: 71 de backend + 1 headless de UI, numerados aquí en el **orden de registro** del `__main__` (el headless va el último, aunque antes viviera en medio de la lista).
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **73 tests**: 72 de backend + 1 headless de UI, numerados aquí en el **orden de registro** del `__main__` (el headless va el último, aunque antes viviera en medio de la lista).
 
 | # | Test | Qué valida |
 |---|------|-----------|
@@ -101,7 +101,8 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 69 | `test_hit_targets_minimum` | **TASK-029 (UI-007):** todos los botones interactivos tienen un tamaño mínimo de 28x28px |
 | 70 | `test_semantic_color_contract` | **TASK-029 (UI-012b):** Gaming verde `#1DB954`, peligro rojo `#c22d2d`, semáforos no contaminados |
 | 71 | `test_woptimizer_ico_exists_and_valid` | **TASK-029 (UI-006):** existencia y validez del archivo de icono multi-resolución `assets/woptimizer.ico` |
-| 72 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
+| 72 | `test_scan_latency_and_lazy_exe_resolution` | **TASK-033:** optimización de latencia en `ProcessService` (`psutil.process_iter(['pid', 'name'])`, `exe_path=""` lazy, `model_construct`, precomputación `_CAT_ORDER_IDX`, `get_process_exe_path(pid)` on-demand con degradación segura y benchmark < 25 ms) |
+| 73 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
 
 ### Notas de Aislamiento
 - Los tests de `PackService` usan `tempfile.NamedTemporaryFile` (helper `_pack_service_temporal()`) para no modificar `profiles.json` real. `test_pack_service_backup_and_recovery` limpia además los `.bak` y `.tmp` que genera, y restaura los permisos de solo lectura que usa para probar el `PermissionError`.

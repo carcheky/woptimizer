@@ -55,6 +55,9 @@ _PROTECTED_META = (
     "No se puede cerrar nunca.",
 )
 
+# TASK-033: Precomputación de orden de categorías para escaneo de alto throughput
+_CAT_ORDER_IDX = {c: i for i, c in enumerate(CATEGORY_ORDER)}
+
 # ---------------------------------------------------------------------------
 # TASK-027 (FIX-003) - ARRANQUE DE APPS: HYGIENE CON CRITERIO
 # ---------------------------------------------------------------------------
@@ -293,7 +296,8 @@ def _es_imagen_pe(ruta: str) -> bool:
 
 def _normalizar_nombre(name: str) -> str:
     """Clave de comparacion: minusculas, sin extension y sin espacios sobrantes."""
-    return (name or "").lower().replace('.exe', '').strip()
+    s = (name or "").strip().lower()
+    return s[:-4] if s.endswith('.exe') else s
 
 
 class ProcessService:
@@ -445,6 +449,21 @@ class ProcessService:
         self._proc_cache = None
         self._proc_cache_ts = 0.0
 
+    def get_process_exe_path(self, pid: int) -> str:
+        """Devuelve la ruta absoluta al ejecutable de un proceso activo por su PID.
+
+        TASK-033: Resolución lazy/on-demand para evitar la sobrecarga masiva de
+        consultar 'exe' para todos los procesos del sistema en psutil.process_iter.
+        Si el proceso no existe, acceso denegado, zombie o error del SO, retorna cadena vacía.
+        """
+        if pid <= 0:
+            return ""
+        try:
+            p = psutil.Process(pid)
+            return p.exe() or ""
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError, ValueError):
+            return ""
+
     def get_running_processes(self, force_refresh: bool = False) -> List[ProcessInfo]:
         """Lista todos los procesos activos usando psutil, ordenados por categoría.
 
@@ -462,7 +481,7 @@ class ProcessService:
         result = []
         seen = set()
 
-        for proc in psutil.process_iter(['pid', 'name', 'exe']):
+        for proc in psutil.process_iter(['pid', 'name']):
             try:
                 info = proc.info
                 name = info['name']
@@ -478,14 +497,14 @@ class ProcessService:
                     continue
                 seen.add((name_lower, pid))
 
-                clean_name = name.replace('.exe', '')
+                clean_name = name[:-4] if name_lower.endswith('.exe') else name
                 cat, priority, desc = self._get_process_meta(clean_name)
 
-                result.append(ProcessInfo(
+                result.append(ProcessInfo.model_construct(
                     name=clean_name,
                     full_name=name,
                     pid=pid,
-                    exe_path=info['exe'] or "",
+                    exe_path="",
                     category=cat,
                     priority=priority,
                     description=desc
@@ -494,8 +513,7 @@ class ProcessService:
                 continue
 
         # Ordenar por el orden definido en CATEGORY_ORDER, luego alfabético, luego PID
-        cat_idx = {c: i for i, c in enumerate(CATEGORY_ORDER)}
-        result.sort(key=lambda p: (cat_idx.get(p.category, 999), p.name.lower(), p.pid))
+        result.sort(key=lambda p: (_CAT_ORDER_IDX.get(p.category, 999), p.name.lower(), p.pid))
 
         # Guardar en cache
         self._proc_cache = result

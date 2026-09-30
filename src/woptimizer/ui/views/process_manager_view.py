@@ -369,7 +369,10 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
         added = 0
         for k in selected_keys:
             procs = self.grouped_processes[k]
-            exe_name = procs[0].exe_path or procs[0].full_name or procs[0].name
+            exe_path = procs[0].exe_path
+            if not exe_path and procs[0].pid > 0 and getattr(self, "process_service", None):
+                exe_path = self.process_service.get_process_exe_path(procs[0].pid)
+            exe_name = exe_path or procs[0].full_name or procs[0].name
             if exe_name not in target_pack.apps:
                 target_pack.apps.append(exe_name)
                 added += 1
