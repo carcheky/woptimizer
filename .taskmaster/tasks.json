@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-09-29T10:45:00Z",
-  "active_task_id": "TASK-032",
+  "active_task_id": "TASK-033",
   "tasks": [
     {
       "id": "TASK-001",
@@ -649,6 +649,27 @@
         "run_tests.py y validate_docs.py en verde"
       ],
       "notes": "Ciclo #23 del motor autónomo de I+D (Área 3: Base de Datos & Procesos). Delegado en process-db-updater para mantener la base de conocimiento local actualizada."
+    },
+    {
+      "id": "TASK-033",
+      "title": "Optimización de Latencia y Throughput en el Escaneo de Procesos",
+      "description": "Optimizar get_running_processes eliminando la sobrecarga de 25-30ms de exe en psutil.process_iter a favor de resolución perezosa bajo demanda con get_process_exe_path(pid), construcción con model_construct, precomputación de _CAT_ORDER_IDX y corte seguro de sufijos .exe.",
+      "complexity": 3,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [],
+      "module": "src/woptimizer/services/process_service.py",
+      "acceptance_criteria": [
+        "get_running_processes utiliza psutil.process_iter(['pid', 'name']) sin consultar 'exe' de forma anticipada",
+        "get_process_exe_path(pid) en ProcessService devuelve la ruta absoluta bajo demanda con degradación fail-safe a cadena vacía ante errores de proceso o permisos",
+        "on_add_to_pack en ProcessManagerView resuelve exe_path bajo demanda si no viene precargada",
+        "ProcessInfo.model_construct se utiliza en el bucle caliente de escaneo",
+        "_CAT_ORDER_IDX se precalcula a nivel de módulo a partir de CATEGORY_ORDER",
+        "Prueba discriminante test_scan_latency_and_lazy_exe_resolution añadida a run_tests.py",
+        "Latencia media de escaneo caliente por debajo de 15ms medidos",
+        "run_tests.py y validate_docs.py en verde"
+      ],
+      "notes": "Ciclo #24 del motor autónomo de I+D (Área 4: Rendimiento & Latencia). Aborda la latencia de escaneo descubierta en el benchmark con ~8x de aceleración."
     }
   ]
 }
