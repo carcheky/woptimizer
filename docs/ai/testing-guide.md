@@ -88,12 +88,12 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 56 | `test_toggle_favorite_desmarca` | **TASK-027 (FIX-006):** la segunda pulsación de la estrella desmarca el favorito |
 | 57 | `test_logging_va_a_fichero_y_no_a_stderr` | **TASK-028 (FIX-010):** el aviso acaba DENTRO de `woptimizer.log` y **no** en `stderr` (afirma sobre contenido y con el control negativo del `StreamHandler` sembrado: mata la implementación sin `force=True`) |
 | 58 | `test_la_consulta_de_version_no_puede_desincronizarse` | **TASK-028 (FIX-018):** `pyproject.toml`, `__init__.py` y `tasks.json` declaran la **misma** versión, y no puede existir un cuarto sitio (escáner de `src/` con expectativa derivada del código) |
-| 59 | `test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz` | **TASK-028 iter 2 + 3 + 4:** el archivo de `docs/archive` está versionado, completo y **sin volver ni a la raíz ni a la ruta viva que lee la app** (`_app_dir()`), por la **firma del esquema v2** (`profiles` + **dos** rasgos en el mismo registro) y **sin exigir JSON válido**: un fichero local corrupto, vacío o ilegible se **observa** y no tumba la suite |
+| 59 | `test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz` | **TASK-028 iter 2-5:** el archivo de `docs/archive` está versionado, completo y **sin volver ni a la raíz ni a la ruta viva que lee la app** (`_app_dir()`), por la **firma del esquema v2** (`profiles` + **dos** rasgos en el mismo registro). **Iter 5 (F1):** la ruta viva **ilegible da aviso, no muerte**, y eso se **afirma** con un control que escribe los tres ficheros de verdad (no-UTF8, truncado a mitad de un emoji de 4 B, `PermissionError` real) y exige el **motivo por su texto**; el literal `null` (que no lanza) también. Un control positivo sobre un documento vivo, porque un helper que declare todo ilegible pasaría los otros |
 | 60 | `test_el_punto_de_entrada_declara_el_log_antes_de_los_servicios` | `__main__.main()` invoca `setup_logging()` **antes** de instanciar ningún servicio (AST, por **orden** de lineno; no ejecuta `main()`) |
 | 61 | `test_process_list_file_sigue_siendo_un_contrato` | `PROCESS_LIST_FILE` existe, vale lo que debe y la nombran sus tres consumidores vivos |
 | 62 | `test_la_documentacion_del_blindaje_no_puede_desfasarse` | las dos docs dicen el rango **medido con `ast`** y los 34 nombres **reales** del `frozenset` |
 | 63 | `test_el_log_rota_con_el_limite_declarado` | el handler es un `RotatingFileHandler` **exacto** con `maxBytes`/`backupCount` declarados (`isinstance` no lo distinguiría: hereda de `FileHandler`) |
-| 64 | `test_config_no_configura_nada_al_importarse` | `config.py` no **configura** el logging **al importarse**: ni en la cima, ni dentro de un `if`/`try`/`for`/`while` de módulo, ni en el **cuerpo de una clase** (que sí se ejecuta al importar); dentro de una **función** sí. Detector probado en las dos direcciones: **14 ilegales marcados, 10 legales sin marcar** |
+| 64 | `test_config_no_configura_nada_al_importarse` | `config.py` no **configura** el logging **al importarse**: ni en la cima, ni dentro de un `if`/`try`/`for`/`while` de módulo, ni en el **cuerpo de una clase** (que sí se ejecuta al importar); dentro de una **función** sí. **Iter 5:** además la **firma** de un `def` (decoradores, valores por defecto, anotaciones) se evalúa al importarlo, pero **su cuerpo no**, y un **generador perezoso** no se ejecuta al importarlo mientras que una **comprehension** sí. Detector probado en las dos direcciones, con el recuento **derivado de las tablas** (no escrito a mano) |
 | 65 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
 
 ### Notas de Aislamiento
@@ -403,6 +403,134 @@ escenarios** (legítimo, corrupto y v2): los bytes son **idénticos**, no se cre
 arranque. Es deuda de **lectura**, no de escritura, y **no se arregla**: tocarlo arriesga el
 arranque por un riesgo que no existe. Queda escrito para que el próximo que lo lea no lo confunda con
 un descuido.
+
+
+## Iteración 5 — la rama «ilegible» de N1 era código muerto (F1)
+
+La iteración 4 dejó N1 prometiendo que un `profiles.json` **ilegible da aviso y no tumba la suite**, y
+ese texto estaba literalmente en el `proposal.md` §3.1. **Era falso.** El `open()` y el `read()`
+estaban **fuera** del `try`, así que el `except (OSError, UnicodeDecodeError)` **no podía ejecutarse
+nunca**: no era un mensaje feo, era una guarda que no guardaba.
+
+### El patrón general, y por qué se mide así
+
+Una muerte por **traceback** prueba que el código se rompió, **no** que afirmara lo correcto. Un
+`try/except` que devuelve `("", "")` en todo caso también pasa. Por eso el arreglo va con un control
+que **escribe de verdad** los ficheros ilegibles y exige una respuesta sobre su **texto**, y no
+«que no reventara».
+
+| Estado sembrado en la ruta viva | Antes | Ahora |
+|---|---|---|
+| bytes que no son UTF-8 | ROJO (`UnicodeDecodeError` en el `read()`) | **aviso** |
+| truncado a mitad de un emoji de 4 B | ROJO (`UnicodeDecodeError`) | **aviso** |
+| sin permiso de lectura | ROJO (`PermissionError` en el `open()`) | **aviso** |
+| el literal JSON `null` | VERDE, con el motivo **vacío** | aviso con motivo |
+
+El escenario es real, no hipotético: el `profiles.json` vivo del usuario tiene un `U+1F680`
+(`F0 9F 9A 80`), y un corte de luz o un antivirus que trunca ahí produce exactamente ese fichero.
+Y la **asimetría con la app** se midió contra `pack_service.py:40-41`, que **sí** incluye
+`UnicodeDecodeError` en `CORRUPTION_ERRORS`: con el mismo fichero y un `.bak` válido, la app
+**arranca y recupera** (`packs: ['gaming']`) en los tres casos, y la sonda moría en dos.
+
+### Dos detalles que no son detalles
+
+1. **El orden de las ramas es la mitad del arreglo.** `UnicodeDecodeError` es **subclase de
+   `ValueError`** (`issubclass(UnicodeDecodeError, ValueError) is True`, medido), así que con
+   `except ValueError` primero la rama de lectura **vuelve a ser inalcanzable para la
+   decodificación**: el `read()` ya no revienta, pero el aviso culparía al JSON de un fallo de bytes.
+   Mover el `open()` sin invertir el orden **no cierra F1**, y está medido como mutante.
+2. **`json.loads("null")` devuelve `None` sin lanzar.** El `motivo` se quedaba vacío y el aviso se
+   leía *«Hay un profiles.json local en X **y .** La app lo tolera»*. No es una aserción, pero es un
+   texto que se lee.
+
+La lectura se movió a una función, `_leer_documento_de_packs()`, **para que el control pueda
+ejercitar el mismo código que corre**: un control que reescribiera la lógica probaría una copia, que
+es el validador que se deduce a sí mismo.
+
+**Matriz de F1/D1** (`wopt_matrix_f1.py`, copia a `%TEMP%` sin el puntero `.git`, `__pycache__`
+purgada, suite en subproceso). Controles positivos: el vivo legítimo se lee y sale VERDE; los tres
+ilegibles dan aviso; el v2 retirado se sigue detectando (ROJO).
+
+| Mutante | control_vivo | no_utf8 | Muere por |
+|---|---|---|---|
+| `M-F1a` `open()`/`read()` fuera del `try` | ROJO | ROJO | el control de alcanzabilidad |
+| `M-F1b` la rama de lectura se queda solo con `OSError` | ROJO | ROJO | el control de alcanzabilidad |
+| `M-F1c` orden de las ramas al revés | ROJO | ROJO | el motivo blamed al JSON |
+| `D1` sin la rama del literal `null` | ROJO | ROJO | el control del `null` |
+| `P` helper que declara **todo** ilegible | ROJO | ROJO | **el control positivo** |
+
+Las diez filas salen ROJO. El orden de los controles importa y se puso a propósito: el **positivo va
+antes que el del `null`**, para que un helper muerto por completo muera por su propia causa y el
+control positivo no se quede sin comprobar nunca.
+
+El `PermissionError` del control se provoca con un **directorio** con el nombre del fichero, no con
+`os.chmod`: en Windows `chmod` no impide la lectura, y un control que no controla nada es peor que
+ninguno.
+
+### D3 y D4 — el detector de logging tenía dos criterios que no eran los que decía
+
+**D3: el `def` se saltaba su propia firma.** `visit_FunctionDef = pass` se saltaba los argumentos
+por defecto y los decoradores, que **sí se evalúan al definir la función**. Medido en este
+intérprete (`root.handlers` tras importar, sin ningún `setup_logging`):
+
+| Forma | ¿configura al importar? |
+|---|---|
+| `def f(h=logging.basicConfig(force=True))` | **sí** (1 handler) |
+| `class C: def m(self, h=logging.basicConfig(...))` | **sí** |
+| `f = lambda h=logging.basicConfig(force=True): h` | **sí** |
+| `def f(*, h=logging.basicConfig(force=True))` | **sí** |
+| `def f(h: logging.basicConfig(force=True))` (anotación) | **sí** |
+| la anterior **con** `from __future__ import annotations` | **no** (0) |
+| `def f(): logging.basicConfig(force=True)` (cuerpo) | **no** (0) |
+
+El disparo es bajo pero **real**, no ≈0. El arreglo recoge la **firma** y deja el **cuerpo**, que es
+la frontera que S4 y la iteración 3 ya tenían medida. Las anotaciones se saltan con
+`from __future__ import annotations`, porque entonces se guardan como texto y marcarlas sería un
+falso positivo sobre documentos legítimos (`NamedTuple`, `TypedDict`).
+
+**D4: un generador perezoso no es una comprehension.** El elemento de un generador **no** se ejecuta
+al importar (`0` handlers), mientras que el de una list comp sí (`1`). Marcarlo era un falso
+positivo: código que no configura nada. El arreglo recorre **solo el iterable de entrada** del
+generador, que es lo único que se evalúa al crearlo — y `[logging.basicConfig(...)]` en ese iterable
+**sí** dispara (la lista se construye entera), así que la fila queda en `ILEGALES`.
+
+**Matriz de D3/D4** (`wopt_matrix_d3d4.py`): las seis mueren por la **autocomprobación** de las
+tablas `ILEGALES`/`LEGALES`, que es exactamente lo que se quiere: el detector se delata a sí mismo.
+Control positivo: sin mutación, VERDE y con el recuento **derivado** (20 ilegales / 14 legales).
+
+| Mutante | Muere por |
+|---|---|
+| `M-D3a` el `def` de módulo no se mira | falso negativo: no marca el argumento por defecto |
+| `M-D3b` solo se miran los decoradores | falso negativo: idem |
+| `M-D3c` sin anotaciones | falso positivo: marca una anotación con `__future__` |
+| `M-D4a` el generador se recorre entero | falso positivo: marca el elemento perezoso |
+| `M-D4b` el generador no se mira | falso negativo: no marca el iterable de entrada |
+| `M` el `__future__` se ignora | falso negativo: no marca la anotación sin `__future__` |
+
+**El recuento del `print` se deriva ahora de `len(ILEGALES)`/`len(LEGALES)`.** Estaba escrito a mano
+(«14 ilegales, 10 legales») y era un número que mentía en cuanto se añadía una fila: el mismo patrón
+de doc que miente, aplicado al propio mensaje de la sonda.
+
+### D2 — por qué el detector solo mira la raíz `profiles`
+
+El detector del esquema v2 retirado mira **únicamente `doc["profiles"]`**, no la raíz entera, y eso es
+correcto por una razón concreta del producto, no por comodidad: la rama legacy de
+`pack_service.py:403/420` **solo se engancha ahí** (`raw_data['profiles']`, con
+`k == "__system_gaming__"`). Un `profiles.json` con un pack de usuario que declare `factory` **y**
+`kill_low_chat` en la raíz **viva `packs`** no lo resucita, porque `load()` no mira esa raíz para
+detectar el esquema retirado. **El riesgo residual existe pero es más estrecho de lo que parecía**,
+y el detector **no se cambia** por ello.
+
+## Hallazgo abierto (fuera de alcance, declarado)
+
+**Un `PermissionError` en la ruta viva tumba `test_headless_ui`, y no es la sonda.** No es
+`run_tests.py`: es `PackService.__init__` → `load()` → `_read_json()`, que abre el fichero en
+`pack_service.py:379` **sin ninguna protección** frente a `OSError`, y `CORRUPTION_ERRORS`
+(`pack_service.py:40-41`) **no incluye `PermissionError`** — solo `UnicodeDecodeError` y los de JSON.
+Es decir: **la app no tolera un `PermissionError`**, a diferencia de la corrupción de bytes, que sí
+recupera del `.bak`. Se deja escrito porque el siguiente que lo lea lo interpretaría al revés
+(«la sonda es la que revienta»). Arreglarlo exige tocar `src/`, que el encargo de esta iteración
+prohíbe; la **sonda** sí queda correcta: avisa y no muere, que es lo suyo.
 
 
 Python reutiliza un `.pyc` obsoleto cuando el mutante tiene la **misma longitud en bytes** y el

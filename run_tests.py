@@ -5901,6 +5901,44 @@ def _rasgos_del_esquema_v2_retirado(doc):
     return False, []
 
 
+def _leer_documento_de_packs(ruta):
+    """Lee el `profiles.json` de `ruta`. -> (documento, motivo, crudo).
+
+    Un documento ilegible NO es un fallo: es estado local del usuario, y la app
+    lo tolera. Se devuelve `(None, "por que", "")` y el que llama avisa.
+
+    ITERACION 5, F1. El `open()` y el `read()` tienen que estar DENTRO del
+    `try`: fuera, el `except (OSError, UnicodeDecodeError)` era codigo muerto
+    (medido: `profiles.json` no-UTF8, truncado a mitad de un emoji y sin
+    permiso de lectura, los tres con la suite en rojo por traceback). Y el
+    ORDEN importa igual: `UnicodeDecodeError` es subclase de `ValueError`, o
+    sea que con `ValueError` primero la rama de lectura no se alcanza para la
+    decodificacion y el aviso culpa al JSON de un fallo de bytes. Va la de
+    lectura primero.
+
+    Vive en una FUNCION, y no en linea dentro de la sonda, por una razon
+    concreta: el control de mas abajo tiene que ejercitar ESTE codigo. Un
+    control que reescribiera la logica probaria una copia, que es el validador
+    que se deduce a si mismo.
+    """
+    import json
+    try:
+        with open(ruta, encoding="utf-8") as fh:
+            crudo = fh.read()
+        documento = json.loads(crudo)
+    except (OSError, UnicodeDecodeError) as e:
+        return None, f"no se puede leer ({e})", ""
+    except ValueError as e:
+        return None, f"no se puede leer como JSON ({e})", crudo
+    if documento is None:
+        # D1: `json.loads("null")` NO lanza y devuelve `None`. Sin esta rama el
+        # motivo se queda vacio y el aviso sale con un hueco ("... en X y . La
+        # app lo tolera"), que es un texto que se lee.
+        return None, ("su contenido es el literal JSON `null`, que no es un "
+                      "documento de packs"), crudo
+    return documento, "", crudo
+
+
 def test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz():
     """M12/M13/M14/M15: la norma "nunca borrar, siempre archivar" no la vigilaba
     NADA, y su fallo es el peor de los silenciosos: sin la excepcion de
@@ -6074,17 +6112,24 @@ def test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz():
             "discriminante unico (un campo suelto) no puede ser el criterio."
         )
 
+    # ITERACION 5, F1. El `open()` y el `read()` estaban FUERA del `try`, o sea
+    # que el `except (OSError, UnicodeDecodeError)` era CODIGO MUERTO: no podia
+    # ejecutarse nunca. Medido en tres estados que la app SOPORTA, cada uno con
+    # la suite en ROJO por traceback (o sea, sin asercion, que no prueba nada):
+    #   * bytes que no son UTF-8       -> `UnicodeDecodeError` en el `read()`
+    #   * truncado a mitad de un emoji -> `UnicodeDecodeError` ("bytes in
+    #                                     position 34-35: unexpected end of data")
+    #   * sin permiso de lectura       -> `PermissionError` en el `open()`
+    # El escenario es realista: el `profiles.json` vivo del usuario tiene un
+    # U+1F680 (cuatro bytes UTF-8) y un corte de luz o un antivirus que trunca
+    # ahi produce exactamente ese fichero.
+    #
+    # Y la asimetria es grave: `pack_service.py` incluye `UnicodeDecodeError` en
+    # `CORRUPTION_ERRORS`, o sea que la app lo detecta, avisa y RECUPERA los
+    # packs del `.bak`; la sonda reventaba. Un estado soportado no puede ser un
+    # fallo de test, que es lo que promete el `proposal.md` §3.1.
     if os.path.exists(viva):
-        with open(viva, encoding="utf-8") as fh:
-            crudo_vivo = fh.read()
-        doc_vivo = None
-        motivo = ""
-        try:
-            doc_vivo = json.loads(crudo_vivo)
-        except ValueError as e:
-            motivo = f"no se puede leer como JSON ({e})"
-        except (OSError, UnicodeDecodeError) as e:
-            motivo = f"no se puede leer ({e})"
+        doc_vivo, motivo, crudo_vivo = _leer_documento_de_packs(viva)
         if doc_vivo is None:
             # OBSERVACION, no asercion. Se escribe como hecho, nunca como orden.
             print(f"  [aviso] Hay un profiles.json local en {viva} y {motivo}. La app lo "
@@ -6109,8 +6154,131 @@ def test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz():
                 "hacer con el es del usuario."
             )
 
+    # CONTROL DE ALCANZABILIDAD (F1). El arreglo de arriba se puede aplicar y la
+    # suite seguir en verde con la rama de lectura MUERTA otra vez, si alguien la
+    # vuelve a mover. Este control lo delata: escribe de verdad los tres ficheros
+    # ilegibles que tumbaban la sonda y exige que `_leer_documento_de_packs`
+    # responda con un motivo, sin propagar nada.
+    #
+    # POR QUE hace falta y no basta con "no revienta": las muertes del auditor
+    # fueron TRACEBACKS, o sea que median que el codigo se rompia, no que
+    # affirmara lo correcto. Un `try/except` que devuelve `("", "")` en todo
+    # pasaria igual: por eso se exige que el motivo NO SEA VACIO y que distinga
+    # los tres casos por su TEXTO, no que "se llamo".
+    import shutil as _shutil
+    import tempfile as _tempfile
+
+    _casos_ilegibles = (
+        # (etiqueta, escritor, prefijo que el motivo tiene que llevar)
+        ("bytes que no son UTF-8",
+         lambda d: open(d, "wb").write(b'{"packs": {"gaming": {"name": "\xff\xfe"}}}'),
+         "no se puede leer ("),
+        # El U+1F680 son 4 bytes; a 2 el fichero esta truncado a mitad. Es el
+        # escenario del docstring, con el byte literal, no con un `errors=`.
+        ("truncado a mitad de un emoji de 4 bytes",
+         lambda d: open(d, "wb").write(b'{"name": "pre' + b"\xf0\x9f"),
+         "no se puede leer ("),
+        # Un DIRECTORIO con el nombre del fichero: `PermissionError` REAL del
+        # sistema de ficheros. No se usa `os.chmod`, que en Windows no impide
+        # la lectura y habria dado un control que no controlaba nada.
+        ("sin permiso de lectura (PermissionError real)",
+         lambda d: os.mkdir(d),
+         "no se puede leer ("),
+    )
+    for etiqueta, escribir, prefijo_esperado in _casos_ilegibles:
+        _d = _tempfile.mkdtemp()
+        _ruta = os.path.join(_d, "profiles.json")
+        try:
+            escribir(_ruta)
+            # La llamada va dentro de un `try` PORQUE el fallo que se mide es
+            # justo que la lectura propague. Sin capturarlo aqui, la muerte del
+            # mutante seria un traceback, y un traceback prueba que el codigo se
+            # rompio, no que la rama se alcanzó. Con el `assert` de abajo, la
+            # muerte dice QUE paso y POR QUE importa.
+            try:
+                doc, motivo, _crudo = _leer_documento_de_packs(_ruta)
+            except (OSError, UnicodeDecodeError) as e:
+                raise AssertionError(
+                    f"CONTROL ROTO: la rama ilegible NO existe con «{etiqueta}»: "
+                    f"_leer_documento_de_packs PROPAGO {type(e).__name__} ({e}). El "
+                    "`open()`/`read()` estan FUERA del `try`, o la rama de lectura no "
+                    "cubre esta excepcion. Un `profiles.json` ilegible del usuario no "
+                    "puede tumbar la suite: es estado local y la app lo tolera."
+                ) from e
+            assert doc is None and motivo, (
+                f"CONTROL ROTO: la rama ilegible NO se alcanza con «{etiqueta}»: "
+                f"_leer_documento_de_packs devolvio documento={doc!r} y motivo={motivo!r}. "
+                "El `except (OSError, UnicodeDecodeError)` volvio a ser codigo muerto y esta "
+                "sonda lo daria por bueno: el fichero ilegible del usuario solo pasaria por "
+                "que nadie mira."
+            )
+            assert motivo.startswith(prefijo_esperado), (
+                f"CONTROL ROTO: con «{etiqueta}» el motivo es {motivo!r} y deberia empezar "
+                f"por {prefijo_esperado!r}. Un motivo que blames al JSON de un fallo de BYTES "
+                "es el sintoma de tener `except ValueError` antes que "
+                "`except (OSError, UnicodeDecodeError)`: `UnicodeDecodeError` es subclase de "
+                "`ValueError` y se la come el primero. Con el orden al reves la rama se "
+                "declara inalcanzable sin que nada falle."
+            )
+        finally:
+            _shutil.rmtree(_d, ignore_errors=True)
+
+    # CONTROL POSITIVO: el mismo helper tiene que SEGUIR leyendo de verdad. Sin
+    # esto, un `_leer_documento_de_packs` que devolviera siempre `(None, "x")`
+    # pasaria los tres controles de arriba y dejaria la sonda ciega. Va ANTES
+    # del del `null` a proposito: cada control tiene que morir por su propia
+    # causa, y si el del `null` fuera primero, un helper muerto por completo
+    # moriria ahi y el positivo no se comprobaria nunca.
+    _d = _tempfile.mkdtemp()
+    _ruta = os.path.join(_d, "profiles.json")
+    try:
+        with open(_ruta, "w", encoding="utf-8") as _fh:
+            _fh.write('{"packs": {"gaming": {"id": "gaming", "name": "Gaming", '
+                      '"is_gaming": true}}}')
+        doc, motivo, _crudo = _leer_documento_de_packs(_ruta)
+        assert isinstance(doc, dict) and not motivo, (
+            f"CONTROL ROTO: sobre un documento VIVO valido el helper devolvio {doc!r} / "
+            f"{motivo!r}. Un helper que declara ilegible lo legible hace pasar los tres "
+            "controles de ilegibilidad sin mirar nada, que es un detector muerto por la "
+            "puerta de atras."
+        )
+        # Y que ademas reconozca el v2 retirado, que es para lo que existe: un
+        # helper que leyera bien pero no distinguiera no serviria de nada.
+        es_v2, _rasgos = _rasgos_del_esquema_v2_retirado(doc)
+        assert not es_v2, (
+            "CONTROL ROTO: el helper lee un documento vivo y el detector lo declara v2 "
+            "retirado. O la lectura no es la misma que usa la sonda, o el detector se ha "
+            "abierto y mataria el fichero de un usuario legitimo."
+        )
+    finally:
+        _shutil.rmtree(_d, ignore_errors=True)
+
+    # D1: el `null` es JSON valido que NO lanza, y sin la rama explicita el aviso
+    # sale con el motivo vacio. Se afirma sobre el TEXTO, que es lo que se lee.
+    _d = _tempfile.mkdtemp()
+    _ruta = os.path.join(_d, "profiles.json")
+    try:
+        with open(_ruta, "w", encoding="utf-8") as _fh:
+            _fh.write("null")
+        doc, motivo, _crudo = _leer_documento_de_packs(_ruta)
+        assert doc is None, (
+            f"CONTROL ROTO: `json.loads('null')` devuelve None sin lanzar, asi que un "
+            f"documento nulo tiene que salir como ilegible, no como un perfil. Devolvio "
+            f"{doc!r}."
+        )
+        assert "`null`" in motivo, (
+            f"CONTROL ROTO: un `profiles.json` con el literal `null` deja el aviso con el "
+            f"motivo {motivo!r}. Se leeria «Hay un profiles.json local en X **y .** La app "
+            "lo tolera», que es un texto roto que ademas contradice el criterio de mas "
+            "arriba (un documento que no es un mapa no se puede leer como packs)."
+        )
+    finally:
+        _shutil.rmtree(_d, ignore_errors=True)
+
     print("El archivo de docs/archive esta versionado, completo, sin volver a la raiz "
-          "ni a la ruta viva que lee la app.")
+          "ni a la ruta viva que lee la app. Y la ruta viva ILEGIBLE da aviso, no muerte: "
+          "no-UTF8, truncado a mitad de un emoji y sin permiso de lectura los tres se "
+          "responden, y el `null` tambien (F1, D1).")
 
 
 def test_el_punto_de_entrada_declara_el_log_antes_de_los_servicios():
@@ -6443,20 +6611,59 @@ def _plano_de_ejecucion(bloque, dentro_de_clase=False):
         importar como `logging.basicConfig(...)` en la cima.
 
     Ahora se entra en `if`/`try`/`for`/`while`/`with`/`match` a cualquier nivel
-    de bloque, y en el cuerpo de una clase, pero NUNCA en el de una funcion
-    (ahi no se ejecuta nada al importar), ni en el de otra clase anidada, ni en
-    el de una lambda o una comprehension.
+    de bloque, y en el cuerpo de una clase, pero NUNCA en el de una clase
+    anidada (que pertenece a OTRO ambito: se ejecuta al importarla, no al
+    importar este modulo).
+
+    ITERACION 5, D3. Un `def` ya no es una frontera ciega: se RECOGE (para que
+    `_NodosEjecutados` le mire los decoradores y los argumentos por defecto) pero
+    NO se baja a su cuerpo. La distincion no es de estilo, es de lo que ejecuta
+    Python, medido en este interprete (`root.handlers` tras importar, sin
+    ningun `setup_logging`):
+
+        def f(h=logging.basicConfig(force=True)): ...   -> 1  (SE CONFIGURA)
+        class C:
+            def m(self, h=logging.basicConfig(...)): ...  -> 1  (SE CONFIGURA)
+        f = lambda h=logging.basicConfig(force=True): h   -> 1  (SE CONFIGURA)
+        def f(*, h=logging.basicConfig(force=True)): ...  -> 1  (SE CONFIGURA)
+        def f(): logging.basicConfig(force=True)          -> 0  (cuerpo: no)
+
+    O sea: el `def` EVALUA sus decoradores, sus valores por defecto y sus
+    anotaciones en el momento de la definicion, y el cuerpo no. Antes esta sonda
+    se saltaba los tres sin querer (`visit_FunctionDef = pass`), o sea que
+    M16 hacia sitio en un `def` con `basicConfig` en el defecto. Se mantiene la
+    frontera del CUERPO, que es la que S4 y la iteracion 3 ya Tenian medida.
     """
     for stmt in bloque:
-        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-            continue                                  # frontera dura
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            yield stmt                            # el `def` se mira (D3)
+            continue                              # su cuerpo, no
+        if isinstance(stmt, ast.Lambda):
+            continue                              # la lambda no se invoca
         if isinstance(stmt, ast.ClassDef):
             if dentro_de_clase:
-                continue                              # clase anidada: otro ámbito
+                continue                          # clase anidada: otro ámbito
             yield from _plano_de_ejecucion(stmt.body, dentro_de_clase=True)
             continue
         yield stmt
         yield from _plano_de_ejecucion(_bloques_de_ejecucion(stmt), dentro_de_clase)
+
+
+def _usa_anotaciones_lazosas(arbol):
+    """True si el modulo tiene `from __future__ import annotations`.
+
+    Con ese `__future__`, las anotaciones se guardan como TEXTO y no se
+    evaluan; sin el, se evaluan al definir la funcion. Medido: la misma
+    anotacion da `root.handlers == 1` sin el `__future__` y `== 0` con el. Por
+    que se decide mirando el `__future__` y no siempre que no: un
+    `NamedTuple`/`TypedDict` con una anotacion construida a mano es legal, y sin
+    este matiz el detector marcaria documentos que no configuran nada.
+    """
+    for stmt in arbol.body:
+        if isinstance(stmt, ast.ImportFrom) and stmt.module == "__future__":
+            if any(alias.name == "annotations" for alias in stmt.names):
+                return True
+    return False
 
 
 class _NodosEjecutados(ast.NodeVisitor):
@@ -6465,20 +6672,71 @@ class _NodosEjecutados(ast.NodeVisitor):
     `ast.walk` baja al subarbol ENTERO, de modo que una funcion anidada en un
     `if` de nivel de modulo (`if __name__ == '__main__': def main(): ...`)
     hacia que su cuerpo se escaneara como si se ejecutara al importar. Aqui se
-    entra en el cuerpo de una CLASE (que si se ejecuta, S4) pero no en el de una
-    funcion ni en el de una lambda (que no se ejecutan hasta que se llamen).
+    entra en el cuerpo de una CLASE (que si se ejecuta, S4) pero no en el de
+    una funcion ni en el de una lambda (que no se ejecutan hasta que se llamen).
     Una comprehension si se ejecuta, y por eso se recorre: `[logging.
     basicConfig() for _ in (1,)]` configura el root de verdad al importar.
+
+    ITERACION 5, D3. `visit_FunctionDef` ya no es un `pass`: el `def` EVALUA
+    decoradores, valores por defecto y anotaciones al definirse (medido en este
+    interprete: los cuatro casos dan `root.handlers == 1` al importar), asi que
+    se recorren. Lo que NO se toca es el `body`, que es la frontera que S4 y la
+    iteracion 3 ya tenian medida.
+
+    ITERACION 5, D4. Un GENERADOR es perezoso y una comprehension no, y la
+    diferencia es REAL y no academica (medido):
+        g = (logging.basicConfig(force=True) for _ in (1,))  -> 0  (no se ejecuta)
+        [logging.basicConfig(force=True) for _ in (1,)]      -> 1  (se ejecuta)
+    Marcar el generador era un FALSO POSITIVO: el codigo marcado no configura
+    nada al importar, y un detector que marca de mas acaba ignorandose. Se
+    recorre, pero solo su ITERABLE DE ENTRADA (lo unico que se evalua al crear
+    el generador), no su elemento.
     """
 
-    def __init__(self):
+    def __init__(self, anotaciones_lazosas=False):
         self.nodos = []
+        self._anotaciones_lazosas = anotaciones_lazosas
+
+    def _visita_firma(self, nodo):
+        """Decoradores, valores por defecto y anotaciones: lo que se EVALUA al
+        definir la funcion. El `body` no se mira, que es la frontera dura."""
+        for deco in getattr(nodo, "decorator_list", ()):
+            self.visit(deco)
+        args = nodo.args
+        for defecto in list(args.defaults) + [d for d in args.kw_defaults if d]:
+            self.visit(defecto)
+        if self._anotaciones_lazosas:
+            return
+        # Sin `from __future__ import annotations` las anotaciones SI se
+        # evaluan (medido: la misma da handlers==1 sin el y ==0 con el). Con el
+        # `__future__` se guardan como texto y marcarlas seria un falso positivo
+        # sobre documentos legitimos (un `NamedTuple`/`TypedDict` con una
+        # anotacion construida a mano).
+        for grupo in (args.posonlyargs, args.args, args.kwonlyargs):
+            for a in grupo:
+                if a.annotation is not None:
+                    self.visit(a.annotation)
+        if getattr(nodo, "returns", None) is not None:
+            self.visit(nodo.returns)
 
     def visit_FunctionDef(self, nodo):
-        pass
+        self._visita_firma(nodo)
 
     visit_AsyncFunctionDef = visit_FunctionDef
-    visit_Lambda = visit_FunctionDef
+
+    def visit_Lambda(self, nodo):
+        # La lambda NO se invoca al importar, pero sus valores por defecto y su
+        # anotacion SI se evaluan: `lambda h=logging.basicConfig(...): h` deja el
+        # root con un handler (medido). Su `body` no se toca.
+        self._visita_firma(nodo)
+
+    def visit_GeneratorExp(self, nodo):
+        # Solo el iterable de ENTRADA se evalua al crear el generador; el resto
+        # de la cadena y el elemento son perezosos. Medido: el elemento NO
+        # configura nada, pero una lista CON `[logging.basicConfig(...)]` en el
+        # iterable de entrada SI configura, porque la lista se construye entera.
+        if nodo.generators:
+            self.visit(nodo.generators[0].iter)
 
     def generic_visit(self, nodo):
         self.nodos.append(nodo)
@@ -6498,6 +6756,11 @@ def _configuraciones_de_logging(codigo, nombre="<memoria>"):
     ahi, y se invoca desde `__main__` y desde la suite. La version anterior de
     este docstring decia "una funcion **o una clase**", que era un criterio
     FALSO y por eso la documentacion mintio junto al detector (S4).
+
+    ITERACION 5, D3/D4. El `def` se RECOGE (sus decoradores, sus valores por
+    defecto y sus anotaciones se evaluan al definirlo, medido) pero su CUERPO
+    sigue yendo a `dentro`; y un generador perezoso no se marca (su elemento no
+    se ejecuta al importar, medido) mientras que una comprehension si.
     """
     arbol = ast.parse(codigo, filename=nombre)
 
@@ -6531,7 +6794,7 @@ def _configuraciones_de_logging(codigo, nombre="<memoria>"):
         # `if True: def main(): logging.basicConfig(...)` marcaba la linea de
         # la funcion, o sea un falso positivo legal que la iteracion 3 arrastraba.
         for sentencia in bloque:
-            recolector = _NodosEjecutados()
+            recolector = _NodosEjecutados(_usa_anotaciones_lazosas(arbol))
             recolector.visit(sentencia)
             for n in recolector.nodos:
                 if isinstance(n, ast.Call):
@@ -6564,6 +6827,12 @@ def _configuraciones_de_logging(codigo, nombre="<memoria>"):
     fuera, dentro = [], []
     for stmt in arbol.body:
         if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            # D3: el CUERPO de un def de nivel de modulo va a `dentro` (ahi no se
+            # ejecuta nada al importar), pero su FIRMA -decoradores, valores por
+            # defecto y anotaciones- SI se evalua al definirlo y va a `fuera`.
+            # Sin esta linea, `def f(h=logging.basicConfig(force=True))` pasaba
+            # entero: el `def` se iba a `dentro` sin que nadie mirase su firma.
+            fuera += _motivos([stmt])
             dentro += _motivos(_plano_de_ejecucion(stmt.body))
         else:
             fuera += _motivos(_plano_de_ejecucion([stmt]))
@@ -6658,6 +6927,21 @@ def test_config_no_configura_nada_al_importarse():
          "    logger.addHandler(h)"),
         ("basicConfig() DENTRO de una comprehension de modulo (si se ejecuta)",
          "arranque = [logging.basicConfig(force=True) for _ in (1,)]"),
+        # --- D3 (iteracion 5): el `def` EVALUA firma, no cuerpo
+        ("basicConfig() como ARGUMENTO POR DEFECTO de un def de modulo (D3)",
+         "def instalar(h=logging.basicConfig(force=True)):\n    return h"),
+        ("basicConfig() como kwonly por defecto de un def de modulo (D3)",
+         "def instalar(*, h=logging.basicConfig(force=True)):\n    return h"),
+        ("basicConfig() como DEFECTO de un METODO (D3)",
+         "class C:\n    def instalar(self, h=logging.basicConfig(force=True)):\n        return h"),
+        ("basicConfig() como DEFECTO de una LAMBDA de modulo (D3)",
+         "instalar = lambda h=logging.basicConfig(force=True): h"),
+        ("basicConfig() como ANOTACION de un def de modulo (D3)",
+         "import logging\ndef instalar(h: logging.basicConfig(force=True)):\n    pass"),
+        # --- D4 (iteracion 5): el ITERABLE DE ENTRADA del generador SI se
+        # evalua al crearlo (la lista se construye entera). Medido: handlers==1.
+        ("basicConfig() en el ITERABLE DE ENTRADA de un generador (si se ejecuta)",
+         "arranque = (x for x in [logging.basicConfig(force=True)])"),
     )
     for etiqueta, codigo in ILEGALES:
         halladas, _ = _configuraciones_de_logging(codigo, etiqueta)
@@ -6687,6 +6971,24 @@ def test_config_no_configura_nada_al_importarse():
          "class T:\n    def addHandler(self, h):\n        pass\nT().addHandler(1)"),
         ("basicConfig() dentro del cuerpo de una lambda (no se ejecuta al importar)",
          "instala = lambda: logging.basicConfig(force=True)"),
+        # --- D4 (iteracion 5): el ELEMENTO de un generador NO se ejecuta al
+        # importarlo, a diferencia de una comprehension. Medido: 0 vs 1 handler.
+        # Sin esta fila, un detector que tratara el generador como la
+        # comprehension marcaria codigo que no configura nada.
+        ("basicConfig() en el ELEMENTO de un generador perezoso (D4, NO se ejecuta)",
+         "arranque = (logging.basicConfig(force=True) for _ in (1,))"),
+        ("basicConfig() en un generador anidado en una clase (D4, NO se ejecuta)",
+         "class Instala:\n    g = (logging.basicConfig(force=True) for _ in (1,))"),
+        # --- D3 (iteracion 5): con `from __future__ import annotations` las
+        # anotaciones se guardan como TEXTO y no se evaluan. Medido: 0 handlers.
+        ("anotacion con basicConfig() PERO con __future__ annotations (D3, no se evalua)",
+         "from __future__ import annotations\nimport logging\n"
+         "def instalar(h: logging.basicConfig(force=True)):\n    pass"),
+        # D3: el CUERPO de un def sigue sin ejecutarse al importar, que es la
+        # frontera que ya estaba medida. Si esta fila se marcara, el detector
+        # habria demasiado ancho y no habria forma de configurar el log.
+        ("basicConfig() en el CUERPO de un def de modulo (D3, el cuerpo no se ejecuta)",
+         "def instalar():\n    logging.basicConfig(force=True)"),
     )
     for etiqueta, codigo in LEGALES:
         halladas, _ = _configuraciones_de_logging(codigo, etiqueta)
@@ -6697,9 +6999,16 @@ def test_config_no_configura_nada_al_importarse():
             "acaba ignorandose (matar M16b/M16c/M16d no puede ser facil)"
         )
 
-    print("config.py no configura el logging al importarse (detector probado en las dos "
-          "direcciones: 14 ilegales marcados, 10 legales sin marcar; S3: el logger asignado "
-          "dentro de un if/try/for cuenta, S4: el cuerpo de una clase NO es un refugio).")
+    # El recuento se DERIVA de las tablas, no se escribe a mano: hacia falta
+    # actualizarlo cada vez que se anadia una fila y era un numero que mentia
+    # en cuanto dejaba de cuadrar (doc. D2: si esto dice 20 y son 19, la sonda
+    # de la doc va a mentir en silencio).
+    print(f"config.py no configura el logging al importarse (detector probado en las dos "
+          f"direcciones: {len(ILEGALES)} ilegales marcados, {len(LEGALES)} legales sin "
+          "marcar; S3: el logger asignado dentro de un if/try/for cuenta; S4: el cuerpo de "
+          "una clase NO es un refugio; D3: la FIRMA de un def (decoradores, defaults, "
+          "anotaciones) se evalua al importarlo pero su cuerpo no; D4: un generador perezoso "
+          "no se ejecuta al importarlo y una comprehension si).")
 
 
 if __name__ == "__main__":

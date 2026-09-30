@@ -228,10 +228,31 @@
              clase cuenta como `fuera`, y lo que hay dentro de un **método** sigue contando
              como `dentro`.
           Las dos direcciones están fijadas en las tablas `ILEGALES`/`LEGALES` de la sonda
-          (**14 ilegales, 10 legales**), incluidas las que fijan justo lo contrario: método
-          de clase = legal, función anidada en un `if` de módulo = legal, `lambda` = legal
-          (su cuerpo no corre al importar) y comprehension = ilegal (su elemento **sí** se
-          ejecuta al importar).
+          (el recuento se **deriva** de `len()` de las tablas, no está escrito a mano: estaba
+          en «14 ilegales, 10 legales» y mentía en cuanto se añadía una fila), incluidas
+          las que fijan justo lo contrario: método de clase = legal, función anidada en un
+          `if` de módulo = legal, `lambda` = legal (su cuerpo no corre al importar) y
+          comprehension = ilegal (su elemento **sí** se ejecuta al importar).
+        - **Iteración 5 del ciclo 21, D3 y D4 (el detector tenía dos criterios que no eran
+          los que decía; ambos medidos contra el intérprete, no supuestos).**
+          1. **D3 — un `def` se saltaba su propia firma.** El `visit_FunctionDef` era un `pass`
+             que se comía los **argumentos por defecto** y los **decoradores**, que **sí se
+             evalúan al definir la función** (medido: `def f(h=logging.basicConfig(force=True))`
+             deja el root con 1 handler al importar; el cuerpo del mismo `def` deja 0). O sea
+             que M16 hacía sitio en un `def` con `basicConfig` en el defecto. Ahora se recoge
+             la **firma** —decoradores, `defaults`, `kw_defaults` y anotaciones— y el
+             **cuerpo** sigue fuera, que es la frontera que S4 ya tenía medida. Las
+             anotaciones se saltan cuando el módulo trae `from __future__ import annotations`,
+             porque entonces se guardan como texto: marcarlas sería un falso positivo sobre
+             documentos legítimos (`NamedTuple`, `TypedDict`).
+          2. **D4 — un generador perezoso no es una comprehension.** El elemento de un
+             generador **no** se ejecuta al importar (`0` handlers) mientras que el de una
+             comprehension sí (`1`). No había `visit_GeneratorExp`, así que el generador se
+             recorría como cualquier otra cosa y su elemento se marcaba: un **falso
+             positivo** sobre código que no configura nada. Ahora se recorre **solo el
+             iterable de entrada** del generador, que es lo único que se evalúa al crearlo
+             (una lista con `basicConfig` **dentro** de ese iterable sí dispara, porque la
+             lista se construye entera, y esa fila se queda como ilegal).
    - **Lo que este §15 **no** cubre, y por qué no es una tarea pendiente.** Un `.bat` o un
      `.spec` nuevo que declare una versión con un token que no sea `ver`/`version` escaparía al
      escáner de `test_la_consulta_de_version_no_puede_desincronizarse` (que exige literal
@@ -249,3 +270,19 @@
      Copiar ahí el `profiles.json` v2 archivado dejaba la suite en verde **y** no es inocuo:
      `load()` tiene rama legacy, así que la app lo abriría de verdad, con las claves que
      `models.py` no define. La comprobación es por **contenido**, no por inexistencia.
+     - **Iteración 5, F1: la rama «ilegible» era código muerto.** El `open()` y el `read()`
+       estaban **fuera** del `try`, así que el `except (OSError, UnicodeDecodeError)` **no
+       podía ejecutarse nunca**: la promesa de la iteración 4 («un `profiles.json` ilegible da
+       aviso, no muerte») era falsa. Medido: no-UTF8, truncado a mitad de un emoji de 4 B y
+       sin permiso de lectura tumbaban la suite con un traceback. **El orden de las ramas es
+       la mitad del arreglo**: `UnicodeDecodeError` es subclase de `ValueError`, así que mover
+       el `open()` sin invertir el orden deja la rama muerta para la decodificación. Y
+       `json.loads("null")` devuelve `None` **sin lanzar**, que era el cuarto hueco (motivo
+       vacío en el aviso). Ahora hay un control que **escribe** los tres ficheros ilegibles y
+       exige el motivo por su **texto**, más un control positivo sobre un documento vivo.
+     - **Por qué el detector del esquema v2 solo mira la raíz `profiles`, y por qué es correcto.**
+       No esnazandilla: la rama legacy de `pack_service.py:403/420` **solo se engancha ahí**
+       (`raw_data['profiles']`, con `k == "__system_gaming__"`). Un `profiles.json` con un pack
+       de usuario que declare `factory` **y** `kill_low_chat` en la raíz viva `packs` **no**
+       resucita el esquema retirado, porque `load()` no mira esa raíz para detectarlo. El riesgo
+       residual es más estrecho de lo que parecía y **el detector no se cambia** por ello.
