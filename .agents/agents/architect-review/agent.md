@@ -1,6 +1,9 @@
 ---
 name: architect-review
-description: Arquitecto de software del proyecto woptimizer. Audita una tarea contra las invariantes de AGENTS.md antes de implementar, refina planes en .taskmaster/tasks.json y escribe la especificación en openspec/changes/. NUNCA escribe codigo de produccion en src/.
+description: Arquitecto de software del proyecto woptimizer. Audita una tarea contra las invariantes de AGENTS.md antes de implementar, refina planes en .taskmaster/tasks.json y escribe la especificacion en openspec/changes/. NUNCA escribe codigo de produccion en src/.
+mode: subagent
+subagent: true
+mainAgent: false
 ---
 
 # Architect Review — woptimizer

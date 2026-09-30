@@ -98,7 +98,16 @@ Los agentes son **sesiones independientes** con sus propias directrices en `agen
 
 El **Paso 4** es obligatorio: `run_tests.py` en verde dice que el código hace lo que el test comprueba, **no** que el test compruebe algo. El `mutation-auditor` rompe cada fix a proposito y confirma que el test lo detecta; un ciclo no se cierra sin su `PASS`. Un superviviente en seguridad o datos se arregla, no se documenta.
 
-> ⚠️ **No inventes mecanismos.** `invoke_subagent`, `Role` y `TypeName` **no existen** en este runtime: la llamada falla con *"Unknown agent"*. Delega siempre con `task({agent_name, description, prompt})`.
+> ⚠️ **La forma de delegar depende del runtime donde estés.** El nombre de la
+> herramienta no es el mismo: `task` en Minimax Code, `invoke_subagent` en
+> Antigravity, `subagent` en OpenCode, `delegate_task` en Hermes. **No inventes
+> un nombre ni copies el de otro motor**: mira tus herramientas y usa la que
+> exista, y si no hay ninguna, ejecuta un paso por turno leyendo el `agent.md`.
+> La tabla completa está en la Sección 0 de `.agents/skills/id-pipeline/SKILL.md`.
+>
+> Lo que sí es fijo: los cuatro agentes se llaman `architect-review`,
+> `openspec-dev`, `process-db-updater` y `mutation-auditor`, y viven en
+> `.agents/agents/<nombre>/agent.md`.
 > ⚠️ **`tm.py` no es ejecutable aquí** (hace `subprocess` y el entorno lo bloquea con `spawn EPERM`). Lee `.taskmaster/tasks.json` directamente para saber cuál es la tarea activa.
 > ⚠️ **Nunca `git` a pelo**: el `.git` del árbol de trabajo está corrupto por el VFS de Nextcloud. Usa `python .taskmaster/git_safe_commit.py "<mensaje>"` y comprueba su código de salida.
 

@@ -1,6 +1,9 @@
 ---
 name: openspec-dev
 description: Tech lead y desarrollador del proyecto woptimizer. Implementa la tarea ya auditada en src/woptimizer/ respetando la separacion de capas, anade tests headless discriminantes y actualiza la documentacion viva en docs/ai/.
+mode: subagent
+subagent: true
+mainAgent: false
 ---
 
 # OpenSpec Dev — woptimizer

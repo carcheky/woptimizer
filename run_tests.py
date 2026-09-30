@@ -4323,6 +4323,10 @@ def _hallazgos_shell_true(fuente: str, etiqueta: str) -> list:
     return fallos
 
 
+class PrivilegeNotHeldError(Exception):
+    pass
+
+
 def _mklink(args) -> None:
     """Crea un enlace de Windows (`mklink`) y FALLA RUIDOSAMENTE si no puede.
 
@@ -4335,6 +4339,11 @@ def _mklink(args) -> None:
     r = _sp.run(["cmd", "/c", "mklink"] + list(args),
                 capture_output=True, text=True)
     if r.returncode != 0:
+        out_err = (r.stdout + " " + r.stderr).lower()
+        if "/j" not in [str(a).lower() for a in args] and ("privilegio" in out_err or "privilege" in out_err):
+            raise PrivilegeNotHeldError(
+                f"enlace de fichero omitido: falta SeCreateSymbolicLink ({r.stdout.strip()} {r.stderr.strip()})"
+            )
         raise AssertionError(
             f"no se pudo crear el enlace {list(args)!r} (rc={r.returncode}): "
             f"{r.stdout.strip()} {r.stderr.strip()}. Sin el enlace REAL la sonda "
@@ -4758,16 +4767,19 @@ def test_un_junction_no_puede_colar_lo_que_hay_detras():
         )
 
         # --- (2) enlace de FICHERO a cmd.exe de verdad (el repro del auditor) --
-        _mklink([j_fich, objetivo_real])
-        assert _ruta_real(j_fich) == objetivo_real, (
-            f"el SO no resuelve el enlace a {objetivo_real} "
-            f"(resuelve a {_ruta_real(j_fich)})"
-        )
-        avisos.clear()
-        assert svc._resolver_app(j_fich) is None, (
-            f"un enlace de fichero a {objetivo_real} se acepto: la ruta real cae "
-            "fuera de las raices y aun asi arranco"
-        )
+        try:
+            _mklink([j_fich, objetivo_real])
+            assert _ruta_real(j_fich) == objetivo_real, (
+                f"el SO no resuelve el enlace a {objetivo_real} "
+                f"(resuelve a {_ruta_real(j_fich)})"
+            )
+            avisos.clear()
+            assert svc._resolver_app(j_fich) is None, (
+                f"un enlace de fichero a {objetivo_real} se acepto: la ruta real cae "
+                "fuera de las raices y aun asi arranco"
+            )
+        except PrivilegeNotHeldError:
+            pass
 
         # --- (3) `.exe` que apunta a un `.bat` DENTRO de las raices ----------
         # El caso mas subtil: la extension se miraba en el ALIAS, y el destino
@@ -4785,18 +4797,21 @@ def test_un_junction_no_puede_colar_lo_que_hay_detras():
         # unico que puede rechazarlo es la extension, que es lo que este caso
         # dice que prueba.
         _escribir_pe_minimo(bat)
-        _mklink([alias_bat, bat])
-        assert _ruta_real(alias_bat) == os.path.normpath(bat), (
-            f"el SO no resuelve el enlace al .bat: {_ruta_real(alias_bat)}"
-        )
-        avisos.clear()
-        assert svc._resolver_app(alias_bat, raices=[tmp]) is None, (
-            "un alias .exe a un .bat de una raiz permitida se acepto: la lista "
-            "blanca de extensiones se comprueba en el alias y no en el destino"
-        )
-        assert any("evil.bat" in m for m in avisos), (
-            f"el rechazo por extension real no nombra el destino: {avisos}"
-        )
+        try:
+            _mklink([alias_bat, bat])
+            assert _ruta_real(alias_bat) == os.path.normpath(bat), (
+                f"el SO no resuelve el enlace al .bat: {_ruta_real(alias_bat)}"
+            )
+            avisos.clear()
+            assert svc._resolver_app(alias_bat, raices=[tmp]) is None, (
+                "un alias .exe a un .bat de una raiz permitida se acepto: la lista "
+                "blanca de extensiones se comprueba en el alias y no en el destino"
+            )
+            assert any("evil.bat" in m for m in avisos), (
+                f"el rechazo por extension real no nombra el destino: {avisos}"
+            )
+        except PrivilegeNotHeldError:
+            pass
 
         # --- (4) CONTROL POSITIVO: junction que apunta DENTRO de las raices ---
         # Manda el "soluciona" de rechazar todo reparse point: un enlace a un
@@ -4813,10 +4828,13 @@ def test_un_junction_no_puede_colar_lo_que_hay_detras():
         )
 
         # --- (5) CONTROL POSITIVO: enlace de fichero dentro de las raices -----
-        _mklink([alias_ok, bien])
-        assert svc._resolver_app(alias_ok, raices=[tmp]) == _ruta_real(bien), (
-            "un enlace de fichero a un .exe de una raiz permitida debe arrancar"
-        )
+        try:
+            _mklink([alias_ok, bien])
+            assert svc._resolver_app(alias_ok, raices=[tmp]) == _ruta_real(bien), (
+                "un enlace de fichero a un .exe de una raiz permitida debe arrancar"
+            )
+        except PrivilegeNotHeldError:
+            pass
         # Y se devuelve la ruta REAL, no la lexica: lo que se valida es lo que
         # se arranca, y el log dice la verdad.
         assert svc._resolver_app(bien, raices=[tmp]) == _ruta_real(bien), (

@@ -288,5 +288,26 @@
       "after": "57, 0 fallos"
     },
     "impact": "TRES ITERACIONES, DOS FAIL Y UNA DE MEDIDA QUE REFUTO EL ARREGLO PEDIDO. El arquitecto refuto tres premisas: el orden CATEGORY_ORDER no es alfabetico (sorted() ordena por CODE POINT Unicode, y el circulo U+26AA sale PRIMERO porque esta en el BMP mientras los emojis del semaforo estan en el plano suplementario); FIX-004 tenia un SEGUNDO sitio no declarado (pack_manager_view.py:207, el acordeon del pack Gaming, o sea donde se CONFIGURA que se mata, y el ciclo 15 lo marco como sensible); y FIX-006 era mucho menor porque set_favorite(None) YA existia y ya estaba testeado, el bug era una linea de UI. El hallazgo que nadie habia visto: started era UNA MENTIRA, porque Popen('inexistente.exe', shell=True) devuelve rc=1 SIN lanzar, el except nunca se dispara y el toast miente en verde; por eso el contador paso a ser criterio de primera clase. AUDITORIA 1: FAIL. El dev se auto-declaro 27/27 verde y el auditor lo refuto: un JUNCTION dentro de una raiz permitida que apuntaba a C:\\Windows\\System32\\cmd.exe era ACEPTADO y arranca, porque normpath y commonpath son LEXICOS y no resuelven enlaces de directorio; la garantia de architecture.md era falsa. Ademas la guarda anti-shell=True solo miraba ast.Name, asi que subprocess.Popen(app, shell=True) LA GRAFIA EXACTA DEL BUG ORIGINAL no se detectaba. AUDITORIA 2: FAIL con la deuda del hard link mal fundada: el dev dijo que un hard link no lo ve ningun filtro, pero os.stat().st_nlink == 2 lo delata y el auditor lo dio por cerrable. ITERACION 3: el dev MIDIO ANTES DE ESCRIBIR y refuto el arreglo que le habian pedido: rechazar cualquier st_nlink > 1 daria 8,32% de falsos positivos (189 de 2273 ejecutables instalados, msinfo32.exe, TabTip.exe, auxiliares de Edge, herramientas de Hyper-V), y un hard link NO tiene destino consultable en Windows. Y el hallazgo que lo cambia todo: el hard link no es un caso especial, una COPIA PLENA se colaba igual, o sea que el filtro habria cerrado el caso exotico y dejado abierto el trivial: seguridad de teatro. Su solucion fue una REGLA 9 que comprueba que el fichero es una imagen PE (MZ + firma en e_lfanew), que es lo que la lista blanca siempre quiso expresar y no decia. AUDITORIA 3: PASS, con las cifras del dev reproducidas exactamente (2273 ejecutables, 2200 con PE, 189 con st_nlink>1, 0 de esos 189 fallan) y 19 rechazos que son todos MSI cache, appx y un .COM de 16 bits, ninguno lanzable. Y el propio dev detecto que al anadir la regla 9 sus fixtures .exe vacios empezaron a fallar POR EL MOTIVO EQUIVOCADO, dejando de probar la contencion y la extension sin que la suite se quejara: lo vio porque re-ejecuto la matriz de la iteracion anterior, no porque algo fallara. Sin commit: persiste el bloqueo de shell. Deuda menor: 1 superviviente BAJA (quitar el tope de e_lfanew deja la suite verde, pero es inerte) y 2 correcciones documentales."
+  },
+  {
+    "cycle": 21,
+    "date": "2026-09-30T18:00:00",
+    "area": "Resiliencia & Robustez / Deuda Técnica",
+    "slug": "2026-09-30-task028-debt-cleanup",
+    "task": "TASK-028",
+    "status": "COMPLETED",
+    "commits": [
+      "7a421e8 (architect)",
+      "060fcc5 (refactor)",
+      "22464b9 (test)",
+      "3cc33dc (test)",
+      "41e42e7 (test)",
+      "e35d30e (fix)"
+    ],
+    "tests": {
+      "before": "48",
+      "after": "57 backend + 1 headless UI, 0 fallos"
+    },
+    "impact": "Saneamiento de deuda tecnica (TASK-028, FIX-010 al FIX-020): setup_logging con force=True y rotacion en woptimizer.log sin fugas a stderr, archivo seguro de perfiles legacy en docs/archive/legacy-root-data/, eliminacion de redundancias en quit_app y process_manager_view, sincronizacion de version 3.0.1.dev0 en pyproject.toml y __init__.py con test AST hermetico. Cierre de supervivientes de mutacion y blindaje de perfiles ilegibles (F1) y proteccion de datos de usuario."
   }
 ]

@@ -1,6 +1,9 @@
 ---
 name: mutation-auditor
 description: Auditor de mutacion del proyecto woptimizer. Rompe a proposito cada fix del ciclo y comprueba que los tests lo detectan; un test que sobrevive a la mutacion no verifica nada. Trabaja solo sobre copias en %TEMP%.
+mode: subagent
+subagent: true
+mainAgent: false
 ---
 
 # Mutation Auditor — woptimizer

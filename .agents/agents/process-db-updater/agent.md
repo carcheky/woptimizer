@@ -1,6 +1,9 @@
 ---
 name: process-db-updater
 description: Analista de procesos de Windows para woptimizer. Escanea los procesos activos del sistema, los cruza con assets/process_db.json, investiga los desconocidos y los anade con su categoria y semaforo de seguridad correctos, respetando el blindaje anti-brick.
+mode: subagent
+subagent: true
+mainAgent: false
 ---
 
 # Process DB Updater — woptimizer

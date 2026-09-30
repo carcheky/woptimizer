@@ -1,3 +1,25 @@
+## CYCLE-021 - 2026-09-30
+
+**Resiliencia & Deuda Técnica** — `TASK-028` (FIX-010 al FIX-020)
+
+### Corregido
+- **Los avisos del programa ya no se escapan a la consola.** Antes, importar la configuración configuraba el registro de mensajes como efecto secundario y llenaba el registro de avisos duplicados. Ahora se configura de forma explícita y segura con rotación de archivos (`woptimizer.log`), evitando que el archivo crezca sin límite.
+- **La versión del programa está sincronizada en todos los sitios.** Se unificó la versión a `3.0.1.dev0` entre el empaquetado (`pyproject.toml`), el código fuente (`__init__.py`) y el gestor de tareas. Un nuevo test hermético comprueba que nunca vuelvan a desfasarse sin necesidad de ejecutar el programa.
+- **La app ya no se cuelga si el archivo de configuración no se puede leer.** Si un archivo de perfiles está bloqueado por permisos o truncado a mitad de un carácter especial, la app ahora lo gestiona adecuadamente, avisa al usuario y recurre a la copia de seguridad `.bak` en lugar de fallar de forma silenciosa.
+- **Eliminadas redundancias y variables muertas.** Se limpió código innecesario en el cierre de la aplicación y en el gestor de procesos (`is_expanded`), reduciendo deuda técnica.
+
+### Cambiado
+- **Los perfiles antiguos de la versión 2 se han archivado de forma segura.** El archivo de perfiles legacy se trasladó a `docs/archive/legacy-root-data/` junto con su documentación histórica, dejando la raíz del proyecto limpia sin perder datos del usuario.
+
+### Añadido
+- **8 pruebas nuevas en la suite.** **56 → 57 tests backend + 1 test headless de UI**, todos en verde.
+- Verificación exhaustiva de 16 mutaciones con el `mutation-auditor` para asegurar que ningún fix sobreviva a regresiones.
+
+### Impacto
+Se cerró un gran bloque de saneamiento acumulado desde la migración a la v3. La auditoría demostró que 5 de las premisas iniciales sobre la deuda técnica eran inexactas (por ejemplo, `PROCESS_LIST_FILE` aún era necesaria para tests de compatibilidad y `procesos.csv` ya había sido migrado). El proyecto queda con su deuda técnica resuelta, registro rotativo limpio y suite de tests reforzada.
+
+---
+
 ## CYCLE-020 - 2026-09-30
 
 **Seguridad & Usabilidad** — `TASK-027` (FIX-003, FIX-004, FIX-006)
@@ -43,8 +65,9 @@ Y la revisión de los tests encontró algo peor que los fallos de la primera tan
 ## Resumen
 
 | Ciclo | Fecha | Área | Qué pasó |
-| [#20](#cycle-020--2026-09-30) | 2026-09-30 | Seguridad | ⚡ Arrancar apps ya no es ejecutar un comando, y el orden de categorías salía al revés. Segunda revisión: un «atajo» (junction) colaba `cmd.exe`. 56 tests. |
+| [#21](#cycle-021--2026-09-30) | 2026-09-30 | Deuda Técnica | 🧹 Saneamiento de logging, sincronización de versión, archivo de perfiles legacy y cierre de mutaciones. 57 tests. |
 |:---:|---|---|---|
+| [#20](#cycle-020--2026-09-30) | 2026-09-30 | Seguridad | ⚡ Arrancar apps ya no es ejecutar un comando, y el orden de categorías salía al revés. Segunda revisión: un «atajo» (junction) colaba `cmd.exe`. 56 tests. |
 | [#19](#cycle-019--2026-09-30) | 2026-09-30 | Resiliencia | 🛡️ La copia de seguridad dejaba de estar a salvo al arrancar la app. Cerrado. |
 | [#18](#cycle-018--2026-09-30) | 2026-09-30 | Resiliencia | 🧬 Los 3 tests que pasaban con el bug puesto, cerrados y verificados. 36 tests. |
 | [#17](#cycle-017--2026-09-30) | 2026-09-30 | Pipeline | 🧬 Nuevo paso: alguien rompe el código a propósito para ver si los tests se enteran. |
@@ -65,7 +88,7 @@ Y la revisión de los tests encontró algo peor que los fallos de la primera tan
 | [#2](#cycle-002--2026-09-29) | 2026-09-29 | Resiliencia | System tray (`pystray`), backups y logging continuo. |
 | [#1](#cycle-001--2026-09-28) | 2026-09-28 | Arquitectura | Rediseño v3 completo: 3 ventanas, `psutil`, `pydantic v2`. |
 
-**Balance**: 20 ciclos · 8 bugs críticos corregidos · 2 vectores de brick cerrados · 52 tests en verde.
+**Balance**: 21 ciclos · 8 bugs críticos corregidos · 2 vectores de brick cerrados · 57 tests en verde.
 
 ---
 

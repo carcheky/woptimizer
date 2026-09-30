@@ -10,6 +10,40 @@ reconoce: Markdown con frontmatter YAML de `name` + `description`.
 | `mutation-auditor` | Paso 4, auditar. Rompe el código a propósito. | ¿El test se enteraría si el código estuviera mal? |
 | `process-db-updater` | Área 3, datos. Escanea procesos y alimenta `process_db.json`. | ¿Qué procesos hay y cuáles son seguros de cerrar? |
 
+## El frontmatter, y por qué tiene tres claves y no una
+
+Cada `agent.md` declara:
+
+```yaml
+---
+name: mutation-auditor
+description: ...
+mode: subagent        # OpenCode: sin esto NO se puede lanzar como subagente
+subagent: true        # Antigravity: lo exige para ser delegable
+mainAgent: false      # no es un agente principal, es un rol del bucle
+---
+```
+
+`name` + `description` es lo que todo el mundo acepta. Las otras dos **no son
+capricho**: son el requisito literal de otro runtime, y sin ellas el agente
+existe pero **no se puede lanzar**.
+
+| Runtime | Herramienta para delegar | Dónde los lee | Clave que exige |
+|---|---|---|---|
+| Minimax Code | `task` | `~/.minimax/agents/<n>/` | `name`, `description` |
+| Antigravity | `invoke_subagent` | `.agents/agents/<n>/` | `name`, `description` |
+| OpenCode | `subagent`, o mención `@<n>` | `.opencode/agents/<n>.md` | `description` + `mode: subagent` |
+| Hermes | `delegate_task` | `config.yaml`, perfil | `system_prompt_file` |
+
+La intersección cabe en un solo fichero, que es la razón de que exista esta
+tabla: **cuatro runtimes, un archivo**. Si un runtime futuro se queja de una
+clave, se borra esa línea y el resto sigue funcionando.
+
+Ojo con la trampa real: **si a un agente le falta `mode: subagent`, OpenCode lo
+carga sin error y simplemente no aparece como lanzable.** Falla en silencio, que
+es la peor forma de fallar. Por eso la clave está puesta, aunque hoy nadie en
+este repo use OpenCode.
+
 ## Dónde vive cada copia, y por qué hay dos
 
 ```
@@ -34,23 +68,20 @@ python .taskmaster/sync_agents.py           # espejo repo -> global
 **Edita siempre la copia del repo.** Si editas el espejo global, el cambio se
 pierde en el siguiente `sync`.
 
-## Claves de frontmatter disponibles en Antigravity
+## Claves de frontmatter que siguen sin usarse
 
-Los ficheros usan solo `name` y `description`, que es lo obligatorio y lo que
-comparten ambos runtimes. Antigravity además acepta, opcionalmente:
+Además de las cinco de la tabla de arriba, Antigravity acepta estas. **No están
+puestas a propósito**, porque este repo no tiene forma de probarlas y un
+frontmatter mal cargado puede impedir que el agente aparezca, sin error visible:
 
-| Clave | Por defecto | Para qué sirve |
+| Clave | Para qué sirve | Por qué no está |
 |---|---|---|
-| `tools` | `[]` | Lista blanca de herramientas del subagente. |
-| `model` | `inherit` | Palier de modelo al invocarlo. |
-| `commandExecutionPolicy` | `sandbox` | Política de ejecución de shell. |
-| `mcpServers` | `[]` | Servidores MCP del subagente. |
-| `mainAgent` | `true` | Si puede seleccionarse como agente principal. |
-| `subagent` | `true` | Si el agente principal puede delegar en él. |
+| `tools` | Lista blanca de herramientas del subagente. | Podría recortar una herramienta que hoy sí necesita. |
+| `model` | Palier de modelo al invocarlo. | La intensidad la decide el orquestador, no el fichero. |
+| `commandExecutionPolicy` | Política de ejecución de shell. | `openspec-dev` y `mutation-auditor` **necesitan** ejecutar; un `sandbox` los dejaría ciegos. |
+| `mcpServers` | Servidores MCP del subagente. | Este repo no los usa. |
 
-**No se han añadido a proposito.** Este repo no tiene forma de probarlas, y un
-frontmatter mal puesto puede impedir que el agente cargue sin dar ningún error
-visible. Si añades alguna, pruébala en Antigravity antes de commitearla.
+Si añades alguna, pruébala en el runtime que la necesita antes de commitearla.
 
 ## Portabilidad
 

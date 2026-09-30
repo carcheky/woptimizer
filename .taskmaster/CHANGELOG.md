@@ -1,3 +1,40 @@
+## [CYCLE-021] 2026-09-30 18:00 — task028-debt-cleanup
+**Área**: Resiliencia & Robustez / Deuda Técnica
+**Change**: openspec/changes/2026-09-30-task028-debt-cleanup/
+**Estado**: COMPLETED
+**Models**:
+- Paso 1 (Buscar): inherit
+- Paso 2 (Planear): inherit
+- Paso 3 (Ejecutar): inherit
+- Paso 4 (Auditar tests): inherit → VERDICT: PASS
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| FIX-010 (Logging) | `setup_logging` sin `force=True` | killed | `handlers previos no se limpian y avisos van a stderr` |
+| FIX-010 (Destino) | log a stderr en lugar de archivo | killed | `test_logging_va_a_fichero_y_no_a_stderr detectó ausencia de handler de archivo` |
+| FIX-018 (Versión) | desincronizar pyproject vs __init__ | killed | `test_la_consulta_de_version_no_puede_desincronizarse falló por discrepancia de strings` |
+| F1 (Ilegible) | omitir captura de encoding roto | killed | `control de alcanzabilidad falló al verificar recuperación de backup` |
+| Legacy root | omitir mover profiles.json v2 | killed | `test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz falló` |
+
+### What
+- Saneamiento de deuda técnica y consolidación de la suite: FIX-010 a FIX-020.
+- `setup_logging` con `force=True` y rotación de log (`woptimizer.log`, max 1MB, 3 backups) invocado en `__main__` y `run_tests.py`.
+- Archivo seguro de perfiles legacy v2 en `docs/archive/legacy-root-data/profiles.json` con su README, sin tocar `test_profiles_task1.json`.
+- Eliminación de redundancias en `quit_app()` (`import sys`) y `process_manager_view.py` (`is_expanded = True`).
+- Sincronización de versión `3.0.1.dev0` entre `pyproject.toml`, `__init__.py` y `tasks.json` con test AST hermético.
+- Cierre de supervivientes de mutación y blindaje de perfiles ilegibles (F1) y protección de datos de usuario.
+
+### Outcome
+- Commits: `7a421e8`, `060fcc5`, `22464b9`, `3cc33dc`, `41e42e7`, `e35d30e`
+- Tests: 57 backend + 1 headless UI PASS (0 fallos).
+- Docs: `docs/ai/architecture.md`, `docs/ai/data-models.md`, `docs/ai/testing-guide.md` actualizados.
+
+### Impact
+Se liquidó la deuda técnica acumulada de la migración v2->v3. El log no crece descontrolado y no ensucia la consola, la versión está unificada y no puede desincronizarse, y la configuración legacy está documentada y archivada.
+
+---
+
 ## [CYCLE-020] 2026-09-30 - 2026-09-30-ui-hardening
 **Área**: Seguridad & Usabilidad
 **Change**: openspec/changes/2026-09-30-ui-hardening/

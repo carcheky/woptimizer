@@ -30,6 +30,66 @@ flowchart LR
 
 ---
 
+## 0. ⚙️ Antes de nada: cómo delegar en subagentes EN ESTE RUNTIME
+
+> **Esta skill es agnóstica de runtime.** Escribes las mismas cuatro personas
+> en el mismo orden con el mismo contexto, pero **la herramienta para lanzarlas
+> cambia según dónde estés ejecutando**, y cambia también el sitio donde se
+> declaran. No des por supuesto ninguna: **detecta la tuya antes de empezar.**
+
+### Qué se mantiene fijo y qué no
+
+| | Constante | Cambia por runtime |
+|---|---|---|
+| **Los 4 roles** | `architect-review`, `openspec-dev`, `process-db-updater`, `mutation-auditor` | — |
+| **El bucle** | 4 pasos, veredicto del Paso 4 decide, no-detención | — |
+| **Los contratos** | cada agente es una sesión aislada sin contexto heredado | — |
+| **La herramienta** | — | el NOMBRE de la llamada |
+| **La declaración** | — | la CARPETA y el frontmatter |
+| **Elegir modelo** | — | el nombre de la herramienta de catálogo |
+
+### Cómo detectar la tuya
+
+Mira tus herramientas disponibles y aplica la primera fila que encaje:
+
+| Si tu runtime tiene… | Delegar es… | Dónde lee los agentes |
+|---|---|---|
+| `task(agent_name=…)` | `task` | `~/.minimax/agents/<n>/agent.md` (Minimax Code) |
+| `invoke_subagent` | `invoke_subagent` | `.agents/agents/<n>/agent.md` (Antigravity) |
+| `subagent` o mención `@<nombre>` | `subagent` | `.opencode/agents/<n>.md` (OpenCode) |
+| `delegate_task` | `delegate_task` | `config.yaml`, perfil de agente (Hermes) |
+| **Nada de lo anterior** | ⚠️ ver *Fallback* más abajo | — |
+
+**Y si no reconoces el runtime**, no improvises el nombre: busca en tu lista de
+herramientas la que su descripción mencione *subagent*, *agent* o *delegate* y
+**léete su esquema** antes de llamar. La firma casi siempre lleva el nombre del
+agente y un prompt; lo que cambia es cómo se llama a cada campo.
+
+### Fallback cuando NO hay subagentes
+
+Si tu runtime no puede delegar, **no simules el bucle entero en tu propia
+sesión**: perderías el aislamiento de contexto, que es lo único que hace útil al
+Paso 4 (un auditor que lee el código sin el sesgo de quien lo escribió).
+
+En su lugar, ejecuta **un solo paso por turno**, leyendo el `agent.md` de `.agents/agents/<n>/agent.md` como si fueras el orquestador y aplicando tú sus directrices. Sigue valiendo todo lo demás: el bucle, el changelog doble, el ancla en `rd_journal.json`. Pierdes el paralelismo y la separación, no el método.
+
+### Dónde viven los agentes
+
+```
+.agents/agents/<n>/agent.md   -> fuente de verdad. Versionada, y la leen Antigravity y OpenCode.
+~/.minimax/agents/<n>/        -> espejo para Minimax Code. NO lo edites a mano.
+```
+
+```bash
+python .taskmaster/sync_agents.py --check   # exit 1 si divergen
+python .taskmaster/sync_agents.py           # refleja repo -> espejo
+```
+
+En Hermes, que no lee ficheros de agente sino perfiles en `config.yaml`, apunta
+`system_prompt_file` al fichero del repo: el contenido es el mismo.
+
+---
+
 ## 2. Detalle de los 4 Pasos
 
 ### 🔍 Paso 1: Buscar qué hacer
@@ -54,7 +114,7 @@ Tu objetivo es identificar el siguiente objetivo concreto de trabajo garantizand
    | **5. Testing & Calidad** | Ampliación de tests headless en `run_tests.py`, tipado estricto Pydantic. | `openspec-dev` | alta |
 
 4. **Formalización:**
-   - Si el turno corresponde a `process-db-updater`: delega directamente en el agente `process-db-updater` (vía `task`) para actualizar `assets/process_db.json`.
+   - Si el turno corresponde a `process-db-updater`: delega directamente en ese agente (con la herramienta de tu runtime, Sección 0) para actualizar `assets/process_db.json`.
    - Para cualquier otra área: crea la carpeta `openspec/changes/<YYYY-MM-DD>-<slug>/` con `proposal.md` y `tasks.md`.
    - Registra la tarea correlativa en `.taskmaster/tasks.json` (`TASK-013`, etc.) con prioridad y dependencias.
    - Pasa de inmediato al **Paso 2**.
@@ -66,12 +126,12 @@ Tu objetivo es identificar el siguiente objetivo concreto de trabajo garantizand
 ### 📐 Paso 2: Planear (`architect-review`)
 Tu objetivo es auditar la arquitectura, validar viabilidad y asegurar el respeto estricto de las invariantes antes de tocar código:
 
-1. **Invocación del Agente:** delega en el agente `architect-review` con la herramienta `task`:
-   - `agent_name`: `"architect-review"`
-   - `description`: `"Arquitecto: <ID_TAREA> <título>"`
-   - `model`: omítelo salvo que el usuario pida uno (ver Sección 7)
-   - `prompt`: ver **Plantilla de Invocación 1** en la Sección 5.
-   - ❌ **No uses `invoke_subagent`, `Role` ni `TypeName`:** ese mecanismo ya no existe en este runtime y la llamada falla con *"Unknown agent"*.
+1. **Invocación del Agente:** delega en `architect-review` con **la herramienta de delegación de tu runtime** ( Sección 0 ):
+   - el nombre del agente: `"architect-review"`
+   - la descripción: `"Arquitecto: <ID_TAREA> <título>"`
+   - el prompt: ver **Plantilla de Invocación 1** en la Sección 5.
+   - el modelo: omítelo salvo que el usuario pida uno, y solo si tu runtime lo acepta (ver Sección 7).
+   - ⚠️ **El nombre de la herramienta no se escribe aquí a propósito.** Se llama distinto en cada runtime y una instrucción fija se rompe en cuanto cambias de IDE. Resuélvela con la tabla de la Sección 0. Lo que sí es fijo: el agente se llama `architect-review` y vive en `.agents/agents/architect-review/agent.md`.
 2. **Acciones del Arquitecto:**
    - Audita la tarea activa de `.taskmaster/tasks.json` contra las invariantes de `AGENTS.md`.
    - Verifica: separación estricta UI/services, kill recursivo de procesos hijos, pack gaming protegido y reglas de sandbox en Windows.
@@ -87,11 +147,11 @@ Tu objetivo es auditar la arquitectura, validar viabilidad y asegurar el respeto
 ### 💻 Paso 3: Ejecutar (`openspec-dev`)
 Tu objetivo es implementar el código, verificarlo rigurosamente, actualizar la documentación viva y cerrar la tarea:
 
-1. **Invocación del Agente:** delega en el agente `openspec-dev` con la herramienta `task`:
-   - `agent_name`: `"openspec-dev"`
-   - `description`: `"Dev: <ID_TAREA> <título>"`
-   - `model`: omítelo salvo que el usuario pida uno (ver Sección 7)
-   - `prompt`: ver **Plantilla de Invocación 2** en la Sección 5.
+1. **Invocación del Agente:** delega en `openspec-dev` con **la herramienta de delegación de tu runtime** (Sección 0):
+   - el nombre del agente: `"openspec-dev"`
+   - la descripción: `"Dev: <ID_TAREA> <título>"`
+   - el prompt: ver **Plantilla de Invocación 2** en la Sección 5.
+   - el modelo: omítelo salvo que el usuario pida uno, y solo si tu runtime lo acepta (ver Sección 7).
 2. **Acciones del Desarrollador:**
    - Toma la tarea activa de `.taskmaster/tasks.json` (NO `tm.py next`, que no es ejecutable).
    - Redacta el plan de implementación estructurado.
@@ -185,11 +245,13 @@ python benchmark.py
 
 ## 5. Plantillas de Invocación con Contexto Quirúrgico
 
-> **Los roles son AGENTES, no skills.** Cada uno tiene sus directrices en `~/.minimax/agents/<nombre>/agent.md` y ya arranca con ellas: **no le pegues el texto de la skill en el prompt**, se perdería lo que el agente ya sabe. Solo pásale el contexto de la tarea, que es lo único que no puede conocer (no hereda esta conversación).
+> **Los roles son AGENTES, no skills.** Cada uno tiene sus directrices en `.agents/agents/<nombre>/agent.md` y ya arranca con ellas: **no le pegues el texto de la skill en el prompt**, se perdería lo que el agente ya sabe. Solo pásale el contexto de la tarea, que es lo único que no puede conocer (no hereda esta conversación).
 >
-> Delega siempre con `task({agent_name, description, prompt})` y **rellena `model` solo si el usuario lo pide explícitamente**.
+> Delega con **la herramienta de tu runtime** (Sección 0), pasando siempre el nombre del agente, la descripción y el prompt. **Rellena el modelo solo si el usuario lo pide explícitamente** y tu runtime admite ese parámetro.
+>
+> En Minimax Code la llamada es `task({agent_name, description, prompt})`; en Antigravity `invoke_subagent`, en OpenCode `subagent`, en Hermes `delegate_task`. Los **títulos** de cada invocación son fijos; solo el verbo cambia.
 
-### Invocación 1: Para el Paso 2 — `agent_name: "architect-review"`
+### Invocación 1: Para el Paso 2 — agente `architect-review`
 ```text
 CONTEXTO QUIRÚRGICO DE LA TAREA:
 - Tarea Activa: [ID_TAREA] - [TÍTULO_TAREA]
@@ -205,7 +267,7 @@ TU OBJETIVO:
 6. Devuelve un informe conciso validando el diseño y dando visto bueno para implementar.
 ```
 
-### Invocación 2: Para el Paso 3 — `agent_name: "openspec-dev"`
+### Invocación 2: Para el Paso 3 — agente `openspec-dev`
 ```text
 CONTEXTO QUIRÚRGICO DE LA TAREA:
 - Tarea Activa: [ID_TAREA] - [TÍTULO_TAREA]
@@ -225,7 +287,7 @@ TU OBJETIVO:
 9. Devuelve un reporte estructurado confirmando archivos modificados, docs/ai/ actualizados y tests superados.
 ```
 
-### Invocación 4: Para el Paso 4 — `agent_name: "mutation-auditor"`
+### Invocación 4: Para el Paso 4 — agente `mutation-auditor`
 ```text
 CONTEXTO:
 - Repositorio: C:/Users/carch/Nextcloud/Scripts/woptimizer
@@ -245,7 +307,7 @@ TU OBJETIVO:
 NO repares nada: lo reporta openspec-dev. Trabaja solo en %TEMP%.
 ```
 
-### Invocación 3: Para actualización de base de datos — `agent_name: "process-db-updater"`
+### Invocación 3: Para actualización de base de datos — agente `process-db-updater`
 ```text
 CONTEXTO:
 - Repositorio: C:/Users/carch/Nextcloud/Scripts/woptimizer
@@ -355,9 +417,9 @@ openspec/changes/   ─→  contrato del cambio (formal, by proposer)
 
 ## 7. Matriz de Intensidad por Paso × Área
 
-> **REGLA (adaptada al runtime actual):** el runtime actual **no** tiene los niveles `flash` / `inherit` / `pro`. En `task`, el parámetro `model` solo se rellena si el **usuario lo pide explícitamente**; si no, el agente hijo hereda el modelo del turno.
+> **REGLA (agnóstica de runtime):** la intensidad de cada paso es una decisión tuya, no un parámetro que se rellene. **Fija el modelo solo si el usuario lo pide explícitamente** y solo si tu herramienta de delegación lo admite como argumento; si no lo admite, no lo pases y sigue con el del turno.
 >
-> ⚠️ **No inventes un nombre de modelo.** Poner `"pro"`, `"inherit"` o `"flash"` a mano produce un error de resolución. Si el usuario pide uno concreto, resuélvelo primero con `mavis({command: "cron resolve-model", args: {model: "<texto>"}})` y usa la clave canónica que devuelva.
+> ⚠️ **No inventes un nombre de modelo.** Poner `"pro"`, `"inherit"` o `"flash"` a mano produce un error de resolución en los runtimes que verifican el nombre. Cuando el usuario pida uno concreto y no conozcas la clave canónica, **busca primero el catálogo de modelos que exponga tu runtime y usa la clave que devuelva**; si no expone ninguno, pregúntale. Nunca adivines el identificador.
 >
 > Lo que **sí** sigue vigente es la **intensidad** de cada paso, y por eso la matriz se conserva como guía de pensamiento. Regístrala en el changelog como el nivel aplicado, aunque el runtime no lo exprese.
 
