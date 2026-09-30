@@ -26,7 +26,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 ## Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **65 tests**: 64 de backend + 1 headless de UI, numerados aquí en el **orden de registro** del `__main__` (el headless va el último, aunque antes viviera en medio de la lista). *El recuento es el de la iteración 3 de TASK-028; esta tabla estaba congelada en 57 y no contaba las ocho sondas que añadieron TASK-027 iteración 2/3 y TASK-028. Recuento vivo: `Select-String -Path run_tests.py -Pattern '^\s+test_[a-z_]+\(\)\s*$'`.*
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **72 tests**: 71 de backend + 1 headless de UI, numerados aquí en el **orden de registro** del `__main__` (el headless va el último, aunque antes viviera en medio de la lista).
 
 | # | Test | Qué valida |
 |---|------|-----------|
@@ -40,61 +40,68 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 8 | `test_notification_never_raises` | Un backend que explota se degrada a log, nunca rompe la UI |
 | 9 | `test_notification_message_formatting` | Helpers en español con plurales correctos y MB condicionales |
 | 10 | `test_category_emoji_alignment` | Toda categoría de `assets/process_db.json` existe literalmente en `config.py` |
-| 11 | `test_safety_badge_category_priority_order` | La categoría manda sobre la prioridad en `get_safety_badge` (regresión 🟡/🔴) |
-| 12 | `test_gaming_service_should_kill` | Orden de reglas de `should_kill_for_gaming`: keeper > apps > categoría objetivo |
-| 13 | `test_execute_gaming_pack_integration` | G0-G9 de `execute_gaming_pack`: barrera roja, keepers y kill recursivo real |
-| 14 | `test_pack_service_crud` | `create_user_pack` rechaza duplicados y el id reservado `gaming`; persiste en disco |
-| 15 | `test_pack_service_delete` | `delete_pack`: `ValueError` en gaming, `False` si no existe, `True` en pack propio |
-| 16 | `test_pack_service_favorite_exclusive` | `set_favorite` deja como máximo 1 favorito; `set_favorite(None)` deja 0 |
-| 17 | `test_pack_service_reset_gaming` | `reset_gaming_pack` restaura apps y `target_categories` de `DEFAULT_GAMING_PACK` |
-| 18 | `test_gaming_pack_lists_isolated_from_global` | Las listas del pack gaming **no** comparten objeto con `DEFAULT_GAMING_PACK` (regresión de `model_copy()` shallow) |
-| 19 | `test_cache_ttl_and_invalidation` | Dentro del TTL se devuelve el **mismo objeto**; `invalidate_cache()` y `force_refresh=True` re-escanean |
-| 20 | `test_kill_recursive` | Kill recursivo: el nieto Python muere junto al padre (invariante de AGENTS.md) |
-| 21 | `test_git_safe_commit_fail_safe` | Códigos de salida 0/1/2/3 y línea canónica `WOPT_*` de `git_safe_commit.py` |
-| 22 | `test_double_tap_guard` | `DoubleTapGuard` exige segunda pulsación, con auto-revert y token de intención |
-| 23 | `test_no_system_process_is_killable` | Blindaje anti-brick: ningún proceso de Familia A es cerrable por JSON, servicio ni kill |
-| 24 | `test_gaming_pack_fallback_is_deep_copy` | **TASK-026 (FIX-001):** el *fallback* de `get_gaming_pack()` (con `gaming` borrado) copia `apps`/`keepers`/`target_categories` en profundidad |
-| 25 | `test_default_meta_matches_canonical_otros` | **TASK-026 (FIX-005):** el centinela `⚪ Otros` (U+26AA) coincide con `CATEGORY_ORDER[-1]` y con el default de `ProcessInfo`, resuelve al último índice del orden, y los **tres** sitios de código usan el literal canónico |
-| 26 | `test_pack_service_backup_and_recovery` | **TASK-026 (FIX-009):** rotación real del `.bak`, recuperación desde `.bak` con JSON corrupto, y un error de permisos no borra la configuración |
-| 27 | `test_do_load_publica_sin_tk` | **TASK-026 (FIX-007) + TASK-030 (P8):** `_do_load` publica desde el hilo principal, con un arnés **sin Tk**; identidades de hilo, camino de crash y guarda `ast` |
-| 28 | `test_save_atomic_nunca_toca_el_principal` | **TASK-030 (P1):** el volcado va a un temporal y, si se corta, el principal conserva sus bytes |
-| 29 | `test_publicar_no_trunca_el_principal` | **TASK-030 (P1b):** publicar no usa un primitivo de copia (que trunca el destino) |
-| 30 | `test_save_no_escribe_si_la_rotacion_no_puede_leer` | **TASK-030 (P2):** un `OSError` de lectura no se convierte en "sigo y sobrescribo" |
-| 31 | `test_corrupcion_sin_backup_intenta_volar` | **TASK-030 (P3):** la regeneración llega a volcar (espía de `json.dump`, no de `save()`) |
-| 32 | `test_forma_legacy_no_tumba_la_app` | **TASK-030 (P4):** `{"profiles": "texto"}` no tumba la app; solo la forma validada es corrupción |
-| 33 | `test_todas_las_clases_de_corrupcion_se_recuperan` | **TASK-030 (P5):** tabla de las 4 clases de `CORRUPTION_ERRORS`, fila a fila |
-| 34 | `test_oserror_de_lectura_no_es_corrupcion` | **TASK-030 (P6):** un `OSError` de lectura se propaga y no toca el `.bak` |
-| 35 | `test_attribute_error_ajeno_no_es_corrupcion` | **TASK-030 (P7):** un `AttributeError` que no sea el deliberado se propaga |
-| 36 | `test_la_rotacion_usa_la_misma_puerta_que_load` | **TASK-031 (L1):** la rotación usa `_read_json` y el `.bak` sano sobrevive a un `save()` real (mata L-M1) |
-| 37 | `test_la_hoja_malformada_se_clasifica` | **TASK-031 (L2):** 6 hojas × 2 ramas se clasifican como corrupción, y el mensaje dice campo + pack + tipo real (mata L-M2) |
-| 38 | `test_load_no_escribe` | **TASK-031 (L3):** `load()` no llama a `save()` en ninguna rama y no cambia ni un byte (mata L-M3) |
-| 39 | `test_la_recuperacion_no_sobrescribe_el_bak` | **TASK-031 (L4):** recuperar no refresca el `.bak` byte a byte (mata L-M4) |
-| 40 | `test_sin_bak_legible_no_se_sobrescribe_el_principal` | **TASK-031 (L5):** sin `.bak` el fichero se queda en disco y el pack queda marcado como dañado (mata L-M5) |
-| 41 | `test_un_campo_desconocido_no_es_corrupcion_y_no_se_borra` | **TASK-031 (L6):** `notas` no es corrupción y sobrevive al `save()` (mata L-M6; separa la opción (a) de la (b)) |
-| 42 | `test_packs_y_profiles_a_la_vez_es_corrupcion` | **TASK-031 (L7):** las dos claves a la vez se clasifican nombrándolas y ningún pack desaparece (mata L-M7) |
-| 43 | `test_la_raiz_mal_escrita_no_destruye_los_packs` | **TASK-031 (L8):** una raíz sin clave válida no es corrupción ni borra los packs del usuario |
-| 44 | `test_un_error_de_escritura_no_es_un_campo_desconocido` | **TASK-031 (L9):** un `OSError` al escribir no se clasifica como "campo desconocido" |
-| 45 | `test_la_clave_del_mapa_es_la_identidad_del_pack` | **TASK-031 (L10):** la clave del mapa es la identidad del pack, no un campo libre |
-| 46 | `test_la_raiz_legada_conserva_sus_claves_extra` | **TASK-031 (L11):** la raíz legacy conserva sus claves extra tras un `save()` real |
-| 47 | `test_una_clave_raiz_nunca_es_un_error_de_escritura` | **TASK-031 (L12):** una clave raíz nunca es un error de escritura |
-| 48 | `test_arranque_de_apps_no_usa_shell` | **TASK-027 (FIX-003):** arrancar una app no es ejecutar un comando: sin `Popen`, sin intérprete, contador honesto, log del motivo, guarda `ast` |
-| 49 | `test_un_junction_no_puede_colar_lo_que_hay_detras` | **TASK-027 iter 2:** un junction/enlace **real** cuyo destino cae fuera de las raíces se rechaza, un `.exe` que apunta a un `.bat` se rechaza, y los dos controles positivos (enlace **dentro** de una raíz) arrancan |
-| 50 | `test_la_contencion_no_acepta_un_hermano_de_prefijo` | **TASK-027 iter 2 (M10):** la contención es por componentes, no por prefijo de cadena (mata el `startswith`) |
-| 51 | `test_la_contencion_no_depende_de_la_caja` | **TASK-027 iter 2:** `C:\PROGRAM FILES\...` está dentro de `C:\Program Files` en las dos direcciones, y fuera sigue siendo fuera |
-| 52 | `test_la_guarda_de_shell_true_ve_atributos_y_aliases` | **TASK-027 iter 2:** la guarda anti-`shell=True` ve `ast.Attribute` y los alias de import, y no marca `shell=False` |
-| 53 | `test_un_hard_link_no_es_una_hoja_y_el_script_no_pasa` | **TASK-027 iter 3:** un hard link real a un `.bat` de fuera y una **copia plena** del mismo `.bat` no arrancan (la regla es el **contenido**, `_es_imagen_pe`, no `st_nlink`); `MZ` sin `PE\0\0` y un `e_lfanew` absurdo tampoco; fail-closed; y un `.exe` **instalado** con `st_nlink > 1` **sí** arranca, que es lo que prohíbe la "solución" de rechazar todo enlace duro |
-| 54 | `test_el_gestor_guarda_la_ruta_absoluta` | **TASK-027 (FIX-003, escritor):** lo que se guarda en `Pack.apps` es la ruta absoluta, con degradación a `full_name` |
-| 55 | `test_orden_de_categorias_no_es_alfabetico` | **TASK-027 (FIX-004):** el orden es `CATEGORY_ORDER`, no el de `sorted()` sobre cadenas con emoji |
-| 56 | `test_toggle_favorite_desmarca` | **TASK-027 (FIX-006):** la segunda pulsación de la estrella desmarca el favorito |
-| 57 | `test_logging_va_a_fichero_y_no_a_stderr` | **TASK-028 (FIX-010):** el aviso acaba DENTRO de `woptimizer.log` y **no** en `stderr` (afirma sobre contenido y con el control negativo del `StreamHandler` sembrado: mata la implementación sin `force=True`) |
-| 58 | `test_la_consulta_de_version_no_puede_desincronizarse` | **TASK-028 (FIX-018):** `pyproject.toml`, `__init__.py` y `tasks.json` declaran la **misma** versión, y no puede existir un cuarto sitio (escáner de `src/` con expectativa derivada del código) |
-| 59 | `test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz` | **TASK-028 iter 2-5:** el archivo de `docs/archive` está versionado, completo y **sin volver ni a la raíz ni a la ruta viva que lee la app** (`_app_dir()`), por la **firma del esquema v2** (`profiles` + **dos** rasgos en el mismo registro). **Iter 5 (F1):** la ruta viva **ilegible da aviso, no muerte**, y eso se **afirma** con un control que escribe los tres ficheros de verdad (no-UTF8, truncado a mitad de un emoji de 4 B, `PermissionError` real) y exige el **motivo por su texto**; el literal `null` (que no lanza) también. Un control positivo sobre un documento vivo, porque un helper que declare todo ilegible pasaría los otros |
-| 60 | `test_el_punto_de_entrada_declara_el_log_antes_de_los_servicios` | `__main__.main()` invoca `setup_logging()` **antes** de instanciar ningún servicio (AST, por **orden** de lineno; no ejecuta `main()`) |
-| 61 | `test_process_list_file_sigue_siendo_un_contrato` | `PROCESS_LIST_FILE` existe, vale lo que debe y la nombran sus tres consumidores vivos |
-| 62 | `test_la_documentacion_del_blindaje_no_puede_desfasarse` | las dos docs dicen el rango **medido con `ast`** y los 34 nombres **reales** del `frozenset` |
-| 63 | `test_el_log_rota_con_el_limite_declarado` | el handler es un `RotatingFileHandler` **exacto** con `maxBytes`/`backupCount` declarados (`isinstance` no lo distinguiría: hereda de `FileHandler`) |
-| 64 | `test_config_no_configura_nada_al_importarse` | `config.py` no **configura** el logging **al importarse**: ni en la cima, ni dentro de un `if`/`try`/`for`/`while` de módulo, ni en el **cuerpo de una clase** (que sí se ejecuta al importar); dentro de una **función** sí. **Iter 5:** además la **firma** de un `def` (decoradores, valores por defecto, anotaciones) se evalúa al importarlo, pero **su cuerpo no**, y un **generador perezoso** no se ejecuta al importarlo mientras que una **comprehension** sí. Detector probado en las dos direcciones, con el recuento **derivado de las tablas** (no escrito a mano) |
-| 65 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
+| 11 | `test_process_db_schema_integrity` | **TASK-032 (S1):** esquema estricto de `assets/process_db.json` (claves en minúsculas sin `.exe`, `category` en `PROCESS_CATEGORIES`, `priority` en `{"high","medium","low","none"}` y `description` no vacía) |
+| 12 | `test_safety_badge_category_priority_order` | La categoría manda sobre la prioridad en `get_safety_badge` (regresión 🟡/🔴) |
+| 13 | `test_gaming_service_should_kill` | Orden de reglas de `should_kill_for_gaming`: keeper > apps > categoría objetivo |
+| 14 | `test_execute_gaming_pack_integration` | G0-G9 de `execute_gaming_pack`: barrera roja, keepers y kill recursivo real |
+| 15 | `test_pack_service_crud` | `create_user_pack` rechaza duplicados y el id reservado `gaming`; persiste en disco |
+| 16 | `test_pack_service_delete` | `delete_pack`: `ValueError` en gaming, `False` si no existe, `True` en pack propio |
+| 17 | `test_pack_service_favorite_exclusive` | `set_favorite` deja como máximo 1 favorito; `set_favorite(None)` deja 0 |
+| 18 | `test_pack_service_reset_gaming` | `reset_gaming_pack` restaura apps y `target_categories` de `DEFAULT_GAMING_PACK` |
+| 19 | `test_gaming_pack_lists_isolated_from_global` | Las listas del pack gaming **no** comparten objeto con `DEFAULT_GAMING_PACK` (regresión de `model_copy()` shallow) |
+| 20 | `test_cache_ttl_and_invalidation` | Dentro del TTL se devuelve el **mismo objeto**; `invalidate_cache()` y `force_refresh=True` re-escanean |
+| 21 | `test_kill_recursive` | Kill recursivo: el nieto Python muere junto al padre (invariante de AGENTS.md) |
+| 22 | `test_git_safe_commit_fail_safe` | Códigos de salida 0/1/2/3 y línea canónica `WOPT_*` de `git_safe_commit.py` |
+| 23 | `test_double_tap_guard` | `DoubleTapGuard` exige segunda pulsación, con auto-revert y token de intención |
+| 24 | `test_no_system_process_is_killable` | Blindaje anti-brick: ningún proceso de Familia A es cerrable por JSON, servicio ni kill |
+| 25 | `test_gaming_pack_fallback_is_deep_copy` | **TASK-026 (FIX-001):** el *fallback* de `get_gaming_pack()` (con `gaming` borrado) copia `apps`/`keepers`/`target_categories` en profundidad |
+| 26 | `test_default_meta_matches_canonical_otros` | **TASK-026 (FIX-005):** el centinela `⚪ Otros` (U+26AA) coincide con `CATEGORY_ORDER[-1]` y con el default de `ProcessInfo`, resuelve al último índice del orden, y los **tres** sitios de código usan el literal canónico |
+| 27 | `test_pack_service_backup_and_recovery` | **TASK-026 (FIX-009):** rotación real del `.bak`, recuperación desde `.bak` con JSON corrupto, y un error de permisos no borra la configuración |
+| 28 | `test_do_load_publica_sin_tk` | **TASK-026 (FIX-007) + TASK-030 (P8):** `_do_load` publica desde el hilo principal, con un arnés **sin Tk**; identidades de hilo, camino de crash y guarda `ast` |
+| 29 | `test_save_atomic_nunca_toca_el_principal` | **TASK-030 (P1):** el volcado va a un temporal y, si se corta, el principal conserva sus bytes |
+| 30 | `test_publicar_no_trunca_el_principal` | **TASK-030 (P1b):** publicar no usa un primitivo de copia (que trunca el destino) |
+| 31 | `test_save_no_escribe_si_la_rotacion_no_puede_leer` | **TASK-030 (P2):** un `OSError` de lectura no se convierte en "sigo y sobrescribo" |
+| 32 | `test_corrupcion_sin_backup_intenta_volar` | **TASK-030 (P3):** la regeneración llega a volcar (espía de `json.dump`, no de `save()`) |
+| 33 | `test_forma_legacy_no_tumba_la_app` | **TASK-030 (P4):** `{"profiles": "texto"}` no tumba la app; solo la forma validada es corrupción |
+| 34 | `test_todas_las_clases_de_corrupcion_se_recuperan` | **TASK-030 (P5):** tabla de las 4 clases de `CORRUPTION_ERRORS`, fila a fila |
+| 35 | `test_oserror_de_lectura_no_es_corrupcion` | **TASK-030 (P6):** un `OSError` de lectura se propaga y no toca el `.bak` |
+| 36 | `test_attribute_error_ajeno_no_es_corrupcion` | **TASK-030 (P7):** un `AttributeError` que no sea el deliberado se propaga |
+| 37 | `test_la_rotacion_usa_la_misma_puerta_que_load` | **TASK-031 (L1):** la rotación usa `_read_json` y el `.bak` sano sobrevive a un `save()` real (mata L-M1) |
+| 38 | `test_la_hoja_malformada_se_clasifica` | **TASK-031 (L2):** 6 hojas × 2 ramas se clasifican como corrupción, y el mensaje dice campo + pack + tipo real (mata L-M2) |
+| 39 | `test_load_no_escribe` | **TASK-031 (L3):** `load()` no llama a `save()` en ninguna rama y no cambia ni un byte (mata L-M3) |
+| 40 | `test_la_recuperacion_no_sobrescribe_el_bak` | **TASK-031 (L4):** recuperar no refresca el `.bak` byte a byte (mata L-M4) |
+| 41 | `test_sin_bak_legible_no_se_sobrescribe_el_principal` | **TASK-031 (L5):** sin `.bak` el fichero se queda en disco y el pack queda marcado como dañado (mata L-M5) |
+| 42 | `test_un_campo_desconocido_no_es_corrupcion_y_no_se_borra` | **TASK-031 (L6):** `notas` no es corrupción y sobrevive al `save()` (mata L-M6; separa la opción (a) de la (b)) |
+| 43 | `test_packs_y_profiles_a_la_vez_es_corrupcion` | **TASK-031 (L7):** las dos claves a la vez se clasifican nombrándolas y ningún pack desaparece (mata L-M7) |
+| 44 | `test_la_raiz_mal_escrita_no_destruye_los_packs` | **TASK-031 (L8):** una raíz sin clave válida no es corrupción ni borra los packs del usuario |
+| 45 | `test_un_error_de_escritura_no_es_un_campo_desconocido` | **TASK-031 (L9):** un `OSError` al escribir no se clasifica como "campo desconocido" |
+| 46 | `test_la_clave_del_mapa_es_la_identidad_del_pack` | **TASK-031 (L10):** la clave del mapa es la identidad del pack, no un campo libre |
+| 47 | `test_la_raiz_legada_conserva_sus_claves_extra` | **TASK-031 (L11):** la raíz legacy conserva sus claves extra tras un `save()` real |
+| 48 | `test_una_clave_raiz_nunca_es_un_error_de_escritura` | **TASK-031 (L12):** una clave raíz nunca es un error de escritura |
+| 49 | `test_arranque_de_apps_no_usa_shell` | **TASK-027 (FIX-003):** arrancar una app no es ejecutar un comando: sin `Popen`, sin intérprete, contador honesto, log del motivo, guarda `ast` |
+| 50 | `test_un_junction_no_puede_colar_lo_que_hay_detras` | **TASK-027 iter 2:** un junction/enlace **real** cuyo destino cae fuera de las raíces se rechaza, un `.exe` que apunta a un `.bat` se rechaza, y los dos controles positivos (enlace **dentro** de una raíz) arrancan |
+| 51 | `test_la_contencion_no_acepta_un_hermano_de_prefijo` | **TASK-027 iter 2 (M10):** la contención es por componentes, no por prefijo de cadena (mata el `startswith`) |
+| 52 | `test_la_contencion_no_depende_de_la_caja` | **TASK-027 iter 2:** `C:\PROGRAM FILES\...` está dentro de `C:\Program Files` en las dos direcciones, y fuera sigue siendo fuera |
+| 53 | `test_la_guarda_de_shell_true_ve_atributos_y_aliases` | **TASK-027 iter 2:** la guarda anti-`shell=True` ve `ast.Attribute` y los alias de import, y no marca `shell=False` |
+| 54 | `test_un_hard_link_no_es_una_hoja_y_el_script_no_pasa` | **TASK-027 iter 3:** un hard link real a un `.bat` de fuera y una **copia plena** del mismo `.bat` no arrancan (la regla es el **contenido**, `_es_imagen_pe`, no `st_nlink`); `MZ` sin `PE\0\0` y un `e_lfanew` absurdo tampoco; fail-closed; y un `.exe` **instalado** con `st_nlink > 1` **sí** arranca, que es lo que prohíbe la "solución" de rechazar todo enlace duro |
+| 55 | `test_el_gestor_guarda_la_ruta_absoluta` | **TASK-027 (FIX-003, escritor):** lo que se guarda en `Pack.apps` es la ruta absoluta, con degradación a `full_name` |
+| 56 | `test_orden_de_categorias_no_es_alfabetico` | **TASK-027 (FIX-004):** el orden es `CATEGORY_ORDER`, no el de `sorted()` sobre cadenas con emoji |
+| 57 | `test_toggle_favorite_desmarca` | **TASK-027 (FIX-006):** la segunda pulsación de la estrella desmarca el favorito |
+| 58 | `test_logging_va_a_fichero_y_no_a_stderr` | **TASK-028 (FIX-010):** el aviso acaba DENTRO de `woptimizer.log` y **no** en `stderr` (afirma sobre contenido y con el control negativo del `StreamHandler` sembrado: mata la implementación sin `force=True`) |
+| 59 | `test_la_consulta_de_version_no_puede_desincronizarse` | **TASK-028 (FIX-018):** `pyproject.toml`, `__init__.py` y `tasks.json` declaran la **misma** versión, y no puede existir un cuarto sitio (escáner de `src/` con expectativa derivada del código) |
+| 60 | `test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz` | **TASK-028 iter 2-5:** el archivo de `docs/archive` está versionado, completo y **sin volver ni a la raíz ni a la ruta viva que lee la app** (`_app_dir()`), por la **firma del esquema v2** (`profiles` + **dos** rasgos en el mismo registro). **Iter 5 (F1):** la ruta viva **ilegible da aviso, no muerte**, y eso se **afirma** con un control que escribe los tres ficheros de verdad (no-UTF8, truncado a mitad de un emoji de 4 B, `PermissionError` real) y exige el **motivo por su texto**; el literal `null` (que no lanza) también. Un control positivo sobre un documento vivo, porque un helper que declare todo ilegible pasaría los otros |
+| 61 | `test_el_punto_de_entrada_declara_el_log_antes_de_los_servicios` | `__main__.main()` invoca `setup_logging()` **antes** de instanciar ningún servicio (AST, por **orden** de lineno; no ejecuta `main()`) |
+| 62 | `test_process_list_file_sigue_siendo_un_contrato` | `PROCESS_LIST_FILE` existe, vale lo que debe y la nombran sus tres consumidores vivos |
+| 63 | `test_la_documentacion_del_blindaje_no_puede_desfasarse` | las dos docs dicen el rango **medido con `ast`** y los 34 nombres **reales** del `frozenset` |
+| 64 | `test_el_log_rota_con_el_limite_declarado` | el handler es un `RotatingFileHandler` **exacto** con `maxBytes`/`backupCount` declarados (`isinstance` no lo distinguiría: hereda de `FileHandler`) |
+| 65 | `test_config_no_configura_nada_al_importarse` | `config.py` no **configura** el logging **al importarse**: ni en la cima, ni dentro de un `if`/`try`/`for`/`while` de módulo, ni en el **cuerpo de una clase** (que sí se ejecuta al importar); dentro de una **función** sí. **Iter 5:** además la **firma** de un `def` (decoradores, valores por defecto, anotaciones) se evalúa al importarlo, pero **su cuerpo no**, y un **generador perezoso** no se ejecuta al importarlo mientras que una **comprehension** sí. Detector probado en las dos direcciones, con el recuento **derivado de las tablas** (no escrito a mano) |
+| 66 | `test_no_literal_colors_in_views` | **TASK-029 (UI-002):** cero colores literales en views/; todos los colores provienen de `theme.py` |
+| 67 | `test_theme_tokens_complete` | **TASK-029 (UI-001):** 15 tokens de color, exactamente 6 tamaños tipográficos, 3 radios de curvatura |
+| 68 | `test_contrast_wcag_aa` | **TASK-029 (UI-003):** cumplimiento de ratios WCAG 2.1 AA (>= 4.5:1 texto normal, >= 3.0:1 componentes) |
+| 69 | `test_hit_targets_minimum` | **TASK-029 (UI-007):** todos los botones interactivos tienen un tamaño mínimo de 28x28px |
+| 70 | `test_semantic_color_contract` | **TASK-029 (UI-012b):** Gaming verde `#1DB954`, peligro rojo `#c22d2d`, semáforos no contaminados |
+| 71 | `test_woptimizer_ico_exists_and_valid` | **TASK-029 (UI-006):** existencia y validez del archivo de icono multi-resolución `assets/woptimizer.ico` |
+| 72 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
 
 ### Notas de Aislamiento
 - Los tests de `PackService` usan `tempfile.NamedTemporaryFile` (helper `_pack_service_temporal()`) para no modificar `profiles.json` real. `test_pack_service_backup_and_recovery` limpia además los `.bak` y `.tmp` que genera, y restaura los permisos de solo lectura que usa para probar el `PermissionError`.

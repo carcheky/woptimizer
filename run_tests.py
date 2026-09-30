@@ -340,6 +340,60 @@ def test_category_emoji_alignment():
     print(f"Category emoji alignment OK ({len(db_cats)} categorias, 0 huerfanas).")
 
 
+def test_process_db_schema_integrity():
+    """TASK-032 (S1): verifica la integridad de esquema de assets/process_db.json.
+
+    Mata el mutante superviviente S1 de la auditoria de mutaciones:
+    - Toda clave debe estar en minusculas y no terminar en '.exe'.
+    - Todo valor debe ser un dict.
+    - Campos obligatorios presentes y validos:
+      * 'category': debe existir literalmente en PROCESS_CATEGORIES de config.py.
+      * 'priority': debe ser uno de {"high", "medium", "low", "none"}.
+      * 'description': debe ser str no vacio tras strip().
+    """
+    print("Testing process_db schema integrity...")
+    import json
+    from woptimizer.config import PROCESS_CATEGORIES
+
+    valid_priorities = {"high", "medium", "low", "none"}
+    db_path = os.path.join(os.path.dirname(__file__), "assets", "process_db.json")
+    with open(db_path, "r", encoding="utf-8") as fh:
+        db = json.load(fh)
+
+    assert isinstance(db, dict), f"process_db.json raiz debe ser dict, recibido {type(db)}"
+    assert len(db) > 0, "process_db.json no puede estar vacio"
+
+    for key, meta in db.items():
+        # Regla 1: clave normalizada
+        assert key == key.lower(), f"Clave '{key}' debe estar en minusculas"
+        assert not key.endswith(".exe"), f"Clave '{key}' no debe incluir extension .exe"
+
+        # Regla 2: meta es dict
+        assert isinstance(meta, dict), f"Valor de '{key}' debe ser dict, recibido {type(meta)}"
+
+        # Regla 3: category obligatoria y alineada con config.py
+        assert "category" in meta, f"Clave '{key}' carece del campo 'category'"
+        assert meta["category"] in PROCESS_CATEGORIES, (
+            f"Clave '{key}' tiene categoria invalida '{meta.get('category')}'; "
+            f"debe ser una de {list(PROCESS_CATEGORIES.keys())}"
+        )
+
+        # Regla 4: priority obligatoria y valida
+        assert "priority" in meta, f"Clave '{key}' carece del campo 'priority'"
+        assert meta["priority"] in valid_priorities, (
+            f"Clave '{key}' tiene prioridad invalida '{meta.get('priority')}'; "
+            f"debe ser una de {valid_priorities}"
+        )
+
+        # Regla 5: description obligatoria, str y no vacia
+        assert "description" in meta, f"Clave '{key}' carece del campo 'description'"
+        assert isinstance(meta["description"], str) and len(meta["description"].strip()) > 0, (
+            f"Clave '{key}' debe tener una 'description' de texto no vacia"
+        )
+
+    print(f"test_process_db_schema_integrity OK ({len(db)} procesos validados sin omisiones).")
+
+
 def test_safety_badge_category_priority_order():
     """TASK-020: la categoría manda sobre la prioridad en get_safety_badge.
 
@@ -7253,6 +7307,7 @@ if __name__ == "__main__":
     test_notification_never_raises()
     test_notification_message_formatting()
     test_category_emoji_alignment()
+    test_process_db_schema_integrity()
     test_safety_badge_category_priority_order()
     test_gaming_service_should_kill()
     test_execute_gaming_pack_integration()
