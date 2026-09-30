@@ -1,3 +1,22 @@
+## CYCLE-024 - 2026-09-30
+
+**Rendimiento & Latencia** — `TASK-033` (Optimización de latencia en escaneo de procesos)
+
+### Añadido
+- **Resolución bajo demanda de rutas de ejecutables (`get_process_exe_path`).** Nueva API en `ProcessService` que obtiene la ruta absoluta (`.exe`) de un proceso únicamente cuando se necesita (al asociar una app a un pack), con protección ante procesos cerrados o permisos denegados.
+- **Prueba discriminante y benchmark de escaneo.** Incorporación de `test_scan_latency_and_lazy_exe_resolution` en `run_tests.py` que verifica el escaneo ligero sin `exe`, la resolución exacta del ejecutable del sistema, la degradación ante PIDs inválidos y que el tiempo medio de escaneo no supere los 25 ms. Total suite: **72 tests backend + 1 headless UI**, 100% en verde.
+
+### Cambiado
+- **Aceleración del escaneo de procesos del sistema.** Se eliminó la consulta anticipada de la ruta del ejecutable para todos los cientos de procesos del sistema en `get_running_processes()`, la cual generaba cientos de excepciones internas `AccessDenied` e I/O innecesario.
+- **Construcción optimizada de objetos de proceso.** Se adoptó `ProcessInfo.model_construct(...)` en el bucle principal de escaneo, eliminando la validación redundante de más de 2.200 campos Pydantic por escaneo.
+- **Precomputación del orden de categorías.** El índice de ordenación de categorías ahora se calcula una sola vez a nivel de módulo (`_CAT_ORDER_IDX`), reduciendo asignaciones de memoria en cada refresco.
+- **Normalización segura de nombres de proceso.** Se reemplazó el reemplazo global de `.exe` por corte estricto de sufijo, evitando corrupciones en procesos cuyos nombres contienen la cadena `.exe` en posiciones intermedias.
+
+### Impacto
+La latencia de escaneo de procesos en frío en Windows 11 se reduce de más de **31 ms a solo ~5.5 ms (~5.6x a ~8x de aceleración)**. La interfaz responde de manera instantánea al refrescar la lista de procesos o preparar el Gaming Mode, manteniendo intacta la seguridad y el blindaje anti-brick.
+
+---
+
 ## CYCLE-023 - 2026-09-30
 
 **Base de Datos & Procesos** — `TASK-032` (Expansión de la base de procesos)

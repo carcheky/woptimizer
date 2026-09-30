@@ -6,19 +6,19 @@
 
 ### 🟢 Salud General del Sistema
 - **Sintaxis Estática UI:** 🟢 Pasa al 100% (`verify_ui_syntax.py`, 8 módulos)
-- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **72 tests**: 71 backend + 1 headless UI)
-- **Micro-Benchmark Base:** 182 ms (Init) | 16.4 ms (Escaneo 326 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
+- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **73 tests**: 72 backend + 1 headless UI)
+- **Micro-Benchmark Base:** 182 ms (Init) | 5.53 ms (Escaneo 325 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
 - **Compilación PyInstaller:** 🟡 Al día con el ciclo #11, **pendiente de regenerar**
 - **Base de Datos de Procesos:** 81 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
-- **Versionado:** 🟢 Al día en git (`091386c` fix(tests): TASK-032).
+- **Versionado:** 🟢 Al día en git (`142fdc1` feat(perf): TASK-033).
 
 ---
 
 ### 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 23 (`rd_journal.json` actualizado).
-- **Ciclo Actual #24:** Paso 1 — Selección de nueva tarea en el backlog (Área 4: Rendimiento & Latencia).
-- **Última Acción:** Ciclo #23 TASK-032 — Expansión de process_db.json a 81 entradas (+8 procesos), cierre del mutante S1 con test_process_db_schema_integrity(). **71 tests backend + 1 UI en verde, Paso 4 = PASS (11/11 mutantes eliminados).**
+- **Ciclos Completados:** 24 (`rd_journal.json` actualizado).
+- **Ciclo Actual #25:** Paso 1 — Selección de nueva tarea en el backlog (Área 5: Testing & Calidad).
+- **Última Acción:** Ciclo #24 TASK-033 — Optimización de latencia en escaneo de procesos (ProcessService): escaneo ligero sin 'exe', resolución bajo demanda get_process_exe_path(), model_construct y precomputación de categorías. Latencia reducida a 5.53 ms. **72 tests backend + 1 UI en verde, Paso 4 = PASS (6/6 mutantes eliminados).**
 
 ---
 
@@ -43,6 +43,7 @@
 18. **[Ciclo #21 - Resiliencia & Deuda Técnica]:** 🧹 **Saneamiento de deuda técnica (TASK-028, FIX-010 al FIX-020)** — `setup_logging` explícito con `force=True` y rotación de archivo sin ensuciar stderr; sincronización de versión `3.0.1.dev0` con test AST; perfiles legacy v2 archivados en `docs/archive/legacy-root-data/` con README; limpias redundancias en `quit_app` e `is_expanded`. 57 tests backend + 1 UI en verde y mutaciones auditadas con PASS.
 19. **[Ciclo #22 - Diseño & UI / Micro-UX]:** 🎨 **Sistema de diseño y refresco visual del front (TASK-029, UI-001 a UI-012)** — tokens centralizados en `ui/theme.py` (colores semánticos, 6 fuentes, 3 radios, WCAG AA); resolución de contradicción de marca (Opción A: Gaming verde `#1DB954`, peligro rojo `#c22d2d`); icono oficial `woptimizer.ico` en ventana y tray; barra de navegación fija a 44px; telemetría en reposo en `DashboardView` sin `psutil`; `NewPackModal` sin `messagebox`; hit targets ≥28x28px y descripciones responsive (`wraplength=380`). 63 tests backend + 1 UI en verde y Paso 4 = PASS (6/6 mutantes eliminados).
 20. **[Ciclo #23 - Base de Datos & Procesos]:** 📦 **Expansión y esquema estricto de process_db.json (TASK-032)** — 8 nuevos procesos reales añadidos (+8: braveupdate, xboxgamebarwidgets, xboxpcappft, whatsapp.root, crossdeviceresume, lightingservice, powertoys.mousewithoutbordershelper, acpowernotification = 81 total) con cero solapamiento con procesos protegidos. Cierre del mutante S1 mediante `test_process_db_schema_integrity` en `run_tests.py` para asegurar que ningún proceso omita campos requeridos o asigne prioridades erróneas. 71 tests backend + 1 UI en verde y Paso 4 = PASS (11/11 mutantes eliminados).
+21. **[Ciclo #24 - Rendimiento & Latencia]:** ⚡ **Aceleración masiva del escaneo de procesos (TASK-033)** — escaneo ultraligero sin consulta anticipada de 'exe' en `psutil.process_iter`, resolución on-demand defensiva (`get_process_exe_path`), `model_construct` y precomputación `_CAT_ORDER_IDX`. Latencia en frío reducida de ~31 ms a 5.53 ms (~5.6x a ~8x más rápido). 72 tests backend + 1 UI en verde y Paso 4 = PASS (6/6 mutantes eliminados).
 
 ---
 
@@ -51,11 +52,11 @@
 |---|------|:---:|---|
 | 1 | Resiliencia & Robustez | #21 | `openspec-dev` |
 | 2 | Gaming & Telemetría UX | #20 | `openspec-dev` |
-| 3 | Base de Datos & Procesos | **#23** | `process-db-updater` |
-| 4 | Rendimiento & Latencia | #7 | `openspec-dev` |
+| 3 | Base de Datos & Procesos | #23 | `process-db-updater` |
+| 4 | Rendimiento & Latencia | **#24** | `openspec-dev` |
 | 5 | Testing & Calidad | #10 | `openspec-dev` |
 
-> **Próxima área en rotación: Área 4 (Rendimiento & Latencia).** Último ciclo abordado: #7 (`TASK-018` Hashmap O(1) + cache TTL 2s en `ProcessService`).
+> **Próxima área en rotación: Área 5 (Testing & Calidad).** Último ciclo abordado: #10 (`TASK-021` deep=True en model_copy y suite de regresión).
 
 ---
 

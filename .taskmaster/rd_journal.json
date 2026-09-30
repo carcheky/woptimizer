@@ -343,5 +343,22 @@
       "after": "71 backend + 1 headless UI, 0 fallos"
     },
     "impact": "Expansion de la base de procesos (TASK-032): integracion de 8 nuevos procesos reales del sistema en assets/process_db.json (81 entradas totales): braveupdate, xboxgamebarwidgets, xboxpcappft, whatsapp.root, crossdeviceresume, lightingservice, powertoys.mousewithoutbordershelper, acpowernotification. Blindaje anti-brick estricto con cero solapamientos con SYSTEM_PROTECTED_PROCESSES. Cierre del mutante superviviente S1 mediante la sonda test_process_db_schema_integrity() en run_tests.py garantizando claves en minusculas sin .exe, campos category, priority y description obligatorios con tipos y enums cerrados. 11/11 mutantes aniquilados por mutation-auditor (PASS)."
+  },
+  {
+    "cycle": 24,
+    "date": "2026-09-30T20:53:00",
+    "area": "Rendimiento & Latencia",
+    "slug": "2026-09-30-scan-latency-optimization",
+    "task": "TASK-033",
+    "status": "COMPLETED",
+    "commits": [
+      "7eb6c5a (plan)",
+      "142fdc1 (feat)"
+    ],
+    "tests": {
+      "before": "71 backend + 1 headless UI",
+      "after": "72 backend + 1 headless UI, 0 fallos"
+    },
+    "impact": "Optimizacion de latencia y throughput en el escaneo de procesos (TASK-033): eliminacion del cuello de botella de ~31ms al quitar la consulta masiva de 'exe' en psutil.process_iter a favor de escaneo ligero ['pid', 'name'] con emision lazy de exe_path. Incorporacion de resolucion on-demand segura ProcessService.get_process_exe_path(pid) con degradacion fail-safe (NoSuchProcess, AccessDenied, ZombieProcess, OSError, ValueError), consumida defensivamente por ProcessManagerView.on_add_to_pack. Construccion de instancias con ProcessInfo.model_construct, precomputacion a nivel de modulo de _CAT_ORDER_IDX respetando las lineas 33-48 de SYSTEM_PROTECTED_PROCESSES, y normalizacion de nombres mediante corte de sufijo. Latencia minima de escaneo frio reducida a 5.53ms (~5.6x a ~8x de aceleracion). 6/6 mutantes eliminados por mutation-auditor (PASS)."
   }
 ]

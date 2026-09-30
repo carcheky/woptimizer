@@ -1,3 +1,45 @@
+## [CYCLE-024] 2026-09-30 20:53 — scan-latency-optimization
+**Área**: Rendimiento & Latencia
+**Change**: openspec/changes/2026-09-30-scan-latency-optimization/
+**Estado**: COMPLETED
+**Models**:
+- Paso 1 (Buscar): inherit
+- Paso 2 (Planear): architect-review → VISTO BUENO CONDICIONADO (4 directrices críticas)
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → VERDICT: PASS (6/6 mutantes eliminados)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| M1 (Escaneo ligero) | Reintroducir `exe` en `psutil.process_iter` y asignar `exe_path` ansiosamente | killed | `test_scan_latency_and_lazy_exe_resolution falló: exe_path no estaba vacío en escaneo general` |
+| M2 (Resolución lazy) | Modificar `get_process_exe_path` para retornar siempre `""` | killed | `test_scan_latency_and_lazy_exe_resolution falló: la resolución lazy devolvió cadena vacía para PID propio` |
+| M3 (Robustez PID) | Quitar guarda `pid <= 0` o captura de `ValueError` en `get_process_exe_path` | killed | `test_scan_latency_and_lazy_exe_resolution falló: PID negativo levantó excepción sin degradar a ""` |
+| M4 (UI on_add_to_pack) | Omitir llamada a `get_process_exe_path` en `on_add_to_pack` | killed | `test_scan_latency_and_lazy_exe_resolution falló: on_add_to_pack no resolvió ruta absoluta` |
+| M5 (Blindaje AST) | Desplazar líneas 33-48 de `SYSTEM_PROTECTED_PROCESSES` en `process_service.py` | killed | `test_la_documentacion_del_blindaje_no_puede_desfasarse detectó desplazamiento AST` |
+| M6 (Headless View) | Acceso directo a `self.process_service` en vez de `getattr(self, ...)` en UI | killed | `test_el_gestor_guarda_la_ruta_absoluta falló por AttributeError en vista headless` |
+
+### What
+- Optimización de latencia en `ProcessService.get_running_processes`: eliminación de la consulta ansiosa de `exe` en `psutil.process_iter` sobre cientos de procesos vivos (la cual disparaba excepciones internas `AccessDenied` e I/O de tokens en Windows).
+- Incorporación del método `get_process_exe_path(pid: int) -> str` en `ProcessService`, con captura defensiva de `(psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError, ValueError)` y retorno seguro de `""` ante PIDs inválidos o sin privilegios.
+- Consumo defensivo en `ProcessManagerView.on_add_to_pack`: si `exe_path` no viene precargada, se consulta bajo demanda usando `getattr(self, "process_service", None)` para preservar la compatibilidad con harnesses headless.
+- Optimización del bucle caliente de escaneo usando `ProcessInfo.model_construct(...)` (ahorrando ~2.200 validaciones de campo Pydantic por escaneo).
+- Precomputación de `_CAT_ORDER_IDX` a nivel de módulo colocada después de la línea 56 para respetar la posición estricta (L33-48) de `SYSTEM_PROTECTED_PROCESSES` exigida por la prueba AST de sincronización documental.
+- Normalización estricta de nombres con corte de sufijo (`[:-4]` si termina en `.exe`), evitando corrupciones por reemplazo global.
+- Incorporación de la prueba discriminante y benchmark `test_scan_latency_and_lazy_exe_resolution` en `run_tests.py`.
+- Actualización de documentación técnica en `docs/ai/architecture.md` (§7) y `docs/ai/testing-guide.md` (suite actualizada a 73 tests).
+
+### Outcome
+- Commits:
+  - `7eb6c5a` (plan: registrar TASK-033 en tasks.json y openspec)
+  - `142fdc1` (feat: optimizar latencia de escaneo y resolucion lazy de exe_path)
+- Tests: 72 backend + 1 headless UI PASS (0 fallos).
+- Docs: `validate_docs.py` (68 OK, 0 FAIL).
+
+### Impact
+Reducción drástica del tiempo de escaneo en frío en Windows 11 de más de ~31 ms a tan solo 5.53 ms (~5.6x a ~8x de aceleración), eliminando lag perceptible en la UI durante el refresco de procesos y lanzamiento de Gaming Mode sin comprometer el blindaje anti-brick ni la separación de capas.
+
+---
+
 ## [CYCLE-023] 2026-09-30 20:35 — process-db-expansion
 **Área**: Base de Datos & Procesos
 **Change**: openspec/changes/2026-09-30-process-db-expansion/
