@@ -66,13 +66,83 @@ R-5  la guarda AST anulada (return [] siempre)                 MUERE  | el detec
 supervivientes: ninguno
 ```
 
-**20 mutaciones, 20 muertes, 0 supervivientes.** Las ocho primeras son las que exige
+**20 mutaciones, 20 muertes, 0 supervivientes** (tabla de la iteración 4; **21** desde la iteración 6,
+ver más abajo). Las ocho primeras son las que exige
 `decision-portada-pack-vacio.md` §4 (M-A a M-H). Las tres `S1-*` son las de la rama `start` que
 no se ejecutaba; las tres `S2-*` son "se devuelve el detector a su versión anterior" y mueren en
 sus propios controles sintéticos; `S3` es el sustantivo en la rama `nada`; y las cinco `R-*` son
 regresión de lo que las iteraciones 2 y 3 ya cerraron. Las que mueren por aserción y no por
 crash se distinguen en la salida: en esta tabla **las veinte mueren por `AssertionError`**, que
 es lo que hace que la tabla signifique algo.
+
+### Iteración 6 - el superviviente D5 y el cierre de la tabla (2026-10-01)
+
+**Qué era D5.** El `mutation-auditor` cerró el ciclo con **un solo superviviente**, y no era un
+hueco de cobertura sino **un bug vivo en producción**: el espejo exacto del que la iteración 5
+cerró en `start_pack`. Esa iteración ató el verbo al **método** (`mensaje_sin_apps(pack.name,
+"start")`, `pack_manager_view.py:527`) y dejó el otro lado del **mismo helper** atado al pack.
+`_aviso_pack_inerte` es la puerta de **apagar** y la cableaba con `pack.default_action`, así que:
+
+```
+pack recien creado: apps=[] is_gaming=False default_action='start'
+usuario pulsa [Apagar]  ->  "no tiene apps que INICIAR"
+```
+
+Cadena verificada de punta a punta: `on_new_pack` → `create_user_pack(pack_id, name, [])`
+(`pack_manager_view.py:432`) → `Pack(...)` sin `default_action` (`pack_service.py:638`) → el
+default del modelo `"start"` (`models.py:54`) → tarjeta con **los dos** botones (`:253` ⛔ Apagar /
+`:264` 🚀 Iniciar) → `kill_pack` → `_aviso_pack_inerte` → verbo de la puerta equivocada. No era un
+caso límite: es la **primera acción de un usuario recién instalado**.
+
+**Por qué la suite no lo veía.** El Gestor se probaba con pack **gaming** inerte (inmune: lo
+diagnostica `_aviso_pack_inerte` antes de llegar al aviso de apps) y con un **id inexistente**
+(regresa antes de leer el pack). No existía ningún `kill_pack` con pack **no gaming vacío**, que es
+la única rama que produce el verbo: la tabla del auditor lo medía así y las dos filas
+`default='kill'` / `default='start'` salían idénticas al código correcto salvo en la que el
+mutante cambiaba.
+
+**Arreglo.** `_aviso_pack_inerte` cablea `"kill"`, con el argumento que ya estaba escrito para
+`start_pack` en el mismo fichero. Y el caso que lo ata: `Pack(id="recien", apps=[],
+default_action="start")` en `kill_pack`, con el texto exacto **"no tiene apps que apagar"**. El
+pack es **no gaming a propósito**: con `is_gaming=True` el diagnóstico del gaming inerte cortaría
+antes y el assert moriría por otra cosa, que es exactamente el falso verde que hay que evitar.
+
+**Los dos veredictos de mutación de `:469`** (medidos sobre copia en `%TEMP%`, `src/` nunca en
+sitio, control en verde antes de mutar):
+
+```
+D5-a  mutado a pack.default_action  MUERE  | el verbo lo decide la PUERTA que se esta pulsando
+                                                (aqui apagar), no el `default_action` del pack:
+                                                Texto: "'Mi Pack' no tiene apps que iniciar."
+D5-b  mutado a "start" a pelo        MUERE  | (la misma asercion, mismo veredicto)
+```
+
+**La tabla del ciclo queda en 21/21, 0 supervivientes** (`python _matrix_c26.py`, 2026-10-01,
+`D5` incluida). El recuento de tests **sigue siendo 78**, comprobado **con parser**
+(`ast` sobre `run_tests.py`: 78 `def test_` a nivel de módulo, sin duplicados), no supuesto: el
+caso nuevo vive **dentro** de `test_el_feedback_de_pack_dice_la_verdad`, como los dos bloques de la
+iteración 5.
+
+### Iteración 5 - D1 a D4, medidas aquí y transcritas al `testing-guide.md`
+
+La iteración 5 añadió dos bloques a la sonda (el verbo atado al método en `start_pack` y el
+contrato de canal no vacío) y **no dejó su tabla de mutaciones escrita**: `testing-guide.md` seguía
+diciendo 20/20 y etiquetaba la fila como "iter 3 / TASK-036 (iter 4)". Medidas ahora sobre copia,
+con salida literal, y transcritas a `docs/ai/testing-guide.md`:
+
+```
+D1  start_pack vuelve a cablear el verbo al pack (pack.default_action)  MUERE
+D2  start_pack cablea el verbo a 'kill' a pelo                          MUERE
+D3  el canal inline de la base pinta fondo CANCEL                       MUERE
+D4  el aviso del pack vacio pierde su texto (canal vacio)               MUERE
+```
+
+**4 mutaciones, 4 muertes, 0 supervivientes.** La lección de D1, generalizable y ya escrita en el
+`testing-guide.md`: para afirmar que un valor **no** está cableado a un campo, el fixture tiene que
+hacer que ese campo valga **lo contrario**. El pack vacío que ya había traía `default_action="start"`
+de serie, así que `"start"` y `pack.default_action` daban el mismo texto y la convención quedaba sin
+medir. D5 es el mismo error con la puerta cambiada.
+
 
 ### Pendiente de este pase
 - `CHANGELOG.md` y esta entrada cierran el pase, pero **no cierran el ciclo**: el Paso 4 sigue

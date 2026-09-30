@@ -462,11 +462,24 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
         para que el Gestor y la Portada no puedan divergir. El diagnostico del
         Gaming Mode inerte va antes que el aviso de "no tiene apps" porque es
         otro hecho: no es que falten apps, es que no hay NADA que cerrar.
+
+        Este helper es la puerta de APAGAR y solo la de APAGAR: lo llaman los dos
+        puntos de `kill_pack` que leen el pack, y ninguno mas. Por eso el aviso
+        de "no tiene apps" cablea el verbo a `"kill"` y no a `pack.default_action`
+        (ver el comentario de la rama): la accion la sabe el metodo, no el pack.
         """
         if es_pack_inerte(pack.is_gaming, len(pack.apps), len(pack.target_categories)):
             return mensaje_gaming_inerte(pack.name)
         if not pack.is_gaming and not pack.apps:
-            return mensaje_sin_apps(pack.name, pack.default_action)
+            # El verbo lo decide el METODO, no el pack (espejo de `start_pack`):
+            # este helper lo llama solo `kill_pack`, que es apagar SIEMPRE, asi
+            # que la accion que se le pasa es `"kill"`. Si se pasara
+            # `pack.default_action`, un pack recien creado --que nace con
+            # `default_action="start"`-- diria "no tiene apps que iniciar" en la
+            # puerta de APAGAR, que es la primera accion de un usuario recien
+            # instalado. El unico que sabe que puerta se esta pulsando es el
+            # metodo de la puerta, no el dato guardado del pack.
+            return mensaje_sin_apps(pack.name, "kill")
         return None
 
     def kill_pack(self, pack_id: str, button=None):

@@ -9052,6 +9052,39 @@ def test_el_feedback_de_pack_dice_la_verdad():
                 f"un pack inexistente se avisa, no se revienta: {v.status_label.texto!r}"
             )
             assert v.status_label.color == AMBAR
+
+            # (iter 6) El verbo de la puerta de APAGAR. El pack de aqui nace con
+            # `default_action="start"` --que es lo que hace `create_user_pack` en
+            # `on_new_pack`-- y no es gaming, asi que cae en el aviso de "no tiene
+            # apps" y NO en el diagnostico del gaming inerte: si este assert
+            # muriera, seria por el verbo y por nada mas. Sin el, un
+            # `pack.default_action` cableado en `_aviso_pack_inerte` decia
+            # "iniciar" en la puerta de apagar y la suite no lo notaba, porque
+            # arriba solo se probaba el gaming inerte y el id inexistente.
+            pack_apagar_vacio = Pack(id="recien", name="Mi Pack", apps=[],
+                                     default_action="start")
+            v = _gestor(pack_apagar_vacio, _ProcesosGestor(), _GamingGestor())
+            antes_hilos = len(hilos)
+            PackManagerView.kill_pack(v, "recien")
+            assert len(hilos) == antes_hilos, (
+                "un pack no gaming y vacio no puede lanzar worker: no hay nada que apagar"
+            )
+            assert v.status_label.texto == (
+                "⚠️ 'Mi Pack' no tiene apps que apagar. "
+                "Añádelas desde el Gestor de Procesos."
+            ), (
+                "el verbo lo decide la PUERTA que se esta pulsando (aqui apagar), no "
+                "el `default_action` del pack: un pack recien creado nace con "
+                f"'start' y el aviso diria 'iniciar' en la puerta de apagar. "
+                f"Texto: {v.status_label.texto!r}"
+            )
+            assert v.status_label.color == AMBAR, (
+                f"el aviso de pack vacio del Gestor es AMBAR: {v.status_label.color!r}"
+            )
+            assert not v._guard.is_pending(), (
+                "el aviso va antes de la doble pulsacion: no se arma 'Segunda "
+                "pulsacion para apagar 0 apps' de un pack que no tiene nada"
+            )
         finally:
             pmv_mod.threading = threading_real
             dash_mod.threading = threading_real_dash

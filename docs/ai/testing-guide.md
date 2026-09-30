@@ -105,7 +105,7 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 73 | `test_models_strict_validation_and_contracts` | **TASK-034:** validación estricta de modelos Pydantic (`strict=True` en `is_favorite`/`is_gaming`, `default_action` restringido a `Literal["start", "kill"]`, `extra="allow"` en `Pack` y `AppData`, y defaults canónicos de `ProcessInfo`) |
 | 74 | `test_main_window_navigation_transitions` | **TASK-034:** ciclo de vida y navegación headless en `MainWindow` (transiciones Dashboard -> Packs -> ProcessManager -> Dashboard, destrucción de vistas previas con `winfo_exists()`, activación de estilos nav y recarga asíncrona) |
 | 75 | `test_los_workers_de_pack_solo_publican_por_after` | **TASK-035 ciclo 26 (S2, S3; iter 3 y 4):** el worker de `execute_pack`, `kill_pack`, `start_pack`, **`ProcessManagerView._do_load` y `ProcessManagerView.on_kill_selected`** —cinco métodos de tres clases de vista— solo **publica**. La lista de lo permitido son **pares `(raiz, metodo)`**, no raíces: con raíces, `self.pack_service.get_all_packs()` y `self.process_service.get_process_exe_path(1)` colaban. Baja por `ast.Subscript` (iter 3) y desde la iteración 4 también por `getattr`/`setattr`/`delattr`, por `ast.Delete` y por los **argumentos** de las llamadas permitidas: sin eso, `getattr(self, 'status_label').configure(...)`, `setattr(self, '_last_gaming_summary', 'x')`, `del self._last_gaming_summary` y `kill_pack_apps(self.status_label)` pasaban las cuatro. Exige que **cada** `self.after` lleve 0 ms y un callback de la lista blanca. La guarda se prueba **contra sí misma** (8 infracciones sintéticas, 1 worker conforme, y el caso de las dos ramas con `self.master.after` en una) |
-| 76 | `test_el_feedback_de_pack_dice_la_verdad` | **TASK-035 ciclo 26 (S1, S4, S5, S9; iter 3) + TASK-036 (iter 4):** el feedback de cierre dice la verdad en los **cuatro** desenlaces, por las **tres** puertas (gaming, pack normal y la no-gaming de la portada, que hasta la iteración 3 no se ejecutaba nunca), con el worker real, doble pulsación, hilo secundario real y `self.after` encolado. Desde la iteración 4 también entra por el worker de la **rama `start`** de `execute_pack` (que tampoco se ejecutaba nunca). Afirma el **texto exacto** (no "dice algo con 6"), incluido `killed == 1` como éxito, `"✅" not in texto` en las ramas `nada` y `fallo`, y la **omisión de la cláusula de MB con `freed_mb <= 0`**. Y afirma el **aviso del pack que no puede hacer nada** (vacío y Gaming inerte) por sus dos familias, con el color exacto, sin worker, sin nada encolado y **sin doble pulsación armada**, más el gaming sano con apps o con categorías (que no debe avisar). La barra de reposo se afirma por su **texto** (procesos activos y resumen del Gaming Mode) y los temporizadores se miden con un **reloj simulado de plazo absoluto** (t0, t=1000, t=5500, t=6500) en las **tres** puertas del banner, afirmando además que en `_timers_ui` queda exactamente un handle |
+| 76 | `test_el_feedback_de_pack_dice_la_verdad` | **TASK-035 ciclo 26 (S1, S4, S5, S9; iter 3) + TASK-036 (iter 4, 5 y 6):** el feedback de cierre dice la verdad en los **cuatro** desenlaces, por las **tres** puertas (gaming, pack normal y la no-gaming de la portada, que hasta la iteración 3 no se ejecutaba nunca), con el worker real, doble pulsación, hilo secundario real y `self.after` encolado. Desde la iteración 4 también entra por el worker de la **rama `start`** de `execute_pack` (que tampoco se ejecutaba nunca). Afirma el **texto exacto** (no "dice algo con 6"), incluido `killed == 1` como éxito, `"✅" not in texto` en las ramas `nada` y `fallo`, y la **omisión de la cláusula de MB con `freed_mb <= 0`**. Y afirma el **aviso del pack que no puede hacer nada** (vacío y Gaming inerte) por sus dos familias, con el color exacto, sin worker, sin nada encolado y **sin doble pulsación armada**, más el gaming sano con apps o con categorías (que no debe avisar). La barra de reposo se afirma por su **texto** (procesos activos y resumen del Gaming Mode) y los temporizadores se miden con un **reloj simulado de plazo absoluto** (t0, t=1000, t=5500, t=6500) en las **tres** puertas del banner, afirmando además que en `_timers_ui` queda exactamente un handle. **Iteración 5, dos bloques nuevos:** (a) el **verbo atado al método** en `start_pack` se afirma con un pack de la familia *opuesta* (gaming, `default_action="kill"`, sin apps), porque el pack vacío que ya había traía `default_action="start"` de serie y no distinguía `"start"` de `pack.default_action`; (b) el **contrato de canal no vacío** del aviso inline, que compara el `fg_color` del `status_label` **contra el fondo de reposo** (no contra el anterior: si el canal pintara `CANCEL`, el color ya sería `CANCEL` de antes y la comparación sería verde por construcción) y por eso detecta y descarta su propia versión vacía. **Iteración 6:** `kill_pack` con un pack **no gaming, vacío y `default_action="start"`** afirma el verbo **"apagar"**: el verbo lo decide la puerta, no el dato del pack (mata D5) |
 | 77 | `test_el_gestor_de_procesos_tampoco_miente` | **TASK-035 ciclo 26 iter 3:** la **tercera** puerta de feedback, `ProcessManagerView.on_kill_selected`, que el fix de la iteración 2 y la guarda AST no tocaban y que pintaba `"<tick> 0 cerrados, 0 fallidos."` con `killed == 0`. Entra por `on_kill_selected` de verdad (doble pulsación, hilo secundario real, `after` encolado) y afirma texto y color exactos en los cuatro desenlaces; comprueba que se cierran los PIDs marcados, que el refresco de la lista se programa a 1000 ms y no al instante, y que `skipped` no se confunde con `failed`. **No mata ningún proceso**: el `ProcessService` es un doble |
 | 78 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
 
@@ -196,8 +196,9 @@ ciclo en cada mutación).
 > en silencio, y la salida se filtra a ASCII. Una tabla de mutaciones que nadie puede
 > reproducir es peor que no tenerla: parece cobertura y no lo es.
 
-**20 mutaciones, 20 muertes, 0 supervivientes** (ejecutadas el 2026-09-30, salida literal de
-`python _matrix_c26.py`):
+**21 mutaciones, 21 muertes, 0 supervivientes** (ejecutadas el 2026-10-01, salida literal de
+`python _matrix_c26.py`). La fila **D5** es de la iteración 6 y las **D1–D4** son de la iteración 5;
+su salida va en la tabla siguiente porque las midió el `mutation-auditor` y el dev, no `_matrix_c26.py`.
 
 | Mutante | Muere por |
 |---|---|
@@ -216,6 +217,7 @@ ciclo en cada mutación).
 | **S2-b** la guarda vuelve a ignorar `ast.Delete` | su control: "la guarda no ve los `del` sobre la vista" |
 | **S2-c** la guarda vuelve a mirar solo `call.func` | su control: "no ve `self.<attr>` como ARGUMENTO de una llamada permitida" |
 | **S3** el sustantivo se cablea en la rama `nada` | "el sustantivo también se usa en la rama 'nada'" |
+| **D5** `_aviso_pack_inerte` vuelve a cablear el verbo a `pack.default_action` | "el verbo lo decide la PUERTA que se está pulsando (aquí apagar), no el `default_action` del pack" |
 | **R-1** `clasificar_cierre` dice siempre `EXITO` | "nada que cerrar dice exactamente eso" |
 | **R-2** `_show_banner` deja de refrescar la barra de reposo | "tiene que refrescar la barra de reposo: antes …, después …" |
 | **R-3** se borra la cancelación del auto-ocultado previo | "el banner nuevo debe cancelar el auto-ocultado anterior" |
@@ -226,6 +228,50 @@ Las dos primeras filas de esta tabla son la prueba de que el arreglo de TASK-036
 muerto: sin M-A a M-H, `run_tests.py` estaría en verde con el silencio, el verbo cableado, el
 color equivocado, la guarda movida, el diagnóstico borrado, el `or`, el canal equivocado y la
 cláusula de MB siempre escrita.
+
+#### Iteración 5 — D1 a D4, medidas sobre copia en `%TEMP%` (2026-10-01)
+
+Salida literal (script de una sola pasada, control primero, `src/` **nunca** mutado en sitio).
+**4 mutaciones, 4 muertes, 0 supervivientes.** Las cuatro van contra el código que la iteración 5
+escribió: el verbo atado al método en `start_pack` y el contrato de canal no vacío.
+
+```
+CONTROL (sin mutar): rc=0 -> VERDE
+
+D1  start_pack vuelve a cablear el verbo al pack (pack.default_action) MUERE
+   por: arrancar dice INICIAR aunque el pack sea de apagar: el verbo lo decide el metodo que se
+   esta ejecutando, no el default_action del pack. Con la otra cableacion sale 'apagar':
+   "'Gaming Vacio Start' no tiene apps que ap..."
+D2  start_pack cablea el verbo a 'kill' a pelo                 MUERE
+   por: aviso preventivo de pack vacio: "'Pack Vacio' no tiene apps que apagar."
+D3  el canal inline de la base pinta fondo CANCEL              MUERE
+   por: el canal inline no pinta fondo: el diagnostico ROJO caeria sobre el '#5a4a1e' de la
+   confirmacion pendiente. Reposo: 'transparent', despues: '#5a4a1e'
+D4  el aviso del pack vacio pierde su texto (canal vacio)      MUERE
+   por: aviso preventivo de pack vacio: ''
+```
+
+**Por qué D1 necesita el pack de la familia opuesta.** El caso viejo (`Pack(id="vacio", name=
+"Pack Vacio", apps=[])`) trae `default_action="start"` **de serie**, así que `"start"` y
+`pack.default_action` producen el mismo texto y la convención queda sin medir: el mutante D1
+sobrevivía. El caso nuevo usa un pack **gaming con `default_action="kill"` y sin apps**, donde las
+dos cableaciones divergen de verdad. La regla general: **para afirmar que un valor no está
+cableado a un campo, el fixture tiene que hacer que ese campo valga lo contrario.**
+
+**Por qué D3 compara contra el fondo de reposo y no "contra el anterior".** Si el canal pintara
+`CANCEL`, el color ya sería `CANCEL` *de antes* y la comparación "antes/después" sería verde por
+construcción — el mismo test que se llama a sí mismo, que es el vicio que este ciclo vino a cerrar.
+El dev además **descarbó su propia versión vacía**: la medición compara contra un valor leído del
+widget real *antes* de que ningún `_inline_status` lo toque, y esa es la razón de que un detector
+autodetectado y descartado sea exactamente lo que se quería.
+
+**D5 (iteración 6) es el espejo exacto de D1**, y por eso el caso nuevo es el pack de la familia
+opuesta en la otra puerta: `Pack(id="recien", apps=[], default_action="start")` en `kill_pack`, que
+tiene que decir **"apagar"**. Sin ese caso, `_aviso_pack_inerte` podía seguir cableado al
+`pack.default_action` —que es como estaba— y la suite en verde, porque el Gestor solo se probaba
+con el gaming inerte y con un id inexistente. Un pack recién creado nace con `default_action="start"`
+(`on_new_pack` → `create_user_pack(pack_id, name, [])` → modelo por defecto), así que el bug era la
+**primera acción de un usuario recién instalado**: "Apagar" respondía "no tiene apps que **iniciar**".
 
 ### 3. La guarda `ast` compara **pares**, y eso obliga a decir qué NO comprueba
 

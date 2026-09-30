@@ -23,6 +23,13 @@ HOY, y un ancla que no encuentra el fichero es un ERROR DURO (no una mutacion
 saltada en silencio), que es la unica forma de que la tabla no vuelva a caducar
 sin que nadie se entere.
 
+VERSION ITERACION 6 (21 mutaciones). La iteracion 5 (DEV-1 atado en las tres
+direcciones + el contrato de canal no vacuo) anadio D1-D4 a la tabla que lleva
+el `mutation-auditor`; aqui se anade D5, el superviviente que cerro el ciclo: el
+espejo de `start_pack` en `_aviso_pack_inerte`. Las sondas siguen siendo las
+TRES, porque el caso nuevo vive dentro de la sonda
+`test_el_feedback_de_pack_dice_la_verdad`, que ya era una de ellas.
+
 Copia el arbol a %TEMP% (sin `.git`), aplica una mutacion cada vez, purga
 `__pycache__` y corre las TRES sondas de TASK-035 en un subproceso. Un mutante
 vive = la sonda no discrimina. NUNCA se muta el arbol de trabajo: la copia es la
@@ -166,6 +173,20 @@ MUTACIONES = [
      "src/woptimizer/ui/feedback.py",
      "    return (f\"⚠️ '{nombre}': 0 {sustantivo} cerrados, \"",
      "    return (f\"⚠️ '{nombre}': 0 procesos cerrados, \""),
+
+    # ------------------------------------------------------------------
+    # D5 (iteracion 6): el ESPEJO de la iteracion 5. `start_pack` cableo su
+    # verbo al METODO ("start") y el otro lado del MISMO helper,
+    # `_aviso_pack_inerte`, se quedo cableado al pack. Con un pack recien creado
+    # (que nace con `default_action="start"`) la puerta de APAGAR decia "no
+    # tiene apps que iniciar". La sonda lo mata porque el pack del caso nuevo
+    # es NO GAMING y vacio con `default_action="start"`: cae en el aviso, no en
+    # el diagnostico del gaming inerte, y muere por el verbo.
+    # ------------------------------------------------------------------
+    ("D5   _aviso_pack_inerte vuelve a cablear el verbo al pack",
+     "src/woptimizer/ui/views/pack_manager_view.py",
+     "            return mensaje_sin_apps(pack.name, \"kill\")",
+     "            return mensaje_sin_apps(pack.name, pack.default_action)"),
 
     # ------------------------------------------------------------------
     # Lo que ya estaba cerrado y se sigue sosteniendo (regresion)
