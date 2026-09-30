@@ -78,12 +78,19 @@ python .taskmaster/git_safe_commit.py "msg"   # ÚNICA vía de versionado
 | Rol | Tipo | Dónde vive | Cómo se invoca |
 |---|---|---|---|
 | **Motor de I+D** | Skill | `.agents/skills/id-pipeline/` | `/id-pipeline` — la ejecuta el orquestador en su propia sesión |
-| **Arquitecto** | **Agente** | `~/.minimax/agents/architect-review/` | `task({agent_name: "architect-review"})` |
-| **Tech Lead / Dev** | **Agente** | `~/.minimax/agents/openspec-dev/` | `task({agent_name: "openspec-dev"})` |
-| **Analista de procesos** | **Agente** | `~/.minimax/agents/process-db-updater/` | `task({agent_name: "process-db-updater"})` |
-| **Auditor de tests** | **Agente** | `~/.minimax/agents/mutation-auditor/` | `task({agent_name: "mutation-auditor"})` |
+| **Arquitecto** | **Agente** | `.agents/agents/architect-review/agent.md` | `task({agent_name: "architect-review"})` |
+| **Tech Lead / Dev** | **Agente** | `.agents/agents/openspec-dev/agent.md` | `task({agent_name: "openspec-dev"})` |
+| **Analista de procesos** | **Agente** | `.agents/agents/process-db-updater/agent.md` | `task({agent_name: "process-db-updater"})` |
+| **Auditor de tests** | **Agente** | `.agents/agents/mutation-auditor/agent.md` | `task({agent_name: "mutation-auditor"})` |
 
 Los agentes son **sesiones independientes** con sus propias directrices en `agent.md`. El orquestador les pasa contexto quirúrgico (tarea, ficheros, restricciones) porque **no heredan esta conversación**.
+
+> ⚠️ **Cada agente tiene DOS copias, y solo una manda.** La del repo (`.agents/agents/`) es la **fuente de verdad**: versionada y portable. La de `~/.minimax/agents/` es un **espejo** que MiniMax Code necesita porque lee de ahí, y que Antigravity no ve. **Edita siempre la del repo** y luego sincroniza:
+> ```bash
+> python .taskmaster/sync_agents.py --check   # exit 1 si divergen
+> python .taskmaster/sync_agents.py           # copia repo -> espejo
+> ```
+> Editar el espejo es trabajo perdido: no está en git y el siguiente `sync` lo sobrescribe. Detalle en `.agents/agents/README.md`.
 
 ### El bucle tiene 4 pasos, no 3
 
