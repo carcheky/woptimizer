@@ -56,7 +56,8 @@ class MainWindow(ctk.CTkFrame):
             self.content_frame,
             self.process_service,
             self.pack_service,
-            self.notification_service
+            self.notification_service,
+            self.gaming_service
         )
         self.current_view.pack(fill="both", expand=True)
 
@@ -67,7 +68,8 @@ class MainWindow(ctk.CTkFrame):
             self.content_frame,
             self.process_service,
             self.pack_service,
-            self.notification_service
+            self.notification_service,
+            self.gaming_service
         )
         self.current_view.pack(fill="both", expand=True)
 

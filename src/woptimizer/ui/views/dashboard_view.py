@@ -2,16 +2,22 @@ import customtkinter as ctk
 import threading
 from woptimizer.services.process_service import ProcessService
 from woptimizer.services.pack_service import PackService
+from woptimizer.services.gaming_service import GamingService
 from woptimizer.services.notification_service import NotificationService
 from woptimizer.models import Pack
 from woptimizer.ui.confirmation import AMBAR, CANCEL, MSG_EXPIRADO, VENTANA_MS_PORTADA, Confirmable
 
 class DashboardView(Confirmable, ctk.CTkFrame):
-    def __init__(self, master, process_service: ProcessService, pack_service: PackService, notification_service: NotificationService = None):
+    def __init__(self, master, process_service: ProcessService, pack_service: PackService, notification_service: NotificationService = None, gaming_service: GamingService = None):
         super().__init__(master, fg_color="transparent")
         self.process_service = process_service
         self.pack_service = pack_service
         self.notification_service = notification_service or NotificationService()
+        # TASK-025: el Gaming Mode se ejecuta por `GamingService`, que es quien
+        # consulta `keepers` y `target_categories`. Mismo patron defensivo que
+        # `notification_service`: si no se inyecta se crea uno local para no
+        # romper constructores antiguos ni tests.
+        self.gaming_service = gaming_service or GamingService(process_service, pack_service)
         self._build_ui()
         self.refresh_dashboard()
 
@@ -128,18 +134,27 @@ class DashboardView(Confirmable, ctk.CTkFrame):
         btn.configure(command=lambda p=pack: self.execute_pack(p, btn))
 
     def execute_pack(self, pack: Pack, button=None):
-        if not pack.apps:
+        # TASK-025 (spec 5.1): un Gaming Mode puede no tener apps manuales: su
+        # configuracion esta en `keepers` + `target_categories`. Con `apps` vacia
+        # el `return` mudo hacia el Gaming Mode a un sitio sin configuracion.
+        if not pack.is_gaming and not pack.apps:
             return
 
         if pack.default_action == "kill":
-            if not self._require_double_tap(
-                f"dashboard:{pack.id}", button,
-                f"⚠️ Segunda pulsación para apagar {len(pack.apps)} apps de '{pack.name}'.",
-            ):
+            if pack.is_gaming:
+                aviso = f"⚠️ Segunda pulsación para preparar el Gaming Mode de '{pack.name}'."
+            else:
+                aviso = f"⚠️ Segunda pulsación para apagar {len(pack.apps)} apps de '{pack.name}'."
+            # El guard es el mismo de siempre: no hay dialogo (Trampa #14).
+            if not self._require_double_tap(f"dashboard:{pack.id}", button, aviso):
                 return
 
             def _run_kill(p: Pack):
-                killed, _failed, _skipped, freed_mb = self.process_service.kill_pack_apps(p.apps)
+                if p.is_gaming:
+                    # Ruta de Gaming Mode: consulta keepers y categorias.
+                    killed, _failed, _skipped, freed_mb = self.gaming_service.execute_gaming_pack(p)
+                else:
+                    killed, _failed, _skipped, freed_mb = self.process_service.kill_pack_apps(p.apps)
                 # Actualizar UI en el hilo principal — nunca tocar widgets desde un hilo secundario
                 self.after(0, self._show_banner, killed, freed_mb, p.is_gaming)
                 # TASK-019: toast nativo del sistema (visible con la ventana oculta)

@@ -19,9 +19,9 @@
   - Lista scrollable con tarjetas para cada pack.
   - Cada tarjeta de pack incluye:
     - Nombre del pack y cantidad de apps configuradas.
-    - Botón `⭐` para alternar si es favorito (aparece en portada).
-    - Botón `⛔ Apagar Apps`: Cierra todos los ejecutables del pack vía `process_service`.
-    - Botón `🚀 Arrancar Apps`: Lanza todos los ejecutables configurados vía `subprocess.Popen`.
+    - Botón `⭐` para alternar si es favorito (aparece en portada). Es un **toggle real**: la segunda pulsación de la estrella de un pack que ya es favorito lo **desmarca** (`pack_service.set_favorite(None)`). El estado se lee **en vivo** de `get_all_packs()`, nunca del `pack` capturado en el render (queda obsoleto en cuanto el estado cambia) ni del glifo ⭐/☆, y **nunca** con `get_favorite_pack()` (devuelve el PRIMER favorito: con dos favoritos pulsaría el segundo en vez de desmarcarlo). Consecuencia aceptada: al desmarcar el único pack la portada queda en su **estado vacío** (`dashboard_view._show_empty_state`), un callejón sin salida *desde la portada* pero recuperable desde el Gestor de Packs, que es donde vive la estrella (TASK-027 / FIX-006).
+    - Botón `⛔ Apagar Apps`: Cierra los ejecutables del pack. Si `is_gaming = True` va por `gaming_service.execute_gaming_pack()` (respeta `keepers` y `target_categories`); si no, por `process_service.kill_pack_apps()`.
+    - Botón `🚀 Arrancar Apps`: Lanza todos los ejecutables configurados vía `ProcessService.start_pack_apps()`, que **valida cada ruta antes de lanzarla** (sin intérprete, sin UNC, contenida en las raíces permitidas y con extensión `.exe`/`.com`). La UI nunca llama a `subprocess` ni a `os.startfile`: ver `architecture.md` § 14 (TASK-027 / FIX-003).
     - Botón `✏️ Editar`: Abre modal para añadir/quitar apps o keepers.
     - Botón `🗑️ Borrar`: Elimina el pack (deshabilitado si `is_gaming = True`).
 
@@ -31,6 +31,7 @@
   - Botón superior `🔄 Actualizar Lista`.
   - Buscador de texto en tiempo real.
   - Lista agrupada por categorías (`🔴 Navegadores`, `🟡 Chat`, etc.) con checkboxes.
+  - **El orden de las secciones es `CATEGORY_ORDER`**, no el color del semáforo y **nunca `sorted()`** sobre los nombres: se llama a `config.ordenar_categorias()` en los **dos** sitios que dibujan categorías (`_render_list` y el acordeón de `pack_manager_view`). `CATEGORY_ORDER` entrelaza verde y amarillo a propósito (`🟢 Productividad` va detrás de `🟡 Chat`), así que «orden semántico 🟢 → 🟡 → 🔴 → ⚪» es un criterio imposible. Lo que `sorted()` rompía: ordena por **punto de código**, y el centinela `⚪ Otros` (U+26AA, BMP) salía PRIMERO mientras que 🟢🟡🔴 viven en el plano suplementario (U+1F7E2, U+1F7E1, U+1F534): el bloque rojo «NO CERRAR» subía al primer golpe de vista. Las categorías desconocidas van al final conservando su orden de entrada. Trampa en [`../known-issues.md`](../known-issues.md) (TASK-027 / FIX-004).
   - Barra de acción inferior fijada:
     - Desplegable `Añadir seleccionados a: [Seleccionar Pack ▼]`.
     - Botón `➕ Añadir al Pack`.
@@ -78,7 +79,11 @@ status_banner_frame  CTkFrame  fg_color=transparent  (oculto por defecto: pack_f
 ```python
 # En execute_pack, hilo secundario:
 def _run_kill(p):
-    killed, failed, skipped, freed_mb = process_service.kill_pack_apps(p.apps)
+    if p.is_gaming:
+        # Gaming Mode: consulta keepers y categorias en la capa de servicios
+        killed, failed, skipped, freed_mb = self.gaming_service.execute_gaming_pack(p)
+    else:
+        killed, failed, skipped, freed_mb = self.process_service.kill_pack_apps(p.apps)
     self.after(0, self._show_banner, killed, freed_mb, p.is_gaming)
 
 threading.Thread(target=_run_kill, args=(pack,), daemon=True).start()
@@ -88,6 +93,38 @@ def _show_banner(self, killed: int, freed_mb: float, is_gaming: bool):
     # … actualizar status_label y hacer pack() del frame …
     self.after(5000, self._hide_banner)
 ```
+
+Este es **el** patrón del proyecto y no es solo un ejemplo: el hilo secundario no lee ni
+escribe estado de la vista, y `self.after` (nunca `self.master.after`, que sobrevive a la
+destrucción de la vista en cada navegación) es el único publicador.
+
+**Gestor de Procesos, TASK-026 (FIX-007).** `ProcessManagerView._do_load` lo cumple con un
+`_apply` explícito porque publica **dos** atributos a la vez:
+
+```python
+def _load():
+    procs = self.process_service.get_running_processes()
+    grouped = self._group(procs)          # función pura, dict NUEVO
+
+    def _apply():
+        self.processes = procs
+        self.grouped_processes = grouped   # REBIND, nunca .clear() in situ
+        self._render_list()
+        self._update_pack_dropdown()
+
+    self.after(0, _apply)
+```
+
+El REBIND es lo que hace seguro el resto: el hilo principal itera `grouped_processes` en cada
+`_render_list` (y en cada pulsación del buscador), así que mutarlo desde el hilo secundario
+provocaba `RuntimeError: dictionary changed size during iteration` y, con dos refrescos
+solapados, dejaba el set de PIDs de `on_kill_selected` desalineado respecto de la lista que el
+usuario ve. Cuando dos cargas se solapan, el que llegue último al mainloop gana **entero**;
+`processes` y `grouped_processes` nunca describen snapshots distintos.
+
+> `tkinter` exige que el hilo principal esté **dentro** del bucle de eventos cuando otro hilo
+> llama a `after` (`RuntimeError: main thread is not in main loop`). En la app es el caso
+> normal; en los tests hay que entrar en el mainloop real, no en un bucle con `update()`.
 
 ### Invariantes a Respetar
 - La UI **nunca** llama a `psutil` directamente; `freed_mb` llega exclusivamente como argumento del callback.
@@ -104,12 +141,12 @@ def _show_banner(self, killed: int, freed_mb: float, is_gaming: bool):
 MainWindow(master, process_service, pack_service, gaming_service, notification_service)
 
 # MainWindow -> cada vista
-DashboardView(self.content_frame, self.process_service, self.pack_service, self.notification_service)
-PackManagerView(self.content_frame, self.process_service, self.pack_service, self.notification_service)
+DashboardView(self.content_frame, self.process_service, self.pack_service, self.notification_service, self.gaming_service)
+PackManagerView(self.content_frame, self.process_service, self.pack_service, self.notification_service, self.gaming_service)
 ProcessManagerView(self.content_frame, self.process_service, self.pack_service, self.notification_service)
 ```
 
-Todas las vistas aceptan `notification_service=None` y crean un local si no se les pasa, de modo que los constructores antiguos y los tests headless siguen funcionando.
+Todas las vistas aceptan `notification_service=None` y crean un local si no se les pasa, de modo que los constructores antiguos y los tests headless siguen funcionando. Desde TASK-025, `DashboardView` y `PackManagerView` aceptan además `gaming_service=None` con el **mismo fallback defensivo** (`GamingService(process_service, pack_service)` local). `ProcessManagerView` no lo necesita: no ejecuta packs.
 
 ### API que Consume la UI (no llamar a `pystray` nunca)
 | Helper | Cuándo usarlo |
@@ -182,6 +219,27 @@ Mensajes al `status_label`: rojo `#c22d2d` para los `⛔` de bloqueo, ámbar `#b
 
 `execute_pack` confirma **solo** en la rama `default_action == "kill"`. Arrancar apps no es destructivo y no pide nada.
 
+### Única excepción: el ítem del tray (TASK-025)
+El menú de la bandeja (`WOptimizerApp.show_tray → gaming_action`, ítem `🚀 Preparar Gaming Mode`) es la **única ruta de kill del producto que NO pasa por `_require_double_tap`**. No es una vía nueva: ya ejecutaba el Gaming Mode sin confirmar antes de TASK-025.
+
+Por qué es la excepción y no un olvido:
+- **No puede recibir doble pulsación.** Un `MenuItem` de `pystray` no es un widget: no tiene `status_label` donde explicar nada, ni ciclo de vida de vista que permita armar/cancelar una pendiente. La única alternativa sería un diálogo, y **`messagebox` está prohibido explícitamente** (Trampa #14, el incidente del diálogo que se abría por detrás).
+- **La objeción real a la doble pulsación no aplica.** El riesgo documentado es el clic en el objetivo equivocado por adyacencia: un ítem de menú es una **única entrada, con nombre explícito, sin vecinos ni selección que fallar**.
+- **El alcance de la acción sí es mayor**, y por eso la excepción queda escrita aquí y no implícita: con `target_categories` activas, la ruta por categoría cierra procesos que el usuario nunca enumeró. Esa amplitud está acotada por la barrera de categoría roja G-2 de `GamingService.execute_gaming_pack` (una categoría `🔴` marcada como objetivo es inerte) y por el blindaje de nombres de `SYSTEM_PROTECTED_PROCESSES`, ambos en la capa de servicios, no en la UI.
+- Desde TASK-025 el tray ejecuta `self.gaming_service.execute_gaming_pack(gaming_pack)` (igual que las dos vistas), de modo que respeta `keepers` y `target_categories` y comparte la única puerta de kill.
+
+**Invariante que deja el cambio:** *ningún camino de kill nuevo puede añadirse sin `_require_double_tap`*. Las tres rutas de la ventana están inventariadas en la tabla de arriba y el guard es la única puerta dentro de ella; el tray es la única excepción documentada. Si algún día se le quiere dar confirmación, hay que añadir antes una superficie de estado al `MenuItem` (o un ítem de "confirmar"), nunca un `messagebox`.
+
+### La rama Gaming Mode dentro de la doble pulsación
+En las dos vistas, el texto del aviso se adapta al pack pero **el guard es el mismo** (`_require_double_tap` con su token y su ventana). Nada se reimplementa:
+
+| Vista | Handler | Texto del aviso |
+|-------|---------|-----------------|
+| `DashboardView` | `execute_pack(pack, button)` | `"⚠️ Segunda pulsación para preparar el Gaming Mode de '{name}'."` |
+| `PackManagerView` | `kill_pack(pack_id, button)` | `"⚠️ Segunda pulsación para preparar el Gaming Mode de '{name}'."` |
+
+`PackManagerView` mantiene el **re-fetch del pack por `id`** en la segunda pulsación, porque `reset_gaming_pack()` re-empaqueta con `model_copy(deep=True)`. El resto de la comprobación también es Gaming-aware: un Gaming Mode con `apps` vacía se ejecuta (su configuración está en `keepers` + `target_categories`), así que la guarda es `if not pack.is_gaming and not pack.apps`.
+
 ### Invariantes a Respetar
 - **Se congela la INTENCIÓN, se recalculan los DATOS.** El token de `on_kill_selected` es el conjunto de claves marcadas; los `ProcessInfo` se recalculan en la segunda pulsación. Entre pulsaciones el PID se recicla: matar un `ProcessInfo` congelado es matar a un inocente.
 - **Cambiar la selección invalida y re-arma** (mensaje "⚠️ Selección cambiada. Vuelve a pulsar para confirmar."), no ejecuta con la intención vieja. Se usa `changed_text=` para ese mensaje.
@@ -191,3 +249,4 @@ Mensajes al `status_label`: rojo `#c22d2d` para los `⛔` de bloqueo, ámbar `#b
 - Solo hay una pendiente viva por vista: pulsar otra acción distinta la descarta.
 - `ui/confirmation.py` solo importa `typing`; prohibido `psutil`, `json`, `services` y `models` (§7.4 de la OpenSpec). El guard de imports vive en `run_tests.py::test_double_tap_guard`.
 - **Nada se traga en silencio:** los fallos de `delete_pack` (pack de sistema / inexistente) se muestran en el `status_label`, nunca `except: pass`.
+- **El acordeón de categorías compara contra el centinela canónico (TASK-026 / FIX-005).** El filtro `if "⚪ Otros" not in row.category` de `PackManagerView` usa el **círculo U+26AA**, el mismo literal que `config.CATEGORY_ORDER[-1]` y que `process_service._DEFAULT_META[0]`. Escribirlo como `"? Otros"` deja el filtro comparando contra un texto que ya no existe en el código (no-op) y, en cuanto la DB traiga la categoría canónica, ofrece "Otros" como casilla activable de `target_categories`: basura seleccionable que el usuario nunca pidió. Cuando se toque uno de los tres sitios, se tocan los tres.

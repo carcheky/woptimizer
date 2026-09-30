@@ -4,16 +4,23 @@ import uuid
 from typing import Dict, List
 from woptimizer.services.process_service import ProcessService
 from woptimizer.services.pack_service import PackService
+from woptimizer.services.gaming_service import GamingService
 from woptimizer.services.notification_service import NotificationService
 from woptimizer.models import Pack
+from woptimizer.config import ordenar_categorias
 from woptimizer.ui.confirmation import AMBAR, ROJO, VERDE, MSG_PACK_INEXISTENTE, Confirmable
 
 class PackManagerView(Confirmable, ctk.CTkFrame):
-    def __init__(self, master, process_service: ProcessService, pack_service: PackService, notification_service: NotificationService = None):
+    def __init__(self, master, process_service: ProcessService, pack_service: PackService, notification_service: NotificationService = None, gaming_service: GamingService = None):
         super().__init__(master, fg_color="transparent")
         self.process_service = process_service
         self.pack_service = pack_service
         self.notification_service = notification_service or NotificationService()
+        # TASK-025: el Gaming Mode se ejecuta por `GamingService`, que es quien
+        # consulta `keepers` y `target_categories`. Mismo patron defensivo que
+        # `notification_service`: si no se inyecta se crea uno local para no
+        # romper constructores antiguos ni tests.
+        self.gaming_service = gaming_service or GamingService(process_service, pack_service)
         self._build_ui()
         self.refresh_packs()
 
@@ -168,9 +175,14 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
             acc_btn.pack(fill="x", padx=8, pady=(0, 4))
             
             # Poblar cuerpo del acordeón
+            # TASK-026 (FIX-005): el centinela se compara con el circulo U+26AA que
+            # ya usan config.py (CATEGORY_ORDER) y models.py, no con la
+            # interrogacion ASCII. Con "? Otros" el filtro era un no-op: si la DB
+            # trae ya la categoria canonica, "Otros" se ofrecia como casilla
+            # activable de target_categories.
             all_cats = set()
             for row in getattr(self.process_service, 'process_db', []):
-                if "? Otros" not in row.category:
+                if "⚪ Otros" not in row.category:
                     all_cats.add(row.category)
             if not all_cats:
                 all_cats = {"🟢 Sincronización", "🟢 Navegadores", "🟢 Productividad",
@@ -193,14 +205,48 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
                     acc_btn.configure(text=f"⚙️ Configurar Categorías Automáticas ({len(pack.target_categories)} activas) ▲")
                 return toggle
                 
-            sorted_cats = sorted(list(all_cats))
+            # TASK-027 (FIX-004): SEGUNDO sitio del defecto, el que el encargo
+            # original no declaro. `sorted(list(all_cats))` ordenaba por punto de
+            # codigo (⚪ U+26AA del BMP sale primero, 🟢🟡🔴 del plano suplementario
+            # despues) y por eso el acordeon que decide QUE se cierra en el Gaming
+            # Mode mostraba las casillas en el orden contrario al del semaforo. Se
+            # resuelve con la MISMA funcion de `config.py` que usa el Gestor de
+            # Procesos, para que los dos sitios no puedan volver a divergir.
+            sorted_cats = ordenar_categorias(all_cats)
             for i, cat in enumerate(sorted_cats):
                 var = ctk.IntVar(value=1 if cat in pack.target_categories else 0)
                 cb = ctk.CTkCheckBox(grid, text=cat, variable=var, font=("Segoe UI", 11), command=create_command(cat, var))
                 cb.grid(row=i // 2, column=i % 2, padx=6, pady=3, sticky="w")
 
     def toggle_favorite(self, pack_id: str):
-        self.pack_service.set_favorite(pack_id)
+        # TASK-027 (FIX-006): el bug es de UNA LINEA aqui, no en el servicio.
+        # `PackService.set_favorite(None)` ya existe (pack_service.py:652) y ya
+        # esta testeado, asi que la UI solo tiene que pasar `None` en la segunda
+        # pulsacion de la estrella.
+        #
+        # De donde se lee el estado: EN VIVO, de `get_all_packs()`. NO del `pack`
+        # capturado en el render (`lambda p=pack.id`) ni del glifo ⭐/☆: son
+        # instantaneas de un render que puede quedar obsoleto (`reset_gaming_pack`
+        # devuelve un `model_copy`, asi que el objeto de la tarjeta anterior ya no
+        # es el de `self._data`). Es ademas la MISMA llamada que hace
+        # `refresh_packs`, asi que no anade API.
+        #
+        # Y NO `get_favorite_pack()`: devuelve el PRIMER favorito
+        # (`pack_service.py:628`), y con dos favoritos (alcanzable editando
+        # `profiles.json` a mano) pulsar la estrella del segundo lo MARCARIA en
+        # vez de desmarcarlo. El atajo tampoco se puede testear bien.
+        pack = self.pack_service.get_all_packs().get(pack_id)
+        if pack is None:
+            # Un id que ya no existe NO se marca: `set_favorite("z")` desmarca
+            # TODOS los favoritos y ademas lo persiste. No hay nada que
+            # alternar. Sin esta guarda, el `else` de abajo cumple el criterio
+            # de T-27.4 caso 3 ("no llama a set_favorite") solo si no existe.
+            self.refresh_packs()
+            return
+        if pack.is_favorite:
+            self.pack_service.set_favorite(None)
+        else:
+            self.pack_service.set_favorite(pack_id)
         self.refresh_packs()
         
     def restore_gaming(self):
@@ -266,23 +312,38 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
             self._cancel_confirm()
             self._inline_status(MSG_PACK_INEXISTENTE, AMBAR)
             return
-        if not pack.apps:
+        # TASK-025 (spec 5.1): un Gaming Mode puede no tener apps manuales, su
+        # configuracion esta en `keepers` + `target_categories`. Sin esta excepcion
+        # el aviso "no tiene apps que apagar" hacia el Gaming Mode a un sitio sin
+        # configuracion, que es justo el caso por defecto del pack de fábrica.
+        if not pack.is_gaming and not pack.apps:
             self._cancel_confirm()
             self._inline_status(f"⚠️ '{pack.name}' no tiene apps que apagar.", AMBAR)
             return
-        if not self._require_double_tap(f"pack_kill:{pack_id}", button,
-                                        f"⚠️ Segunda pulsación para apagar {len(pack.apps)} apps de '{pack.name}'."):
+        if pack.is_gaming:
+            aviso = f"⚠️ Segunda pulsación para preparar el Gaming Mode de '{pack.name}'."
+        else:
+            aviso = f"⚠️ Segunda pulsación para apagar {len(pack.apps)} apps de '{pack.name}'."
+        # El guard es el mismo de siempre: no hay dialogo (Trampa #14).
+        if not self._require_double_tap(f"pack_kill:{pack_id}", button, aviso):
             return
         # Re-fetch en el instante de la confirmacion: el `pack` de la 1a pulsacion pudo
         # quedar obsoleto (`reset_gaming_pack` devuelve un `model_copy`).
         pack = self.pack_service.get_all_packs().get(pack_id)
-        if pack is None or not pack.apps:
+        if pack is None:
             self._inline_status(MSG_PACK_INEXISTENTE, AMBAR)
+            return
+        if not pack.is_gaming and not pack.apps:
+            self._inline_status(f"⚠️ '{pack.name}' no tiene apps que apagar.", AMBAR)
             return
         apps = list(pack.apps)
         nombre = pack.name
         def _run():
-            killed, _failed, _skipped, freed_mb = self.process_service.kill_pack_apps(apps)
+            if pack.is_gaming:
+                # Ruta de Gaming Mode: consulta keepers y categorias.
+                killed, _failed, _skipped, freed_mb = self.gaming_service.execute_gaming_pack(pack)
+            else:
+                killed, _failed, _skipped, freed_mb = self.process_service.kill_pack_apps(apps)
             # TASK-019: toast nativo con el resumen del cierre
             self.notification_service.notify_pack_activated(nombre, killed, freed_mb)
         threading.Thread(target=_run, daemon=True).start()

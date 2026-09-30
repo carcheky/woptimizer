@@ -26,7 +26,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 ## Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **20 tests**: 19 de backend + 1 headless de UI.
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **57 tests**: 56 de backend + 1 headless de UI, numerados aquí en el **orden de registro** del `__main__` (el headless va el último, aunque antes viviera en medio de la lista).
 
 | # | Test | Qué valida |
 |---|------|-----------|
@@ -34,7 +34,7 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 2 | `test_process_service_signatures` | `kill_processes` y `kill_pack_apps` retornan 4-tupla `(killed, failed, skipped, freed_mb)` |
 | 3 | `test_freed_mb_return_type` | `freed_mb` es `float >= 0.0` en todos los casos (vacío, inexistente) |
 | 4 | `test_gaming_pack_protected` | `delete_pack("gaming")` lanza `ValueError` — invariante de pack protegido |
-| 5 | `test_corrupted_json_recovery` | JSON corrupto → auto-recovery con pack gaming restaurado |
+| 5 | `test_corrupted_json_recovery` | JSON corrupto **sin** `.bak` → auto-recovery con pack gaming restaurado |
 | 6 | `test_notification_without_tray_degrades` | Sin bandeja: `notify()` retorna `False` y no lanza; contadores de descartes |
 | 7 | `test_notification_attach_detach` | `attach_tray` habilita, `detach_tray` deshabilita y es idempotente |
 | 8 | `test_notification_never_raises` | Un backend que explota se degrada a log, nunca rompe la UI |
@@ -42,21 +42,238 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 10 | `test_category_emoji_alignment` | Toda categoría de `assets/process_db.json` existe literalmente en `config.py` |
 | 11 | `test_safety_badge_category_priority_order` | La categoría manda sobre la prioridad en `get_safety_badge` (regresión 🟡/🔴) |
 | 12 | `test_gaming_service_should_kill` | Orden de reglas de `should_kill_for_gaming`: keeper > apps > categoría objetivo |
-| 13 | `test_pack_service_crud` | `create_user_pack` rechaza duplicados y el id reservado `gaming`; persiste en disco |
-| 14 | `test_pack_service_delete` | `delete_pack`: `ValueError` en gaming, `False` si no existe, `True` en pack propio |
-| 15 | `test_pack_service_favorite_exclusive` | `set_favorite` deja como máximo 1 favorito; `set_favorite(None)` deja 0 |
-| 16 | `test_pack_service_reset_gaming` | `reset_gaming_pack` restaura apps y `target_categories` de `DEFAULT_GAMING_PACK` |
-| 17 | `test_gaming_pack_lists_isolated_from_global` | Las listas del pack gaming **no** comparten objeto con `DEFAULT_GAMING_PACK` (regresión de `model_copy()` shallow) |
-| 18 | `test_cache_ttl_and_invalidation` | Dentro del TTL se devuelve el **mismo objeto**; `invalidate_cache()` y `force_refresh=True` re-escanean |
-| 19 | `test_kill_recursive` | Kill recursivo: el nieto Python muere junto al padre (invariante de AGENTS.md) |
-| 20 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
+| 13 | `test_execute_gaming_pack_integration` | G0-G9 de `execute_gaming_pack`: barrera roja, keepers y kill recursivo real |
+| 14 | `test_pack_service_crud` | `create_user_pack` rechaza duplicados y el id reservado `gaming`; persiste en disco |
+| 15 | `test_pack_service_delete` | `delete_pack`: `ValueError` en gaming, `False` si no existe, `True` en pack propio |
+| 16 | `test_pack_service_favorite_exclusive` | `set_favorite` deja como máximo 1 favorito; `set_favorite(None)` deja 0 |
+| 17 | `test_pack_service_reset_gaming` | `reset_gaming_pack` restaura apps y `target_categories` de `DEFAULT_GAMING_PACK` |
+| 18 | `test_gaming_pack_lists_isolated_from_global` | Las listas del pack gaming **no** comparten objeto con `DEFAULT_GAMING_PACK` (regresión de `model_copy()` shallow) |
+| 19 | `test_cache_ttl_and_invalidation` | Dentro del TTL se devuelve el **mismo objeto**; `invalidate_cache()` y `force_refresh=True` re-escanean |
+| 20 | `test_kill_recursive` | Kill recursivo: el nieto Python muere junto al padre (invariante de AGENTS.md) |
+| 21 | `test_git_safe_commit_fail_safe` | Códigos de salida 0/1/2/3 y línea canónica `WOPT_*` de `git_safe_commit.py` |
+| 22 | `test_double_tap_guard` | `DoubleTapGuard` exige segunda pulsación, con auto-revert y token de intención |
+| 23 | `test_no_system_process_is_killable` | Blindaje anti-brick: ningún proceso de Familia A es cerrable por JSON, servicio ni kill |
+| 24 | `test_gaming_pack_fallback_is_deep_copy` | **TASK-026 (FIX-001):** el *fallback* de `get_gaming_pack()` (con `gaming` borrado) copia `apps`/`keepers`/`target_categories` en profundidad |
+| 25 | `test_default_meta_matches_canonical_otros` | **TASK-026 (FIX-005):** el centinela `⚪ Otros` (U+26AA) coincide con `CATEGORY_ORDER[-1]` y con el default de `ProcessInfo`, resuelve al último índice del orden, y los **tres** sitios de código usan el literal canónico |
+| 26 | `test_pack_service_backup_and_recovery` | **TASK-026 (FIX-009):** rotación real del `.bak`, recuperación desde `.bak` con JSON corrupto, y un error de permisos no borra la configuración |
+| 27 | `test_do_load_publica_sin_tk` | **TASK-026 (FIX-007) + TASK-030 (P8):** `_do_load` publica desde el hilo principal, con un arnés **sin Tk**; identidades de hilo, camino de crash y guarda `ast` |
+| 28 | `test_save_atomic_nunca_toca_el_principal` | **TASK-030 (P1):** el volcado va a un temporal y, si se corta, el principal conserva sus bytes |
+| 29 | `test_publicar_no_trunca_el_principal` | **TASK-030 (P1b):** publicar no usa un primitivo de copia (que trunca el destino) |
+| 30 | `test_save_no_escribe_si_la_rotacion_no_puede_leer` | **TASK-030 (P2):** un `OSError` de lectura no se convierte en "sigo y sobrescribo" |
+| 31 | `test_corrupcion_sin_backup_intenta_volar` | **TASK-030 (P3):** la regeneración llega a volcar (espía de `json.dump`, no de `save()`) |
+| 32 | `test_forma_legacy_no_tumba_la_app` | **TASK-030 (P4):** `{"profiles": "texto"}` no tumba la app; solo la forma validada es corrupción |
+| 33 | `test_todas_las_clases_de_corrupcion_se_recuperan` | **TASK-030 (P5):** tabla de las 4 clases de `CORRUPTION_ERRORS`, fila a fila |
+| 34 | `test_oserror_de_lectura_no_es_corrupcion` | **TASK-030 (P6):** un `OSError` de lectura se propaga y no toca el `.bak` |
+| 35 | `test_attribute_error_ajeno_no_es_corrupcion` | **TASK-030 (P7):** un `AttributeError` que no sea el deliberado se propaga |
+| 36 | `test_la_rotacion_usa_la_misma_puerta_que_load` | **TASK-031 (L1):** la rotación usa `_read_json` y el `.bak` sano sobrevive a un `save()` real (mata L-M1) |
+| 37 | `test_la_hoja_malformada_se_clasifica` | **TASK-031 (L2):** 6 hojas × 2 ramas se clasifican como corrupción, y el mensaje dice campo + pack + tipo real (mata L-M2) |
+| 38 | `test_load_no_escribe` | **TASK-031 (L3):** `load()` no llama a `save()` en ninguna rama y no cambia ni un byte (mata L-M3) |
+| 39 | `test_la_recuperacion_no_sobrescribe_el_bak` | **TASK-031 (L4):** recuperar no refresca el `.bak` byte a byte (mata L-M4) |
+| 40 | `test_sin_bak_legible_no_se_sobrescribe_el_principal` | **TASK-031 (L5):** sin `.bak` el fichero se queda en disco y el pack queda marcado como dañado (mata L-M5) |
+| 41 | `test_un_campo_desconocido_no_es_corrupcion_y_no_se_borra` | **TASK-031 (L6):** `notas` no es corrupción y sobrevive al `save()` (mata L-M6; separa la opción (a) de la (b)) |
+| 42 | `test_packs_y_profiles_a_la_vez_es_corrupcion` | **TASK-031 (L7):** las dos claves a la vez se clasifican nombrándolas y ningún pack desaparece (mata L-M7) |
+| 43 | `test_la_raiz_mal_escrita_no_destruye_los_packs` | **TASK-031 (L8):** una raíz sin clave válida no es corrupción ni borra los packs del usuario |
+| 44 | `test_un_error_de_escritura_no_es_un_campo_desconocido` | **TASK-031 (L9):** un `OSError` al escribir no se clasifica como "campo desconocido" |
+| 45 | `test_la_clave_del_mapa_es_la_identidad_del_pack` | **TASK-031 (L10):** la clave del mapa es la identidad del pack, no un campo libre |
+| 46 | `test_la_raiz_legada_conserva_sus_claves_extra` | **TASK-031 (L11):** la raíz legacy conserva sus claves extra tras un `save()` real |
+| 47 | `test_una_clave_raiz_nunca_es_un_error_de_escritura` | **TASK-031 (L12):** una clave raíz nunca es un error de escritura |
+| 48 | `test_arranque_de_apps_no_usa_shell` | **TASK-027 (FIX-003):** arrancar una app no es ejecutar un comando: sin `Popen`, sin intérprete, contador honesto, log del motivo, guarda `ast` |
+| 49 | `test_un_junction_no_puede_colar_lo_que_hay_detras` | **TASK-027 iter 2:** un junction/enlace **real** cuyo destino cae fuera de las raíces se rechaza, un `.exe` que apunta a un `.bat` se rechaza, y los dos controles positivos (enlace **dentro** de una raíz) arrancan |
+| 50 | `test_la_contencion_no_acepta_un_hermano_de_prefijo` | **TASK-027 iter 2 (M10):** la contención es por componentes, no por prefijo de cadena (mata el `startswith`) |
+| 51 | `test_la_contencion_no_depende_de_la_caja` | **TASK-027 iter 2:** `C:\PROGRAM FILES\...` está dentro de `C:\Program Files` en las dos direcciones, y fuera sigue siendo fuera |
+| 52 | `test_la_guarda_de_shell_true_ve_atributos_y_aliases` | **TASK-027 iter 2:** la guarda anti-`shell=True` ve `ast.Attribute` y los alias de import, y no marca `shell=False` |
+| 53 | `test_un_hard_link_no_es_una_hoja_y_el_script_no_pasa` | **TASK-027 iter 3:** un hard link real a un `.bat` de fuera y una **copia plena** del mismo `.bat` no arrancan (la regla es el **contenido**, `_es_imagen_pe`, no `st_nlink`); `MZ` sin `PE\0\0` y un `e_lfanew` absurdo tampoco; fail-closed; y un `.exe` **instalado** con `st_nlink > 1` **sí** arranca, que es lo que prohíbe la "solución" de rechazar todo enlace duro |
+| 54 | `test_el_gestor_guarda_la_ruta_absoluta` | **TASK-027 (FIX-003, escritor):** lo que se guarda en `Pack.apps` es la ruta absoluta, con degradación a `full_name` |
+| 55 | `test_orden_de_categorias_no_es_alfabetico` | **TASK-027 (FIX-004):** el orden es `CATEGORY_ORDER`, no el de `sorted()` sobre cadenas con emoji |
+| 56 | `test_toggle_favorite_desmarca` | **TASK-027 (FIX-006):** la segunda pulsación de la estrella desmarca el favorito |
+| 57 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
 
 ### Notas de Aislamiento
-- Los tests de `PackService` usan `tempfile.NamedTemporaryFile` (helper `_pack_service_temporal()`) para no modificar `profiles.json` real.
+- Los tests de `PackService` usan `tempfile.NamedTemporaryFile` (helper `_pack_service_temporal()`) para no modificar `profiles.json` real. `test_pack_service_backup_and_recovery` limpia además los `.bak` y `.tmp` que genera, y restaura los permisos de solo lectura que usa para probar el `PermissionError`.
+- Las sondas de TASK-030 usan `_limpiar_perfiles(ruta)` (principal + `.bak` + `.tmp`, tolerando el flag de solo lectura) o un `tempfile.mkdtemp()` propio por fila, y lo limpian en `finally`. Los dobles se inyectan con `_doble_en(modulo, **atributos)`: sustituyen `json`/`shutil` **en los globales de `pack_service`**, no en la stdlib, así que el resto de la suite nunca ve el doble.
 - Los tests de `ProcessService` operan contra listas vacías o nombres inexistentes.
+- Las sondas **L1–L7 (TASK-031)** usan un `tempfile.mkdtemp()` propio por escenario y lo
+  limpian en `finally`. Los fixtures compartidos son `_HOJA_MALFORMADA` (JSON válido pero
+  ilegible para el servicio: la divergencia entre las dos puertas) y `_BAK_CON_OTRO`. En L2
+  la rama legacy se construye moviendo `name` → `label`, que es el mismo campo con el nombre
+  del formato antiguo, para que la fila `name` rompa el mismo campo en las dos ramas.
+- `test_pack_service_backup_and_recovery` (FIX-009) tiene **dos aserciones que TASK-031
+  invirtió** a propósito, y su bloque lo dice: la instalación limpia ya **no** crea el
+  fichero al arrancar (`load()` es de solo lectura) y el caso "sin `.bak`" ya **no** propaga
+  un `OSError` de escritura porque no se escribe nada. Lo que se sigue exigiendo en ambos
+  es lo que siempre se quiso: ni un `.bak` basura, ni un `.tmp` colgado, y el fichero del
+  usuario intacto.
 - `test_kill_recursive` espawnea solo procesos Python propios y los limpia siempre en un `finally`; si el entorno bloquea subprocesos o el kill está protegido por permisos, degrada con un `print` en vez de reventar la suite.
 - El test headless requiere un display Windows (falla en CI headless puro).
 - Los `print()` deben quedar en **ASCII puro**: la consola de PowerShell es `cp1252` y revienta con `UnicodeEncodeError`. Para mencionar un emoji usa escapes (`\U0001F7E1`), nunca el carácter literal dentro de un `print()`.
+
+### Tests de concurrencia en Tk (TASK-026 / TASK-030)
+- **Nada de `sleep` para ordenar hilos.** El entrelazado se provoca con `threading.Event`: un doble de servicio avisa (`cogido[i]`) cuando ya tiene su snapshot y espera (`continuar[i]`) a que el principal le dé paso.
+- **El bucle de eventos es el propio test (TASK-030).** El test de FIX-007 ya **no monta un `ctk.CTk()`**: la vista se construye con `__new__` sobre una subclase en la que `processes` y `grouped_processes` son **propiedades que anotan `threading.get_ident()`**, el `after` de la vista **encola** el callback y el test hace de bucle: `join(10)` al hilo secundario y ejecución en el principal de lo entregado. Sin `CTk`, sin `root`, sin `mainloop` y sin Tcl **no existe ruta por la que Tcl pueda colgarse**, así que el reloj de guardia `faulthandler.dump_traceback_later(150, exit=True)` **se ha eliminado**: mataba el runner entero (y con él todos los tests posteriores) y costs 150 s de suite colgada en cada regresión. El helper `_pump()` desaparece con él. Lo que se conserva: las dos cargas solapadas, la puerta por `Event` sin `sleep`, el camino de crash (`_RecordingDict` + iterador abierto) y la **guarda `ast`** de la fase D, que sigue prohibiendo `self.master.after` (TASK-023) y deja de ser la única red.
+- **Esperar a que el callback se APLIQUE, no a que se postee.** En el arnés sin Tk no hace falta `mainloop`, pero el mismo error conceptual sigue vigente: `posts` (quién encoló) y las escrituras de las propiedades (quién publicó) se cuentan por separado, y la aserción de identidad de hilo va **antes** que la de recuento, porque su mensaje nombra la mutación exacta.
+- **Las comprobaciones estáticas van primero, sin Tk**, para que una regresión falle en milisegundos con un mensaje legible.
+- **Nada de assert con tupla.** `assert (a, b), msg` es una tupla siempre verdadera: es la forma más rápida de escribir un test que no comprueba nada.
+
+## Sondas de mutación: cada test nombra la mutación que mata (TASK-030)
+Regla del ciclo #18: **un criterio sin mutación asociada es un deseo**. La tabla está medida
+(reescritura del texto de `src/` + `importlib` + las sondas finales), no es una intención:
+
+| Sonda | Invariante | Muerte (medida) |
+|---|---|---|
+| **P1** el volcado nunca toca el principal | el volcado va a otro fichero del mismo directorio y el principal conserva sus bytes si se corta | M1 (×4), M3, M4, M10 |
+| **P1b** publicar no trunca el principal | publicar no usa un primitivo de copia | M2, M10 |
+| **P2** `save()` no escribe si la rotación no puede leer | un error que no es corrupción no se convierte en "sigo y sobrescribo" | M6, M2, M10 |
+| **P3** se intentó volcar (espiando `json.dump`) | se distingue "no intentó escribir" de "intentó y falló" | M1, M10 |
+| **P4** la forma legacy no tumba la app | `profiles` no-mapa no revientan `PackService()` y sí se recuperan del `.bak` | M5, M6, M9, **M12 (el bug)** |
+| **P5** tabla de clases de corrupción | las 4 clases de `CORRUPTION_ERRORS` se recuperan, fila a fila | M5 |
+| **P6** un `OSError` de lectura no es corrupción | se propaga y el `.bak` queda intacto byte a byte | M6, M7 |
+| **P7** un `AttributeError` ajeno no es corrupción | un `AttributeError` no deliberado se propaga | M7, M9 |
+| **P8** arnés sin Tk | el estado se publica desde el hilo principal | reintroducción de la publicación desde el hilo (M13) |
+
+### Sondas L1–L7: las hojas del pack y el `.bak` que nunca se consultó (TASK-031)
+Regla del ciclo #19: **un criterio sin mutación asociada es un deseo**. Las siete sondas se
+verificaron rompiendo `src/` a propósito sobre una **copia** en `%TEMP%` (el árbol real no
+se toca) y confirmando que cada una muere con **su** mutación. La columna del `.bak` de la
+matriz de `proposal.md` §0.1 pasó de *"DESTRUIDO en 7 de 8"* a **INTACTO en los 8**.
+
+| Sonda | Invariante | Muerte (medida) | Por qué esa aserción y no otra |
+|---|---|---|---|
+| **L1** la rotación usa la misma puerta que `load()` | con principal **JSON válido pero ilegible para el servicio** + `.bak` sano, tras un `save()` real el `.bak` sigue siendo **legible** y contiene el pack `salvado` | **L-M1** (`_rotate_backup` vuelve a `json.load`) | Afirmar *"el `.bak` existe"* sería verde por la razón equivocada: basta con que el mutante lo borre en vez de pisarlo. Con `json.load` el mutante **pisa**, y la lectura del `.bak` falla con `ValidationError` **dentro** de la comprobación. |
+| **L2** la hoja malformada se clasifica | **8** hojas (`keepers` str, `target_categories` dict, `apps` int, `name` int, `is_favorite` **"true"** y **`1`**, `default_action` "PURGAR", `is_gaming` **"true"**) × **2 ramas** (la última solo en la moderna, porque en la legacy `is_gaming` se fuerza a `False` por diseño): cada una da `PerfilCorruptoError` (legacy) o `ValidationError` (moderna), con `.bak` sano recupera `salvado`, y el mensaje dice **campo + pack + tipo real** | **L-M2** (volver al `Pack(...)` literal de 5 campos), **L-M2b** (`traducido["id"] = k`), **L-M8d** (`is_gaming` sin `strict=True`), **M4b** (`is_favorite` sin `strict=True`) | Sin exigir el **texto**, E-2 podría "cumplirse" dejando que Pydantic hable con sus 14 líneas y su URL: quien repara el fichero es el usuario. La aserción del texto en una sola línea es la que obliga a traducirlo. **Corrección de la iteración 2:** esta fila afirmaba que también mataba `L-M2b` y era **FALSO**: la fixture traía `"id"` de serie, así que la línea era código muerto y su mutación-sobreviviente era invisible. Ahora la fixture legacy **quita `id`** (como un registro legacy de verdad) y `L10` afirma además sobre el **contenido** (`pack.id == clave`). **Corrección de la iteración 3:** la fila `is_favorite: "si"` tampoco podía morir (Pydantic laxo rechaza `"si"`); ver la corrección de `L11`–`L12` más abajo. |
+| **L3** `load()` no escribe | con **cualquier** principal: `save()` no se invoca desde `load()` y los bytes del principal y del `.bak` son los de antes | **L-M3** (`_ensure_gaming_pack` vuelve a llamar a `save()`; o `load()` recupera su `self.save()`) | Es la **única** sonda que ata E-1 y E-3: con solo E-1+E-2 el `.bak` se seguiría destruyendo, un poco más tarde. El contador de `save()` va acompañado de la aserción de **bytes**: `0` no es un umbral arbitrario, es la definición de "solo lectura". |
+| **L4** la recuperación no sobrescribe el `.bak` | tras recuperar **y** guardar, `bytes(.bak)` es byte a byte el original y **no** contiene la versión recuperada | **L-M4** (un `save()` en la ruta de recuperación, o rotar "para dejar el backup al día") | Sin comparar **bytes**, "no sobrescribir" y "sobrescribir con lo mismo" son indistinguibles. La aserción final ("el guardado real **ocurrió**") es la que impide el verde por no hacer nada. |
+| **L5** sin `.bak` legible no se sobrescribe el principal | principal corrupto sin `.bak`: los bytes no cambian, la app arranca, y el pack queda **marcado como dañado** | **L-M5** (reponer `AppData()` + `_ensure_gaming_pack()` + `save()`) | La aserción que muere es "los bytes del principal son los de antes", que no depende de cuántas veces se escriba. La segunda mitad (marcado) evita que la recuperación siga siendo silenciosa por otro camino. |
+| **L6** un campo desconocido no es corrupción y no se borra | `packs.mio.notas` arranca **sin** recuperar del `.bak` y **sigue** en el fichero tras un `save()` | **L-M6** (`extra="forbid"`, o la whitelist de `isinstance` de la opción (a)) | **Es la sonda que separa la opción (a) de la (b)**: sin ella, "más `isinstance`" y "validar contra el modelo" son indistinguibles. Fija además que un `.bak` de un build más nuevo no es corrupción. |
+| **L7** `packs` y `profiles` a la vez es corrupción | se clasifica **nombrando las dos claves** y, con `.bak` sano, ni `salvado` ni `otro` se pierden tras el `save()` | **L-M7** (quitar `'packs' not in raw_data`) | Hoy el pack `otro` desaparecía del disco sin clasificar nada. La aserción que muere es "el pack `otro` sigue en el fichero **después** del `save()`", que es donde la pérdida es observable. |
+
+**Por qué L1 y L3 son dos sondas y no una.** Con E-3 (`load()` de solo lectura) la rotación ya
+no se ejecuta durante el arranque, así que un espía del arranque **no la vería nunca**; y sin
+E-3, la rotación del arranque lo que destruye el `.bak`. L1 dispara la rotación con un `save()`
+**real** del usuario y mira el `.bak`; L3 mira lo que hace `load()` sin escribir. Juntas
+cierran las dos puertas.
+
+### Sondas L8–L10: los tres agujeros que dejó la auditoría de la iteración 2 (TASK-031)
+
+El `mutation-auditor` de la iteración 1 dio **FAIL**: la línea `extra="allow"` de `AppData` era
+**portante** contra la pérdida de datos y no tenía ni una sonda (mutación `L-M6c`, que
+sobrevivía a las siete). Estas tres sondas cierran ese agujero y los dos que salieron al
+inspeccionar la política de `extra`:
+
+| Sonda | Invariante | Muerte (medida) | Por qué esa aserción y no otra |
+|---|---|---|---|
+| **L8** una raíz mal escrita no destruye los packs | `{"perfiles": …}` / `{"packs2": …}` / `{"paquets": …}` / `{"Packs": …}`, **con y sin `.bak`**: al arrancar los bytes del principal son los de antes, y tras un `save()` **real** la raíz mal escrita sigue en el fichero **con los packs del usuario byte a byte** | **L-M6c** (`extra="ignore"` en `AppData`) y **L-M8a** (clasificar la raíz mal escrita como corrupción) | Con cero packs en memoria no hay nada que mirar en memoria: lo único observable es el **fichero**. La comparación es del subárbol del usuario con el mismo `json.dumps(sort_keys=True)` a los dos lados, porque el `indent=4` del escritor es cosa suya y no debe ser parte del contrato. Y `fichero_danado is False` fija el **coste** de la decisión (el arranque ve cero packs sin avisar): cambiarla obliga a cambiar el test a propósito. **Corrección de la iteración 3:** la muerte de `L-M8a` depende de **qué variante** se implemente; medido en las dos, y la tabla está en `data-models.md` §4.6. |
+| **L9** un error de escritura no es un campo desconocido | **9** campos mal escritos × **2 ramas**: 7 a una pulsación (`keeper`, `keeppers`, `" keepers"`, `app`, `is_favorit`, `default_actions`, `is_gamingg`) + **2 de grafía** (`IS-FAVORITE`, `IS_GAMING`, que están a **11** y **2** de distancia en bruto y solo colisionan por coincidencia exacta sobre la clave normalizada); `PerfilCorruptoError` que nombra el campo mal escrito, **la clave que queda sin leer** y el pack; y al recuperar del `.bak` **los `keepers` reales vuelven** | **L-M8b** (quitar la colisión), **L-M8f** (umbral 1 → 2) y **M13** (`_normalizar_clave` → identidad) | La segunda mitad de la primera parte es la que hace que la elección sea "corrupción" y no "normalizar a `[]`": si al recuperar volvieran `keepers == []`, el criterio de §3.1 estaría mintiendo. La segunda mitad del test (10 campos extra legítimos, el más cercano `note` a distancia 2 de `name`) es la que **mata el desbordamiento del filtro**: por construcción no puede rechazar campos de verdad, y un umbral de 2 ya lo haría. Las dos filas de grafía son las que hacen que la normalización deje de ser "cosmética": sin ellas, `_normalizar_clave` podría ser la identidad y la sonda seguiría verde. |
+| **L10** la clave del mapa es la identidad del pack | `id != clave` es corrupción en las 2 ramas, **sin tocar un byte**; y en un fichero bien escrito, cada pack se encuentra por su `id` (la expresión literal de `pack_manager_view.py:100`) y un registro legacy sin `id` hereda la identidad de la clave | **L-M8c** (quitar la guarda de identidad) y **L-M2b** (quitar `traducido["id"] = k`) | Sin la segunda mitad, la guarda de identidad podría "cumplirse" con un `KeyError` en la UI en el mutante. Sin el bloque legacy, `L-M2b` sería código muerto otra vez: aquí la aserción es de **contenido** (`packs[clave].id == clave`), y sin la línea `Pack(**traducido)` ni siquiera llega a la aserción. |
+
+**Reparto de competencias (por qué esto no es la lista de `isinstance` campo a campo que
+`proposal.md` §2(a) rechazó).** `Pack` es dueño de los **tipos** y los **enumerados**; el
+servicio (`_vigilar_hojas`) es dueño de la **identidad** y de la **política de campos
+desconocidos**. Son dos reglas que parten de `Pack.model_fields`, no una lista escrita a mano:
+verificado con un campo inventado (`ventilador`), un `ventiladors` mal escrito se clasifica y
+un `ventilador` bien escrito se acepta, sin tocar una línea de código. **Límite de ese
+reparto, fijado en la iteración 3:** las dos reglas son afirmaciones **sobre las hojas** y
+no tienen versión para la raíz, y `L12` es la sonda que lo impide (`data-models.md` §4.6).
+
+### Sondas L11–L12: la raíz, de las dos mitades (TASK-031 iteración 3)
+
+El `mutation-auditor` de la iteración 2 dejó tres supervivientes. Los dos primeros eran de la
+**raíz**, y son justo las dos mitades de un mismo contrato: *no se clasifica* / *no se borra*.
+
+| Sonda | Invariante | Muerte (medida) | Por qué esa aserción y no otra |
+|---|---|---|---|
+| **L11** la raíz **legacy** conserva sus claves extra | `{"profiles": {…}, "favorite": "mio", "version": 2, "escrito_por": {…}}`: arranca sin clasificar, y tras un `save()` **real** las tres claves siguen en el fichero **con su valor**, los packs del usuario también, y **`profiles` no aparece**; el fichero escrito **vuelve a arrancar limpio** | **M8** (`AppData(packs=packs_dict)`: `favorite` desaparece del disco) y **M8b** (copiar también `profiles`) | La aserción de M8b no es "la clave no está", que un mutante cumpliría por casualidad, sino **releer el fichero escrito** y afirmar que arranca limpio: conservar `profiles` deja un fichero con las **dos** claves, que la lectura siguiente clasifica como corrupción (`L7`), y el landmine solo explotaría en el **segundo** arranque. El control del final (una raíz legacy *sin* extras) es lo que impide que "funcione" por no cargar nada. |
+| **L12** una clave raíz **nunca** es un error de escritura | 5 claves raíz que se parecen a un campo de hoja a una pulsación (`names`, `ids`, `favorite`, `keeper`, `is_favorit`) junto a un `packs` válido, **más** 4 raíces sin clave válida (`{"names": …}`, `{"ids": …}`, `{"packs2": …}`, `{"profiless": …}`): ninguna se clasifica, ninguna borra el `.bak` sano, y todas **siguen en el fichero** con su valor tras un `save()` real | **M9** (`_colision_de_tecla` aplicado a la raíz) y **L-M8a** (clasificar la raíz sin clave conocida) | Es la sonda que hace **ejecutable** la decisión de `data-models.md` §4.6: no se vigila la raíz porque hacerlo es pérdida de datos, no porque "no aplique". La segunda mitad (raíz **sin** clave válida) existe porque un filtro de colisión contra campos de *hoja* no ve `perfiles`: sin ella, una variante del mutante pasaba en verde (medido, no supuesto). |
+
+**Corrección de la iteración 3 en la fila de `L2`** (`test_la_hoja_malformada_se_clasifica`):
+la fila `is_favorite: "si"` **no podía morir**. Pydantic v2 en modo **laxo** rechaza `"si"`
+igual que en estricto (no está en su lista de booleanos laxos), así que la fila quedaba
+verde **con y sin** `strict=True`: el `strict` de `is_favorite` estaba puesto y nadie lo
+vigilaba. Sustituida por `"true"` y por `1`, que **sí** coaccionan a `True`. De ahí sale
+la muerte de **`M4b`**. Regla general extraída: **el valor de una fila de coerción tiene que
+ser un valor que el modo laxo coaccione**, o la prueba no distingue los dos modos.
+
+**Lo que esta iteración NO arregla (deuda declarada, no esconde).** Una raíz mal escrita
+arranca con **cero packs y sin aviso** (`data-models.md` §4.3). Clasificarla como corrupción
+sería **peor**: en la ruta sin `.bak`, `load()` hace `self._data = AppData()` y el siguiente
+guardado publicaría `{"packs": {"gaming": …}}` — los packs se perderían igual, y con un aviso
+de encima. El precio de la política está **fijado por `L8`**, no escondido.
+
+**`P3` cambió de sentido en TASK-031 y su docstring lo dice.** Nació para demostrar que la
+regeneración **llegaba a volcar**; con E-3 esa ruta no existe. La aserción se invirtió
+(`load()` no vuelca) y la muerte de M1/M10 se trasladó a la escritura real, que es la que
+sigue existiendo. Se conserva la misma costura (`json.dump` en los globales de
+`pack_service`) porque **nunca** se cuentan llamadas a `save()` para demostrar el destino de
+un volcado.
+
+M2 y M10 también matan P1b/P2 de rebote: `copyfile` no borra el temporal, y un temporal en una
+ruta que no existe revienta el `open`. La muerte **nombrada** de cada uno es la de su fila: P1b
+para M2, P1/P3 para M10.
+
+Dónde está cada una y por qué existe:
+- **P1** inyecta el fallo **dentro** de `json.dump`, con el **handle real**, y afirma sobre los **bytes** del principal. Afirmar "no queda un `.tmp`" (el test anterior) es afirmar un **artefacto**: si `save()` deja de crear el temporal, el assert sigue verde por la razón equivocada. Orden obligatorio: `antes = read_bytes()` se toma **después** de construir el servicio, porque `__init__` → `load()` → `_ensure_gaming_pack()` → `save()` ya reescribió el archivo una vez.
+- **P1b** existe porque **la atomicidad de la publicación no es observable desde un solo hilo**: entre el `truncate` del destino y el último byte de una copia hay una ventana que ningún test de un hilo puede ver. Con `shutil.copyfile` el volcado **sí** va al temporal, así que P1 pasa igual. Un `copyfile` hostil que trunca el destino y reventa sí lo distingue. La guarda `ast` que lo acompaña se declara como **red**, no como prueba.
+- **P3** espía `json.dump`, **no** `save()`. Con el camino D2 el código correcto y el mutante llaman a `save()` una vez y vuelcan una vez (`save()=1, volcados=1` en ambos): **D2 es indiscriminable por construcción**, así que un espía de llamadas no puede funcionar y no se escribe. Además `load()` escribe **dos veces** (ver `data-models.md` §4.3), lo que hace cualquier umbral de llamadas arbitrario. P3 es complementario y limitado: mata M1/M10, **no** mata M6/M7, y su docstring lo dice.
+- **P2/P6/P7** miran la **clasificación** y la **escritura**, nunca el número de llamadas. M7 (`except Exception` en `load()`) los mata P6 y P7, que son los que pasan por `load()`; P2 mata M6 por el lado de `save()`.
+
+### Sondas del arranque de apps: el junction, el hermano de prefijo y la guarda (TASK-027 iteración 2)
+El `mutation-auditor` de la iteración 1 dio **FAIL** por cuatro hallazgos. La tabla está
+**medida** con `_mutmatrix_t027_iter2.py`: una copia de `src/` en `%TEMP%` por mutación, el
+**producto** mutado (nunca la sonda) y **una sonda por subproceso**. Regla de la tabla: una
+mutación tiene que morir en la sonda que **declara** esa propiedad; cruzarla con otra que no
+la declara no encuentra un agujero, y cuando lo parece, casi siempre es que la otra sonda
+afirma algo distinto. Las cuatro cruces informativas están en la salida del script con su
+motivo, y ninguna propiedad queda sin sonda: `A1` muere en la del junction, `M10` en la del
+hermano, `G1` en la de la guarda.
+
+| Sonda | Invariante | Muerte (medida) | Por qué esa aserción y no otra |
+|---|---|---|---|
+| **A1–A10** un junction no cuela lo que hay detrás | un junction de **directorio** y un enlace de **fichero** cuyo destino cae fuera de las raíces se rechazan; un `.exe` que apunta a un `.bat` **de una raíz** también; y los dos controles positivos (enlace **dentro** de una raíz, y raíz que **es** un junction) arrancan y devuelven la ruta **real** | A1 (borrar la resolución real), A2 (contención real siempre `True`), A3 (extensión solo en el alias), A4 (`realpath` sin `strict`), A5 (rechazar todo reparse point), A6 (devolver la ruta léxica), A7 (fail-open al no resolver), A8 (raíces léxicas contra la real), A9 (sin motivo en el log), A10 (comparar la léxica contra las raíces reales) | Los enlaces se crean **de verdad** con `mklink` y el helper `_mklink` **falla ruidosamente** si no puede: una sonda que se pone verde porque "el caso no se pudo construir" es peor que no tener sonda. El destino del junction es un directorio controlado fuera de las raíces, **no** `C:\Windows\System32`, porque un `rmtree` que siguiera el enlace borraría `System32`; el `cmd.exe` de verdad se cubre con un enlace de **fichero**, que `os.remove` solo borra a sí mismo. Los controles positivos son lo que impide "arreglarlo" rechazando todo reparse point, que rompe Steam y itch.io. |
+| **M10** la contención no acepta un hermano de prefijo | `...Temp\wopt_x` como raíz **no** contiene `...Temp\wopt_xEvil\a.exe`; y `C:\a\b` no contiene `C:\a\b2` | `startswith` en vez de `commonpath` | El hermano se construye **de verdad**, con ficheros reales, para que el rechazo no pueda venir de "no existe": solo puede venir de la contención. Antes de esta sonda la suite entera seguía verde con `startswith` (medido por el auditor): nadie vigilaba `commonpath`. |
+| **C1–C3** la contención no depende de la caja | `C:\PROGRAM FILES\x.exe` está dentro de `C:\Program Files` **y al revés**, extremo a extremo con ficheros reales; y `C:\PROGRAM FILES (x86)` **sigue** estando fuera | quitar `normcase`, y quitarlo solo en uno de los dos lados | Las dos direcciones son necesarias: con `normcase` solo en la común, la mitad de los casos sigue falling. El caso negativo `(x86)` es un **hermano**, no una variante de caja, y es lo que impide que un arreglo por "bajar las cadenas" abra la puerta de al lado. |
+| **G1–G4** la guarda anti-`shell=True` ve lo que hay que ver | ve `ast.Attribute` (`subprocess.Popen(…)`), el alias de módulo (`sp.Popen`), el alias de import (`abrir`), y un `shell` que no es un literal falso (`shell=1`); **no** marca `shell=False`, `Popen` sin `shell`, `subprocess.run`, ni una cadena que mencione `shell=True` | quitar la rama `ast.Attribute`, quitar el mapa de alias, volver a `value is True`, marcar cualquier mención de `shell` | La guarda anterior solo miraba `ast.Name`: era **ciega a la grafía exacta del bug original**, y sin una sonda que le pase esa grafía "ampliar el visitor" es una intención sin prueba. Los falsos positivos se prohíben a propósito: una guarda que marca de más acaba ignorándose. El mismo helper (`_hallazgos_shell_true`) es el que recorre `src/`, para que no existan dos guarditas con coberturas distintas. |
+
+**Reintroducir el bug en el producto también se mide** (`P1`/`P2`): meter
+`subprocess.Popen(ruta, shell=True)` en `_lanzar` mata la sonda de la guarda **y** la sonda
+original, y con alias de módulo también.
+
+### Sondas del contenido: el hard link, su hermano y por qué no `st_nlink` (TASK-027 iteración 3)
+
+Este párrafo **decía una razón falsa** y la iteración 3 la cierra. Decía que un **hard link**
+(`mklink /H`) "no es un reparse point: ni `realpath` ni `st_file_attributes` lo ven, así que no lo
+cierra esta regla. No hace falta cerrarlo". **Las dos mitades estaban mal**: `st_file_attributes`
+cierto, pero `st_nlink` **sí** lo ve (vale 2, medido), y —lo que de verdad importa— **el hard link no
+era el agujero**: una **copia plena** del mismo `.bat` con nombre `.exe` (`st_nlink == 1`, sin un solo
+enlace) se colaba igual. Cerrar solo el raro habría sido seguridad de teatro.
+
+La tabla está **medida** con `_mutmatrix_t027_iter3.py`, con la misma mecánica (una sonda por
+subproceso, el producto mutado, nunca la sonda).
+
+| Sonda | Invariante | Muerte (medida) | Por qué esa aserción y no otra |
+|---|---|---|---|
+| **H1–H5** un hard link no es una hoja y el script no pasa | un hard link real a un `.bat` de fuera y una **copia plena** del mismo `.bat` se rechazan; un PE de verdad arranca; `MZ` sin la firma `PE\0\0` se rechaza; un `e_lfanew` absurdo se rechaza; lo ilegible y lo inexistente se rechazan (fail-closed); y un `.exe` **instalado** con `st_nlink > 1` **sí** arranca | H1 (borrar la regla 9), H2 (la regla existe pero no hace nada), H3 (solo mira `MZ`), H4 (fail-open al no leer), H5 (rechazar cualquier `st_nlink > 1`) | El enlace duro es **real** (`os.link`, la misma llamada que `mklink /H`; sin privilegios, solo mismo volumen) y si no se puede crear la sonda **falla en voz alta**: verde por no construir el caso es peor que no tener sonda. El caso (2), la **copia plena**, es el que hace inútil `st_nlink`: por eso está y por eso se afirma `st_nlink == 1` en él. El control (6) se mide sobre un `.exe` **de verdad instalado** con enlaces duros de verdad, porque la cifra que lo justifica ("el 8,32 % de los `.exe`/`.com` instalados son multi-enlazados legítimos") es una afirmación sobre el software de la máquina, y una sonda que la comprobara con un `.exe` vacío hecho a mano no la comprobaría. |
+
+**La lección de esta iteración, que es la que hay que llevarse:** al añadir la regla 9, los fixtures
+que hacían de "una app" eran ficheros **vacíos**, y un `.exe` vacío no es un PE, así que la regla nueva
+los rechazaba **por el motivo equivocado**. Dos propiedades dejaron de estar probadas **sin que ninguna
+sonda se quejara**: la extensión real (mutación **A3** de la iteración 2, que llegó a sobrevivir) y la
+lista blanca (caso (b) del arranque). Se detecta mirando la matriz de la iteración anterior, no la
+suite: la suite seguía verde. Arreglo: helper `_escribir_pe_minimo` para que las fixtures sean PEs de
+verdad, y el caso (b) ampliado para que **el mismo contenido** con `.bat` no arranque y con `.exe` sí,
+de modo que la diferencia la tenga que hacer la extensión y no el contenido.
+
+### Trampa de Windows: `chmod` NO niega la lectura
+`os.chmod(0o400)` en Windows activa el atributo **solo escritura**: el archivo sigue siendo
+legible (medido: `open(w)` → `PermissionError`, `os.access(W_OK)` → `False`, lectura permitida).
+Negar lectura de verdad exigiría ACL (`icacls` = `subprocess`, prohibido por la Trampa #9) o un
+handle con `FILE_SHARE_NONE` (no expuesto por la API estándar). Se probaron tres escenarios
+solo-filesystem y **ninguno distinguía M6**. Conclusión operativa: **toda prueba de la
+clasificación de `OSError` tiene que inyectar el fallo en la costura de parseo**, no confiar en los
+permisos del filesystem. Por eso P3 (que sí usa solo-lectura) pone el discriminante en el doble de
+`json.dump` y no en el permiso.
+
+### Aserciones tautológicas (TASK-026)
+- `assert cat != "? Otros"` en `test_no_system_process_is_killable` **dejó de comprobar nada** al arreglar el literal (FIX-005): comparaba contra un texto que ya no existía en el código. Ahora compara contra `CATEGORY_ORDER[-1]`, el centinela **vivo**.
+- El centinela de los tests se construye por codepoint (`chr(0x26AA) + " Otros"`), nunca pegando el glifo, para que el propio test no dependa de cómo se escribió el emoji en el editor.
 
 ## Deuda técnica: tests heredados v2
 En la raíz del repo conviven **11 ficheros `test_*.py` heredados** que están **muertos**:

@@ -3,6 +3,7 @@ import os
 import ast
 import io
 import time
+import threading
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.path.insert(0, os.path.abspath("src"))
@@ -437,6 +438,289 @@ def test_gaming_service_should_kill():
     finally:
         os.unlink(tmp_path)
     print("GamingService.should_kill_for_gaming OK.")
+
+
+def test_execute_gaming_pack_integration():
+    """TASK-025 (FIX-002 + FIX-008): `execute_gaming_pack` es la puerta real del
+    Gaming Mode y consulta de verdad `keepers` y `target_categories`.
+
+    Tres capas, ninguna toca un proceso real del sistema por su nombre:
+    - CAPA A: doble que captura la lista que llega a `kill_processes`. Discrimina
+      de verdad: sin el fix la ruta sigue llamando a `kill_pack_apps`, la lista
+      capturada esta vacia y `svchost` con su categoria roja marcada pasaria
+      (el blacklist de NOMBRES no lo detiene: `is_system_protected('svchost')`
+      es False). Eso es la via de brick que la barrera G-2 cierra.
+    - CAPA B: integracion real contra la via de kill (patron de
+      `test_kill_recursive`): el sleeper y su nieto deben morir.
+    - Sub-chequeo estatico con `_codigo_ejecutable`: congela la separacion de
+      capas, para que solo pueda dispararse por codigo EJECUTADO.
+    """
+    print("Testing execute_gaming_pack (integracion)...")
+    from woptimizer.models import Pack, ProcessInfo
+    from woptimizer.services.gaming_service import GamingService
+    from woptimizer.services.process_service import ProcessService
+
+    ROJO = "\U0001F534 Sistema de Windows"
+    SYNC = "\U0001F7E2 Sincronización"
+    CHAT = "\U0001F7E1 Chat y Comunicación"
+    PROD = "\U0001F7E2 Productividad"
+    OTROS = "⚪ Otros"
+    AJENO = "woptimizer_zzz_inexistente.exe"
+
+    class _ProcessServiceSpy(ProcessService):
+        """Doble de ProcessService: snapshot fijo y captura de lo que llega a
+        `kill_processes`. No mata nada del sistema."""
+
+        def __init__(self):
+            super().__init__()
+            self.snapshot = []
+            self.capturados = None
+            self.force_refresh_pedido = None
+
+        def get_running_processes(self, force_refresh=False):
+            self.force_refresh_pedido = force_refresh
+            return list(self.snapshot)
+
+        def kill_processes(self, processes):
+            self.capturados = list(processes)
+            return 2, 0, 0, 12.5
+
+    pack_s, tmp_path = _pack_service_temporal()
+    try:
+        spy = _ProcessServiceSpy()
+        gs = GamingService(spy, pack_s)
+
+        # ---------------- CAPA A: la lista que llega a la via de kill
+        spy.snapshot = [
+            # Categoria objetivo verde -> SI
+            ProcessInfo(name="onedrive", full_name="onedrive.exe", pid=1001, category=SYNC),
+            # Categoria objetivo Y keeper -> NO (gana el keeper, G-3)
+            ProcessInfo(name="discord", full_name="discord.exe", pid=1002, category=CHAT),
+            # Solo en apps explicitas -> SI
+            ProcessInfo(name="chrome", full_name="chrome.exe", pid=1003, category=OTROS),
+            # No aparece en ninguna configuracion -> NO
+            ProcessInfo(name="woptimizer_zzz_inexistente", full_name=AJENO, pid=1004, category=OTROS),
+            # Categoria roja MARCADA como objetivo -> NO (barrera G-2)
+            ProcessInfo(name="svchost", full_name="svchost.exe", pid=1005, category=ROJO),
+            # DB envenenada (verde) con nombre irrompible -> NO (blindaje G-4)
+            ProcessInfo(name="lsass", full_name="lsass.exe", pid=1006, category=PROD),
+        ]
+        pack = Pack(
+            id="gaming_test",
+            name="Gaming de prueba",
+            is_gaming=True,
+            default_action="kill",
+            apps=["chrome.exe"],
+            keepers=["discord.exe"],
+            target_categories=[SYNC, CHAT, ROJO, PROD],
+        )
+
+        # Precondiciones: si el entorno no cumple, el test no discriminaria nada.
+        assert spy.is_system_protected("svchost") is False, (
+            "Precondicion rota: si svchost estuviera en el blacklist de nombres "
+            "este test ya no distinguiria la barrera de categoria G-2"
+        )
+        assert spy.is_system_protected("lsass") is True, (
+            "Precondicion rota: el blindaje de nombres de TASK-024 debe seguir en pie"
+        )
+        assert spy._categorize("onedrive.exe") == SYNC, (
+            "Precondicion rota: onedrive debe caer en la categoria objetivo"
+        )
+        assert spy._categorize("discord.exe") == CHAT, (
+            "Precondicion rota: la categoria de discord debe ser objetivo para "
+            "que el test pruebe la precedencia del keeper"
+        )
+        assert spy._categorize(AJENO) not in pack.target_categories, (
+            f"Precondicion rota: el proceso ajeno cayo en {spy._categorize(AJENO)!r}"
+        )
+
+        resultado = gs.execute_gaming_pack(pack)
+
+        assert spy.capturados is not None, (
+            "execute_gaming_pack no llego a kill_processes: sin el fix la ruta "
+            "sigue llamando a kill_pack_apps y la lista capturada esta vacia"
+        )
+        nombres = sorted(p.full_name for p in spy.capturados)
+        assert nombres == ["chrome.exe", "onedrive.exe"], (
+            f"Solo deben llegar onedrive (categoria objetivo) y chrome (app "
+            f"explicita). Llegaron: {nombres}"
+        )
+        assert "svchost.exe" not in nombres, (
+            "svchost con su categoria roja marcada como objetivo NUNCA debe "
+            "llegar a kill_processes: sin la barrera G-2 mataria todos los "
+            "svchost.exe y dejaria Windows inservible"
+        )
+        assert "discord.exe" not in nombres, (
+            "El keeper gana aunque su categoria sea objetivo: se evalua con la "
+            "extension (`full_name`), no con `name` a secas"
+        )
+        assert "lsass.exe" not in nombres, (
+            "Un nombre irrompible no se mata aunque la DB lo pinte como verde"
+        )
+        assert AJENO not in nombres, "Un proceso no relacionado no debe matarse"
+        assert spy.force_refresh_pedido is True, (
+            "G0 es obligatorio: sin force_refresh=True la cache TTL de 2 s puede "
+            "dejar fuera lo que el usuario acaba de lanzar"
+        )
+
+        killed, failed, skipped, freed_mb = resultado
+        assert len(resultado) == 4, f"Se espera una 4-tupla, obtenido {resultado}"
+        assert (killed, failed, freed_mb) == (2, 0, 12.5), (
+            f"La 4-tupla de kill_processes debe volver sin alterar: {resultado}"
+        )
+        assert isinstance(freed_mb, float), f"freed_mb debe ser float: {type(freed_mb)}"
+        assert skipped == 2, (
+            f"skipped debe sumar los descartes del filtro (svchost y lsass): {skipped}"
+        )
+
+        # Uso indebido: este metodo es solo del Gaming Mode (spec 4.1).
+        try:
+            gs.execute_gaming_pack(Pack(id="usuario", name="Pack de usuario", apps=["chrome.exe"]))
+        except ValueError:
+            pass
+        else:
+            assert False, "un pack con is_gaming=False debe lanzar ValueError"
+
+        # ---------------- CAPA B: integracion real contra la via de kill
+        def _capa_b():
+            import psutil
+            import subprocess
+            import sys as _sys
+            import tempfile
+
+            class _SnapshotFijo(ProcessService):
+                """El snapshot real incluiria al propio runner (python.exe), asi
+                que se fija a un unico objetivo con marca propia."""
+
+                def __init__(self, snap):
+                    super().__init__()
+                    self.snap = snap
+
+                def get_running_processes(self, force_refresh=False):
+                    return list(self.snap)
+
+            pidfile = tempfile.NamedTemporaryFile(suffix=".pid", delete=False, mode='w', encoding='utf-8')
+            pidfile.write("")
+            pidfile.close()
+
+            marca = "woptimizer_t025_padre.exe"
+            child_code = "import time; time.sleep(120)"
+            parent_code = (
+                "import subprocess, sys, time\n"
+                f"c = subprocess.Popen([sys.executable, '-c', {child_code!r}])\n"
+                f"with open({pidfile.name!r}, 'w', encoding='utf-8') as fh:\n"
+                "    fh.write(str(c.pid))\n"
+                "time.sleep(120)\n"
+            )
+
+            parent_proc = None
+            child_pid = None
+            try:
+                flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                try:
+                    parent_proc = subprocess.Popen([_sys.executable, "-c", parent_code], creationflags=flags)
+                except Exception as e:
+                    print(f"  AVISO: el entorno bloquea la creacion de subprocesos ({e}). Test degradado.")
+                    return
+
+                child_pid = _esperar_pid_de_archivo(pidfile.name, timeout=10.0)
+                assert child_pid is not None, (
+                    f"El proceso padre {parent_proc.pid} no lanzo ningun nieto a tiempo"
+                )
+                # Guarda contra falsos positivos: el objetivo debe ser el nieto Python.
+                try:
+                    cmdline = psutil.Process(child_pid).cmdline()
+                except psutil.Error:
+                    cmdline = []
+                assert any("python" in str(arg).lower() for arg in cmdline), (
+                    f"El PID capturado ({child_pid}) no es el nieto Python esperado: {cmdline}"
+                )
+
+                pinfo = ProcessInfo(name=marca.replace('.exe', ''), full_name=marca, pid=parent_proc.pid)
+                gs_b = GamingService(_SnapshotFijo([pinfo]), pack_s)
+                pack_b = Pack(
+                    id="gaming",
+                    name="Gaming de integracion",
+                    is_gaming=True,
+                    default_action="kill",
+                    apps=[marca],
+                )
+                killed, failed, skipped, freed_mb = gs_b.execute_gaming_pack(pack_b)
+
+                if killed == 0 and failed > 0:
+                    print("  AVISO: kill protegido por permisos (AccessDenied). Test degradado.")
+                    return
+
+                assert killed == 1, (
+                    f"Se esperaba 1 proceso muerto; killed={killed} failed={failed} skipped={skipped}"
+                )
+                assert skipped == 0, (
+                    f"El objetivo propio no deberia contar como protegido: skipped={skipped}"
+                )
+
+                padre_muerto = (parent_proc.poll() is not None) or _esperar_a_morir(parent_proc.pid)
+                nieto_muerto = _esperar_a_morir(child_pid)
+
+                assert padre_muerto, f"El padre {parent_proc.pid} deberia estar muerto tras el kill"
+                assert nieto_muerto, (
+                    f"El nieto {child_pid} sobrevivio: el kill NO es recursivo (invariante rota)"
+                )
+            finally:
+                # Limpieza: nunca dejar procesos huerfanos de este test.
+                if child_pid is not None and _proceso_vivo(child_pid):
+                    try:
+                        psutil.Process(child_pid).kill()
+                    except psutil.Error:
+                        pass
+                if parent_proc is not None:
+                    if parent_proc.poll() is None:
+                        try:
+                            parent_proc.kill()
+                        except OSError:
+                            pass
+                    try:
+                        parent_proc.wait(timeout=5)
+                    except Exception:
+                        pass
+                try:
+                    os.unlink(pidfile.name)
+                except OSError:
+                    pass
+
+        _capa_b()
+
+        # ---------------- Sub-chequeo estatico: congelacion de capas
+        root = os.path.dirname(os.path.abspath(__file__))
+        ruta_servicio = os.path.join(root, "src", "woptimizer", "services", "gaming_service.py")
+        with open(ruta_servicio, "r", encoding="utf-8") as fh:
+            cod_servicio = _codigo_ejecutable(fh.read()).lower()
+        assert "psutil" not in cod_servicio, (
+            "G-1: execute_gaming_pack no puede abrir una via propia al sistema; "
+            "debe delegar integro en kill_processes"
+        )
+        assert "import json" not in cod_servicio, (
+            "La capa de servicios no lee el JSON de packs directamente"
+        )
+
+        for relativo in (
+            os.path.join("ui", "app.py"),
+            os.path.join("ui", "main_window.py"),
+            os.path.join("ui", "confirmation.py"),
+            os.path.join("ui", "views", "dashboard_view.py"),
+            os.path.join("ui", "views", "pack_manager_view.py"),
+            os.path.join("ui", "views", "process_manager_view.py"),
+        ):
+            with open(os.path.join(root, "src", "woptimizer", relativo), "r", encoding="utf-8") as fh:
+                cod_ui = _codigo_ejecutable(fh.read()).lower()
+            assert "psutil" not in cod_ui, (
+                f"Separacion de capas: la UI no puede tocar el sistema operativo ({relativo})"
+            )
+            assert "import json" not in cod_ui, (
+                f"Separacion de capas: la UI no puede leer el JSON ({relativo})"
+            )
+    finally:
+        os.unlink(tmp_path)
+    print("execute_gaming_pack (integracion) OK.")
 
 
 def test_pack_service_crud():
@@ -1084,6 +1368,7 @@ def test_no_system_process_is_killable():
     import shutil
     import tempfile
     import woptimizer.config as wopt_config
+    from woptimizer.config import CATEGORY_ORDER
     from woptimizer.services.process_service import (
         SYSTEM_PROTECTED_PROCESSES,
         ProcessService,
@@ -1197,8 +1482,4139 @@ def test_no_system_process_is_killable():
                                   ("mpdefendercoreservice.exe", "none")):
         cat, prio, _ = ps_real._get_process_meta(nombre)
         assert prio == prio_esperado, f"{nombre} -> prioridad {prio!r}, esperaba {prio_esperado!r}"
-        assert cat != "? Otros", f"{nombre} ha caido en '? Otros': revisa la clave del JSON"
+        # TASK-026 (FIX-005): se compara contra el centinela VIVO de config.py,
+        # no contra el literal ASCII "? Otros". Con ese literal la comparacion
+        # era tautologica (comparaba contra un texto que ya no existia en el
+        # codigo) y el test pasaba sin comprobar nada.
+        assert cat != CATEGORY_ORDER[-1], (
+            f"{nombre} ha caido en la categoria centinela: revisa la clave del JSON"
+        )
     print("Blindaje anti-brick OK.")
+
+
+# ===========================================================================
+# TASK-026 - Integridad de datos, copia profunda y resiliencia de servicios.
+# Cuatro tests discriminantes: cada uno FALLA sin su fix.
+#   FIX-001  test_gaming_pack_fallback_is_deep_copy
+#   FIX-005  test_default_meta_matches_canonical_otros
+#   FIX-007  test_do_load_publica_sin_tk  (P8, reescrito sin Tk en TASK-030)
+#   FIX-009  test_pack_service_backup_and_recovery
+# ===========================================================================
+
+# El centinela canonico se construye por codepoint, nunca pegando el glifo: asi
+# el propio test no depende de que el editor haya escrito bien el emoji
+# (familia de bug del ciclo #9). U+26AA es WHITE CIRCLE, no el ASCII '?' (U+003F).
+CENTINELA_OTROS = chr(0x26AA) + " Otros"
+CENTINELA_ASCII = "? Otros"
+
+
+class _RecordingDict(dict):
+    """dict que graba (hilo, operacion) en cada mutacion y puede quedarse PARADA.
+
+    Dos usos en el test de FIX-007 (P8, `test_do_load_publica_sin_tk`):
+      * demostrar que NINGUNA mutacion llega del hilo secundario;
+      * que la mutacion IN SITU sea observable aunque la vista no tenga ventana.
+      * reproducible sin azar el "dictionary changed size during iteration":
+        la primera mutacion se queda bloqueada hasta que el hilo principal
+        tenga el iterador abierto, y sigue cuando el lector sigue avanzando.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ops = []
+        self.en_mutacion = threading.Event()   # el hilo secundario entro a mutar
+        self.desbloquear = threading.Event()   # el hilo principal lo deja seguir
+        self.tras_insertar = threading.Event() # ya metio una clave nueva
+        self.bloquear = False
+
+    def _op(self, op):
+        self.ops.append((threading.get_ident(), op))
+        if self.bloquear:
+            self.en_mutacion.set()
+            self.desbloquear.wait(20)
+            self.bloquear = False
+
+    def clear(self):
+        self._op("clear")
+        super().clear()
+
+    def __setitem__(self, key, value):
+        self._op("setitem")
+        super().__setitem__(key, value)
+        self.tras_insertar.set()
+
+    def __delitem__(self, key):
+        self._op("delitem")
+        super().__delitem__(key)
+
+
+def test_do_load_publica_sin_tk():
+    """TASK-030 / P8: el invariante de FIX-007 con un arnés SIN Tk.
+
+    Por que sin ventana: el test anterior montaba un `ctk.CTk()` de verdad y
+    por eso necesitaba `faulthandler.dump_traceback_later(150, exit=True)`,
+    porque un bloqueo ocurre DENTRO de Tcl, donde ningun timeout de Python
+    sirve. Ese `exit=True` mataba el runner entero (y con el todos los tests
+    posteriores) y costs 150 s de suite colgada en cada regresion. Aqui no hay
+    `CTk`, ni `root`, ni `mainloop`, ni Tcl: NO EXISTE RUTA por la que Tcl
+    pueda colgarse, asi que el reloj de guardia sobra y se ha eliminado.
+
+    Como se comprueba lo mismo sin ventana:
+      * la vista se construye con `__new__` sobre una subclase en la que
+        `processes` y `grouped_processes` son PROPIEDADES que anotan
+        `threading.get_ident()`: cada escritura deja escrito de que hilo salio,
+        sin cronometrar nada;
+      * el `after` de la vista ENCOLA el callback y el TEST hace de bucle de
+        eventos: abre las puertas, hace `join(10)` al hilo secundario y ejecuta
+        en el principal lo que el secundario entrego;
+      * el getter de `grouped_processes` devuelve una `_RecordingDict`, asi que
+        una mutacion IN SITU (`.clear()`, `[k] = []`) tambien queda con su hilo.
+
+    MATA: que el secundario vuelva a publicar el estado, o a mutarlo in situ.
+    Con el bug, `escrituras` queda con el hilo secundario y el mensaje lo dice.
+    Se conservan las dos cargas solapadas (fase B), la puerta por `Event` sin
+    `sleep`, el camino de crash (fase C) y la guarda `ast` (fase D, prohibe
+    `self.master.after`, TASK-023).
+    """
+    print("Testing _do_load publica desde el principal, sin Tk (FIX-007/P8)...")
+    import collections
+    from woptimizer.models import Pack, ProcessInfo
+    from woptimizer.ui.views import process_manager_view as pmv_mod
+    from woptimizer.ui.views.process_manager_view import ProcessManagerView
+
+    # --- D) guarda estatica, PRIMERO y sin Tk -----------------------------
+    # Va antes que las fases A/B/C a proposito: si alguien reintroduce la
+    # mutacion desde el hilo secundario, el fallo tiene que ser un mensaje
+    # limpio e instantaneo. Sigue siendo una comprobacion DISTINTA de las de
+    # abajo: prohibe `self.master.after` (TASK-023) y prohibe publicar fuera de
+    # un `self.after(0, ...)`. Ahora es una red, no la unica.
+    ruta = os.path.join("src", "woptimizer", "ui", "views", "process_manager_view.py")
+    with open(ruta, encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read())
+
+    for nodo in ast.walk(arbol):
+        if (isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Attribute)
+                and nodo.func.attr == "after"
+                and isinstance(nodo.func.value, ast.Attribute)
+                and nodo.func.value.attr == "master"):
+            raise AssertionError(
+                f"{ruta}:{nodo.lineno} usa self.master.after; debe ser self.after "
+                "(TASK-023: el master sobrevive a la destruccion de la vista)"
+            )
+
+    publicadores = set()
+    for nodo in ast.walk(arbol):
+        if (isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Attribute)
+                and nodo.func.attr == "after"
+                and isinstance(nodo.func.value, ast.Name)
+                and nodo.func.value.id == "self"
+                and nodo.args and isinstance(nodo.args[0], ast.Constant)
+                and nodo.args[0].value == 0
+                and len(nodo.args) >= 2 and isinstance(nodo.args[1], ast.Name)):
+            publicadores.add(nodo.args[1].id)
+    assert publicadores, "no hay ninguna funcion destino de self.after(0, ...)"
+
+    padres = {}
+    for padre in ast.walk(arbol):
+        for hijo in ast.iter_child_nodes(padre):
+            padres[hijo] = padre
+
+    def _cadena(nodo):
+        cadena = []
+        cur = nodo
+        while cur in padres:
+            cur = padres[cur]
+            if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                cadena.append(cur.name)
+        return cadena
+
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.Assign):
+            objetivos = nodo.targets
+        elif isinstance(nodo, (ast.AugAssign, ast.AnnAssign)):
+            objetivos = [nodo.target]
+        else:
+            objetivos = []
+        for t in objetivos:
+            if (isinstance(t, ast.Attribute) and t.attr in ("processes", "grouped_processes")
+                    and isinstance(t.value, ast.Name) and t.value.id == "self"):
+                cadena = _cadena(nodo)
+                if cadena == ["__init__"]:
+                    continue
+                assert publicadores.intersection(cadena), (
+                    f"{ruta}:{nodo.lineno} asigna self.{t.attr} dentro de {cadena}, "
+                    f"que no es destino de ningun self.after(0, ...); el estado de "
+                    "una vista solo se publica desde el hilo principal"
+                )
+
+    for nodo in ast.walk(arbol):
+        if (isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Attribute)
+                and nodo.func.attr in ("clear", "update", "pop", "popitem")
+                and isinstance(nodo.func.value, ast.Attribute)
+                and nodo.func.value.attr in ("processes", "grouped_processes")
+                and isinstance(nodo.func.value.value, ast.Name)
+                and nodo.func.value.value.id == "self"):
+            raise AssertionError(
+                f"{ruta}:{nodo.lineno} muta self.{nodo.func.value.attr} in situ; "
+                "el hilo secundario no puede tocar un dict que itera el principal"
+            )
+
+    # --- dobles de prueba: control determinista del entrelazado ------------
+    class _FakeProcService:
+        """Doble de ProcessService con una puerta por llamada.
+
+        `cogido[i]` lo pone el hilo cuando ya tiene su snapshot; si el indice
+        esta en `bloquear`, espera a que el principal le de paso en
+        `continuar[i]`. Sin sleep en ningun sitio.
+        """
+        is_db_loaded = True
+
+        def __init__(self, snapshots):
+            self._snaps = [list(s) for s in snapshots]
+            self._i = 0
+            self._lock = threading.Lock()
+            self.cogido = [threading.Event() for _ in self._snaps]
+            self.continuar = [threading.Event() for _ in self._snaps]
+            self.bloquear = set()
+
+        def get_running_processes(self):
+            with self._lock:
+                i = self._i
+                self._i += 1
+            snap = list(self._snaps[i])
+            self.cogido[i].set()
+            if i in self.bloquear:
+                self.continuar[i].wait(20)
+            return snap
+
+    class _FakePackService:
+        def get_all_packs(self):
+            return {"gaming": Pack(id="gaming", name="Gaming", is_gaming=True)}
+
+    class _VistaSinTk(ProcessManagerView):
+        """`processes` y `grouped_processes` como PROPIEDADES que anotan el hilo.
+
+        `__new__` no ejecuta `CTkFrame.__init__`: no hay root ni widgets. Las
+        escrituras se guardan como (atributo, hilo) y el agrupado se guarda
+        como una `_RecordingDict`, de modo que una mutacion in situ tambien
+        queda con el hilo que la hizo.
+        """
+        @property
+        def processes(self):
+            return self._procesos
+
+        @processes.setter
+        def processes(self, valor):
+            self.escrituras.append(("processes", threading.get_ident()))
+            self._procesos = list(valor)
+
+        @property
+        def grouped_processes(self):
+            return self._agrupado
+
+        @grouped_processes.setter
+        def grouped_processes(self, valor):
+            self.escrituras.append(("grouped_processes", threading.get_ident()))
+            self._agrupado = _RecordingDict(valor)
+
+    p1 = ProcessInfo(name="fake_one", full_name="fake_one.exe", pid=101,
+                     category=CENTINELA_OTROS)
+    p2 = ProcessInfo(name="fake_two", full_name="fake_two.exe", pid=102,
+                     category=CENTINELA_OTROS)
+    q1 = ProcessInfo(name="otro_proceso", full_name="otro_proceso.exe", pid=201,
+                     category=CENTINELA_OTROS)
+
+    # snapshot 0: la carga de la fase A. 1: la carga de la fase C.
+    # 2 y 3: las dos cargas solapadas de la fase B.
+    fake = _FakeProcService([[p1, p2], [q1], [p1], [p1, p2]])
+
+    vista = _VistaSinTk.__new__(_VistaSinTk)
+    vista.escrituras = []          # (atributo, hilo) de cada publicación
+    vista._procesos = []
+    vista._agrupado = _RecordingDict()
+    vista.process_service = fake
+    vista.pack_service = _FakePackService()
+    # `_apply` acaba pintando. Sin widgets, el render es un no-op: lo que se
+    # comprueba aqui es la PUBLICACION (hilo y coherencia), no el render, que
+    # `test_headless_ui` cubre con una ventana de verdad.
+    vista._render_list = lambda *a, **k: None
+    vista._update_pack_dropdown = lambda *a, **k: None
+
+    cola = collections.deque()
+    entregado = threading.Event()
+    posts = []                     # (hilo) que encolo cada after(0, ...)
+
+    def after_falso(ms, func=None, *args):
+        """`after` de mentira: ENCOLA y no depende de Tcl."""
+        cola.append((func, args))
+        posts.append(threading.get_ident())
+        entregado.set()
+
+    vista.after = after_falso
+
+    # El hilo secundario se crea DENTRO de `_do_load`, asi que para poder hacer
+    # `join` hace falta la referencia. Se espia el `Thread` del modulo de la
+    # vista (no el `threading` global: el resto de la suite no lo ve).
+    hilos = []
+
+    class _HiloEspia(threading.Thread):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            hilos.append(self)
+
+    class _ShimThreading:
+        Thread = _HiloEspia
+        Event = threading.Event
+
+    principal = threading.get_ident()
+    threading_real = pmv_mod.threading
+    pmv_mod.threading = _ShimThreading
+
+    def _cargar(indice):
+        """Lanza `_do_load`; el hilo secundario queda PARKED en su puerta."""
+        fake.bloquear.add(indice)
+        entregado.clear()
+        vista._do_load()
+        assert fake.cogido[indice].wait(20), (
+            f"el hilo secundario no llego al snapshot {indice}"
+        )
+        return hilos[-1]
+
+    def _bucle(hilo, indice):
+        """Abre la puerta, espera al hilo y APLICA en el principal lo entregado."""
+        fake.continuar[indice].set()
+        entregado.wait(10)          # espera acotada: NO es el discriminante
+        hilo.join(10)
+        assert not hilo.is_alive(), (
+            "el hilo secundario no termino: se quedo bloqueado (con Tcl y sin este "
+            "arnes eso era un cuelgue de 150 s con exit=True)"
+        )
+        aplicados = 0
+        while cola:
+            func, args = cola.popleft()
+            aplicados += 1
+            func(*args)              # esto corre en el PRINCIPAL: el hilo principal
+        return aplicados
+
+    try:
+        # --- A) identidad de hilo y publicacion efectiva ------------------
+        # El orden de las aserciones importa: primero la IDENTIDAD del hilo (que
+        # es el invariante de FIX-007 y el mensaje mas preciso) y despues el
+        # recuento de entregas.
+        hilo = _cargar(0)
+        aplicados = _bucle(hilo, 0)
+        assert vista.escrituras, (
+            "el estado nunca se publico: el hilo secundario tiene que entregarlo "
+            "por un self.after(0, ...) que se ejecute en el principal (FIX-007)"
+        )
+        for atributo, ident in vista.escrituras:
+            assert ident == principal, (
+                f"'{atributo}' se publico desde el hilo {ident}, no desde el "
+                f"principal ({principal})"
+            )
+        assert aplicados >= 1, (
+            "nadie ejecuto lo que el secundario encolo: el estado se publico sin "
+            "pasar por el hilo principal"
+        )
+        assert posts, "nadie encolo el after(0, ...)"
+        for ident in posts:
+            assert ident != principal, (
+                "el after(0, ...) se encolo desde el principal: entonces el "
+                "secundario no ha calculado nada y la vista se queda congelada"
+            )
+        assert set(vista.grouped_processes) == {"fake_one", "fake_two"}, (
+            f"agrupado inesperado tras la carga: {sorted(vista.grouped_processes)}"
+        )
+        assert dict(vista.grouped_processes) == ProcessManagerView._group(vista.processes), (
+            "grouped_processes no es el agrupado de processes: on_kill_selected "
+            "materiaria PIDs que no son los que la vista esta mostrando"
+        )
+
+        # --- C) el principal ITERA el agrupado mientras el secundario publica
+        # Reproduccion determinista del crash de la app real: el principal
+        # abre el iterador (como `_render_list` al pulsar el buscador) y el
+        # secundario sigue metiendo claves en el MISMO dict.
+        vista.grouped_processes = {"otro_proceso": [q1]}
+        rec = vista.grouped_processes
+        rec.bloquear = True
+        iterador = iter(rec.items())
+        next(iterador, None)         # iterador ABIERTO
+        rec.desbloquear.set()        # si el secundario muta, no se queda parado
+        hilo = _cargar(1)
+        _bucle(hilo, 1)
+        for atributo, ident in vista.escrituras[-2:]:
+            assert ident == principal, (
+                f"'{atributo}' se publico desde el hilo {ident} en la carga de la "
+                f"fase C, no desde el principal ({principal})"
+            )
+        assert not rec.en_mutacion.is_set(), (
+            f"el hilo secundario entro a MUTAR IN SITU el dict que el principal "
+            f"itera: {rec.ops}"
+        )
+        assert rec.ops == [], (
+            f"operaciones in situ sobre el agrupado desde {[i for i, _ in rec.ops]}: "
+            "el agrupado se REBIND, no se muta"
+        )
+        crash = None
+        try:
+            list(iterador)
+        except RuntimeError as e:
+            crash = e
+        assert crash is None, (
+            f"la vista revienta al iterar el dict que muta otro hilo: {crash!r}"
+        )
+        assert set(vista.grouped_processes) == {"otro_proceso"}, (
+            f"agrupado inesperado tras la fase C: {sorted(vista.grouped_processes)}"
+        )
+
+        # --- B) dos cargas solapadas con snapshots distintos ---------------
+        vista.escrituras.clear()
+        posts[:] = []
+        hilo_a = _cargar(2)         # carga A: se queda parada a mitad
+        hilo_b = _cargar(3)         # carga B: entra mientras A sigue viva
+        assert len(posts) == 0, (
+            "las dos cargas solapadas no llegaron a encolar su after(0, ...): el "
+            "hilo secundario no entrego nada"
+        )
+        assert _bucle(hilo_a, 2) == 1, (
+            "la carga A no publico nada por el hilo principal"
+        )
+        assert _bucle(hilo_b, 3) == 1, (
+            "la carga B no publico nada por el hilo principal"
+        )
+        for atributo, ident in vista.escrituras:
+            assert ident == principal, (
+                f"'{atributo}' se publico desde el hilo {ident} en la carga solapada, "
+                f"no desde el principal ({principal})"
+            )
+        esperado = ProcessManagerView._group(vista.processes)
+        assert dict(vista.grouped_processes) == esperado, (
+            "tras dos cargas solapadas, grouped_processes describe un snapshot "
+            f"obsoleto respecto de processes: agrupado={sorted(vista.grouped_processes)} "
+            f"procesos={sorted(p.name for p in vista.processes)} "
+            f"esperado={sorted(esperado)}: el killaria PIDs equivocados"
+        )
+        assert set(vista.grouped_processes) in ({"fake_one"}, {"fake_one", "fake_two"}), (
+            f"el agrupado final no corresponde a ninguno de los snapshots: "
+            f"{sorted(vista.grouped_processes)}"
+        )
+    finally:
+        pmv_mod.threading = threading_real
+    print("do_load publica desde el principal sin Tk OK (FIX-007/P8).")
+
+
+def test_pack_service_backup_and_recovery():
+    """TASK-026 (FIX-009): backup preventivo, RECUPERACION desde .bak y except honesto.
+
+    Antes `save()` no tenia backup (la "rotacion" de TASK-011 / v3.1-QoL /
+    CHANGELOG nunca se escribio) y `load()` hacia `except (json.JSONDecodeError,
+    Exception)`, que es `except Exception`: un JSON corrupto BORRABA todos los
+    packs del usuario y sobrescribia el archivo con uno que solo tiene el Gaming,
+    y un PermissionError tomaba la misma ruta.
+    """
+    print("Testing PackService backup, recuperacion y except honesto (FIX-009)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services.pack_service import PackService
+
+    svc, tmp_path = _pack_service_temporal()
+    bak_path = tmp_path + ".bak"
+    tmp_tmp = tmp_path + ".tmp"
+
+    def _leer(ruta):
+        with open(ruta, encoding="utf-8") as fh:
+            return json.load(fh)
+
+    try:
+        # --- A0) instalacion limpia: no hay archivo, no hay backup que rotar ---
+        # TASK-031 (E-3) INVIERTE la asercion de este bloque. Antes era "la
+        # primera escritura debe crear el archivo", porque `load()` llamaba a
+        # `save()` (DOS veces) y dejaba un `profiles.json` con un solo pack en
+        # el arranque. Ahora `load()` es de SOLO LECTURA: no se crea el
+        # fichero hasta que el usuario hace algo real, y un `profiles.json`
+        # vacio solo confunde. Lo que se sigue exigiendo es lo importante: ni
+        # un `.bak` basura ni un `.tmp` colgado, y la app arranca con el pack
+        # `gaming` en memoria.
+        limpio = os.path.join(tempfile.mkdtemp(prefix="wopt_t026_limpio_"), "profiles.json")
+        try:
+            servicio_limpio = PackService(data_path=limpio)
+            assert not os.path.exists(limpio), (
+                "load() no puede crear el fichero: es de solo lectura. Un arranque "
+                "que escribe se traga la recuperacion del .bak (TASK-031 E-3)"
+            )
+            assert not os.path.exists(limpio + ".bak"), (
+                "una instalacion limpia no debe dejar un .bak basura"
+            )
+            assert not os.path.exists(limpio + ".tmp"), "la escritura atomica no deja .tmp"
+            assert servicio_limpio.get_all_packs()["gaming"].is_gaming is True, (
+                "sin fichero en disco la app tiene que funcionar igual: el pack "
+                "gaming se asegura EN MEMORIA"
+            )
+            # Y la primera escritura REAL si crea el fichero, sin .bak de basura.
+            servicio_limpio.create_user_pack("primero", "Primero", ["primero.exe"])
+            assert os.path.exists(limpio), "la primera escritura real debe crear el archivo"
+            assert not os.path.exists(limpio + ".bak"), (
+                "la primera escritura no tiene version anterior que rotar"
+            )
+        finally:
+            shutil.rmtree(os.path.dirname(limpio), ignore_errors=True)
+
+        # --- A) copia preventiva -------------------------------------------
+        svc.create_user_pack("trabajo", "Trabajo", ["trabajo.exe"])
+        assert os.path.exists(bak_path), "save() no creo el .bak preventivo"
+        assert "trabajo" not in _leer(bak_path).get("packs", {}), (
+            "el .bak debe contener la version ANTERIOR, no la recien guardada"
+        )
+        assert "trabajo" in _leer(tmp_path)["packs"], (
+            "el principal debe contener el pack recien creado"
+        )
+        assert not os.path.exists(tmp_tmp), "la escritura atomica no debe dejar un .tmp"
+
+        # --- B) rotacion de verdad, no copia posterior ---------------------
+        svc.create_user_pack("beta", "Beta", ["beta.exe"])
+        svc.delete_pack("beta")
+        bak = _leer(bak_path).get("packs", {})
+        principal = _leer(tmp_path).get("packs", {})
+        assert "beta" in bak, (
+            "el .bak debe contener la version N-1 (rotacion), no la recien escrita"
+        )
+        assert "beta" not in principal
+
+        # --- C) RECUPERACION desde el .bak ante JSON corrupto -------------
+        with open(tmp_path, "w", encoding="utf-8") as fh:
+            fh.write('{"packs": {"trabajo": ')       # apagon a mitad del json.dump
+        servicio = PackService(data_path=tmp_path)
+        packs = servicio.get_all_packs()
+        assert "trabajo" in packs, (
+            f"la recuperacion desde el .bak no devolvio los packs del usuario: {sorted(packs)}"
+        )
+        assert packs["trabajo"].apps == ["trabajo.exe"], (
+            f"los apps del pack recuperado llegaron vacios: {packs['trabajo'].apps}"
+        )
+        assert packs["gaming"].is_gaming is True, "el pack gaming debe seguir marcado"
+        with open(tmp_path, encoding="utf-8") as fh:
+            assert fh.read().startswith('{"packs": {"trabajo": '), (
+                "recuperar NO debe reescribir el principal corrupto (ni pisar el .bak bueno)"
+            )
+
+        # --- D) un error de permisos NO puede entrar en la ruta destructiva -
+        # Escenario real: el antivirus bloquea el archivo. Se marca en solo
+        # lectura DESPUES de corromperlo (escribir encima de un read-only
+        # dari PermissionError antes de poder preparar el escenario).
+        os.chmod(bak_path, 0o600)
+        os.chmod(tmp_path, 0o400)
+        try:
+            if os.access(tmp_path, os.W_OK):
+                print("  (aviso: el SO no aplica solo-lectura; se omite el caso D)")
+            else:
+                # D1) hay .bak sano: se recupera sin escribir nada.
+                try:
+                    servicio_bloqueado = PackService(data_path=tmp_path)
+                except PermissionError as e:
+                    raise AssertionError(
+                        "con un .bak sano, un principal corrupto y solo-lectura se debe "
+                        f"RECUPERAR del backup, no reventar: {e}"
+                    )
+                assert "trabajo" in servicio_bloqueado.get_all_packs()
+                with open(tmp_path, encoding="utf-8") as fh:
+                    assert fh.read().startswith('{"packs": {"trabajo": '), (
+                        "recuperar con el archivo bloqueado no debe reescribir el principal"
+                    )
+
+                # D2) sin .bak: el principal corrupto NO se toca. TASK-031 (E-3)
+                # cambio el MECANISMO de esta fila, no su invariante: antes
+                # `load()` intentaba regenerar, el volcado reventaba por el
+                # solo-lectura y el error se propagaba. Ahora `load()` no
+                # escribe NADA, asi que no hay nada que reventar: lo que se
+                # exige es lo que siempre se quiso (el fichero del usuario no
+                # se destruye) y, ademas, que nadie lo reescriba a lo bruto.
+                os.unlink(bak_path)
+                servicio_sin_bak = PackService(data_path=tmp_path)
+                with open(tmp_path, encoding="utf-8") as fh:
+                    assert fh.read().startswith('{"packs": {"trabajo": '), (
+                        "sin .bak legible el principal se queda EN DISCO tal cual "
+                        "(TASK-031 condicion 3 de proposal.md 3): regenerar aqui "
+                        "reescribia el fichero del usuario con un solo pack"
+                    )
+                assert servicio_sin_bak.fichero_danado is True, (
+                    "un principal ilegible tiene que quedar MARCADO como dañado, no "
+                    "desaparecer en silencio (Trampa #14)"
+                )
+                assert not os.path.exists(tmp_tmp), "un save fallido no debe dejar un .tmp"
+        finally:
+            os.chmod(tmp_path, 0o600)
+
+        # --- D2) un OSError al LEER se propaga, no se regenera -------------
+        directorio = tempfile.mkdtemp(prefix="wopt_t026_dir_")
+        try:
+            try:
+                PackService(data_path=directorio)
+            except OSError:
+                pass
+            else:
+                raise AssertionError(
+                    "una ruta que no es un archivo debe fallar, no regenerar un "
+                    "profiles.json por defecto encima"
+                )
+        finally:
+            shutil.rmtree(directorio, ignore_errors=True)
+    finally:
+        for ruta in (tmp_path, bak_path, tmp_tmp):
+            if os.path.exists(ruta):
+                try:
+                    os.chmod(ruta, 0o600)
+                except OSError:
+                    pass
+                os.unlink(ruta)
+    print("PackService backup y recuperacion OK (FIX-009).")
+
+
+def test_default_meta_matches_canonical_otros():
+    """TASK-026 (FIX-005): el centinela de categoria es UN literal, en TRES sitios.
+
+    `process_service._DEFAULT_META` y el `props.get('category', ...)` de
+    `_load_local_db` usaban "? Otros" (ASCII U+003F) mientras el resto del
+    sistema usa "U+26AA Otros" (config.CATEGORY_ORDER y models.ProcessInfo).
+    Con el literal equivocado, ese proceso caia FUERA de CATEGORY_ORDER y se
+    ordenaba con el centinela 999 del sort, y el filtro de
+    `pack_manager_view` (que comparaba contra "? Otros") dejaba de excluir la
+    categoria canonica del acordeon de `target_categories`.
+    """
+    print("Testing centinela de categoria canonico (FIX-005)...")
+    import json
+    import shutil
+    import tempfile
+    import woptimizer.config as wopt_config
+    from woptimizer.config import CATEGORY_ORDER
+    from woptimizer.models import ProcessInfo
+    from woptimizer.services import process_service as ps_mod
+    from woptimizer.services.process_service import ProcessService
+
+    assert CATEGORY_ORDER[-1] == CENTINELA_OTROS, (
+        f"CATEGORY_ORDER[-1] es {CATEGORY_ORDER[-1]!r}, no el circulo U+26AA"
+    )
+    assert ProcessInfo.model_fields["category"].default == CENTINELA_OTROS
+    assert ps_mod._DEFAULT_META[0] == CENTINELA_OTROS, (
+        f"_DEFAULT_META[0] es {ps_mod._DEFAULT_META[0]!r}: la interrogacion ASCII "
+        "no es el circulo U+26AA"
+    )
+    assert chr(0x26AA) in ps_mod._DEFAULT_META[0]
+    assert CENTINELA_ASCII not in ps_mod._DEFAULT_META[0]
+    assert CENTINELA_ASCII not in CENTINELA_OTROS
+
+    # Comportamiento y no solo literales: con la DB vacia, la categoria del
+    # fallback tiene que participar en el ORDEN real (ultimo indice), no caer
+    # en el 999 de `cat_idx.get(p.category, 999)`.
+    ps = ProcessService()
+    ps._db_map = {}
+    ps._meta_cache.clear()
+    cat, prio, _ = ps._get_process_meta("nombre_inexistente_xyz")
+    assert cat == CENTINELA_OTROS, f"la DB vacia devolvio {cat!r}"
+    cat_idx = {c: i for i, c in enumerate(CATEGORY_ORDER)}
+    assert cat_idx.get(cat, 999) == len(CATEGORY_ORDER) - 1, (
+        "la categoria centinela debe resolver al ultimo indice de CATEGORY_ORDER, "
+        "no al centinela 999 del sort de get_running_processes"
+    )
+
+    # Sitio 2: una entrada de DB SIN clave 'category' entra por el mismo literal.
+    tmp = tempfile.mkdtemp(prefix="wopt_t026_f005_")
+    _dir_data_original = wopt_config._data_dir
+    try:
+        os.makedirs(os.path.join(tmp, "assets"))
+        with open(os.path.join(tmp, "assets", "process_db.json"), "w", encoding="utf-8") as fh:
+            json.dump({"sin_clave_app": {"priority": "high",
+                                         "description": "ENTRADA SIN CATEGORY"}},
+                      fh, ensure_ascii=False)
+        wopt_config._data_dir = lambda: tmp
+        ps_sin_clave = ProcessService()
+        assert ps_sin_clave.is_db_loaded, "el servicio debe cargar el JSON de prueba"
+        cat_sin_clave, _, _ = ps_sin_clave._get_process_meta("sin_clave_app")
+        assert cat_sin_clave == CENTINELA_OTROS, (
+            f"una entrada sin 'category' entro por {cat_sin_clave!r}: el segundo "
+            "sitio del literal sigue desalineado"
+        )
+    finally:
+        wopt_config._data_dir = _dir_data_original
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # Sitio 3: el filtro del acordeon de categorias compara contra el canonico.
+    ruta = os.path.join("src", "woptimizer", "ui", "views", "pack_manager_view.py")
+    with open(ruta, encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read())
+    literales = [n.value for n in ast.walk(arbol)
+                 if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+    assert CENTINELA_ASCII not in literales, (
+        f"{ruta} sigue usando el literal ASCII {CENTINELA_ASCII!r}"
+    )
+    def _constantes_de_comparacion(nodo):
+        """Literales de un Compare, este en el lado izquierdo o en los comparadores."""
+        lados = [nodo.left] + list(nodo.comparators)
+        return [o.value for o in lados if isinstance(o, ast.Constant)]
+
+    filtros = [n for n in ast.walk(arbol)
+               if isinstance(n, ast.Compare)
+               and CENTINELA_OTROS in _constantes_de_comparacion(n)]
+    assert filtros, (
+        f"el filtro de categorias de {ruta} debe comparar contra {CENTINELA_OTROS!r} "
+        "para seguir excluyendo la categoria centinela del acordeon"
+    )
+    assert any(isinstance(op, ast.NotIn) for n in filtros for op in n.ops)
+    print("Centinela de categoria canonico OK (FIX-005).")
+
+
+def test_gaming_pack_fallback_is_deep_copy():
+    """TASK-026 (FIX-001): el FALLBACK de get_gaming_pack() tambien copia hondo.
+
+    `model_copy()` de Pydantic v2 es SHALLOW: sin `deep=True` el fallback
+    comparte `apps`/`keepers`/`target_categories` con DEFAULT_GAMING_PACK, y
+    cualquier mutacion in situ (la UI las hace al anadir a un pack) contamina
+    el global de modulo. Hoy es DEUDA LATENTE: `get_gaming_pack()` no tiene
+    llamadores en la UI (todo pasa por `get_all_packs()`) y
+    `_ensure_gaming_pack()` siempre inserta la clave "gaming", asi que la
+    ruta del fallback nunca se ejecuta en produccion. El ciclo #10 ya cerro la
+    via alcanzable y su test llama con la clave PRESENTE, asi que este era el
+    unico hueco sin cobertura.
+    """
+    print("Testing fallback de get_gaming_pack con copia profunda (FIX-001)...")
+    from woptimizer.services.pack_service import DEFAULT_GAMING_PACK
+
+    apps_esperadas = list(DEFAULT_GAMING_PACK.apps)
+    keepers_esperadas = list(DEFAULT_GAMING_PACK.keepers)
+    cats_esperadas = list(DEFAULT_GAMING_PACK.target_categories)
+
+    pack_s, tmp_path = _pack_service_temporal()
+    try:
+        del pack_s._data.packs["gaming"]        # fuerza el fallback
+        g = pack_s.get_gaming_pack()
+
+        assert g.apps is not DEFAULT_GAMING_PACK.apps, "apps comparte objeto (shallow)"
+        assert g.keepers is not DEFAULT_GAMING_PACK.keepers, "keepers comparte objeto (shallow)"
+        assert g.target_categories is not DEFAULT_GAMING_PACK.target_categories, (
+            "target_categories comparte objeto (shallow)"
+        )
+
+        # Mutacion IN SITU, igual que hace la UI al anadir a un pack.
+        g.apps.append("CONTAMINA.exe")
+        g.keepers.append("contamina_keeper.exe")
+        g.target_categories.append("CONTAMINA CATEGORIA")
+
+        assert DEFAULT_GAMING_PACK.apps == apps_esperadas, (
+            f"El global fue contaminado por el fallback: {DEFAULT_GAMING_PACK.apps}"
+        )
+        assert DEFAULT_GAMING_PACK.keepers == keepers_esperadas
+        assert DEFAULT_GAMING_PACK.target_categories == cats_esperadas
+
+        # Y el reset devuelve los valores de fabrica.
+        pack_s.reset_gaming_pack()
+        restaurado = pack_s.get_gaming_pack()
+        assert restaurado.apps == apps_esperadas, f"Apps no restauradas: {restaurado.apps}"
+        assert restaurado.keepers == keepers_esperadas
+        assert restaurado.target_categories == cats_esperadas
+    finally:
+        for sufijo in ("", ".bak", ".tmp"):
+            ruta = tmp_path + sufijo
+            if os.path.exists(ruta):
+                os.unlink(ruta)
+    print("Fallback de get_gaming_pack con copia profunda OK (FIX-001).")
+
+
+# ===========================================================================
+# TASK-030 - Cerrar los 3 supervivientes de mutacion del ciclo #17.
+# Ocho sondas. Cada una nombra la MUTACION EXACTA que mata (tasks.md sec. 0):
+#   P1  test_save_atomic_nunca_toca_el_principal           M1, M3, M4, M10
+#   P1b test_publicar_no_trunca_el_principal              M2
+#   P2  test_save_no_escribe_si_la_rotacion_no_puede_leer  M6
+#   P3  test_corrupcion_sin_backup_intenta_volar           M1, M10
+#   P4  test_forma_legacy_no_tumba_la_app                  el bug (AttributeError)
+#   P5  test_todas_las_clases_de_corrupcion_se_recuperan   M5
+#   P6  test_oserror_de_lectura_no_es_corrupcion           M6, M7
+#   P7  test_attribute_error_ajeno_no_es_corrupcion        M7, M9
+#   P8  test_do_load_publica_sin_tk                        mutacion de FIX-007
+# Prohibido en todas: `sleep`, `subprocess`, abrir una ventana, y afirmar que
+# "existe un .tmp" (eso es un artefacto, no la atomicidad).
+# ===========================================================================
+
+
+class _ModuloDoble:
+    """Doble de un modulo: sustituye algunos atributos y delega el resto.
+
+    Se usa sobre `pack_service.json` y `pack_service.shutil` en vez de parchear
+    la stdlib en global: el servicio resuelve `json.dump` en sus propios
+    globales, asi que cambiar la referencia del modulo basta y ningun otro test
+    del proceso ve el doble.
+    """
+
+    def __init__(self, real, **overrides):
+        self._real = real
+        self._overrides = overrides
+
+    def __getattr__(self, nombre):
+        if nombre in self._overrides:
+            return self._overrides[nombre]
+        return getattr(self._real, nombre)
+
+
+def _doble_en(modulo, **overrides):
+    """Context manager: sustituye `modulo.<nombre>` por lo que se pase."""
+    import contextlib
+
+    @contextlib.contextmanager
+    def _ctx():
+        originales = {}
+        for nombre, valor in overrides.items():
+            originales[nombre] = getattr(modulo, nombre)
+            setattr(modulo, nombre, valor)
+        try:
+            yield
+        finally:
+            for nombre, valor in originales.items():
+                setattr(modulo, nombre, valor)
+
+    return _ctx()
+
+
+def _bytes_de(ruta):
+    with open(ruta, "rb") as fh:
+        return fh.read()
+
+
+def _escribir(ruta, contenido):
+    """Escribe `str` o `bytes` segun el tipo del contenido."""
+    if isinstance(contenido, bytes):
+        with open(ruta, "wb") as fh:
+            fh.write(contenido)
+    else:
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write(contenido)
+
+
+def _capturar(fn):
+    """Ejecuta `fn` y devuelve la excepcion, o None si no lanzo."""
+    try:
+        fn()
+    except Exception as e:          # noqa: BLE001 - aqui se quiere ver CUALQUIER fallo
+        return e
+    return None
+
+
+def _limpiar_perfiles(ruta):
+    """Borra principal/.bak/.tmp, tolerando el flag de solo lectura."""
+    for sufijo in ("", ".bak", ".tmp"):
+        p = ruta + sufijo
+        if os.path.exists(p):
+            try:
+                os.chmod(p, 0o600)
+            except OSError:
+                pass
+            os.unlink(p)
+
+
+# Un .bak SANO que ya trae el pack gaming: asi `_ensure_gaming_pack()` no
+# llama a `save()` y "recuperar" no reescribe el principal. Si el .bak no trae
+# el gaming, la recuperacion publica por el `.bak` y el principal SI cambia, y
+# el test no podria afirmar que la recuperacion no escribe nada.
+_BAK_SANO = {
+    "packs": {
+        "salvado": {"id": "salvado", "name": "Salvado", "apps": ["salvado.exe"]},
+        "gaming": {"id": "gaming", "name": "Gaming", "is_gaming": True,
+                   "apps": ["chrome.exe"]},
+    }
+}
+
+
+def test_save_atomic_nunca_toca_el_principal():
+    """TASK-030 / P1: el volcado NUNCA toca el principal y, si falla, no cambia ni un byte.
+
+    Lo que hay antes (run_tests.py, asserts de `not os.path.exists(...tmp)`)
+    NO prueba la atomicidad: es un ARTEFACTO. Si `save()` deja de crear el
+    temporal, el assert sigue verde por la razon equivocada.
+
+    Aqui el fallo se inyecta DENTRO de `json.dump`, en el MISMO hilo y con el
+    HANDLE REAL: el doble anota a quien le estan dando el fichero, escribe un
+    prefijo JSON truncado de verdad, hace `flush()` y lanza `OSError`. Si el
+    servicio escribiera sobre el principal, ese prefijo se queda en el archivo
+    del usuario, y eso se comprueba por BYTES, no por existencia de ficheros.
+
+    MATA: M1 (`open(w)` directo al principal) por cuatro aserciones, M3 (sin
+    `unlink` del temporal) y M4 (`except: pass` que se traga el error), M10
+    (el temporal en otro directorio/volumen).
+
+    Orden obligatorio: `antes` se captura DESPUES de construir el servicio, porque
+    `__init__` -> `load()` -> `_ensure_gaming_pack()` -> `save()` ya reescribio
+    el archivo una vez. Capturarlo antes hace fallar este test con el codigo
+    correcto.
+    """
+    print("Testing escritura atomica: el volcado nunca toca el principal (P1)...")
+    import json
+    from woptimizer.services import pack_service as ps
+    from woptimizer.services.pack_service import PackService
+
+    prefijo = '{\n    "packs": {\n        "trabajo": {\n            "id": "tra'
+    svc, ruta = _pack_service_temporal()
+    try:
+        svc.create_user_pack("previo", "Previo", ["previo.exe"])
+        antes = _bytes_de(ruta)          # <- DESPUES de construir el servicio
+
+        visto = {}
+
+        def dump_interrumpido(obj, fp, **kwargs):
+            """Anota el estado en el instante del volcado y rompe ahi."""
+            nombre = getattr(fp, "name", None)
+            visto["nombre"] = nombre
+            visto["es_principal"] = os.path.normcase(nombre or "") == os.path.normcase(ruta)
+            visto["mismo_directorio"] = os.path.dirname(nombre or "") == os.path.dirname(ruta)
+            visto["tmp_existe"] = os.path.exists(ruta + ".tmp")
+            visto["principal_intacto"] = os.path.exists(ruta) and _bytes_de(ruta) == antes
+            fp.write(prefijo)            # por el HANDLE REAL, no por la ruta
+            fp.flush()
+            raise OSError("apagon simulado en mitad del volcado")
+
+        fallo = None
+        with _doble_en(ps, json=_ModuloDoble(json, dump=dump_interrumpido)):
+            try:
+                svc.create_user_pack("trabajo", "Trabajo", ["trabajo.exe"])
+            except OSError as e:
+                fallo = e
+
+        assert fallo is not None, (
+            "save() no propago el fallo del volcado: el `except Exception` se "
+            "traga el error (M4) y el caller cree que ha guardado lo que no se "
+            "ha guardado"
+        )
+        assert "apagon simulado" in str(fallo), f"el fallo no es el inyectado: {fallo!r}"
+        assert not visto["es_principal"], (
+            f"el volcado se hizo SOBRE el profiles.json del usuario ({visto['nombre']}): "
+            "la escritura no es atomica (M1)"
+        )
+        assert visto["mismo_directorio"], (
+            f"el temporal se escribio en {os.path.dirname(visto['nombre'])} y el "
+            f"principal esta en {os.path.dirname(ruta)}: `os.replace` entre volumenes "
+            "no es atomico y el temporal sobrevive a un apagón (M10)"
+        )
+        assert visto["tmp_existe"], (
+            "en el instante del volcado no habia temporal: save() no vuelca a un "
+            "fichero aparte, lo hace directamente sobre el principal (M1)"
+        )
+        assert visto["principal_intacto"], (
+            "el principal ya no tenia sus bytes cuando empezo el volcado: el "
+            "temporal se ha escrito en el sitio equivocado"
+        )
+        assert _bytes_de(ruta) == antes, (
+            "el principal cambio de bytes pese a que el volcado fallo: el prefijo "
+            "truncado se quedo en el archivo del usuario (M1)"
+        )
+        assert not os.path.exists(ruta + ".tmp"), (
+            "un volcado fallido dejo el temporal: la limpieza del `except` se perdio "
+            "(M3, M4)"
+        )
+
+        # Y lo que de verdad importa al usuario: los packs de antes siguen ahi.
+        recargado = PackService(data_path=ruta).get_all_packs()
+        assert "previo" in recargado, (
+            f"los packs anteriores desaparecieron: {sorted(recargado)}"
+        )
+        assert recargado["previo"].apps == ["previo.exe"], (
+            f"los apps del pack previo llegaron vacios: {recargado['previo'].apps}"
+        )
+        assert "trabajo" not in recargado, (
+            "el pack que no se pudo guardar aparece en disco: la escritura fallo "
+            "a medias y publico datos parciales"
+        )
+    finally:
+        _limpiar_perfiles(ruta)
+    print("Escritura atomica: el volcado nunca toca el principal OK (P1).")
+
+
+def test_publicar_no_trunca_el_principal():
+    """TASK-030 / P1b: publicar NO puede usar un primitivo de COPIA.
+
+    Ciego a M2 (`os.replace` -> `shutil.copyfile`) por construccion: con
+    `copyfile` el volcado SI va al temporal, asi que el assert de P1 (bytes del
+    principal intactos al cortar el volcado) pasa igual. Lo unico que separa
+    los dos casos es COMO se publica, y eso no se ve desde un solo hilo: entre
+    el `truncate` del destino y el ultimo byte de la copia hay una ventana que
+    ningun test de un hilo puede ver (proposal.md 1.4). La respuesta honesta es
+    fallo inyectado: un doble de `copyfile` que trunca el destino y revienta,
+    que es exactamente "la publicacion no es atomica y se apago a mitad".
+
+    MATA: M2. Con el codigo correcto `copyfile` no se llama NUNCA y el principal
+    queda completo y parseable con el pack nuevo.
+
+    Al final hay una RED estatica (no una prueba): ninguna llamada a
+    `copy*`/`move` dentro de `save()`. Se declara como red porque el test de
+    runtime es el que manda; la guarda solo aniade una deteccion estatica.
+    """
+    print("Testing publicacion no truncante (P1b)...")
+    import json
+    import shutil
+    from woptimizer.services import pack_service as ps
+    from woptimizer.services.pack_service import PackService
+
+    copiados = []
+
+    def copyfile_hostil(src, dst, *args, **kwargs):
+        """Emula una copia interrumpida: `copyfile` real abre el destino en
+        'wb', lo TRUNCA antes de copiar y aqui se apaga a mitad."""
+        copiados.append((src, dst))
+        with open(dst, "wb") as fh:
+            fh.write(b"")               # el archivo del usuario queda a cero
+        raise OSError("copia interrumpida a mitad")
+
+    svc, ruta = _pack_service_temporal()
+    try:
+        svc.create_user_pack("previo", "Previo", ["previo.exe"])
+        with _doble_en(ps, shutil=_ModuloDoble(shutil, copyfile=copyfile_hostil)):
+            fallo = _capturar(
+                lambda: svc.create_user_pack("trabajo", "Trabajo", ["trabajo.exe"])
+            )
+        assert fallo is None, (
+            f"save() no publico con un metodo atomico: se llamo a "
+            f"{copiados[-1][0] if copiados else '?'} -> {copiados[-1][1] if copiados else '?'} "
+            f"y fallo con {fallo!r} (M2: `os.replace` sustituido por `shutil.copyfile`)"
+        )
+        assert not copiados, (
+            f"la publicacion uso un primitivo de COPIA {copiados}: `copyfile` "
+            "trunca el destino antes de copiar, asi que un corte de luz deja el "
+            "profiles.json del usuario a medias (M2)"
+        )
+        datos = json.loads(_bytes_de(ruta).decode("utf-8"))
+        assert "trabajo" in datos["packs"], (
+            f"el pack recien creado no esta en el principal: {sorted(datos['packs'])}"
+        )
+        assert datos["packs"]["trabajo"]["apps"] == ["trabajo.exe"], (
+            f"el principal quedo incompleto: {datos['packs']['trabajo']}"
+        )
+        assert datos["packs"]["previo"]["apps"] == ["previo.exe"], (
+            "el principal no conserva los packs anteriores: quedo truncado"
+        )
+        assert PackService(data_path=ruta).get_all_packs()["trabajo"].apps == ["trabajo.exe"]
+
+        # --- RED estatica (no es la prueba; la prueba es el doble de arriba) --
+        ruta_src = os.path.join("src", "woptimizer", "services", "pack_service.py")
+        with open(ruta_src, encoding="utf-8") as fh:
+            arbol = ast.parse(fh.read())
+        save = next((n for n in ast.walk(arbol)
+                     if isinstance(n, ast.FunctionDef) and n.name == "save"), None)
+        assert save is not None, f"{ruta_src} ya no tiene save()"
+        for nodo in ast.walk(save):
+            if (isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Attribute)
+                    and nodo.func.attr in ("copyfile", "copy", "copytree", "move",
+                                           "rmtree", "rename")):
+                raise AssertionError(
+                    f"{ruta_src}:{nodo.lineno} publica con .{nodo.func.attr}(): una copia "
+                    "trunca el destino antes de copiar y no es atomica. Publica con "
+                    "os.replace sobre un temporal del MISMO directorio (M2)"
+                )
+        assert any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                   and n.func.attr == "replace" for n in ast.walk(save)), (
+            "save() no publica con os.replace: la red estatica no ve ninguna "
+            "publicacion atomica")
+    finally:
+        _limpiar_perfiles(ruta)
+    print("Publicacion no truncante OK (P1b).")
+
+
+def test_save_no_escribe_si_la_rotacion_no_puede_leer():
+    """TASK-030 / P2: un error de LECTURA no se convierte en "sigo y sobrescribo".
+
+    El invariante: si `save()` no puede leer el principal para rotar el backup,
+    no puede (a) tragarse el error ni (b) publicar nada. El antivirus con el
+    fichero bloqueado da `PermissionError` en `_rotate_backup()`; con el estado
+    en memoria vacio, "sigo y sobrescribo" deja al usuario con cero packs.
+
+    MATA: M6 (`OSError` readmitido en `CORRUPTION_ERRORS`): entonces
+    `_rotate_backup` se traga el error, el volcado va al temporal, `os.replace`
+    publica y el archivo del usuario queda con el estado VACIO. Medido: dos
+    fallos, `save()` no lanzo y el principal sobrescrito.
+
+    Lo que este test NO puede matar (proposal.md 2.1): el camino D2 es
+    INDISTINGUINABLE por construccion con un espia de llamadas - el codigo
+    correcto y el mutante llaman a `save()` una vez y vuelcan una vez. Por eso
+    aqui no se cuenta ninguna llamada: se mira la CLASIFICACION (lanza o no) y
+    la ESCRITURA (los bytes del principal). La mitad de `load()` la matan P6 y
+    P7.
+    """
+    print("Testing save() respeta un OSError de lectura (P2)...")
+    import json
+    from woptimizer.models import AppData
+    from woptimizer.services import pack_service as ps
+
+    def load_bloqueado(*args, **kwargs):
+        raise PermissionError("el antivirus tiene el principal bloqueado")
+
+    svc, ruta = _pack_service_temporal()
+    try:
+        svc.create_user_pack("previo", "Previo", ["previo.exe"])
+        antes = _bytes_de(ruta)
+        bak_antes = _bytes_de(ruta + ".bak")
+        svc._data = AppData()          # si save() no respeta el fallo, publica el vacio
+
+        with _doble_en(ps, json=_ModuloDoble(json, load=load_bloqueado)):
+            fallo = _capturar(svc.save)
+
+        assert isinstance(fallo, PermissionError), (
+            "save() no lanzo el PermissionError de la rotacion: un error que no es "
+            "corrupcion se ha convertido en 'sigo y sobrescribo' (M6: OSError "
+            f"readmitido en CORRUPTION_ERRORS). Lo que paso: {fallo!r}"
+        )
+        assert _bytes_de(ruta) == antes, (
+            "el principal cambio de bytes pese a que la rotacion no pudo leer: "
+            "los packs del usuario se sustituyen por el estado vacio (M6)"
+        )
+        assert _bytes_de(ruta + ".bak") == bak_antes, (
+            "el .bak sano se toco pese a no poder leerse el principal: la unica "
+            "copia buena no puede depender de una lectura fallida"
+        )
+        assert not os.path.exists(ruta + ".tmp"), (
+            "un save() abortado en la rotacion dejo un temporal"
+        )
+    finally:
+        _limpiar_perfiles(ruta)
+    print("save() respeta un OSError de lectura OK (P2).")
+
+
+def test_corrupcion_sin_backup_intenta_volar():
+    """TASK-030 / P3 -> TASK-031: `load()` NO vuelca; el volcado REAL va al temporal.
+
+    Este probe NACIO para una situacion que TASK-031 elimino (E-3). Antes
+    `load()` llamaba a `save()` DOS veces y con el principal corrupto y sin
+    `.bak` intentaba REGENERAR: hacia falta demostrar que se LLEGABA a volcar.
+    El doble iba sobre `json.dump` y NO sobre `save()`: con la doble escritura
+    de antes la ruta era INDISTINGUIBLE por construccion, y por eso este test
+    nunca conto llamadas.
+
+    Con E-3 (`load()` de SOLO LECTURA) esa ruta no existe: la asercion se
+    INVIERTE y la discriminacion de M1/M10 se traslada a la escritura real, que
+    es la que sigue existiendo. Se queda en el mismo probe porque la costura
+    que hay que espiar es la misma.
+
+    MATA: L-M3 (`load()` vuelve a escribir al arrancar: la lista de volcados no
+    esta vacia tras construir el servicio) y, en la segunda mitad, M1 y M10.
+
+    NO mata M6 ni M7, y no se presenta como si lo hiciera: con el
+    `PermissionError` inyectado los dos caminos son indistinguibles
+    (proposal.md 2.1). Complementario: P2 y P6 son las que miran la
+    clasificacion.
+
+    Nota de Windows: `os.chmod(0o400)` NIEGA LA ESCRITURA pero la lectura sigue
+    permitida, y `os.replace` sobre un principal de solo lectura puede o no
+    fallar segun el equipo. Por eso el discriminante NO es el permiso, es el
+    doble: si el volcado se dirige alguna vez al principal, el propio doble
+    revienta, y la asercion de bytes/directorio sigue valiendo igual.
+    """
+    print("Testing que load() no vuelca y el volcado real va al temporal (P3)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services import pack_service as ps
+    from woptimizer.services.pack_service import PackService
+
+    real_dump = json.dump
+    volcados = []
+
+    def dump_contado(obj, fp, **kwargs):
+        nombre = getattr(fp, "name", "")
+        volcados.append(nombre)
+        if os.path.normcase(nombre) == os.path.normcase(ruta):
+            raise AssertionError(
+                f"el volcado se hizo sobre el principal ({nombre}): save() tiene que "
+                "volcar al temporal del mismo directorio y publicar con os.replace (M1)"
+            )
+        return real_dump(obj, fp, **kwargs)
+
+    directorio = tempfile.mkdtemp(prefix="wopt_t030_p3_")
+    ruta = os.path.join(directorio, "profiles.json")
+    _escribir(ruta, '{"packs": {"x": ')        # apagón a mitad del json.dump
+    try:
+        os.chmod(ruta, 0o400)                  # principal bloqueado (D2)
+        with _doble_en(ps, json=_ModuloDoble(json, dump=dump_contado)):
+            servicio = PackService(data_path=ruta)
+            volcados_tras_arrancar = list(volcados)
+            # El bloque se levanta para que la escritura REAL del usuario se
+            # pueda publicar en Windows (os.replace sobre un principal de solo
+            # lectura da PermissionError); a la costura que se espia no le
+            # afecta.
+            os.chmod(ruta, 0o600)
+            servicio.create_user_pack("nuevo", "Nuevo", ["nuevo.exe"])
+
+        assert volcados_tras_arrancar == [], (
+            "load() sigue escribiendo al arrancar: se llego a volcar "
+            f"{volcados_tras_arrancar} sin que el usuario haya hecho nada. El "
+            "arranque es la via por la que se destruye el .bak sano (L-M3, "
+            "proposal.md 4 R-2)"
+        )
+        assert volcados, (
+            "no se llego a volcar nada al guardar de verdad: save() tiene que "
+            "volcar al TEMPORAL (que si es escribible) y no abrir el "
+            "principal en 'w' (M1) ni un temporal que no se puede abrir (M10)"
+        )
+        for nombre in volcados:
+            assert os.path.dirname(nombre) == os.path.dirname(ruta), (
+                f"el volcado fue a {nombre}: el temporal tiene que estar en el MISMO "
+                f"directorio que {ruta} para que os.replace sea atomico (M10)"
+            )
+    finally:
+        if os.path.exists(ruta):
+            try:
+                os.chmod(ruta, 0o600)
+            except OSError:
+                pass
+        shutil.rmtree(directorio, ignore_errors=True)
+    print("load() no vuelca y el volcado real va al temporal OK (P3).")
+
+
+def test_forma_legacy_no_tumba_la_app():
+    """TASK-030 / P4: `profiles` con la FORMA equivocada no tumba la app.
+
+    Con el codigo anterior, `{"profiles": "texto"}` producia `AttributeError:
+    'str' object has no attribute 'items'` DENTRO de `_read_json`, y como
+    `AttributeError` no esta en `CORRUPTION_ERRORS` el error salia de
+    `PackService.__init__`: la APP NO ARRANCABA. Peor que perder packs.
+
+    Este test falla con el codigo anterior: no es tautologico, es el bug.
+
+    MATA: el reintroducir la desreferencia sin validar la forma. Y fija la
+    decision de diseno de `proposal.md` 4.3: solo un error de FORMA propio
+    (`PerfilCorruptoError`) puede "lavarse" como corrupcion; `AttributeError` y
+    `OSError` NO estan en la tupla, y por eso no se pueden "arreglar" anad them.
+    """
+    print("Testing la forma legacy no tumba la app (P4)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services import pack_service as ps
+    from woptimizer.services.pack_service import (CORRUPTION_ERRORS, PackService,
+                                                  PerfilCorruptoError)
+
+    # --- la decision de diseno, antes que el comportamiento ---------------
+    assert issubclass(PerfilCorruptoError, ValueError), (
+        "PerfilCorruptoError debe ser un ValueError: la rama legacy ya fallaba con "
+        "un ValueError de facto y no se cambia el tipo que ve quien llama"
+    )
+    assert PerfilCorruptoError in CORRUPTION_ERRORS, (
+        "un profiles.json con la FORMA equivocada no se recuperaria del .bak"
+    )
+    assert AttributeError not in CORRUPTION_ERRORS, (
+        "AttributeError NO puede estar en CORRUPTION_ERRORS: es un SINTOMA de un "
+        "bug, no una clase de fallo. Si se traga, cualquier `None` mal "
+        "desreferenciado se convierte en 'el archivo esta roto' y el siguiente "
+        "save() borra los packs que el usuario acaba de crear (M9)"
+    )
+    assert OSError not in CORRUPTION_ERRORS, (
+        "OSError (permisos, EIO, antivirus) no es corrupcion y no puede entrar en "
+        "la ruta que regenera y sobrescribe (M6)"
+    )
+    assert Exception not in CORRUPTION_ERRORS and BaseException not in CORRUPTION_ERRORS, (
+        "la tupla no puede contener Exception/BaseException: seria el bug del ciclo 15"
+    )
+
+    # --- la forma, fila a fila, con .bak sano ------------------------------
+    filas = (
+        ('{"profiles": "texto"}', "str", "profiles no es un mapa"),
+        ('{"profiles": {"x": 123}}', "int", "un valor de profiles no es un mapa"),
+        ('{"profiles": {"x": []}}', "list", "un valor de profiles no es un mapa"),
+    )
+    for contenido, tipo_real, que in filas:
+        directorio = tempfile.mkdtemp(prefix="wopt_t030_p4_")
+        ruta = os.path.join(directorio, "profiles.json")
+        try:
+            _escribir(ruta, contenido)
+            _escribir(ruta + ".bak", json.dumps(_BAK_SANO, ensure_ascii=False))
+            principal_antes = _bytes_de(ruta)
+            bak_antes = _bytes_de(ruta + ".bak")
+
+            # 1) el mensaje dice el TIPO REAL, no un AttributeError generico
+            fallo = _capturar(lambda: PackService._read_json(None, ruta))
+            assert isinstance(fallo, PerfilCorruptoError), (
+                f"{contenido}: `_read_json` lanzo {fallo!r} en vez de "
+                "PerfilCorruptoError; sin la guarda de forma, ese AttributeError "
+                "sale de `PackService.__init__` y la app no arranca"
+            )
+            assert tipo_real in str(fallo), (
+                f"{contenido}: el mensaje {str(fallo)!r} no dice el tipo real "
+                f"({tipo_real})"
+            )
+
+            # 2) con .bak sano, `PackService()` arranca y recupera
+            servicio = PackService(data_path=ruta)
+            packs = servicio.get_all_packs()
+            assert "salvado" in packs, (
+                f"{que} con .bak sano: la recuperacion devolvio {sorted(packs)}"
+            )
+            assert packs["salvado"].apps == ["salvado.exe"], (
+                f"los apps del pack recuperado llegaron vacios: {packs['salvado'].apps}"
+            )
+            assert packs["gaming"].is_gaming is True, "el pack gaming debe seguir marcado"
+            assert _bytes_de(ruta) == principal_antes, (
+                f"{que}: recuperar reescribio el principal; la recuperacion no escribe"
+            )
+            assert _bytes_de(ruta + ".bak") == bak_antes, (
+                f"{que}: el .bak sano fue tocado al recuperar"
+            )
+        finally:
+            shutil.rmtree(directorio, ignore_errors=True)
+    print("La forma legacy no tumba la app OK (P4).")
+
+
+def test_todas_las_clases_de_corrupcion_se_recuperan():
+    """TASK-030 / P5: las CUATRO clases de `CORRUPTION_ERRORS` se recuperan.
+
+    M5 (reducir la tupla a `JSONDecodeError`) sobrevivio en el ciclo #17 porque
+    NINGUN test miraba `ValidationError`, `TypeError` ni `UnicodeDecodeError`:
+    las tres YA estaban en `pack_service.py:16`. El arreglo de este punto es de
+    test, no de codigo. Cada fila mata su propia eliminacion parcial, asi que la
+    tupla queda fijada clase por clase y no "en bloque".
+
+    Cada fila comprueba dos cosas distintas:
+      * que el fixture produzca EXACTAMENTE la clase que la fila declara (si no,
+        la fila probaria otra cosa y el mutantsuilviviria);
+      * que con esa clase el servicio arranque desde el `.bak` sin escribir nada.
+    """
+    print("Testing las 4 clases de corrupcion (P5)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services import pack_service as ps
+    from woptimizer.services.pack_service import PackService
+
+    filas = (
+        ("JSONDecodeError", '{"packs": {"x": ', None),
+        ("TypeError", "[1, 2, 3]", None),
+        ("UnicodeDecodeError", None, b'{\xff\xfe"packs":{}}'),
+        # TASK-031 iteracion 2: `"id"` tiene que ser IGUAL a la clave. Antes ponia
+        # `"id": "a"` con clave `"x"`, y con la guarda de identidad (L10) esa fila
+        # dejaba de producir la clase que declara y producia `PerfilCorruptoError`:
+        # la fila probaba otra cosa. El fallo de la fila es `default_action`, asi
+        # que el resto del registro tiene que ser valido de verdad.
+        ("ValidationError",
+         '{"packs": {"x": {"id": "x", "name": "b", "default_action": "BOOM"}}}', None),
+    )
+    declaradas = {c.__name__ for c in ps.CORRUPTION_ERRORS}
+    for nombre, texto, binario in filas:
+        assert nombre in declaradas, (
+            f"{nombre} no esta en CORRUPTION_ERRORS "
+            f"({sorted(declaradas)}); esa clase de fallo regeneraria los packs en "
+            "silencio, sin intentar el .bak"
+        )
+        directorio = tempfile.mkdtemp(prefix="wopt_t030_p5_")
+        ruta = os.path.join(directorio, "profiles.json")
+        try:
+            _escribir(ruta, binario if binario is not None else texto)
+            # 1) el fixture tiene que producir la clase que la fila declara
+            fallo = _capturar(lambda: PackService._read_json(None, ruta))
+            assert fallo is not None, (
+                f"el fixture de la fila {nombre} no produce ningun error: "
+                "probaria otra cosa y el mutante sobreviviria"
+            )
+            assert fallo.__class__.__name__ == nombre, (
+                f"el fixture declarado como {nombre} produce "
+                f"{fallo.__class__.__name__}: {fallo!r}"
+            )
+            assert fallo.__class__ in ps.CORRUPTION_ERRORS, (
+                f"{nombre} no esta en la tupla de clasificacion"
+            )
+
+            # 2) con .bak sano, arranca y recupera sin escribir nada
+            _escribir(ruta + ".bak", json.dumps(_BAK_SANO, ensure_ascii=False))
+            principal_antes = _bytes_de(ruta)
+            bak_antes = _bytes_de(ruta + ".bak")
+            servicio = PackService(data_path=ruta)
+            packs = servicio.get_all_packs()
+            assert "salvado" in packs, (
+                f"{nombre}: la recuperacion desde el .bak devolvio {sorted(packs)}"
+            )
+            assert packs["salvado"].apps == ["salvado.exe"], (
+                f"{nombre}: los apps del pack recuperado llegaron vacios: "
+                f"{packs['salvado'].apps}"
+            )
+            assert packs["gaming"].is_gaming is True, (
+                f"{nombre}: el pack gaming debe seguir marcado tras recuperar"
+            )
+            assert _bytes_de(ruta) == principal_antes, (
+                f"{nombre}: la recuperacion reescribio el principal; recuperar NO "
+                "escribe nada (si no, el .bak bueno se pierde en el siguiente save)"
+            )
+            assert _bytes_de(ruta + ".bak") == bak_antes, (
+                f"{nombre}: el .bak sano fue tocado al recuperar"
+            )
+        finally:
+            shutil.rmtree(directorio, ignore_errors=True)
+    print("Las 4 clases de corrupcion OK (P5).")
+
+
+def test_oserror_de_lectura_no_es_corrupcion():
+    """TASK-030 / P6: un `OSError` de LECTURA se propaga y no toca el `.bak`.
+
+    Escenario: el antivirus bloquea el principal y hay un `.bak` sano. Lo
+    correcto es PROPAGAR el `PermissionError`: el servicio no sabe si el
+    principal tiene lo mismo que el backup, y "arrancar con el backup viejo en
+    silencio" es exactamente como el usuario pierde la configuracion sin que
+    nadie le avise.
+
+    MATA: M6 (`OSError` readmitido en `CORRUPTION_ERRORS`: arrancaba en silencio
+    con los datos viejos del backup) y M7 (`except Exception` en `load()`: el
+    bug del ciclo 15, la misma perdida de configuracion).
+
+    Por que se inyecta y no se usa el sistema de ficheros: en Windows
+    `os.chmod(0o400)` NIEGA LA ESCRITURA pero la LECTURA sigue permitida
+    (medido), y negar lectura de verdad exigiria ACL (`icacls` = `subprocess`,
+    prohibido por la Trampa #9). Se probaron tres escenarios solo-filesystem y
+    ninguno distinguia M6 (proposal.md 2.3). La costura de parseo es la unica
+    forma honesta.
+    """
+    print("Testing que un OSError de lectura no es corrupcion (P6)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services import pack_service as ps
+    from woptimizer.services.pack_service import PackService
+
+    real_load = json.load
+
+    def load_bloqueado(fp, *args, **kwargs):
+        """Solo el PRINCIPAL: el `.bak` tiene que quedar intacto y legible."""
+        if os.path.normcase(getattr(fp, "name", "")) == os.path.normcase(ruta):
+            raise PermissionError("el antivirus tiene el principal bloqueado")
+        return real_load(fp, *args, **kwargs)
+
+    directorio = tempfile.mkdtemp(prefix="wopt_t030_p6_")
+    ruta = os.path.join(directorio, "profiles.json")
+    try:
+        _escribir(ruta, '{"packs": {"x": ')          # entraria en la ruta de recuperacion
+        _escribir(ruta + ".bak", json.dumps(_BAK_SANO, ensure_ascii=False))
+        principal_antes = _bytes_de(ruta)
+        bak_antes = _bytes_de(ruta + ".bak")
+
+        with _doble_en(ps, json=_ModuloDoble(json, load=load_bloqueado)):
+            fallo = _capturar(lambda: PackService(data_path=ruta))
+
+        assert isinstance(fallo, PermissionError), (
+            "un OSError de lectura no es corrupcion: con un .bak sano, "
+            "PackService() arranco en silencio (con los datos VIEJOS del backup o "
+            f"regenerados) y el usuario cree que sus packs se han perdido. "
+            f"M6/M7. Lo que paso: {fallo!r}"
+        )
+        assert _bytes_de(ruta) == principal_antes, (
+            "el principal se reescribio pese a no poder leerse: un error de "
+            "permisos no puede acabar en la ruta que regenera"
+        )
+        assert _bytes_de(ruta + ".bak") == bak_antes, (
+            "el .bak sano fue tocado al no poder leer el principal: la unica copia "
+            "buena no puede depender de una lectura fallida"
+        )
+        # Sin el doble, el .bak sigue siendo la copia sana: se prueba, no se supone.
+        recuperado = PackService(data_path=ruta).get_all_packs()
+        assert "salvado" in recuperado and recuperado["salvado"].apps == ["salvado.exe"], (
+            f"el .bak dejo de ser recuperable: {sorted(recuperado)}"
+        )
+    finally:
+        shutil.rmtree(directorio, ignore_errors=True)
+    print("Un OSError de lectura no es corrupcion OK (P6).")
+
+
+def test_attribute_error_ajeno_no_es_corrupcion():
+    """TASK-030 / P7: un `AttributeError` AJENO se propaga; no es corrupcion.
+
+    Se parchea `_read_json` para que lance un `AttributeError` de bug interno
+    (el sintoma, no la forma validada) al leer el PRINCIPAL, con un `.bak` sano
+    delante. Lo correcto es que salga: un bug tiene que verse en el log.
+
+    MATA: M7 (`except Exception` en `load()`, el bug del ciclo 15) y **M9**, que
+    es el "arreglo ingenuo" de meter `AttributeError` en `CORRUPTION_ERRORS`
+    (proposal.md 3.3, salida A): con M9 el servicio se traga el bug, entra en la
+    ruta de recuperacion y en el siguiente `save()` los packs que el usuario
+    acaba de crear desaparecen.
+
+    Complemento de P4: P4 dice que la FORMA validada SI es corrupcion; P7 dice
+    que el sintoma NO lo es. Las dos mitades de la misma decision.
+    """
+    print("Testing que un AttributeError ajeno no es corrupcion (P7)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services.pack_service import PackService
+
+    directorio = tempfile.mkdtemp(prefix="wopt_t030_p7_")
+    ruta = os.path.join(directorio, "profiles.json")
+    try:
+        _escribir(ruta, '{"packs": {"x": "esto no es un pack"}}')
+        _escribir(ruta + ".bak", json.dumps(_BAK_SANO, ensure_ascii=False))
+        principal_antes = _bytes_de(ruta)
+        bak_antes = _bytes_de(ruta + ".bak")
+
+        original = PackService._read_json
+
+        def _read_json_con_bug(self, path):
+            if os.path.normcase(path) == os.path.normcase(ruta):
+                raise AttributeError("bug interno: None no tiene .get('packs')")
+            return original(self, path)
+
+        PackService._read_json = _read_json_con_bug
+        try:
+            fallo = _capturar(lambda: PackService(data_path=ruta))
+        finally:
+            PackService._read_json = original
+
+        assert isinstance(fallo, AttributeError), (
+            "un AttributeError que no es la forma validada debe PROPAGAR: tragarselo "
+            "convierte un bug de una linea en 'el archivo esta roto' -> recuperacion "
+            "desde el .bak -> y el siguiente save() borra los packs del usuario "
+            f"(M7, M9). Lo que paso: {fallo!r}"
+        )
+        assert "bug interno" in str(fallo), f"el fallo no es el inyectado: {fallo!r}"
+        assert _bytes_de(ruta) == principal_antes, (
+            "el principal se reescribio pese al bug interno: no se entra en la ruta "
+            "que regenera"
+        )
+        assert _bytes_de(ruta + ".bak") == bak_antes, (
+            "el .bak sano fue tocado: la unica copia buena no puede depender de una "
+            "lectura que fallo"
+        )
+    finally:
+        shutil.rmtree(directorio, ignore_errors=True)
+    print("Un AttributeError ajeno no es corrupcion OK (P7).")
+
+
+# --- TASK-031: sondas L1-L7 -----------------------------------------------
+# "JSON valido pero ilegible para el servicio": la fila A de la matriz de
+# proposal.md 0.1. `name: 7` lo acepta `json.load` y lo rechaza Pydantic, que es
+# exactamente la divergencia entre las DOS puertas que tenia el servicio.
+_HOJA_MALFORMADA = '{"packs": {"mio": {"id": "mio", "name": 7}}}'
+
+# Un `.bak` sano que trae `salvado` Y `otro`: para L7, cuya pregunta es si un
+# pack que solo existia bajo la clave `profiles` sobrevive al ciclo completo.
+_BAK_CON_OTRO = {
+    "packs": {
+        "salvado": {"id": "salvado", "name": "Salvado", "apps": ["salvado.exe"]},
+        "otro": {"id": "otro", "name": "Otro", "apps": ["otro.exe"]},
+        "gaming": {"id": "gaming", "name": "Gaming", "is_gaming": True,
+                   "apps": ["chrome.exe"]},
+    }
+}
+
+
+def test_la_rotacion_usa_la_misma_puerta_que_load():
+    """TASK-031 / L1: la rotacion y `load()` tienen que DECIDIR LO MISMO.
+
+    MATA L-M1 (`_rotate_backup()` vuelve a `json.load`, o a `pass`): con la
+    guarda puesta solo en `json.load`, un `name: 7` es JSON valido y por tanto
+    "sano": la rotacion copia el principal corrupto ENCIMA del `.bak` bueno y la
+    unica copia sana desaparece. Medido en el estado previo: el `.bak` sano
+    moria en 7 de 8 escenarios de la matriz de `proposal.md` 0.1.
+
+    POR QUE LA ASERCION ES "el `.bak` SIGUE SIENDO LEGIBLE" y no "existe": si el
+    mutante lo sustituye, la lectura falla con `ValidationError` DENTRO de la
+    comprobacion, que es un fallo del SISTEMA y no una excepcion del test. Un
+    `assert not os.path.exists(bak)` seria verde por la razon equivocada: basta
+    con que el mutante borre el fichero en vez de pisarlo.
+
+    La escritura que dispara la rotacion es REAL (el usuario crea un pack), y no
+    la de `load()`: con E-3 el arranque ya no escribe, asi que un espia del
+    arranque no veria la rotacion nunca. Por eso L3 y L1 se necesitan los dos.
+    """
+    print("Testing que la rotacion usa la misma puerta que load (L1)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services.pack_service import PackService
+
+    directorio = tempfile.mkdtemp(prefix="wopt_t031_l1_")
+    ruta = os.path.join(directorio, "profiles.json")
+    try:
+        _escribir(ruta, _HOJA_MALFORMADA)
+        _escribir(ruta + ".bak", json.dumps(_BAK_SANO, ensure_ascii=False))
+        bak_antes = _bytes_de(ruta + ".bak")
+
+        servicio = PackService(data_path=ruta)
+        assert servicio.recuperado_de_backup is True, (
+            "el principal es ilegible para el servicio y hay un .bak sano: no se "
+            "recupero, asi que la mitad de la asercion probaria otra cosa"
+        )
+        assert "salvado" in servicio.get_all_packs(), (
+            f"la recuperacion devolvio {sorted(servicio.get_all_packs())}"
+        )
+
+        # La rotacion se ejecuta aqui, con el principal corrupto AUN EN DISCO.
+        servicio.create_user_pack("nuevo", "Nuevo", ["nuevo.exe"])
+
+        assert _bytes_de(ruta + ".bak") == bak_antes, (
+            "el .bak sano cambio de bytes al rotar: se le copio encima el "
+            "principal, que es JSON valido pero ilegible para el servicio. "
+            "`_rotate_backup()` tiene que usar la MISMA puerta que `load()` "
+            "(`_read_json`), no `json.load` (L-M1)"
+        )
+        fallo = _capturar(lambda: PackService._read_json(None, ruta + ".bak"))
+        assert fallo is None, (
+            f"el .bak ya no es legible (LEERLO da {fallo!r}): la unica copia "
+            "buena se ha perdido y desde ahi no hay de donde recuperar"
+        )
+        bak = PackService._read_json(None, ruta + ".bak")
+        assert "salvado" in bak.packs, (
+            f"el .bak deberia seguir teniendo el pack recuperado: {sorted(bak.packs)}"
+        )
+        assert "nuevo" not in bak.packs, (
+            "el .bak se refresco con la version recien escrita: el .bak es la "
+            "version ANTERIOR, no un espejo de la actual"
+        )
+    finally:
+        shutil.rmtree(directorio, ignore_errors=True)
+    print("La rotacion usa la misma puerta que load OK (L1).")
+
+
+def test_la_hoja_malformada_se_clasifica():
+    """TASK-031 / L2: una hoja que viola el esquema es CORRUPCION. En las DOS ramas.
+
+    MATA L-M2 (volver a la construccion a mano `Pack(id=k, name=v.get("label"),
+    apps=..., is_favorite=..., is_gaming=False, default_action="start")` en la
+    rama legacy) y L-M2b (quitar `traducido["id"] = k`), ambos Medidos por el
+    mutation-auditor de la iteracion 2: el primero es el grande, y el segundo
+    NO se ejercia (la fixture traia `"id"` de serie, asi que la linea era codigo
+    muerto y su mutacion-sobreviviente era INVISIBLE). La fixture legacy de este
+    test ahora quita `id` a proposito, que es como es un registro legacy de
+    verdad, y la sonda L10 afirma ademas sobre el CONTENIDO (`pack.id == clave`).
+
+    Medido en el estado anterior: la rama legacy devolvia `AppData` VALIDO y
+    cargaba el pack con `keepers == []` en cuatro de las seis filas, y con las
+    otras dos lanzaba el Pydantic CRUDO, cuyo texto no nombra el pack. La razon
+    de que eso sea un problema de SEGURIDAD y no de cosmos: `keepers` es la
+    lista de procesos PROTEGIDOS del Gaming Mode, y normalizarla a `[]` desarma
+    la proteccion sin avisar (`gaming_service.py:24`).
+
+    La septima fila es `is_gaming: "true"` y SOLO en la rama moderna, porque en
+    la legacy `is_gaming` se FUERZA a `False` por diseño (ahi no puede venir de
+    ninguna parte). Esa fila es L-M8d: sin `strict=True` en el campo, Pydantic
+    coacciona `"true"` a `True` y el pack desaparece de `get_user_packs()` y de
+    `delete_pack` ("No se puede eliminar el pack de sistema"): invisible e
+    indeletable, que es la familia de ladrillo que esta tarea evita.
+
+    La asercion del TEXTO (campo + pack + tipo real) es la que impide que E-2 se
+    "cumpla" dejando que Pydantic hable con su diagnostico de 14 lineas y una URL
+    a la documentacion de Pydantic: quien repara el fichero es el usuario, con el
+    bloc de notas delante.
+    """
+    print("Testing que la hoja malformada se clasifica (L2)...")
+    import json
+    import shutil
+    import tempfile
+    from pydantic import ValidationError
+    from woptimizer.services.pack_service import (PackService, PerfilCorruptoError)
+
+    # (campo, valor, tipo real, ramas en las que la fila existe). La ultima
+    # columna NO es decorativa: en la rama legacy `is_gaming` se fuerza a False,
+    # asi que la fila solo puede mirarse en la moderna (L-M8d).
+    #
+    # TASK-031 iteracion 3 (M4b): el VALOR de la fila tiene que ser un valor que
+    # Pydantic COACCIONA en modo laxo, o la fila no puede distinguir `strict=True`
+    # de `strict=False`. Medido: `"si"` se RECHAZA igual en los dos modos (no esta
+    # en la lista de booleanos laxos de Pydantic v2), de modo que la fila
+    # `is_favorite: "si"` era verde CON y SIN `strict=True`: un test que no puede
+    # morir, y su mutacion-sobreviviente era invisible. `"true"` y `1` si se
+    # coaccionan a `True`, asi que ahora estas dos filas matan `L-M4b`
+    # (quitarle el `strict` a `is_favorite`).
+    hojas = (
+        ("keepers", "steam.exe", "str", ("moderna", "legacy")),
+        ("target_categories", {"navegadores": 1}, "dict", ("moderna", "legacy")),
+        ("apps", 3, "int", ("moderna", "legacy")),
+        ("name", 7, "int", ("moderna", "legacy")),
+        ("is_favorite", "true", "str", ("moderna", "legacy")),
+        ("is_favorite", 1, "int", ("moderna", "legacy")),
+        ("default_action", "PURGAR", "str", ("moderna", "legacy")),
+        ("is_gaming", "true", "str", ("moderna",)),
+    )
+    for rama in ("moderna", "legacy"):
+        for campo, valor, tipo_real, ramas in hojas:
+            if rama not in ramas:
+                continue
+            hoja = {"id": "mio", "name": "Mio", "apps": ["a.exe"]}
+            hoja[campo] = valor
+            if rama == "moderna":
+                principal = json.dumps({"packs": {"mio": hoja}}, ensure_ascii=False)
+                clase_esperada = ValidationError
+            else:
+                # El registro legacy llama `name` como `label`; para que la fila
+                # `name` rompa el MISMO campo, se mueve el valor ahi. Y `id` se
+                # QUITA: un registro legacy no lleva `id` (su identidad es la
+                # clave del mapa), asi que la linea `traducido["id"] = k` deja de
+                # ser codigo muerto y su mutacion L-M2b pasa a morir aqui (L-M2b).
+                registro = dict(hoja)
+                if "name" in registro:
+                    registro["label"] = registro.pop("name")
+                registro.pop("id", None)
+                principal = json.dumps({"profiles": {"mio": registro}},
+                                       ensure_ascii=False)
+                clase_esperada = PerfilCorruptoError
+            etiqueta = f"[{rama}/{campo}]"
+
+            directorio = tempfile.mkdtemp(prefix="wopt_t031_l2_")
+            ruta = os.path.join(directorio, "profiles.json")
+            try:
+                _escribir(ruta, principal)
+                _escribir(ruta + ".bak", json.dumps(_BAK_SANO, ensure_ascii=False))
+                principal_antes = _bytes_de(ruta)
+                bak_antes = _bytes_de(ruta + ".bak")
+
+                fallo = _capturar(lambda: PackService._read_json(None, ruta))
+                assert isinstance(fallo, clase_esperada), (
+                    f"{etiqueta}: `_read_json` dio {fallo!r} en vez de "
+                    f"{clase_esperada.__name__}; la hoja se carga como si valiera "
+                    "y 'keepers' pasaria a ser una lista de caracteres, con el "
+                    "Gaming Mode sin proteger NADA (L-M2)"
+                )
+                texto = str(fallo)
+                assert campo in texto, (
+                    f"{etiqueta}: el mensaje {texto!r} no nombra el CAMPO, que es "
+                    "lo primero que hay que arreglar en el fichero"
+                )
+                assert "mio" in texto, (
+                    f"{etiqueta}: el mensaje {texto!r} no nombra el PACK: con 20 "
+                    "packs en el fichero, el diagnostico no dice cual"
+                )
+                if rama == "legacy":
+                    assert "errors.pydantic.dev" not in texto and "\n" not in texto, (
+                        f"{etiqueta}: sale el Pydantic crudo ({texto!r}); hay que "
+                        "traducirlo a un mensaje de UNA linea (T-09.1)"
+                    )
+                    assert f"es {tipo_real}" in texto, (
+                        f"{etiqueta}: el mensaje {texto!r} no dice el TIPO REAL "
+                        f"({tipo_real})"
+                    )
+                else:
+                    assert f"input_type={tipo_real}" in texto, (
+                        f"{etiqueta}: el mensaje de Pydantic {texto!r} no dice el "
+                        f"tipo real ({tipo_real})"
+                    )
+
+                servicio = PackService(data_path=ruta)
+                packs = servicio.get_all_packs()
+                assert "salvado" in packs and packs["salvado"].apps == ["salvado.exe"], (
+                    f"{etiqueta}: con .bak sano la recuperacion devolvio "
+                    f"{sorted(packs)}"
+                )
+                assert _bytes_de(ruta) == principal_antes, (
+                    f"{etiqueta}: recuperar no escribe nada en el principal"
+                )
+                assert _bytes_de(ruta + ".bak") == bak_antes, (
+                    f"{etiqueta}: el .bak sano fue tocado al recuperar"
+                )
+            finally:
+                shutil.rmtree(directorio, ignore_errors=True)
+    print("La hoja malformada se clasifica OK (L2).")
+
+
+def test_load_no_escribe():
+    """TASK-031 / L3: `load()` es de SOLO LECTURA en todas sus ramas.
+
+    MATA L-M3 (`_ensure_gaming_pack()` vuelve a llamar a `save()`, o `load()`
+    recupera su `self.save()`).
+
+    Esta es la UNICA sonda que ata E-1 y E-3 entre si: con solo E-1 el `.bak` se
+    seguiria destruyendo igual, un poco mas tarde, en cuanto `_ensure_gaming_pack()`
+    volviera a guardar por un criterio nuevo. Medido en el estado previo: dentro
+    de `load()` habia `save()=1` y `_rotate_backup()=1`.
+
+    El contador de `save()` NO se contrasta con ningun umbral (0 es la
+    definicion de "solo lectura", no un numero arbitrario): la evidencia de
+    verdad son los BYTES del principal y del `.bak`, y el contador esta para que
+    el fallo senale la puerta exacta y no "algo escribio".
+    """
+    print("Testing que load() no escribe (L3)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services.pack_service import PackService
+
+    escenarios = (
+        ("regeneracion sin .bak", _HOJA_MALFORMADA, None),
+        ("recuperacion con .bak sano", _HOJA_MALFORMADA, _BAK_SANO),
+        ("valido sin pack gaming",
+         '{"packs": {"salvado": {"id": "salvado", "name": "Salvado", "apps": ["s.exe"]}}}',
+         None),
+        ("fichero vacio", "{}", None),
+    )
+    for nombre, principal, bak in escenarios:
+        directorio = tempfile.mkdtemp(prefix="wopt_t031_l3_")
+        ruta = os.path.join(directorio, "profiles.json")
+        try:
+            _escribir(ruta, principal)
+            if bak is not None:
+                _escribir(ruta + ".bak", json.dumps(bak, ensure_ascii=False))
+            principal_antes = _bytes_de(ruta)
+            bak_antes = _bytes_de(ruta + ".bak") if os.path.exists(ruta + ".bak") else None
+
+            llamadas = []
+            original = PackService.save
+
+            def save_contado(self, _original=original):
+                llamadas.append(self.data_path)
+                return _original(self)
+
+            PackService.save = save_contado
+            try:
+                servicio = PackService(data_path=ruta)
+            finally:
+                PackService.save = original
+
+            assert llamadas == [], (
+                f"{nombre}: load() escribio {llamadas} sin que el usuario hubiera "
+                "hecho nada. El arranque es la via por la que la rotacion machaca "
+                "el .bak sano (L-M3)"
+            )
+            assert _bytes_de(ruta) == principal_antes, (
+                f"{nombre}: load() cambio los bytes del principal"
+            )
+            if bak_antes is not None:
+                assert _bytes_de(ruta + ".bak") == bak_antes, (
+                    f"{nombre}: load() toco el .bak"
+                )
+            assert not os.path.exists(ruta + ".tmp"), (
+                f"{nombre}: load() dejo un temporal"
+            )
+            # Y la app arranca igual: el pack gaming se asegura EN MEMORIA.
+            assert servicio.get_all_packs()["gaming"].is_gaming is True, (
+                f"{nombre}: sin escribir nada, la app tiene que funcionar con el "
+                "pack gaming en memoria"
+            )
+        finally:
+            shutil.rmtree(directorio, ignore_errors=True)
+    print("load() no escribe OK (L3).")
+
+
+def test_la_recuperacion_no_sobrescribe_el_bak():
+    """TASK-031 / L4: recuperar NO refresca el `.bak`. Ni un byte.
+
+    MATA L-M4 (en la ruta de recuperacion un `save()` antes de leer el `.bak`, o
+    rotar "para dejar el backup al dia").
+
+    Sin la comparacion de BYTES, "no sobrescribir" y "sobrescribir con lo mismo"
+    son indistinguibles, y L4 no mataria a L-M4. Y sin la segunda mitad
+    (`is_favorite` del `.bak`), el mutante que reescribiese el `.bak` con una
+    copia IDENTICA del contenido pasaria el test sin que nada se detectara.
+
+    La ultima asercion es la que impide el "verde por la razon equivocada": si la
+    escritura real no ocurriera, las dos anteriores serian ciertas por no hacer
+    nada.
+    """
+    print("Testing que la recuperacion no sobrescribe el .bak (L4)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services.pack_service import PackService
+
+    directorio = tempfile.mkdtemp(prefix="wopt_t031_l4_")
+    ruta = os.path.join(directorio, "profiles.json")
+    try:
+        _escribir(ruta, _HOJA_MALFORMADA)
+        _escribir(ruta + ".bak", json.dumps(_BAK_SANO, ensure_ascii=False))
+        bak_antes = _bytes_de(ruta + ".bak")
+
+        servicio = PackService(data_path=ruta)
+        assert "salvado" in servicio.get_all_packs(), (
+            f"no se recupero del .bak: {sorted(servicio.get_all_packs())}"
+        )
+        assert _bytes_de(ruta + ".bak") == bak_antes, (
+            "recuperar toco el .bak: la recuperacion no escribe NADA"
+        )
+
+        # Escritura REAL del usuario. El principal que hay en disco sigue siendo
+        # el corrupto, asi que no hay version anterior sana que rotar.
+        servicio.set_favorite("salvado")
+
+        assert _bytes_de(ruta + ".bak") == bak_antes, (
+            "el .bak cambio de bytes tras guardar: se refresco con el estado en "
+            "memoria. El .bak tiene que ser la ultima version BUENA, no un "
+            "espejo de la actual (L-M4)"
+        )
+        bak = PackService._read_json(None, ruta + ".bak")
+        assert bak.packs["salvado"].is_favorite is False, (
+            "el .bak contiene la version recuperada: se roto 'para dejarlo al "
+            "dia' y la ultima copia buena se perdio (L-M4)"
+        )
+
+        en_disco = PackService._read_json(None, ruta)
+        assert en_disco.packs["salvado"].is_favorite is True, (
+            "la escritura real no ocurrio: las aserciones sobre el .bak no "
+            "probarian nada (verde por la razon equivocada)"
+        )
+    finally:
+        shutil.rmtree(directorio, ignore_errors=True)
+    print("La recuperacion no sobrescribe el .bak OK (L4).")
+
+
+def test_sin_bak_legible_no_se_sobrescribe_el_principal():
+    """TASK-031 / L5: sin `.bak` legible el fichero se queda EN DISCO, como estaba.
+
+    MATA L-M5 (reponer `AppData()` + `_ensure_gaming_pack()` + `save()` en la
+    ruta de recuperacion de `load()`).
+
+    No es hipotetico: es la instalacion limpia y tambien un `.bak` ya destruido
+    por la fila A de la matriz. Antes, esa ruta reESCRIBIA el fichero del usuario
+    con un solo pack: una perdida irreversible y sin aviso. Ahora la perdida es
+    REVERSIBLE, y la app arranca igual con el pack `gaming` en memoria.
+
+    La segunda mitad (el pack queda MARCADO) es la que evita que la recuperacion
+    siga siendo silenciosa por otro camino: sin marcar, el usuario ve cero packs
+    y no puede saber si los perdio o nunca los tuvo (Trampa #14).
+    """
+    print("Testing que sin .bak legible no se sobrescribe el principal (L5)...")
+    import shutil
+    import tempfile
+    from woptimizer.services.pack_service import PackService
+
+    directorio = tempfile.mkdtemp(prefix="wopt_t031_l5_")
+    ruta = os.path.join(directorio, "profiles.json")
+    try:
+        _escribir(ruta, _HOJA_MALFORMADA)          # sin .bak a proposito
+        principal_antes = _bytes_de(ruta)
+
+        servicio = PackService(data_path=ruta)
+
+        assert _bytes_de(ruta) == principal_antes, (
+            "el fichero del usuario se reescribio sin .bak legible. Antes load() "
+            "hacia AppData() + _ensure_gaming_pack() + save(), y dejaba el "
+            "fichero con un SOLO pack y sin avisar. Sin .bak no hay nada con que "
+            "sustituirlo: el fichero se queda EN DISCO tal cual para que el "
+            "usuario o una version posterior lo reparen (L-M5)"
+        )
+        assert not os.path.exists(ruta + ".bak"), (
+            "se creo un .bak a partir de un principal ilegible: es la unica copia "
+            "que tendria el usuario y no vale nada"
+        )
+        assert not os.path.exists(ruta + ".tmp"), "load() dejo un temporal"
+
+        packs = servicio.get_all_packs()
+        assert packs["gaming"].is_gaming is True, (
+            "sin nada recuperable la app tiene que arrancar igual: el pack gaming "
+            "se asegura en memoria"
+        )
+        assert servicio.fichero_danado is True, (
+            "un principal ilegible tiene que quedar MARCADO: si no, el usuario ve "
+            "cero packs y no sabe si los perdio o nunca los tuvo"
+        )
+        assert servicio.recuperado_de_backup is False, (
+            "no habia .bak: no se puede haber recuperado de el"
+        )
+        mensaje = servicio.mensaje_danado()
+        assert mensaje and "mio" in mensaje, (
+            f"el aviso para la UI no nombra el pack afectado: {mensaje!r}"
+        )
+    finally:
+        shutil.rmtree(directorio, ignore_errors=True)
+    print("Sin .bak legible no se sobrescribe el principal OK (L5).")
+
+
+def test_un_campo_desconocido_no_es_corrupcion_y_no_se_borra():
+    """TASK-031 / L6: un campo desconocido NO es corrupcion, y NO se borra.
+
+    MATA L-M6 (`extra="forbid"`, o la whitelist de `isinstance` de la opcion (a)
+    del encargo).
+
+    ESTA ES LA SONDA QUE SEPARA LA OPCION (a) DE LA OPCION (b). Sin ella, "mas
+    isinstance campo a campo" y "validar contra el modelo" producen el mismo
+    comportamiento y el mutation-auditor no puede decir cual se ha implementado.
+
+    Clasificarlo como corrupcion seria un error de DISENO, no de robustez: es el
+    unico mecanismo que hace el formato compatible hacia delante, y es justo
+    cuando mas hace falta, porque un `.bak` escrito por un build mas nuevo tiene
+    que ser legible por uno mas viejo. Perder el campo, en cambio, es perder
+    datos del usuario en silencio.
+    """
+    print("Testing que un campo desconocido no es corrupcion ni se borra (L6)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services.pack_service import PackService
+
+    directorio = tempfile.mkdtemp(prefix="wopt_t031_l6_")
+    ruta = os.path.join(directorio, "profiles.json")
+    try:
+        hoja = {"id": "mio", "name": "Mio", "apps": ["a.exe"],
+                "notas": "comprar la caja"}
+        _escribir(ruta, json.dumps({"packs": {"mio": hoja}}, ensure_ascii=False))
+        _escribir(ruta + ".bak", json.dumps(_BAK_SANO, ensure_ascii=False))
+        bak_antes = _bytes_de(ruta + ".bak")
+
+        servicio = PackService(data_path=ruta)
+
+        assert servicio.fichero_danado is False, (
+            "un campo que esta version no conoce se clasifico como corrupcion: "
+            "eso hace que el fichero sano de un build mas nuevo se trato como "
+            "roto, que es justo el momento en que el .bak hace falta (L-M6)"
+        )
+        assert servicio.recuperado_de_backup is False, (
+            "se recupero del .bak: un campo desconocido no es motivo para tirar la "
+            "version del usuario"
+        )
+        assert "mio" in servicio.get_all_packs(), (
+            f"el pack mio desaparecio: {sorted(servicio.get_all_packs())}"
+        )
+        assert _bytes_de(ruta + ".bak") == bak_antes, "el .bak sano fue tocado"
+
+        # Un guardado REAL: el campo tiene que SEGUIR en el fichero.
+        servicio.set_favorite("mio")
+        with open(ruta, encoding="utf-8") as fh:
+            en_disco = json.load(fh)
+        assert en_disco["packs"]["mio"].get("notas") == "comprar la caja", (
+            f"el campo desconocido se borro en el primer save(): "
+            f"{en_disco['packs']['mio']}. Perdio datos del usuario sin avisar (L-M6)"
+        )
+    finally:
+        shutil.rmtree(directorio, ignore_errors=True)
+    print("Un campo desconocido no es corrupcion ni se borra OK (L6).")
+
+
+def test_packs_y_profiles_a_la_vez_es_corrupcion():
+    """TASK-031 / L7: `packs` y `profiles` en el MISMO fichero es corrupcion.
+
+    MATA L-M7 (quitar la condicion `'packs' not in raw_data`).
+
+    Medido en el estado previo: con las dos claves se iba a la rama moderna,
+    `profiles` se ignoraba como clave extra y el pack `otro` DESAPARECIA DEL
+    DISCO en el primer `save()`, sin que nada se hubiera clasificado. Cualquier
+    resolucion (migrar o descartar) borra packs en silencio, asi que aqui
+    "corrupcion" y "normalizar" cuestan lo mismo y gana la opcion segura.
+
+    La asercion que muere es "el pack `otro` sigue en el fichero DESPUES del
+    `save()`", que es donde la perdida es observable.
+    """
+    print("Testing que packs y profiles a la vez es corrupcion (L7)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services.pack_service import (PackService, PerfilCorruptoError)
+
+    directorio = tempfile.mkdtemp(prefix="wopt_t031_l7_")
+    ruta = os.path.join(directorio, "profiles.json")
+    try:
+        hoja = {"id": "mio", "name": "Mio", "apps": ["a.exe"]}
+        perfil = {"label": "Otro", "apps": ["otro.exe"]}
+        _escribir(ruta, json.dumps({"packs": {"mio": hoja},
+                                    "profiles": {"otro": perfil}},
+                                   ensure_ascii=False))
+        _escribir(ruta + ".bak", json.dumps(_BAK_CON_OTRO, ensure_ascii=False))
+        bak_antes = _bytes_de(ruta + ".bak")
+
+        fallo = _capturar(lambda: PackService._read_json(None, ruta))
+        assert isinstance(fallo, PerfilCorruptoError), (
+            f"un fichero con 'packs' Y 'profiles' se leyo sin clasificar: {fallo!r}. "
+            "La rama moderna ignoraba 'profiles' como clave extra y el pack `otro` "
+            "desaparecia DEL DISCO en el primer save(), sin que nada se hubiera "
+            "clasificado antes (L-M7)"
+        )
+        texto = str(fallo)
+        assert "packs" in texto and "profiles" in texto, (
+            f"el mensaje {texto!r} no nombra las DOS claves en conflicto: sin eso "
+            "no se sabe cual sobra"
+        )
+
+        servicio = PackService(data_path=ruta)
+        packs = servicio.get_all_packs()
+        assert "salvado" in packs and "otro" in packs, (
+            f"con .bak sano la recuperacion devolvio {sorted(packs)}: los dos "
+            "packs tienen que sobrevivir"
+        )
+        assert _bytes_de(ruta + ".bak") == bak_antes, (
+            "el .bak sano fue tocado al recuperar"
+        )
+
+        servicio.set_favorite("salvado")
+        with open(ruta, encoding="utf-8") as fh:
+            en_disco = json.load(fh)
+        assert "otro" in en_disco["packs"] and "salvado" in en_disco["packs"], (
+            f"tras el save() solo quedan {sorted(en_disco['packs'])}: el pack "
+            "`otro` se ha perdido del disco (L-M7)"
+        )
+    finally:
+        shutil.rmtree(directorio, ignore_errors=True)
+    print("packs y profiles a la vez es corrupcion OK (L7).")
+
+
+# --- TASK-031 iteracion 2: sondas L8-L10 ------------------------------------
+# Un `.bak` con keepers DE VERDAD, para L9: la pregunta no es solo "se clasifica",
+# es que clasificar RECUPERE los procesos protegidos en vez de normalizarlos a
+# `[]` (que es lo que desarma el anti-brick y lo que `proposal.md` 3 rechazo).
+_BAK_CON_KEEPERS = {
+    "packs": {
+        "salvado": {"id": "salvado", "name": "Salvado", "apps": ["salvado.exe"],
+                    "keepers": ["steam.exe", "discord.exe"]},
+        "gaming": {"id": "gaming", "name": "Gaming", "is_gaming": True,
+                   "apps": ["chrome.exe"]},
+    }
+}
+
+# Campos extra LEGITIMOS (o plausibles) que la politica de "error de escritura"
+# tiene que DEJAR EN PAZ. El mas cercano a una clave real es `note` a distancia 2
+# de `name`, asi que este grupo es el que mata un umbral de 2 (mutacion L-M8f).
+_EXTRAS_LEGITIMOS = (
+    ("notas", "comprar la caja"),
+    ("note", "traer el cargador"),
+    ("color", "#ff0000"),
+    ("tags", ["estudio"]),
+    ("hotkey", "ctrl+1"),
+    ("version", 2),
+    ("emoji", "X"),
+    ("orden", 1),
+    ("keep", ["steam.exe"]),
+    ("description", "notas largas"),
+)
+
+
+def test_la_raiz_mal_escrita_no_destruye_los_packs():
+    """TASK-031 iteracion 2 / L8: una RAIZ mal escrita NO puede costar los packs.
+
+    MATA L-M6c (`extra="ignore"` SOLO en `AppData`) y L-M8a (clasificar la raiz
+    mal escrita como corrupcion). Las dos son la MISMA perdida de datos vista por
+    dos puertas, y el mutation-auditor de la iteracion 1 dio FAIL porque la linea
+    `extra="allow"` de `AppData` era PORTANTE y no tenia ni una sonda.
+
+    MEDIDO en el estado anterior (y medido otra vez aqui, con la mutacion puesta):
+    un `profiles.json` cuya raiz esta mal escrita (`{"perfiles": ...}`,
+    `{"packs2": ...}`) arranca, `load()` ve CERO packs, y el PRIMER `save()` real
+    del usuario deja el fichero como `{"packs": ...}`: los packs del usuario
+    desaparecen del disco, sin aviso y de forma irreversible.
+
+    POR QUE EL TEST AFIRMA SOBRE BYTES Y NO SOBRE "el pack se ve": con cero packs en
+    memoria no hay nada que mirar en memoria. Lo unicoObservable es el FICHERO. Y
+    lo que se compara es el subarbol del usuario byte a byte (mismo `json.dumps` con
+    `sort_keys` a los dos lados), porque el `indent=4` del escritor es cosa suya y
+    no debe formar parte del contrato.
+
+    POR QUE UNA RAIZ MAL ESCRITA NO ES CORRUPCION (la decision, con su coste):
+    clasificarla seria PEOR. En la ruta sin `.bak`, `load()` hace
+    `self._data = AppData()` (TASK-031, L5), asi que lo legible se tira y el
+    siguiente `save()` publicaria `{"packs": {"gaming": ...}}`: los packs del
+    usuario se perderian IGUAL y ADEMAS habria un aviso que no evita nada. Con
+    `extra="allow"` la raiz desconocida se conserva como dato y sobrevive a todos
+    los guardados. El COSTE, declarado y no resuelto: el arranque ve cero packs sin
+    avisar (deuda en `data-models.md` 4.4 y `tasks.md` T-18.3). La asercion
+    `fichero_danado is False` la fija para que ese coste solo se cambie a proposito.
+    """
+    print("Testing que la raiz mal escrita no destruye los packs (L8)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services.pack_service import PackService
+
+    packs_del_usuario = {
+        "mio": {"id": "mio", "name": "Mio", "apps": ["mio.exe"]},
+        "otro": {"id": "otro", "name": "Otro", "apps": ["otro.exe"]},
+    }
+    for raiz in ("perfiles", "packs2", "paquets", "Packs"):
+        for con_bak in (False, True):
+            etiqueta = f"[{raiz}/{'con' if con_bak else 'sin'} .bak]"
+            directorio = tempfile.mkdtemp(prefix="wopt_t031_l8_")
+            ruta = os.path.join(directorio, "profiles.json")
+            try:
+                _escribir(ruta, json.dumps({raiz: packs_del_usuario},
+                                           ensure_ascii=False))
+                if con_bak:
+                    _escribir(ruta + ".bak",
+                              json.dumps(_BAK_SANO, ensure_ascii=False))
+                principal_antes = _bytes_de(ruta)
+                bak_antes = _bytes_de(ruta + ".bak") if con_bak else None
+
+                servicio = PackService(data_path=ruta)
+
+                assert _bytes_de(ruta) == principal_antes, (
+                    f"{etiqueta}: arrancar toco el fichero del usuario"
+                )
+                assert servicio.fichero_danado is False, (
+                    f"{etiqueta}: una raiz mal escrita se clasifico como "
+                    f"corrupcion. En la ruta sin .bak eso hace `self._data = "
+                    f"AppData()` y el siguiente guardado publica "
+                    f"{{'packs': ...}}: los packs del usuario se pierden IGUAL, y "
+                    f"con un aviso de encima (L-M8a)"
+                )
+                assert servicio.recuperado_de_backup is False, (
+                    f"{etiqueta}: se consulto el .bak sin que hubiera nada que "
+                    f"clasificar: la raiz mal escrita no es corrupcion, asi que el "
+                    f"`.bak` sano no se toca (L-M8a)"
+                )
+                if con_bak:
+                    assert _bytes_de(ruta + ".bak") == bak_antes, (
+                        f"{etiqueta}: arrancar toco el .bak sano: `load()` es de "
+                        f"solo lectura con cualquier principal (L-M3)"
+                    )
+
+                # Escritura REAL del usuario. Esta es la que destruye los packs si
+                # la raiz desconocida no sobrevive al ciclo carga -> guarda.
+                servicio.create_user_pack("nuevo", "Nuevo", ["nuevo.exe"])
+
+                with open(ruta, encoding="utf-8") as fh:
+                    en_disco = json.load(fh)
+                assert raiz in en_disco, (
+                    f"{etiqueta}: la raiz {raiz!r} desaparece del disco tras el "
+                    f"save(). En el fichero quedan {sorted(en_disco)}: los packs "
+                    f"del usuario se han perdido y no hay forma de recuperarlos "
+                    f"(L-M6c)"
+                )
+                assert (json.dumps(en_disco[raiz], sort_keys=True,
+                                   ensure_ascii=False)
+                        == json.dumps(packs_del_usuario, sort_keys=True,
+                                      ensure_ascii=False)), (
+                    f"{etiqueta}: lo que queda bajo {raiz!r} no es lo que el "
+                    f"usuario escribio: {en_disco[raiz]}"
+                )
+                assert "nuevo" in en_disco.get("packs", {}), (
+                    f"{etiqueta}: el pack nuevo no se guardo: la escritura real no "
+                    f"ocurrio y el resto de aserciones no probarian nada"
+                )
+                if con_bak:
+                    # El principal es LEGIBLE (la raiz mal escrita se lee), asi que
+                    # la rotacion si ocurre y lo que copia es la version ANTERIOR
+                    # del fichero del usuario, byte a byte. No es un `.bak` del
+                    # "estado recuperado": es una rotacion real (L4).
+                    assert _bytes_de(ruta + ".bak") == principal_antes, (
+                        f"{etiqueta}: tras guardar, el .bak deberia ser la version "
+                        f"ANTERIOR del principal, no el estado recien escrito"
+                    )
+            finally:
+                shutil.rmtree(directorio, ignore_errors=True)
+    print("La raiz mal escrita no destruye los packs OK (L8).")
+
+
+def test_un_error_de_escritura_no_es_un_campo_desconocido():
+    """TASK-031 iteracion 2 / L9: un campo que PARECE un error de escritura es
+    CORRUPCION; un campo que no se parece a nada se queda como compatible hacia
+    delante. Las dos mitades del mismo contrato.
+
+    MATA L-M8b (quitar `_colision_de_tecla` / `_vigilar_hojas`) y L-M8f (subir el
+    umbral de "una pulsacion" a dos, que es el desbordamiento clasico de un filtro
+    de similitud).
+
+    MEDIDO en el estado anterior: con `extra="allow"`, un `"keeper": [...]` se
+    aceptaba como campo desconocido y `keepers` se quedaba en `[]` EN SILENCIO. El
+    anti-brick queda desarmado: "Preparar Gaming Mode" mata lo que el usuario
+    escribio para que lo protegiera. Ese es el ladrillo que `proposal.md` 3 dice
+    que es inaceptable, y pasaba por los doce escenarios del auditor.
+
+    POR QUE "parecido" NO es un fuzzy: la lista es CERRADA (los campos que esta
+    version conoce) y el umbral es UNA pulsacion (distancia de edicion 1 sobre el
+    nombre entero). La segunda mitad del test lo mide con 10 campos extra
+    legitimos: el mas cercano a una clave real es `note` a distancia 2 de `name`,
+    asi que un umbral de 2 ya rechazaria un campo de verdad (L-M8f).
+
+    Y POR QUE la asercion es "se recupera del .bak CON keepers", no solo "se
+    clasifica": la alternativa rechazada era normalizar a `[]`, y eso tambien
+    "cargaba" el fichero. Lo que se vigila es que los procesos protegidos VOLVER.
+    """
+    print("Testing que un error de escritura no es un campo desconocido (L9)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services.pack_service import (PackService, PerfilCorruptoError)
+
+    # (campo escrito por el usuario, clave conocida que queda sin leerse)
+    colisiones = (
+        ("keeper", "keepers"),
+        ("keeppers", "keepers"),
+        (" keepers", "keepers"),
+        ("app", "apps"),
+        ("is_favorit", "is_favorite"),
+        ("default_actions", "default_action"),
+        ("is_gamingg", "is_gaming"),
+        # TASK-031 iteracion 3 (M13): estas dos filas son las que matan la
+        # mutacion "`_normalizar_clave` es la identidad". En BRUTO estan a 11 y
+        # a 2 de distancia de su clave, asi que sin la normalizacion (minusculas
+        # y guiones) no colisionarian por distancia: las agarra el atajo de
+        # coincidencia EXACTA sobre la clave normalizada. "El plural y las
+        # mayusculas no se detectan" no es una opinion: son 11 y 2 pulsaciones.
+        ("IS-FAVORITE", "is_favorite"),
+        ("IS_GAMING", "is_gaming"),
+    )
+    for rama in ("moderna", "legacy"):
+        for campo, sombreada in colisiones:
+            etiqueta = f"[{rama}/{campo}]"
+            registro = {"name": "Mio", "apps": ["a.exe"], campo: ["steam.exe"]}
+            if rama == "moderna":
+                registro["id"] = "mio"
+                principal = json.dumps({"packs": {"mio": registro}},
+                                       ensure_ascii=False)
+            else:
+                registro["label"] = registro.pop("name")
+                principal = json.dumps({"profiles": {"mio": registro}},
+                                       ensure_ascii=False)
+
+            directorio = tempfile.mkdtemp(prefix="wopt_t031_l9_")
+            ruta = os.path.join(directorio, "profiles.json")
+            try:
+                _escribir(ruta, principal)
+                _escribir(ruta + ".bak",
+                          json.dumps(_BAK_CON_KEEPERS, ensure_ascii=False))
+                principal_antes = _bytes_de(ruta)
+                bak_antes = _bytes_de(ruta + ".bak")
+
+                fallo = _capturar(lambda: PackService._read_json(None, ruta))
+                assert isinstance(fallo, PerfilCorruptoError), (
+                    f"{etiqueta}: {campo!r} se acepto como campo desconocido y "
+                    f"{sombreada!r} se queda en su valor por defecto. En el Gaming "
+                    f"Mode eso desarma la proteccion sin avisar (L-M8b); se leyo "
+                    f"{fallo!r}"
+                )
+                texto = str(fallo)
+                assert campo in texto, (
+                    f"{etiqueta}: el mensaje {texto!r} no nombra el campo MAL "
+                    f"ESCRITO, que es lo que hay que corregir en el fichero"
+                )
+                assert sombreada in texto, (
+                    f"{etiqueta}: el mensaje {texto!r} no nombra la clave que "
+                    f"queda SIN LEER ({sombreada!r}): sin eso el usuario no sabe "
+                    f"que proteccion acaba de perder"
+                )
+                assert "mio" in texto, (
+                    f"{etiqueta}: el mensaje {texto!r} no nombra el PACK"
+                )
+                assert "\n" not in texto and "errors.pydantic.dev" not in texto, (
+                    f"{etiqueta}: sale el Pydantic crudo ({texto!r}); el mensaje va "
+                    f"a un bloc de notas, no a un terminal"
+                )
+
+                servicio = PackService(data_path=ruta)
+                assert servicio.fichero_danado is True, (
+                    f"{etiqueta}: la clasificacion no es observable por la UI"
+                )
+                assert servicio.recuperado_de_backup is True, (
+                    f"{etiqueta}: con .bak sano tiene que recuperarse"
+                )
+                packs = servicio.get_all_packs()
+                assert "salvado" in packs, (
+                    f"{etiqueta}: la recuperacion devolvio {sorted(packs)}"
+                )
+                assert packs["salvado"].keepers == ["steam.exe", "discord.exe"], (
+                    f"{etiqueta}: la recuperacion trae keepers={packs['salvado'].keepers!r}: "
+                    f"la eleccion de 'corrupcion' solo vale si los procesos "
+                    f"PROTEGIDOS vuelven, no si se normalizan a []"
+                )
+                assert _bytes_de(ruta) == principal_antes, (
+                    f"{etiqueta}: recuperar no escribe nada en el principal"
+                )
+                assert _bytes_de(ruta + ".bak") == bak_antes, (
+                    f"{etiqueta}: el .bak sano fue tocado"
+                )
+            finally:
+                shutil.rmtree(directorio, ignore_errors=True)
+
+    # --- La mitad "no fuzzy": un campo que NO se parece a nada se conserva. ----
+    for rama in ("moderna", "legacy"):
+        etiqueta = f"[{rama}/extras legitimos]"
+        registro = dict(_EXTRAS_LEGITIMOS)
+        registro["name"] = "Mio"
+        registro["apps"] = ["a.exe"]
+        if rama == "moderna":
+            registro["id"] = "mio"
+            principal = json.dumps({"packs": {"mio": registro}}, ensure_ascii=False)
+        else:
+            registro["label"] = registro.pop("name")
+            principal = json.dumps({"profiles": {"mio": registro}},
+                                   ensure_ascii=False)
+
+        directorio = tempfile.mkdtemp(prefix="wopt_t031_l9b_")
+        ruta = os.path.join(directorio, "profiles.json")
+        try:
+            _escribir(ruta, principal)
+            _escribir(ruta + ".bak",
+                      json.dumps(_BAK_SANO, ensure_ascii=False))
+            bak_antes = _bytes_de(ruta + ".bak")
+
+            servicio = PackService(data_path=ruta)
+            assert servicio.fichero_danado is False, (
+                f"{etiqueta}: un campo que NO se parece a ninguna clave conocida se "
+                f"clasifico como corrupcion. Eso hace que el fichero sano de un "
+                f"build mas nuevo (un `.nota`, un `.tags`) se trate como roto, "
+                f"que es justo el momento en que el .bak hace falta. 'note' esta a "
+                f"distancia 2 de 'name': subir el umbral a 2 rompe esto (L-M8f)"
+            )
+            assert servicio.recuperado_de_backup is False, (
+                f"{etiqueta}: no hay motivo para tirar la version del usuario"
+            )
+            assert _bytes_de(ruta + ".bak") == bak_antes, "el .bak sano fue tocado"
+
+            servicio.create_user_pack("nuevo", "Nuevo", ["nuevo.exe"])
+            with open(ruta, encoding="utf-8") as fh:
+                en_disco = json.load(fh)
+            guardados = en_disco["packs"]["mio"]
+            for campo, valor in _EXTRAS_LEGITIMOS:
+                assert campo in guardados, (
+                    f"{etiqueta}: el campo legitimo {campo!r} desaparecio del "
+                    f"fichero: quedan {sorted(guardados)}"
+                )
+                assert guardados[campo] == valor, (
+                    f"{etiqueta}: el campo {campo!r} cambio de valor: "
+                    f"{guardados[campo]!r} != {valor!r}"
+                )
+        finally:
+            shutil.rmtree(directorio, ignore_errors=True)
+    print("Un error de escritura no es un campo desconocido OK (L9).")
+
+
+def test_la_clave_del_mapa_es_la_identidad_del_pack():
+    """TASK-031 iteracion 2 / L10: la clave del mapa ES el id del pack.
+
+    MATA L-M8c (quitar la guarda de identidad de `_vigilar_hojas`) y L-M2b
+    (quitar `traducido["id"] = k`).
+
+    MEDIDO en el estado anterior, y el hallazgo es del mutation-auditor de la
+    iteracion 2: `{"packs": {"mi-clave": {"id": "otro-id", ...}}}` se cargaba SIN
+    clasificar, y `pack_manager_view.py:100` indexa `get_all_packs()[pack.id]`, de
+    modo que el desplegable de "accion por defecto" reventaba con
+    `KeyError('otro-id')` y el pack tampoco aparecia en `get_user_packs()`. Un pack
+    que la app no puede ni abrir ni borrar, sin un solo aviso.
+
+    Se clasifica en vez de NORMALIZAR a la clave, y el motivo es que normalizar
+    reescribiria en silencio un campo que el usuario escribio a mano: la
+    recuperacion del `.bak` deja el fichero en disco para que el usuario decida.
+
+    La asercion que mata a L-M2b es de CONTENIDO y no de clase: un registro legacy
+    sin `id` (que es como es uno de verdad) tiene que acabar con
+    `packs[clave].id == clave`. Sin la linea `traducido["id"] = k`, `Pack(**traducido)`
+    lanza `ValidationError` por `id` ausente y el test muere ahi.
+    """
+    print("Testing que la clave del mapa es la identidad del pack (L10)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services.pack_service import (PackService, PerfilCorruptoError)
+
+    # 1. La modernA con id que NO es la clave: corrupcion, en las dos ramas de
+    #    lectura (con y sin .bak) y sin tocar un byte.
+    for rama in ("moderna", "legacy"):
+        registro = {"id": "otro-id", "name": "Mio", "apps": ["a.exe"]}
+        if rama == "moderna":
+            principal = json.dumps({"packs": {"mi-clave": registro}},
+                                   ensure_ascii=False)
+        else:
+            registro["label"] = registro.pop("name")
+            principal = json.dumps({"profiles": {"mi-clave": registro}},
+                                   ensure_ascii=False)
+        directorio = tempfile.mkdtemp(prefix="wopt_t031_l10_")
+        ruta = os.path.join(directorio, "profiles.json")
+        try:
+            _escribir(ruta, principal)
+            _escribir(ruta + ".bak", json.dumps(_BAK_SANO, ensure_ascii=False))
+            principal_antes = _bytes_de(ruta)
+            bak_antes = _bytes_de(ruta + ".bak")
+
+            fallo = _capturar(lambda: PackService._read_json(None, ruta))
+            assert isinstance(fallo, PerfilCorruptoError), (
+                f"[{rama}/id != clave]: se cargo sin clasificar ({fallo!r}). La "
+                f"clave del mapa es la identidad del pack: `pack_manager_view` "
+                f"indexa por `pack.id` y reventaria con KeyError, y "
+                f"`get_user_packs()` no lo enseñaria (L-M8c)"
+            )
+            texto = str(fallo)
+            assert "mi-clave" in texto and "otro-id" in texto, (
+                f"[{rama}/id != clave]: el mensaje {texto!r} no nombra las DOS "
+                f"identidades, que es lo unico que permite arreglar el fichero"
+            )
+
+            servicio = PackService(data_path=ruta)
+            assert servicio.recuperado_de_backup is True, (
+                f"[{rama}/id != clave]: con .bak sano tiene que recuperarse"
+            )
+            assert "salvado" in servicio.get_all_packs(), (
+                f"[{rama}/id != clave]: la recuperacion devolvio "
+                f"{sorted(servicio.get_all_packs())}"
+            )
+            assert _bytes_de(ruta) == principal_antes, (
+                f"[{rama}/id != clave]: recuperar no escribe nada en el principal"
+            )
+            assert _bytes_de(ruta + ".bak") == bak_antes, (
+                f"[{rama}/id != clave]: el .bak sano fue tocado"
+            )
+        finally:
+            shutil.rmtree(directorio, ignore_errors=True)
+
+    # 2. Los ficheros BIEN escritos: la identidad se cumple y la UI puede
+    #    encontrar cada pack por `pack.id`, que es su expresion literal.
+    for rama in ("moderna", "legacy"):
+        directorio = tempfile.mkdtemp(prefix="wopt_t031_l10b_")
+        ruta = os.path.join(directorio, "profiles.json")
+        try:
+            registro = {"name": "Mio", "apps": ["a.exe"]}
+            if rama == "moderna":
+                registro["id"] = "mi-clave"
+                _escribir(ruta, json.dumps({"packs": {"mi-clave": registro}},
+                                           ensure_ascii=False))
+            else:
+                registro["label"] = registro.pop("name")
+                _escribir(ruta, json.dumps({"profiles": {"mi-clave": registro}},
+                                           ensure_ascii=False))
+            servicio = PackService(data_path=ruta)
+            packs = servicio.get_all_packs()
+            assert servicio.fichero_danado is False, (
+                f"[{rama}/bien escrito]: un fichero correcto se clasifico como "
+                f"corrupcion: {servicio.motivo_danado!r}"
+            )
+            assert packs["mi-clave"].id == "mi-clave", (
+                f"[{rama}/bien escrito]: un registro legacy sin 'id' (que es como "
+                f"es uno de verdad) tiene que heredar la identidad de la clave, y "
+                f"llego con id={packs['mi-clave'].id!r}. Sin la linea "
+                f"`traducido['id'] = k` la fila legacy ni siquiera llega aqui "
+                f"(L-M2b)"
+            )
+            # La expresion literal de `pack_manager_view.py:100`, sobre todos los
+            # packs: si el id y la clave pueden divergir, esto es un KeyError.
+            for clave, pack in packs.items():
+                assert packs[pack.id] is pack, (
+                    f"[{rama}/bien escrito]: el pack {clave!r} no se puede "
+                    f"encontrar por su id ({pack.id!r})"
+                )
+        finally:
+            shutil.rmtree(directorio, ignore_errors=True)
+    print("La clave del mapa es la identidad del pack OK (L10).")
+
+
+# --- TASK-031 iteracion 3: sondas L11-L12 ----------------------------------
+# Claves EXTRA de la raiz de un profiles.json LEGACY. No son inventadas para el
+# test: un `profiles.json` legacy real trae `favorite` en la raiz, que es
+# justamente el dato que la rama legacy se llevaba por delante.
+_EXTRAS_RAIZ_LEGACY = (
+    ("favorite", "mio"),
+    ("version", 2),
+    ("escrito_por", {"build": 7}),
+)
+
+
+def test_la_raiz_legada_conserva_sus_claves_extra():
+    """TASK-031 iteracion 3 / L11: las claves EXTRA de la RAIZ sobreviven al
+    ciclo carga -> guarda, TAMBIEN en la rama legacy.
+
+    MATA M8 (la rama legacy reconstruia el `AppData` desde cero y descartaba
+    el resto de la raiz) y M8b (conservar tambien `profiles`).
+
+    MEDIDO en el estado anterior: `{"profiles": {...}, "favorite": "mio"}`
+    arrancaba SIN clasificar nada y, en el PRIMER `save()` real del usuario, el
+    fichero quedaba como `{"packs": {...}}`: `favorite` desaparecia DEL DISCO, en
+    silencio, sin aviso y sin `.bak` al que recurrir (el `.bak` que hay es la
+    version ANTERIOR, que tambien se acaba de rotar con el dato dentro).
+
+    POR QUE `extra="allow"` NO LO ARREGLA, y por eso el arreglo es de CODIGO y no
+    de configuracion: en la rama moderna la raiz desconocida sobrevive porque
+    `AppData(**raw_data)` se la guarda. En la legacy el `AppData` se construia
+    con `packs` y nada mas, asi que el extra no existia. Un `extra="allow"` que
+    no se copia al objeto no conserva NADA: la linea (mutacion L-M6c, sonda L8)
+    es necesaria y no suficiente, y por eso M8 y L-M6c son dos puertas distintas
+    al mismo bulo.
+
+    Y POR QUE `profiles` SE DESCARTA (M8b): su contenido ya esta traducido en
+    `packs`, y conservarlo escribiria un fichero con LAS DOS claves, que la
+    lectura siguiente clasifica como corrupcion (L7). Eso no es "sobrar
+    informacion": es un landmine que solo explosionaria en el SEGUNDO arranque
+    del usuario. Por eso la asercion de M8b no es "la clave no aparece" (que un
+    mutante podria cumplir por casualidad) sino RELEER el fichero escrito y
+    afirmar que arranca limpio con los packs del usuario dentro.
+    """
+    print("Testing que la raiz legada conserva sus claves extra (L11)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services.pack_service import PackService
+
+    registros = {"mio": {"label": "Mio", "apps": ["mio.exe"]}}
+    raiz = dict(_EXTRAS_RAIZ_LEGACY)
+    raiz["profiles"] = registros
+
+    directorio = tempfile.mkdtemp(prefix="wopt_t031_l11_")
+    ruta = os.path.join(directorio, "profiles.json")
+    try:
+        _escribir(ruta, json.dumps(raiz, ensure_ascii=False))
+        _escribir(ruta + ".bak", json.dumps(_BAK_SANO, ensure_ascii=False))
+        bak_antes = _bytes_de(ruta + ".bak")
+
+        servicio = PackService(data_path=ruta)
+
+        assert servicio.fichero_danado is False, (
+            f"un profiles.json legacy con claves extra en la raiz se clasifico "
+            f"como corrupcion: {servicio.motivo_danado!r}"
+        )
+        assert servicio.recuperado_de_backup is False, (
+            "se recupero del .bak: una clave raiz que no es de esta version no "
+            "es motivo para tirar la version del usuario"
+        )
+        assert _bytes_de(ruta + ".bak") == bak_antes, "el .bak sano fue tocado"
+        packs = servicio.get_all_packs()
+        assert packs["mio"].name == "Mio" and packs["mio"].apps == ["mio.exe"], (
+            f"los packs legacy no llegaron: {packs['mio']!r}"
+        )
+
+        # Escritura REAL del usuario: es aqui donde el dato se perdia.
+        servicio.create_user_pack("nuevo", "Nuevo", ["nuevo.exe"])
+
+        with open(ruta, encoding="utf-8") as fh:
+            en_disco = json.load(fh)
+        for clave, valor in _EXTRAS_RAIZ_LEGACY:
+            assert clave in en_disco, (
+                f"la clave raiz {clave!r} desaparecio del disco tras el save(): "
+                f"en el fichero quedan {sorted(en_disco)}. Un 'profiles.json' "
+                f"legacy REAL trae 'favorite' en la raiz, asi que esto es "
+                f"perdida de datos del usuario, en silencio (M8)"
+            )
+            assert en_disco[clave] == valor, (
+                f"la clave raiz {clave!r} cambio de valor: {en_disco[clave]!r} "
+                f"!= {valor!r}"
+            )
+        assert en_disco["packs"]["mio"]["apps"] == ["mio.exe"], (
+            f"los packs del usuario no llegaron al disco: {en_disco['packs']!r}"
+        )
+        assert "nuevo" in en_disco["packs"], (
+            f"el pack nuevo no se guardo: la escritura real no ocurrio y el "
+            f"resto de aserciones no probarian nada. Quedan "
+            f"{sorted(en_disco.get('packs', {}))}"
+        )
+        assert "profiles" not in en_disco, (
+            f"'profiles' se ha copiado al fichero escrito: quedan "
+            f"{sorted(en_disco)}. El contenido ya esta en 'packs', y un fichero "
+            f"con las DOS claves lo clasifica la lectura siguiente como "
+            f"corrupcion (L7): el landmine solo explotaria en el segundo "
+            f"arranque (M8b)"
+        )
+
+        # Y la asercion que de verdad distingue M8b de "no hacer nada": el
+        # fichero escrito TIENE que volver a arrancar limpio.
+        relectura = PackService(data_path=ruta)
+        assert relectura.fichero_danado is False, (
+            f"el fichero escrito por la app se clasifica como corrupto al "
+            f"volver a leerlo: {relectura.motivo_danado!r}. Lo que la app publica "
+            f"tiene que ser leible por ella misma"
+        )
+        repacks = relectura.get_all_packs()
+        assert "mio" in repacks and "nuevo" in repacks, (
+            f"la relectura devolvio {sorted(repacks)}"
+        )
+    finally:
+        shutil.rmtree(directorio, ignore_errors=True)
+
+    # CONTROL: una raiz legacy SIN claves extra sigue funcionando igual. Sin
+    # esta parte, un arreglo que "funciona" porque no carga nada en verde.
+    directorio = tempfile.mkdtemp(prefix="wopt_t031_l11b_")
+    ruta = os.path.join(directorio, "profiles.json")
+    try:
+        _escribir(ruta, json.dumps({"profiles": registros}, ensure_ascii=False))
+        servicio = PackService(data_path=ruta)
+        assert servicio.fichero_danado is False, (
+            f"sin claves extra la rama legacy dejo de funcionar: "
+            f"{servicio.motivo_danado!r}"
+        )
+        assert servicio.get_all_packs()["mio"].name == "Mio", "el pack no llego"
+    finally:
+        shutil.rmtree(directorio, ignore_errors=True)
+    print("La raiz legada conserva sus claves extra OK (L11).")
+
+
+def test_una_clave_raiz_nunca_es_un_error_de_escritura():
+    """TASK-031 iteracion 3 / L12: una clave de la RAIZ NUNCA se declara
+    corrupcion por parecerse a un campo de hoja, y sobrevive al guardado.
+
+    MATA M9 (aplicar `_colision_de_tecla` tambien a la raiz) y L-M8a
+    (clasificar la raiz mal escrita como corrupcion, con las DOS
+    implementaciones plausibles: "la raiz no tiene ninguna clave conocida" y
+    "una clave de la raiz colisiona con un campo de hoja").
+
+    La segunda mitad del test (raiz SIN clave valida) existe porque la primera no
+    alcanzaba a una de las dos implementaciones: un filtro de colision contra
+    campos de HOJA no ve `perfiles` (no se parece a ningun campo de `Pack`), y
+    con la primera mitad sola esa variante del mutante pasaba en verde.
+
+    POR QUE NO SE APLICA, y por que NO es "una omision" (la decision, con su
+    coste, medida tres veces):
+
+      1. La IDENTIDAD no tiene sentido ahi: no hay ningun `id` al que una clave
+         raiz pueda ser distinta.
+      2. El ERROR DE ESCRITURA ahi es perdida de datos. En la ruta sin `.bak`,
+         clasificar hace `self._data = AppData()` y el siguiente `save()`
+         publica `{"packs": {"gaming": ...}}`: los packs del usuario se pierden
+         IGUAL que sin clasificar, y con un aviso de encima (asi lo midio L8).
+      3. Y ademas es FALSO POSITIVO: `names` esta a distancia 1 de `name` e
+         `ids` a distancia 1 de `id`. Una clave raiz que se parece a un campo
+         de hoja no es un error de escritura de hoja: es un dato raiz de otro
+         build, y clasificarlo lo borra. En la HOJA si que significa algo: alla
+         `name` y `names` conviviendo en el mismo registro es un error de
+         escritura de verdad, y eso es lo que mide L9.
+
+    El ultimo caso de la lista (`packs2`, `profiless`) es la otra mitad: claves
+    raiz que parecen un error de escritura de una clave RAIZ. Tampoco son
+    corrupcion, por el punto 2.
+    """
+    print("Testing que una clave raiz nunca es un error de escritura (L12)...")
+    import json
+    import shutil
+    import tempfile
+    from woptimizer.services.pack_service import PackService
+
+    # (clave raiz, valor). Las tres primeras se parecen a un campo de HOJA a una
+    # pulsacion; las dos ultimas se parecen a una clave de RAIZ.
+    claves_raiz = (
+        ("names", ["mio", "nuevo"]),
+        ("ids", ["a", "b"]),
+        ("favorite", "mio"),
+        ("keeper", ["steam.exe"]),
+        ("is_favorit", True),
+        ("packs2", {"otro": {"id": "otro", "name": "Otro"}}),
+        ("profiless", {"otro": {"label": "Otro"}}),
+    )
+    for clave, valor in claves_raiz:
+        etiqueta = f"[raiz/{clave}]"
+        hoja = {"id": "mio", "name": "Mio", "apps": ["mio.exe"]}
+        principal = json.dumps({"packs": {"mio": hoja}, clave: valor},
+                               ensure_ascii=False)
+
+        directorio = tempfile.mkdtemp(prefix="wopt_t031_l12_")
+        ruta = os.path.join(directorio, "profiles.json")
+        try:
+            _escribir(ruta, principal)
+            _escribir(ruta + ".bak", json.dumps(_BAK_SANO, ensure_ascii=False))
+            bak_antes = _bytes_de(ruta + ".bak")
+
+            servicio = PackService(data_path=ruta)
+
+            assert servicio.fichero_danado is False, (
+                f"{etiqueta}: una clave de la RAIZ se declaro error de "
+                f"escritura: {servicio.motivo_danado!r}. En la hoja,parecerse a "
+                f"un campo conocido significa un campo que se queda SIN LEER "
+                f"('keepers' en [] y el Gaming Mode sin proteger nada); en la "
+                f"raiz significa que la lectura siguiente arranca con cero packs "
+                f"y el siguiente guardado publica {{'packs': {{'gaming': ...}}}}, "
+                f"con lo que los packs del usuario se pierden IGUAL y con un "
+                f"aviso de encima. Ademas 'names'/'ids' estan a distancia 1 de "
+                f"'name'/'id': en la raiz son FALSOS POSITIVOS (M9, L-M8a)"
+            )
+            assert servicio.recuperado_de_backup is False, (
+                f"{etiqueta}: se recupero del .bak sin motivo"
+            )
+            assert _bytes_de(ruta + ".bak") == bak_antes, (
+                f"{etiqueta}: el .bak sano fue tocado"
+            )
+            assert "mio" in servicio.get_all_packs(), (
+                f"{etiqueta}: el pack del usuario no se cargo: "
+                f"{sorted(servicio.get_all_packs())}"
+            )
+
+            # Escritura REAL: una clave raiz que no se clasifica tampoco puede
+            # desaparecer del fichero.
+            servicio.create_user_pack("nuevo", "Nuevo", ["nuevo.exe"])
+            with open(ruta, encoding="utf-8") as fh:
+                en_disco = json.load(fh)
+            assert clave in en_disco, (
+                f"{etiqueta}: la clave raiz desaparecio del disco tras el "
+                f"save(): quedan {sorted(en_disco)} (M9)"
+            )
+            assert en_disco[clave] == valor, (
+                f"{etiqueta}: la clave raiz cambio de valor: "
+                f"{en_disco[clave]!r} != {valor!r}"
+            )
+            assert en_disco["packs"]["mio"]["apps"] == ["mio.exe"], (
+                f"{etiqueta}: los packs del usuario no llegaron al disco: "
+                f"{en_disco.get('packs')!r}"
+            )
+        finally:
+            shutil.rmtree(directorio, ignore_errors=True)
+
+    # La MISMA regla cuando la raiz NO TIENE una clave valida. Aqui no hay ni un
+    # solo pack que perder en memoria, y aun asi la respuesta tiene que ser "no
+    # es corrupcion": clasificar haria `self._data = AppData()` y el siguiente
+    # guardado publicaria `{"packs": {"gaming": ...}}` encima de UN fichero
+    # ajeno. Es la variante que mide L8 con `{"packs2": ...}`, repetida aqui con
+    # una clave que ademas se parece a un campo de hoja, que es la combinacion
+    # que no habia ninguna sonda que cubriera.
+    for raiz in ({"names": ["mio", "nuevo"]}, {"ids": ["a", "b"]},
+                 {"packs2": {"otro": {"id": "otro", "name": "Otro"}}},
+                 {"profiless": {"otro": {"label": "Otro"}}}):
+        etiqueta = f"[raiz sin clave valida/{sorted(raiz)[0]}]"
+        directorio = tempfile.mkdtemp(prefix="wopt_t031_l12b_")
+        ruta = os.path.join(directorio, "profiles.json")
+        try:
+            _escribir(ruta, json.dumps(raiz, ensure_ascii=False))
+            _escribir(ruta + ".bak", json.dumps(_BAK_SANO, ensure_ascii=False))
+            bak_antes = _bytes_de(ruta + ".bak")
+            clave, valor = next(iter(raiz.items()))
+
+            servicio = PackService(data_path=ruta)
+            assert servicio.fichero_danado is False, (
+                f"{etiqueta}: una raiz sin clave valida se declaro corrupcion: "
+                f"{servicio.motivo_danado!r}. Clasificar hace `self._data = "
+                f"AppData()` y el siguiente guardado publica "
+                f"{{'packs': {{'gaming': ...}}}} encima de un fichero que la app "
+                f"no sabe leer: los datos ajenos se pierden IGUAL, con un aviso "
+                f"de encima (L-M8a, M9)"
+            )
+            assert servicio.recuperado_de_backup is False, (
+                f"{etiqueta}: se recupero del .bak sin motivo"
+            )
+            assert _bytes_de(ruta + ".bak") == bak_antes, (
+                f"{etiqueta}: el .bak sano fue tocado"
+            )
+
+            servicio.create_user_pack("nuevo", "Nuevo", ["nuevo.exe"])
+            with open(ruta, encoding="utf-8") as fh:
+                en_disco = json.load(fh)
+            assert clave in en_disco and en_disco[clave] == valor, (
+                f"{etiqueta}: el dato de la raiz desaparecio tras el save(): "
+                f"quedan {sorted(en_disco)} (M9)"
+            )
+            assert "nuevo" in en_disco.get("packs", {}), (
+                f"{etiqueta}: el pack nuevo no se guardo: la escritura real no "
+                f"ocurrio y el resto de aserciones no probarian nada"
+            )
+        finally:
+            shutil.rmtree(directorio, ignore_errors=True)
+    print("Una clave raiz nunca es un error de escritura OK (L12).")
+
+
+# ===========================================================================
+# TASK-027: FIX-003 / FIX-004 / FIX-006
+# ===========================================================================
+
+class _PopenProhibido(BaseException):
+    """BaseException a PROPOSITO (TASK-027 / T-27.1).
+
+    Si el centinela fuese `AssertionError`, el `except Exception` del codigo
+    viejo (`Popen(app, shell=True)`) lo digeriria, contaria `failed += 1` y el
+    test pasaria en verde con el defecto dentro. Al ser `BaseException` no la
+    captura nadie y reintroducir el interprete MUERE en la asercion.
+    """
+
+
+def _hallazgos_shell_true(fuente: str, etiqueta: str) -> list:
+    """`(linea, etiqueta)` de cada `Popen(..., shell=<interprete>)` que se vea.
+
+    POR QUE EXISTE COMO FUNCION y no como bucle dentro de un test (TASK-027
+    iter 2, hallazgo 3): la guarda anterior miraba `ast.Name` y era CIEGA a la
+    grafia exacta del bug original, `subprocess.Popen(app, shell=True)`. Sin
+    una sonda que le pase esa grafia, "ampliar el visitor" es una intencion sin
+    prueba: el test `test_la_guarda_de_shell_true_ve_atributos_y_aliases` la
+    ejercita con snippets sinteticos y con el producto real.
+
+    Tres formas de invocar un `Popen` importado, las tres reales:
+      * `Popen(...)`                 -> `ast.Name` (con `from subprocess import Popen`)
+      * `subprocess.Popen(...)`      -> `ast.Attribute`  <-- la que no se miraba
+      * `sp.Popen(...)` / `abrir(...)` -> atributo o alias, y el alias se
+        resuelve mirando los `ImportFrom` del modulo.
+    """
+    arbol = ast.parse(fuente)
+    nombres = {"Popen"}
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.ImportFrom) and nodo.module == "subprocess":
+            for alias in nodo.names:
+                if alias.name == "Popen":
+                    nombres.add(alias.asname or alias.name)
+
+    fallos = []
+    for nodo in ast.walk(arbol):
+        if not isinstance(nodo, ast.Call):
+            continue
+        func = nodo.func
+        if isinstance(func, ast.Name):
+            nombre = func.id
+        elif isinstance(func, ast.Attribute):
+            nombre = func.attr
+        else:
+            continue
+        if nombre not in nombres:
+            continue
+        for kw in nodo.keywords:
+            if kw.arg != "shell":
+                continue
+            # `shell=False` explicito es seguro y NO debe marcarse (falso
+            # positivo). Cualquier otro valor es un interprete: `True`, `1`, o
+            # una variable que podria valer cualquier cosa.
+            if isinstance(kw.value, ast.Constant) and kw.value.value in (False, 0, None):
+                continue
+            fallos.append((nodo.lineno, etiqueta))
+    return fallos
+
+
+def _mklink(args) -> None:
+    """Crea un enlace de Windows (`mklink`) y FALLA RUIDOSAMENTE si no puede.
+
+    `mklink` es un INTERNO de `cmd.exe`, no un ejecutable: por eso el `cmd /c`.
+    Aqui el interprete es legitimo (esto es codigo de prueba, no produccion) y
+    no contradice la guarda anti-shell de mas abajo, que solo prohibe
+    `shell=True` en `src/woptimizer`.
+    """
+    import subprocess as _sp
+    r = _sp.run(["cmd", "/c", "mklink"] + list(args),
+                capture_output=True, text=True)
+    if r.returncode != 0:
+        raise AssertionError(
+            f"no se pudo crear el enlace {list(args)!r} (rc={r.returncode}): "
+            f"{r.stdout.strip()} {r.stderr.strip()}. Sin el enlace REAL la sonda "
+            "pasaria por el motivo equivocado (lo que se midio es que un junction "
+            "de un comando dentro de %LOCALAPPDATA% SI arranca), asi que aqui se "
+            "falla en voz alta. Un junction (`mklink /J`) solo necesita NTFS; un "
+            "enlace de fichero (`mklink` a secas) necesita SeCreateSymbolicLink, "
+            "o sea administrador o Modo Desarrollador."
+        )
+
+
+def _escribir_pe_minimo(ruta: str) -> str:
+    """Escribe en `ruta` la IMAGEN PE minima y devuelve la ruta.
+
+    POR QUE EXISTE (TASK-027 iter 3). Desde la regla 9 (`_es_imagen_pe`) un
+    `.exe` de verdad tiene que LLEVAR la firma MZ/PE, porque la regla ya no mira
+    el nombre del fichero sino su contenido. Las sondas de las iteraciones
+    anteriores usaban ficheros VACIOS como atajo de "una app de verdad", y un
+    `.exe` vacio no es una app de verdad: `os.startfile` sobre el responde
+    WinError 193 (comentario propio de `test_arranque_de_apps_no_usa_shell`).
+    O sea que el atajo era una ficcion que la regla nueva deja de tolerar.
+
+    Aqui NO se cambia lo que esas sondas demuestran: siguen probando la
+    resolucion real, el junction, la contencion, la caja o la guarda anti-shell.
+    Lo unico que cambia es que el atajo "una app" sea ahora una app, con lo que
+    ademas estas sondas son MAS fieles que antes (un fichero vacio no se puede
+    arrancar ni con todos los permisos del mundo).
+
+    Estructura: DOS bytes `MZ`, `e_lfanew` (offset 0x3C) = 0x40, y la firma
+    `PE\\0\\0` en 0x40. Es la misma forma que comprueba `_es_imagen_pe`.
+    """
+    import struct as _struct
+    cabecera = bytearray(0x40)
+    cabecera[0:2] = b"MZ"
+    _struct.pack_into("<I", cabecera, 0x3C, 0x40)
+    cabecera[0x40:0x44] = b"PE\x00\x00"
+    with open(ruta, "wb") as fh:
+        fh.write(bytes(cabecera))
+    return ruta
+
+
+def test_un_hard_link_no_es_una_hoja_y_el_script_no_pasa():
+    """TASK-027 iteracion 3: el hard link (y su hermano, la COPIA) no cuelan.
+
+    EL HALLAZGO. El `mutation-auditor` measo que un hard link secundario
+    (`alias.exe` -> `payload.bat` FUERA de las raices) lo aceptaba
+    `_resolver_app` y se saltaba las DOS barreras. La version anterior de este
+    modulo decia, en tres sitios, que eso no hacia falta cerrarlo porque "un
+    hard link no es un reparse point y ningun filtro de Windows lo ve". LAS DOS
+    MITADES DE ESA RAZON ESTABAN MAL, y aqui esta el porque, medido:
+
+      1. "Ningun filtro lo ve" es FALSO: `os.stat(ruta).st_nlink` vale 2 en un
+         hard link. Si lo ve.
+      2. Y da igual que lo vea: el hard link NO es el agujero. La COPIA PLENA
+         del mismo `payload.bat` a `alias_copia.exe` -`st_nlink == 1`, sin un
+         solo enlace, sin junction, sin symlink, sin privilegios- la acepta
+         `_resolver_app` IGUAL. Rechazar `st_nlink > 1` habria cerrado el caso
+         exotico y habria dejado abierto el trivial: seguridad de teatro.
+
+    Lo que cierra las DOS variantes (y las de cualquier otro tipo) es que el
+    fichero sea de verdad una imagen PE, que es lo que la lista blanca de
+    `.exe`/`.com` siempre quiso expresar: `.exe` no significa "algo que se
+    arranca", significa "imagen PE". Un `.bat` renombrado no lo es, se llame
+    como se llame.
+
+    POR QUE EL ENLACE DURO ES REAL Y NO UN SIMULADO. Se construye con
+    `os.link` (la misma llamada que usa `mklink /H`, sin `cmd.exe` y sin
+    privilegios: solo exige el mismo volumen). Si el entorno no lo permite, el
+    test FALLA en voz alta con `_falla_ruidosamente`: una sonda que se pone
+    verde por no poder construir su caso es peor que no tener sonda, porque
+    parece que el agujero esta cerrado cuando nadie lo ha mirado.
+
+    MATA, una a una:
+      * borrar la regla 9 (`_es_imagen_pe`)            -> (1) y (2) se aceptan;
+      * `_es_imagen_pe` que devuelve siempre True      -> (1) y (2) se aceptan;
+      * `_es_imagen_pe` que mira solo `MZ` y no `PE`   -> (4);
+      * `_es_imagen_pe` sin `strict`/fail-closed, o sea
+        `except OSError: return True`                  -> (5);
+      * la "solucion" de rechazar `st_nlink > 1` a pelo -> (6), que es el
+        control que mata la propia premisa de este test;
+      * `_es_imagen_pe` que no lee el fichero de verdad (por ejemplo, que
+        acepte cualquier cosa de menos de N bytes)     -> (2) y (3).
+    """
+    import logging as _logging
+    import shutil
+    import tempfile
+    from woptimizer.services.process_service import (
+        ProcessService, _es_imagen_pe, _ruta_real,
+    )
+
+    def _falla_ruidosamente(que):
+        raise AssertionError(
+            f"no se pudo construir el caso de hard link: {que}. Un hard link "
+            "(`os.link`, equivalente a `mklink /H`) NO necesita SeCreateSymbolicLink "
+            "ni administrador: solo que origen y alias esten en el MISMO volumen "
+            "(aqui los dos estan en %TEMP%). Si esto falla, el entorno no deja "
+            "crear enlaces duros, y el caso que esta sonda mide NO se ha "
+            "medido: la sonda que se auto-declara verde por no poder construir su "
+            "caso es peor que no tener sonda (esta es la Trampa #17 de "
+            "`known-issues.md`)."
+        )
+
+    svc = ProcessService.__new__(ProcessService)
+    avisos = []
+
+    class _Captor(_logging.Handler):
+        def emit(self, record):
+            if record.levelno >= _logging.WARNING:
+                avisos.append(record.getMessage())
+
+    logger_wopt = _logging.getLogger("woptimizer")
+    captor = _Captor(level=_logging.WARNING)
+    logger_wopt.addHandler(captor)
+    tmp = tempfile.mkdtemp(prefix="wopt_hl_")
+    try:
+        # --- precondiciones: sin ellas los casos pasan por el motivo erroneo --
+        assert _es_imagen_pe(os.path.normpath(r"C:\Windows\System32\cmd.exe")), (
+            "cmd.exe no es una imagen PE segun `_es_imagen_pe`: el resto de la "
+            "sonda probaria la maquina y no la regla, porque los controles "
+            "positivos fallarian todos"
+        )
+        _escribir_pe_minimo_real = _escribir_pe_minimo
+        # El payload va FUERA de las raices, que es lo que hace peligroso al
+        # alias; el alias va DENTRO, que es lo que lo hace alcanzable.
+        fuera = os.path.join(os.environ["USERPROFILE"], f"wopt_hl_fuera_{os.getpid()}")
+        os.makedirs(fuera, exist_ok=True)
+        payload = os.path.join(fuera, "payload.bat")
+        with open(payload, "w", encoding="utf-8") as fh:
+            fh.write("@echo pwned\n")
+        assert not _es_imagen_pe(payload), (
+            "el payload deberia ser un guion, no un PE: si sale PE el caso pasaria "
+            "por un motivo que no es el que se quiere probar"
+        )
+
+        # --- (1) HARD LINK REAL: alias.exe -> payload.bat --------------------
+        alias_hard = os.path.join(tmp, "alias_hard.exe")
+        try:
+            os.link(payload, alias_hard)
+        except OSError as e:
+            _falla_ruidosamente(f"os.link lanzo {type(e).__name__}: {e}")
+        assert os.path.isfile(alias_hard), (
+            "el hard link no resuelve como fichero: el caso pasaria por isfile y "
+            "no por el contenido"
+        )
+        nlink = os.stat(alias_hard, follow_symlinks=False).st_nlink
+        assert nlink == 2, (
+            f"el alias tiene st_nlink={nlink}, no 2: NO es un hard link real y la "
+            "sonda no estaria midiendo el caso del hallazgo. Se ha creado otra "
+            "cosa (una copia, probablemente) y el caso pasaria por el motivo "
+            "equivocado"
+        )
+        assert _ruta_real(os.path.normpath(alias_hard)) == os.path.normpath(alias_hard), (
+            "medido: un hard link NO es un reparse point, asi que realpath devuelve "
+            "la MISMA ruta y no lo resuelve. Si aqui se resolviera, el SO de este "
+            "entorno se comporta distinto y la regla 8 seria otra cosa"
+        )
+        avisos.clear()
+        assert svc._resolver_app(alias_hard, raices=[tmp]) is None, (
+            "un hard link a un .bat de FUERA de las raices se acepto: las reglas "
+            "5-8 miran el NOMBRE y el nombre de un hard link es el que le pongas"
+        )
+        assert any("imagen PE" in m for m in avisos), (
+            f"el rechazo por contenido no dice el motivo: {avisos}"
+        )
+
+        # --- (2) COPIA PLENA: el hermano que hace inutilizable el nlink -----
+        # Si esta asercion falla, la premisa del test (el hard link no es el
+        # agujero, la COPIA tambien) ya no se cumple en este entorno.
+        alias_copia = os.path.join(tmp, "alias_copia.exe")
+        shutil.copyfile(payload, alias_copia)
+        nlink_copia = os.stat(alias_copia, follow_symlinks=False).st_nlink
+        assert nlink_copia == 1, (
+            f"la copia tiene st_nlink={nlink_copia}, no 1: se ha creado un enlace "
+            "por error y este caso ya no seria el caso trivial que demuestra que "
+            "cerrar el raro no cierra el facil"
+        )
+        assert svc._resolver_app(alias_copia, raices=[tmp]) is None, (
+            "una COPIA PLENA de un .bat con nombre .exe se acepto: es el caso "
+            "TRIVIAL (no hace falta ningun enlace) y es el que un filtro por "
+            "`st_nlink` no cierra"
+        )
+
+        # --- (3) el mismo contenido con extension buena SI arranca -------------
+        alias_ok = os.path.join(tmp, "programa.exe")
+        _escribir_pe_minimo_real(alias_ok)
+        assert svc._resolver_app(alias_ok, raices=[tmp]) == _ruta_real(alias_ok), (
+            "un PE de verdad dentro de la raiz debe arrancar: si no, la sonda "
+            "estaria probando que nada pasa"
+        )
+
+        # --- (4) MZ sin la firma PE NO es un programa ------------------------
+        # El caso de margen, y hay que hacerlo con CUIDADO porque aqui se
+        # puede pasar por el motivo equivocado (que es lo que hacia la primera
+        # version de este caso, que sobrevivia a la mutacion "solo mira MZ").
+        # `e_lfanew` tiene que ser PLAUSIBLE: si vale 0xFFFFFFFF, el rechazo lo
+        # da el tope de seguridad de la funcion, no la comparacion de la firma,
+        # y una funcion que se quedase en `MZ` + "ya vale" pasaria este caso.
+        # Asi que aqui `e_lfanew` apunta a 0x40 y en 0x40 hay BASURA, no la firma.
+        medio = os.path.join(tmp, "medio.exe")
+        with open(medio, "wb") as fh:
+            fh.write(b"MZ" + b"\x00" * 0x3C + (0x40).to_bytes(4, "little")
+                     + b"NOESPE\x00\x00")
+        assert not _es_imagen_pe(medio), (
+            "un fichero con cabecera MZ pero SIN la firma PE no es una imagen PE: "
+            "la comprobacion tiene que llegar hasta `e_lfanew` y leer ahi"
+        )
+        assert svc._resolver_app(medio, raices=[tmp]) is None, (
+            "un MZ sin PE se acepto: la regla 9 se queda en la cabecera DOS"
+        )
+        # Y el tope de seguridad es lo que frena un `e_lfanew` manipulado (leer
+        # el fichero entero buscando la firma no es una comprobacion, es un
+        # negreado). Con este offset, el rechazo lo da EL TOPE, asi que se dice.
+        absurdo = os.path.join(tmp, "absurdo.exe")
+        with open(absurdo, "wb") as fh:
+            fh.write(b"MZ" + b"\x00" * 0x3C + (0xFFFFFFFF).to_bytes(4, "little"))
+        assert not _es_imagen_pe(absurdo), (
+            "un `e_lfanew` de 4 GiB tiene que rechazarse por el tope: sin el, la "
+            "funcion se pasa la vida leyendo el fichero en busca de la firma"
+        )
+
+        # --- (5) fail-closed: ilegible NO es un programa ---------------------
+        # Se comprueba la FUNCION, no el permiso: hacer el fichero ilegible
+        # requiere ACL y no es reproducible en una cuenta normal.
+        assert not _es_imagen_pe(os.path.join(tmp, "no_existe.exe")), (
+            "un fichero inexistente no es una imagen PE: sin lectura no hay "
+            "prueba, y fail-closed significa no arrancar"
+        )
+        solo_directorio = os.path.join(tmp, "un_directorio.exe")
+        os.mkdir(solo_directorio)
+        assert not _es_imagen_pe(solo_directorio), (
+            "abrir un directorio lanza OSError: eso debe ser False (fail-closed), "
+            "no una excepcion que reviente el arranque"
+        )
+
+        # --- (6) CONTROL que mata la premisa del nlink ----------------------
+        # Aqui esta el porque de NO rechazar `st_nlink > 1` a pelo. Se mide el
+        # caso sobre un programa REAL instalado y con enlaces duros REALES, no
+        # sobre un fichero de pruebas: la cifra que importa ("los .exe/.com
+        # instalados con st_nlink>1 son legitimos y hay que arrancarlos") es una
+        # afirmacion sobre el software de la maquina, y una sonda que la
+        # comprueba con un `.exe` vacio hecho a mano no la comprueba.
+        multi = _primer_multi_enlazado_real()
+        if multi is None:
+            # Sin ningun multi-enlazado en las raices, el caso (6) no se puede
+            # construir. No se falla: seria un entorno sin programas de
+            # Microsoft, que es legitimo. Lo que NO se puede es fingir que el
+            # caso se probo, asi que se dice en voz alta en el print.
+            print("  [aviso] ningun .exe/.com instalado tiene st_nlink>1: el "
+                  "control (6) no se pudo construir en esta maquina.")
+        else:
+            assert _es_imagen_pe(multi), (
+                f"{multi} tiene st_nlink>1 y es legitimo, pero `_es_imagen_pe` lo "
+                "rechazaria: la regla 9 esta rechazando software de verdad"
+            )
+            assert svc._resolver_app(multi) == _ruta_real(os.path.normpath(multi)), (
+                f"{os.path.basename(multi)} esta INSTALADO, tiene enlaces duros de "
+                "verdad (st_nlink>1) y es una imagen PE, y no arranca. Rechazar "
+                "'cualquier st_nlink>1' habria hecho justo esto con el 8,32% de "
+                "los .exe/.com instalados en las seis raices (msinfo32.exe, "
+                "TabTip.exe, los auxiliares de Edge, las herramientas de "
+                "Hyper-V). Este control es el que prohibe esa 'solucion'"
+            )
+    finally:
+        logger_wopt.removeHandler(captor)
+        shutil.rmtree(tmp, ignore_errors=True)
+        try:
+            shutil.rmtree(os.path.join(
+                os.environ["USERPROFILE"], f"wopt_hl_fuera_{os.getpid()}"),
+                ignore_errors=True)
+        except Exception:
+            pass
+    print("Un hard link (y su copia) no cuelan: la regla es el contenido (TASK-027 iter 3).")
+
+
+def _primer_multi_enlazado_real() -> object:
+    """Primer `.exe`/`.com` INSTALADO en las raices con `st_nlink > 1`, o `None`.
+
+    Devuelve la ruta, o `None` si en esta maquina no hay ninguno (o no se puede
+    leer lo suficiente para saberlo). Recorre con un presupuesto acotado: esto
+    va en la suite de produccion y no puede tardarse un minuto.
+
+    Es el control que hace que "no uses st_nlink" sea un HECHO medido sobre el
+    software instalado y no una opinion.
+    """
+    raices = []
+    for var in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432",
+                "LOCALAPPDATA", "APPDATA", "ProgramData"):
+        valor = os.environ.get(var)
+        if valor and os.path.isdir(valor):
+            raices.append(valor)
+    presupuesto = 4000
+    vistos = 0
+    for raiz in raices:
+        for dirpath, _dirnames, filenames in os.walk(raiz):
+            for nombre in filenames:
+                if not nombre.lower().endswith((".exe", ".com")):
+                    continue
+                try:
+                    st = os.stat(os.path.join(dirpath, nombre),
+                                 follow_symlinks=False)
+                except OSError:
+                    continue
+                if st.st_nlink > 1:
+                    return os.path.join(dirpath, nombre)
+                vistos += 1
+                if vistos >= presupuesto:
+                    return None
+    return None
+
+
+def test_un_junction_no_puede_colar_lo_que_hay_detras():
+    """TASK-027 iter 2, hallazgo 1 (ALTA): la contencion LEXICA no atraviesa.
+
+    El fallo medido por el mutation-auditor: un junction dentro de
+    `%LOCALAPPDATA%` que apunta a `C:\\Windows\\System32\\cmd.exe` era ACEPTADO y
+    arrancaba, porque `normpath` y `commonpath` son lexicos. La garantia de
+    `architecture.md` era falsa.
+
+    Aqui el junction es REAL (`mklink /J` / `mklink` de verdad), no una
+    simulacion: la sonda que se auto-declara verde porque "el caso no se pudo
+    construir" es peor que no tener sonda. `_mklink` falla ruidosamente.
+
+    MATA, una a una:
+      * borrar la regla 8 (resolucion real) -> (1), (2) y (3) aceptan lo que
+        estan en el log como rechazado;
+      * `realpath` SIN `strict=True` (fail-closed) -> la sonda de `_ruta_real`;
+      * comprobar la extension SOLO en el alias y no en la ruta real -> (3);
+      * "solucion" de rechazar TODO reparse point -> (4) y (5), que son los
+        controles positivos: un enlace que apunta DENTRO de una raiz permitida
+        es una app legitima (es como se instala de todo en Steam) y se
+        arranca;
+      * devolver la ruta LEXICA en vez de la real -> (4) y (5) comparan la
+        ruta real exacta.
+    """
+    import logging as _logging
+    import shutil
+    import tempfile
+    from woptimizer.services.process_service import (
+        ProcessService, _dentro_de_alguna, _ruta_real,
+    )
+
+    objetivo_real = os.path.normpath(r"C:\Windows\System32\cmd.exe")
+    svc = ProcessService.__new__(ProcessService)
+    avisos = []
+
+    class _Captor(_logging.Handler):
+        def emit(self, record):
+            if record.levelno >= _logging.WARNING:
+                avisos.append(record.getMessage())
+
+    logger_wopt = _logging.getLogger("woptimizer")
+    captor = _Captor(level=_logging.WARNING)
+    logger_wopt.addHandler(captor)
+    tmp = tempfile.mkdtemp(prefix="wopt_fix003j_")
+    # Destino del junction FUERA de toda raiz permitida, pero en un sitio que
+    # este test puede borrar sin riesgo. No se apunta a C:\\Windows\\System32
+    # con un junction de DIRECTORIO: si la limpieza fallara, un `rmtree` que
+    # siguiera el enlace borraria System32. El caso de `cmd.exe` de verdad se
+    # cubre con un enlace de FICHERO, que `os.remove` solo borra a si mismo.
+    fuera = os.path.join(os.environ["USERPROFILE"], f"wopt_fuera_{os.getpid()}")
+    j_dir = os.path.join(tmp, "jdir")
+    j_fich = os.path.join(tmp, "jfile.exe")
+    alias_bat = os.path.join(tmp, "alias.exe")
+    j_ok = os.path.join(tmp, "jok")
+    alias_ok = os.path.join(tmp, "alias_ok.exe")
+    raiz_j = os.path.join(tmp, "raiz_j")
+    enlaces = (j_dir, j_fich, alias_bat, j_ok, alias_ok, raiz_j)
+    try:
+        # --- precondiciones: sin ellas los casos pasan por el motivo erroneo -
+        assert os.path.isfile(objetivo_real), (
+            f"{objetivo_real} no existe: el caso (2) pasaria por 'no existe' y no "
+            "por la resolucion real"
+        )
+        raices = svc._launch_roots()
+        assert raices, "este entorno no define ninguna raiz de arranque permitida"
+        raices_norm = [os.path.normpath(r) for r in raices]
+        assert _dentro_de_alguna(os.path.normpath(tmp), raices_norm), (
+            f"el temporal {tmp} cae fuera de las raices: los casos pasarian por "
+            "contencion y no por la resolucion real"
+        )
+        assert _ruta_real(os.path.normpath(tmp)) == os.path.normpath(tmp), (
+            f"el temporal {tmp} se resuelve a {_ruta_real(os.path.normpath(tmp))}: "
+            "el junction se crearia fuera de las raices y la asercion pasaria por "
+            "el motivo equivocado"
+        )
+        assert not _dentro_de_alguna(os.path.normpath(fuera), raices_norm), (
+            f"el destino del junction ({fuera}) esta DENTRO de las raices "
+            "permitidas: la sonda probaria el caso bueno, no el malo"
+        )
+
+        os.makedirs(fuera, exist_ok=True)
+        fuera_cmd = os.path.join(fuera, "cmd.exe")
+        # PE de verdad (no vacio): la regla 9 mira el contenido, y este caso
+        # tiene que morir por el JUNCTION, no por "no es un PE".
+        _escribir_pe_minimo(fuera_cmd)
+
+        # --- (1) junction de DIRECTORIO a un destino fuera de las raices -----
+        _mklink(["/J", j_dir, fuera])
+        via_dir = os.path.join(j_dir, "cmd.exe")
+        assert os.path.isfile(via_dir), (
+            "el enlace no resuelve como fichero: el caso pasaria por isfile y no "
+            "por la resolucion real"
+        )
+        assert _dentro_de_alguna(os.path.normpath(via_dir),
+                                  [os.path.normpath(tmp)]), (
+            "medido: la contencion LEXICA dice 'dentro' para el junction. Si esta "
+            "asercion falla, `_dentro_de_alguna` ha cambiado de politica y esta "
+            "sonda hay que actualizarla (no es un defecto por si mismo)"
+        )
+        assert _ruta_real(via_dir) == fuera_cmd, (
+            f"el SO no resuelve el junction a {fuera_cmd}: sin esto la sonda no "
+            f"probaria nada (resuelve a {_ruta_real(via_dir)})"
+        )
+        avisos.clear()
+        assert svc._resolver_app(via_dir) is None, (
+            f"un junction a {fuera_cmd} colado bajo {tmp} se acepto: la "
+            "contencion se comprueba SOLO sobre la ruta lexica"
+        )
+        assert any("junction/symlink" in m for m in avisos), (
+            f"el rechazo por junction no dice el motivo: {avisos}"
+        )
+
+        # --- (2) enlace de FICHERO a cmd.exe de verdad (el repro del auditor) --
+        _mklink([j_fich, objetivo_real])
+        assert _ruta_real(j_fich) == objetivo_real, (
+            f"el SO no resuelve el enlace a {objetivo_real} "
+            f"(resuelve a {_ruta_real(j_fich)})"
+        )
+        avisos.clear()
+        assert svc._resolver_app(j_fich) is None, (
+            f"un enlace de fichero a {objetivo_real} se acepto: la ruta real cae "
+            "fuera de las raices y aun asi arranco"
+        )
+
+        # --- (3) `.exe` que apunta a un `.bat` DENTRO de las raices ----------
+        # El caso mas subtil: la extension se miraba en el ALIAS, y el destino
+        # es un `.bat` legitimo de una raiz permitida, asi que la contencion
+        # real lo acepta y sin mirarla la lista blanca se esquiva entera
+        # (ShellExecute lo pasaria por `cmd.exe /c`).
+        dentro = os.path.join(tmp, "dentro")
+        os.makedirs(dentro, exist_ok=True)
+        bat = os.path.join(dentro, "evil.bat")
+        # OJO, y es lo que mantiene viva a la mutacion A3 ("comprobar la
+        # extension SOLO en el alias"): este `.bat` lleva contenido de PE DE
+        # VERDAD. Con un guion vacio, desde la iteracion 3 lo rechazaria la
+        # regla 9 ("no es una imagen PE") y la lista blanca de extensiones se
+        # dejaria de comprobar sin que nadie lo notase. Con un PE dentro, lo
+        # unico que puede rechazarlo es la extension, que es lo que este caso
+        # dice que prueba.
+        _escribir_pe_minimo(bat)
+        _mklink([alias_bat, bat])
+        assert _ruta_real(alias_bat) == os.path.normpath(bat), (
+            f"el SO no resuelve el enlace al .bat: {_ruta_real(alias_bat)}"
+        )
+        avisos.clear()
+        assert svc._resolver_app(alias_bat, raices=[tmp]) is None, (
+            "un alias .exe a un .bat de una raiz permitida se acepto: la lista "
+            "blanca de extensiones se comprueba en el alias y no en el destino"
+        )
+        assert any("evil.bat" in m for m in avisos), (
+            f"el rechazo por extension real no nombra el destino: {avisos}"
+        )
+
+        # --- (4) CONTROL POSITIVO: junction que apunta DENTRO de las raices ---
+        # Manda el "soluciona" de rechazar todo reparse point: un enlace a un
+        # destino de una raiz permitida es una app legitima y se arranca.
+        destino = os.path.join(tmp, "destino_real")
+        os.makedirs(destino, exist_ok=True)
+        bien = os.path.join(destino, "bien.exe")
+        _escribir_pe_minimo(bien)
+        _mklink(["/J", j_ok, destino])
+        assert svc._resolver_app(os.path.join(j_ok, "bien.exe"),
+                                 raices=[tmp]) == _ruta_real(bien), (
+            "un junction que apunta DENTRO de una raiz permitida debe arrancar: "
+            "rechazar todo reparse point rompe apps legitimas (Steam, itch.io)"
+        )
+
+        # --- (5) CONTROL POSITIVO: enlace de fichero dentro de las raices -----
+        _mklink([alias_ok, bien])
+        assert svc._resolver_app(alias_ok, raices=[tmp]) == _ruta_real(bien), (
+            "un enlace de fichero a un .exe de una raiz permitida debe arrancar"
+        )
+        # Y se devuelve la ruta REAL, no la lexica: lo que se valida es lo que
+        # se arranca, y el log dice la verdad.
+        assert svc._resolver_app(bien, raices=[tmp]) == _ruta_real(bien), (
+            "la ruta devuelta debe ser la RESUELTA, no la escrita"
+        )
+
+        # --- (6) fail-closed: lo que el SO no resuelve, no se arranca ----------
+        assert _ruta_real(os.path.join(tmp, "no_existe.exe")) is None, (
+            "`realpath` sin `strict=True` devuelve una ruta inventada para un "
+            "fichero inexistente: sin resolver, fail-closed significa NO arrancar"
+        )
+
+        # --- (7) la RAIZ tambien puede estar detras de un junction ------------
+        # El otro modo de fallar, el falso negativo. Con la raiz LEXICA, este
+        # caso se rechaza: la ruta real (`...\\destino_real\\bien.exe`) no esta
+        # dentro del alias (`...\\raiz_j`), y una app instalada ahi -que es como
+        # esta medio mundo tiene las librerias de juegos- no arrancaria nunca.
+        raiz_j = os.path.join(tmp, "raiz_j")
+        _mklink(["/J", raiz_j, destino])
+        assert svc._resolver_app(os.path.join(raiz_j, "bien.exe"),
+                                 raices=[raiz_j]) == _ruta_real(bien), (
+            "una app bajo una RAIZ que es un junction debe arrancar: las raices "
+            "se resuelven por el mismo camino que las candidatas, o el criterio "
+            "se aplica a dos medidas distintas y se rechazan apps legitimas"
+        )
+    finally:
+        logger_wopt.removeHandler(captor)
+        for enlace in enlaces:
+            # El junction de DIRECTORIO se quita con `rmdir` (que quita el
+            # enlace, no el destino). `os.remove` sobre un directorio en Windows
+            # es un PermissionError, asi que se prueban los dos.
+            try:
+                os.rmdir(enlace)
+            except OSError:
+                try:
+                    os.remove(enlace)
+                except OSError:
+                    pass
+        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.rmtree(fuera, ignore_errors=True)
+    print("Un junction no cuela lo que hay detras (TASK-027 iter 2).")
+
+
+def test_la_contencion_no_acepta_un_hermano_de_prefijo():
+    """TASK-027 iter 2, hallazgo 2 (MEDIA, M10): `commonpath` esta vigilado.
+
+    El mutation-auditor midio que cambiar `commonpath` por `startswith`
+    SOBREVIVIA: la suite entera seguía verde. O sea que nadie vigilaba la
+    contencion por componentes, y la sustitucion mas obvio de `commonpath` por
+    un prefijo de cadena es justo el agujero clasico del hermano:
+    `...\\Temp\\wopt_x` como raiz acepta `...\\Temp\\wopt_xEvil\\a.exe`.
+
+    Esta sonda es la que vigila `commonpath`. El hermano se construye de
+    verdad, con ficheros reales, para que la asercion no dependa de que exista
+    el fichero: asi el rechazo solo puede venir de la contencion.
+    """
+    import shutil
+    import tempfile
+    from woptimizer.services.process_service import (
+        ProcessService, _dentro_de_alguna, _ruta_real,
+    )
+
+    svc = ProcessService.__new__(ProcessService)
+    tmp = tempfile.mkdtemp(prefix="wopt_fix003h_")
+    hermano = tmp + "Evil"
+    try:
+        os.mkdir(hermano)
+        evil = os.path.join(hermano, "a.exe")
+        _escribir_pe_minimo(evil)
+        dentro_dir = os.path.join(tmp, "ok")
+        os.mkdir(dentro_dir)
+        bien = os.path.join(dentro_dir, "a.exe")
+        _escribir_pe_minimo(bien)
+
+        # --- el hermano de prefijo, en las dos funciones ----------------------
+        assert not _dentro_de_alguna(os.path.normpath(evil), [os.path.normpath(tmp)]), (
+            f"{evil} esta FUERA de la raiz {tmp} pero solo comparte PREFIJO de "
+            "cadena. Un `startswith` en vez de `commonpath` lo aceptaria: por eso "
+            "esta sonda existe"
+        )
+        assert svc._resolver_app(evil, raices=[tmp]) is None, (
+            f"una app de un hermano de prefijo se acepto: {evil} no esta dentro "
+            f"de {tmp}"
+        )
+        # El hermano de la derecha: `C:\a\b` no contiene `C:\a\b2`.
+        assert not _dentro_de_alguna(r"C:\a\b2\a.exe", [r"C:\a\b"]), (
+            "`C:\\a\\b2\\a.exe` no esta dentro de `C:\\a\\b`: el prefijo de cadena "
+            "no es contencion por componentes"
+        )
+        # --- controles positivos: lo de verdad SI pasa ------------------------
+        assert _dentro_de_alguna(os.path.normpath(bien), [os.path.normpath(tmp)]), (
+            "un fichero dentro de la raiz tiene que estar contenido: la sonda "
+            "estaria probando que nada pasa"
+        )
+        assert _dentro_de_alguna(os.path.normpath(tmp), [os.path.normpath(tmp)]), (
+            "la propia raiz esta contenida en si misma (borde del intervalo)"
+        )
+        assert _dentro_de_alguna(os.path.normpath(tmp + os.sep),
+                                 [os.path.normpath(tmp)]), (
+            "la raiz con separador final sigue contenida (borde del intervalo)"
+        )
+        assert svc._resolver_app(bien, raices=[tmp]) == _ruta_real(bien), (
+            "una app de verdad dentro de la raiz debe arrancar: si esta asercion "
+            "falla, la sonda no distingue 'contiene' de 'rechaza todo'"
+        )
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.rmtree(hermano, ignore_errors=True)
+    print("La contencion no acepta un hermano de prefijo (M10).")
+
+
+def test_la_contencion_no_depende_de_la_caja():
+    """TASK-027 iter 2, hallazgo 4 (MEDIA): `commonpath` normaliza con caja.
+
+    Medido por el auditor: `C:\\PROGRAM FILES\\...` se RECHAZABA. En Windows el
+    sistema de ficheros no distingue mayusculas, asi que eso era un falso
+    positivo: fail-closed (seguro) pero un bug funcional, porque un programa
+    legítimamente instalado con otra caja no arranca nunca.
+
+    DECISION: se normaliza con `os.path.normcase`, y no se documenta como
+    limitacion. El argumento para hacerlo y no documentarlo es que `normcase`
+    NO ensancha el conjunto aceptado: declara la verdad del SO (que no
+    distingue caja), asi que lo que entra es exactamente lo que el SO
+    abriria. Y la comprobacion REAL sigue aplicando sobre la ruta resuelta.
+    El coste es una llamada por comparacion, y se comprueba en las DOS
+    direcciones (raiz en mayusculas y viceversa): si solo se normalizara un
+    lado, la mitad de los casos seguiria falling.
+    """
+    import shutil
+    import tempfile
+    from woptimizer.services.process_service import (
+        ProcessService, _dentro_de_alguna, _ruta_real,
+    )
+
+    # --- nivel de la funcion, en las dos direcciones ------------------------
+    for raiz, candidata in (
+        (r"C:\Program Files", r"C:\PROGRAM FILES\x.exe"),
+        (r"C:\PROGRAM FILES", r"C:\Program Files\x.exe"),
+        (r"C:\program files", r"C:\PROGRAM FILES\x.exe"),
+    ):
+        assert _dentro_de_alguna(os.path.normpath(candidata),
+                                  [os.path.normpath(raiz)]), (
+            f"{candidata} esta dentro de {raiz}: en Windows el sistema de "
+            "ficheros no distingue mayusculas, asi que rechazarlo es un falso "
+            "positivo que deja apps legitimas sin arrancar"
+        )
+    # Y la caja no abre la puerta: un camino de verdad ajeno sigue fuera.
+    assert not _dentro_de_alguna(r"C:\PROGRAM FILES (x86)\x.exe",
+                                  [r"C:\Program Files"]), (
+        "`C:\\PROGRAM FILES (x86)` NO esta dentro de `C:\\Program Files`: es un "
+        "hermano, no una variante de caja"
+    )
+
+    # --- extremo a extremo, con ficheros REALES en otro caso -----------------
+    svc = ProcessService.__new__(ProcessService)
+    tmp = tempfile.mkdtemp(prefix="wopt_fix003c_")
+    try:
+        real = os.path.join(tmp, "chrome.exe")
+        _escribir_pe_minimo(real)
+        mayus = real.upper()
+        assert os.path.isfile(mayus), (
+            f"este temporal no distingue mayusculas ({mayus} no se ve): la "
+            "garantia que se prueba es de NTFS/NTFS-per-directory, y el proyecto "
+            "es solo-Windows. Sin esta precondicion el caso pasaria porque el "
+            "fichero no existe, no por la caja"
+        )
+        raiz_mayus = tmp.upper()
+        assert svc._resolver_app(mayus, raices=[raiz_mayus]) == _ruta_real(real), (
+            "una app escrita en mayusculas dentro de una raiz escrita en "
+            "mayusculas debe arrancar: en Windows el SO no distingue caja"
+        )
+        assert svc._resolver_app(real, raices=[raiz_mayus]) == _ruta_real(real), (
+            "y al reves tambien: raiz en mayusculas, app en minusculas"
+        )
+        # Y fuera sigue siendo fuera, en mayusculas y todo.
+        fuera = os.path.join(os.environ["USERPROFILE"], f"wopt_fuera_{os.getpid()}")
+        os.makedirs(fuera, exist_ok=True)
+        try:
+            fuera_exe = os.path.join(fuera, "leak.exe")
+            _escribir_pe_minimo(fuera_exe)
+            assert os.path.isfile(fuera_exe.upper()), (
+                "el temporal de fuera tampoco distingue mayusculas: el caso "
+                "negativo pasaria por inexistencia y no por contencion"
+            )
+            assert svc._resolver_app(fuera_exe.upper(), raices=[tmp]) is None, (
+                "un fichero de fuera de la raiz no se arranca por escribirlo en "
+                "mayusculas"
+            )
+        finally:
+            shutil.rmtree(fuera, ignore_errors=True)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("La contencion no depende de la caja de las letras.")
+
+
+def test_la_guarda_de_shell_true_ve_atributos_y_aliases():
+    """TASK-027 iter 2, hallazgo 3 (MEDIA): la guarda anti-`shell=True` era ciega.
+
+    Solo miraba `ast.Name`, asi que `subprocess.Popen(app, shell=True)` -la
+    grafia EXACTA del bug original- pasaba sin que la guarda se enterara. Este
+    test es el que hace que "ampliar el visitor" sea un hecho y no una
+    intencion: le pasa esa grafia, la de un alias de modulo, la de un alias de
+    import y la de un `shell` que no es un literal `False`, y exige que las
+    cuatro se vean.
+
+    Y exige lo contrario tambien: `shell=False` explicito, `Popen` sin `shell`,
+    `subprocess.run` y hasta una CADENA que mencione `shell=True` NO pueden
+    marcarse, o la guarda se vuelve un guard que nadie va a querer arreglar
+    (y dejaria de leerse).
+    """
+    deben_ver_se = [
+        # La grafia exacta del bug original. Sin `ast.Attribute` esto no se ve.
+        "import subprocess\nsubprocess.Popen(app, shell=True)\n",
+        "import subprocess as sp\nsp.Popen(app, shell=True)\n",
+        "from subprocess import Popen\nPopen(app, shell=True)\n",
+        # Alias de import: sin mirar los `ImportFrom` esto tampoco.
+        "from subprocess import Popen as abrir\nabrir(app, shell=True)\n",
+        # `shell` que no es un literal falso sigue siendo un interprete.
+        "import subprocess\nsubprocess.Popen(app, shell=1)\n",
+    ]
+    for fuente in deben_ver_se:
+        assert _hallazgos_shell_true(fuente, "sintetico"), (
+            "la guarda anti-shell no vio esta grafia, que es ejecucion por "
+            f"interprete:\n{fuente}"
+        )
+
+    no_deben_ver_se = [
+        "import subprocess\nsubprocess.Popen(app, shell=False)\n",
+        "import subprocess\nsubprocess.Popen(app)\n",
+        "import subprocess\nsubprocess.run([app], shell=False)\n",
+        "import os\nos.startfile(ruta)\n",
+        'MENSAJE = "no se usa shell=True en este proyecto"\n',
+    ]
+    for fuente in no_deben_ver_se:
+        assert not _hallazgos_shell_true(fuente, "sintetico"), (
+            "falso positivo de la guarda anti-shell: esto no ejecuta nada por "
+            f"interprete y marcarla haria que la guarda se ignorara\n{fuente}"
+        )
+
+    # Y el PRODUCTO, con la misma guarda, que es la invariante que importa.
+    for raiz, _dirs, ficheros in os.walk(os.path.join("src", "woptimizer")):
+        for fichero in ficheros:
+            if not fichero.endswith(".py"):
+                continue
+            ruta = os.path.join(raiz, fichero)
+            with open(ruta, encoding="utf-8") as fh:
+                fallos = _hallazgos_shell_true(fh.read(), ruta)
+            assert not fallos, (
+                f"{fallos}: vuelve a Popen(..., shell=<interprete>) en {ruta}. El "
+                "pack es entrada no confiable (FIX-003)"
+            )
+    print("La guarda anti-shell ve atributos y alias, y no se equivoca.")
+
+
+def test_arranque_de_apps_no_usa_shell():
+    """TASK-027 / FIX-003: arrancar una app NO es ejecutar un comando.
+
+    Arnés SIN efectos y SIN Tk: `ProcessService.__new__` (no se carga la DB, no
+    se toca psutil), `os.startfile` instrumentado y `subprocess.Popen` sembrado.
+
+    Por que el monkeypatch funciona: `os.startfile` y `subprocess.Popen` se
+    resuelven como ATRIBUTO DEL MÓDULO en tiempo de llamada, así que
+    `setattr(os, "startfile", ...)` es el enganche correcto. Nunca
+    `from os import startfile` en producción: eso capturaría la función antes
+    del parche y la sonda moriría por un `AttributeError` que solo demostraría
+    que el parche no agarró, en vez de por la aserción que importa.
+
+    Hay DOS Popen sembrados porque matan dos mutaciones distintas:
+      * `_killer` (BaseException): reintroducir `Popen(app, shell=True)` no es
+        digerible por el `except Exception` del código viejo -> sube y mata.
+      * `_popen_soniente` (`returncode 1`): aísla el MENTIRO DEL CONTADOR. Con
+        `shell=True` un nombre inexistente NO lanza excepción (`cmd.exe`
+        responde "no se reconoce como un comando" con código de salida 1), así
+        que el código viejo cuenta `started += 1` para una app que no arrancó y
+        devuelve (2, 0) donde el contrato exige (1, 1).
+
+    Los ficheros del caso (b) son REALES y vacíos: sin ellos, borrar la lista
+    blanca de extensiones no cambiaría nada y la prueba no probaría nada.
+    """
+    import logging as _logging
+    import shutil
+    import subprocess
+    import tempfile
+    from woptimizer.services.process_service import ProcessService, _dentro_de_alguna
+
+    class _ProcesoFalso:
+        returncode = 1
+
+    lanzadas = []
+    popens = []
+    avisos = []
+
+    def _startfile_grabador(ruta, *a, **k):
+        lanzadas.append(ruta)
+
+    def _startfile_que_falla(ruta, *a, **k):
+        raise OSError("fallo simulado de ShellExecute")
+
+    def _killer(*a, **k):
+        raise _PopenProhibido(
+            "subprocess.Popen no debe usarse en el arranque de apps: el pack es "
+            "entrada no confiable (FIX-003)"
+        )
+
+    def _popen_soniente(cmd, *a, **k):
+        popens.append(cmd)
+        return _ProcesoFalso()
+
+    class _Captor(_logging.Handler):
+        def emit(self, record):
+            if record.levelno >= _logging.WARNING:
+                avisos.append(record.getMessage())
+
+    logger_wopt = _logging.getLogger("woptimizer")
+    assert logger_wopt.isEnabledFor(_logging.WARNING), (
+        "el logger 'woptimizer' no emite warnings: la asercion (h) no probaria nada"
+    )
+    captor = _Captor(level=_logging.WARNING)
+    logger_wopt.addHandler(captor)
+
+    os_startfile_original = getattr(os, "startfile", None)
+    popen_original = subprocess.Popen
+    svc = ProcessService.__new__(ProcessService)
+    tmp = tempfile.mkdtemp(prefix="wopt_fix003_")
+    # El grabador se instala de UNA VEZ y para todo el test: sin esto, (g)
+    # llamaria al ShellExecute de verdad sobre un .exe vacio, que responde
+    # WinError 193 y mezcla un fallo del SO con la asercion que se quiere probar.
+    setattr(os, "startfile", _startfile_grabador)
+
+    def _arrancar(apps, popen_stub=None):
+        """`start_pack_apps` con la instrumentación puesta."""
+        subprocess.Popen = _killer if popen_stub is None else popen_stub
+        try:
+            return svc.start_pack_apps(apps)
+        except _PopenProhibido as e:
+            raise AssertionError(str(e))
+        finally:
+            subprocess.Popen = popen_original
+
+    try:
+        # --- precondiciones: sin ellas los casos de abajo pasan por el motivo
+        # equivocado y no prueban la política que dicen probar -----------------
+        raices = svc._launch_roots()
+        assert raices, "este entorno no define ninguna raiz de arranque permitted"
+        assert any(_dentro_de_alguna(os.path.normpath(tmp), raices) for _ in raices), (
+            f"el temporal {tmp} cae fuera de las raices de arranque: los casos (b) "
+            "y (g) se rechazarian por contencion y no por lo que dicen probar"
+        )
+        assert os.path.isdir(os.environ.get("ProgramFiles", "")), (
+            "ProgramFiles no existe: el caso (c) (traversal) no probaria nada"
+        )
+
+        # --- (c) traversal: normalizar ANTES de comprobar la contención ------
+        # OJO al ORDEN de los sub-casos: primero las decisiones de
+        # `_resolver_app` ((c)-(f)) y despues el efecto ((a), (b), (g), (g2),
+        # (h)). Al reves, una mutacion de validacion muere en el primer caso de
+        # efecto y la matriz no puede atribuir la muerte a la asercion que la
+        # nombra.
+        traversal = r"C:\Program Files\..\..\Windows\System32\cmd.exe"
+        objetivo = os.path.normpath(traversal)
+        assert os.path.isabs(traversal), "el traversal debe ser 'absoluto' para la prueba"
+        assert os.path.isfile(objetivo), (
+            f"el destino del traversal ({objetivo}) no existe: el caso pasaria "
+            "por isfile y no por contencion"
+        )
+        assert svc._resolver_app(traversal) is None, (
+            f"el traversal se normaliza a {objetivo}, que esta FUERA de las "
+            "raices permitidas, y aun asi se acepto"
+        )
+
+        # --- (d) UNC: ejecución remota por SMB -------------------------------
+        unc = r"\\servidor\comparte\p.exe"
+        assert os.path.isabs(unc), "una UNC es 'absoluta' para os.path: por eso isabs no vale"
+        avisos.clear()
+        assert svc._resolver_app(unc) is None, "una ruta UNC jamas se ejecuta"
+        assert any("UNC" in m for m in avisos), (
+            f"el rechazo UNC no deja el motivo en el log: {avisos}"
+        )
+
+        # --- (e) nombre pelado: SOLO dentro de las raices permitidas --------
+        chrome = os.path.join(tmp, "chrome.exe")
+        _escribir_pe_minimo(chrome)
+        assert svc._resolver_app("chrome.exe", raices=[tmp]) == os.path.normpath(chrome), (
+            "un nombre pelado solo se resuelve dentro de las raices permitidas, y "
+            "nunca por el PATH ni por el CWD (shutil.which busca en el CWD primero)"
+        )
+
+        # --- (f) nombre pelado inexistente -----------------------------------
+        assert svc._resolver_app("no_existe_en_ningun_site.exe", raices=[tmp]) is None, (
+            "un nombre pelado que no esta en las raices permitidas no se arranca"
+        )
+
+        # --- (a) metacarácteres con intérprete -------------------------------
+        # OJO: `r"...\"` NO es Python valido (una cadena cruda no puede acabar
+        # en backslash), por eso el separador final va doblado.
+        inyeccion = "C:\\Windows\\notepad.exe & del /q C:\\"
+        lanzadas.clear()
+        assert _arrancar([inyeccion]) == (0, 1), (
+            f"una ruta con '&' debe contar como fallida y no lanzarse: "
+            f"quedaron {lanzadas}"
+        )
+        assert lanzadas == [], f"se lanzo la entrada con metacarácteres: {lanzadas}"
+
+        # --- (b) la lista blanca de extensiones (ficheros REALES) -----------
+        # OJO, y es lo importante: estos ficheros llevan CONTENIDO DE PE DE
+        # VERDAD a proposito. Si fueran guiones vacios, los rechazaria la regla 9
+        # ("no es una imagen PE") y este caso pasaria por el motivo equivocado:
+        # la extension se dejaria de comprobar sin que nadie lo notase, que es
+        # exactamente como esta sonda se vuelve verde sin estar probando nada.
+        # Con un PE dentro, lo UNICO que puede rechazarlos es la lista blanca de
+        # extensiones, que es lo que este caso dice que prueba.
+        rutas_b = []
+        for nombre in ("evil.bat", "evil.ps1", "evil.vbs", "atajo.lnk"):
+            p = _escribir_pe_minimo(os.path.join(tmp, nombre))
+            rutas_b.append(p)
+        lanzadas.clear()
+        assert _arrancar(rutas_b) == (0, 4), (
+            "una .bat/.ps1/.vbs/.lnk NO se puede arrancar: pasarian por "
+            f"ShellExecute -> cmd.exe /c. Se lanzo: {lanzadas}"
+        )
+        assert lanzadas == [], f"se lanzo un fichero de la lista negra: {lanzadas}"
+        # Y la extension se mira de verdad, no de paso: con el mismo contenido PE,
+        # un `.exe` SI arranca y un `.bat` no. Sin esta asercion, borrar la lista
+        # blanca no cambiaria el resultado del caso (b) y la sonda no lo notaria.
+        p_ejecutado = os.path.join(tmp, "mismo_contenido.exe")
+        shutil.copyfile(rutas_b[0], p_ejecutado)
+        lanzadas.clear()
+        assert _arrancar([p_ejecutado]) == (1, 0), (
+            f"el MISMO contenido con extension .exe tiene que arrancar: la "
+            f"diferencia la hace la extension y no el contenido: {lanzadas}"
+        )
+
+        # --- (g) el contador es HONESTO --------------------------------------
+        real = os.path.join(tmp, "real.exe")
+        _escribir_pe_minimo(real)
+        lanzadas.clear()
+        popens.clear()
+        res = _arrancar([real, "fantasma.exe"], popen_stub=_popen_soniente)
+        assert res == (1, 1), (
+            f"contador mentiroso: {res}. El codigo viejo devolvia (2, 0) porque "
+            "`shell=True` NO lanza con un nombre inexistente y contaba `started`"
+        )
+        assert lanzadas == [os.path.normpath(real)], (
+            f"el grabador recibio rutas que no debian lanzarse: {lanzadas}"
+        )
+        assert popens == [], f"Popen no debe usarse ni en el camino bueno: {popens}"
+
+        # --- (g2) un ShellExecute que falla cuenta como fallido -------------
+        setattr(os, "startfile", _startfile_que_falla)
+        avisos.clear()
+        try:
+            assert _arrancar([real]) == (0, 1), (
+                "si ShellExecute lanza OSError, la app cuenta como fallida y no "
+                "como arrancada"
+            )
+            assert any("Failed to launch" in m for m in avisos), (
+                f"un OSError de ShellExecute sin log es un fallo invisible: {avisos}"
+            )
+        finally:
+            setattr(os, "startfile", _startfile_grabador)
+
+        # --- (h) un rechazo deja el MOTIVO en el log -------------------------
+        # Se mira la linea EXACTA de `start_pack_apps` ("no se arranco"), no un
+        # "hubo algún warning": si solo se comprobara `avisos`, el warning del
+        # resolutor taparia el de aqui y la mutacion "sin log en el rechazo"
+        # pasaria en verde.
+        avisos.clear()
+        _arrancar([traversal])
+        assert avisos, (
+            "un rechazo sin log es un rechazo invisible: el usuario edita su "
+            "profiles.json a mano y no puede depurar por que su app no arranca"
+        )
+        assert any("no se arranco" in m for m in avisos), (
+            f"start_pack_apps no registro el rechazo en el log: {avisos}"
+        )
+        # Y el resolutor deja su propio resumen con el MOTIVO. Son dos lineas
+        # distintas a proposito: una dice QUE app fallo, la otra POR QUE.
+        assert any("Arranque rechazado" in m for m in avisos), (
+            f"el resolutor no registro el motivo del rechazo: {avisos}"
+        )
+
+        # --- guarda estatica: `shell=True` no vuelve a aparecer en src/ ------
+        # Usa la MISMA funcion que `test_la_guarda_de_shell_true_ve_atributos_y
+        # alias_es`: una guarda duplicada con distinta cobertura es dos
+        # guardingitas, y la anterior solo miraba `ast.Name` (era ciega a
+        # `subprocess.Popen(..., shell=True)`, la grafia exacta del bug).
+        for raiz, _dirs, ficheros in os.walk(os.path.join("src", "woptimizer")):
+            for fichero in ficheros:
+                if not fichero.endswith(".py"):
+                    continue
+                ruta = os.path.join(raiz, fichero)
+                with open(ruta, encoding="utf-8") as fh:
+                    fallos = _hallazgos_shell_true(fh.read(), ruta)
+                assert not fallos, (
+                    f"{fallos}: vuelve a Popen(..., shell=True): el pack es "
+                    "entrada no confiable (FIX-003)"
+                )
+    finally:
+        subprocess.Popen = popen_original
+        if os_startfile_original is not None:
+            setattr(os, "startfile", os_startfile_original)
+        else:
+            try:
+                delattr(os, "startfile")
+            except AttributeError:
+                pass
+        logger_wopt.removeHandler(captor)
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("El arranque de apps no usa shell (FIX-003).")
+
+
+def test_el_gestor_guarda_la_ruta_absoluta():
+    """TASK-027 / FIX-003 (escritor): lo que se guarda en `Pack.apps`.
+
+    Sin Tk: la vista se construye con `__new__` y sus colaboradores son
+    dobles. La asercion mira el CONTENIDO de `pack.apps`, no "que se llamo a
+    save()": un `save()` que se sigue llamando con el nombre pelado dentro
+    pasaría cualquier prueba de llamada.
+
+    MATA, una a una:
+      * `procs[0].full_name` (el estado anterior) -> la ruta absoluta no aparece;
+      * `procs[0].name` (que es el nombre SIN extensión, `process_service.py:244`)
+        -> ni la ruta ni `chrome.exe`;
+      * sin degradación cuando `exe_path` está vacía -> se guarda `""` y el pack
+        queda inservible sin explicación;
+      * sin el `if not in target_pack.apps` -> el mismo proceso se guarda dos
+        veces (y el pack de fábrica se hincha con duplicados en cada clic).
+    """
+    from woptimizer.models import Pack, ProcessInfo
+    from woptimizer.ui.views.process_manager_view import ProcessManagerView
+
+    class _Casilla:
+        def __init__(self, valor):
+            self._valor = valor
+
+        def get(self):
+            return self._valor
+
+    class _Var:
+        def __init__(self, valor):
+            self._valor = valor
+
+        def get(self):
+            return self._valor
+
+    class _Label:
+        def __init__(self):
+            self.textos = []
+
+        def configure(self, **kw):
+            self.textos.append(kw.get("text"))
+
+    class _PackServiceGrabador:
+        def __init__(self, packs):
+            self._packs = packs
+            self.saves = 0
+
+        def get_all_packs(self):
+            return self._packs
+
+        def save(self):
+            self.saves += 1
+
+    RUTA_CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+
+    def _armar(pack, claves):
+        vista = ProcessManagerView.__new__(ProcessManagerView)
+        vista.grouped_processes = {
+            k: [ProcessInfo(name="chrome", full_name="chrome.exe", pid=100 + i,
+                             exe_path=RUTA_CHROME, category="x", priority="none",
+                             description="d")]
+            for i, k in enumerate(claves)
+        }
+        vista.checkboxes = {k: _Casilla(True) for k in claves}
+        vista.pack_var = _Var("Pack A")
+        vista.status_label = _Label()
+        vista.pack_service = _PackServiceGrabador({"a": pack})
+        return vista
+
+    # --- (1) con exe_path: se guarda la RUTA, no el nombre -------------------
+    pack = Pack(id="a", name="Pack A")
+    vista = _armar(pack, ["chrome"])
+    vista.on_add_to_pack()
+    assert pack.apps == [RUTA_CHROME], (
+        f"lo guardado no es la ruta absoluta: {pack.apps}. Con el nombre pelado "
+        "el arranque lo resuelve adivinando en las raices permitidas y lo rechaza"
+    )
+    assert vista.pack_service.saves == 1, "save() debe llamarse una vez"
+
+    # --- (2) sin exe_path (AccessDenied): degradación documentada ------------
+    pack = Pack(id="a", name="Pack A")
+    vista = ProcessManagerView.__new__(ProcessManagerView)
+    vista.grouped_processes = {
+        "chrome": [ProcessInfo(name="chrome", full_name="chrome.exe", pid=7,
+                               exe_path="", category="x", priority="none", description="d")]
+    }
+    vista.checkboxes = {"chrome": _Casilla(True)}
+    vista.pack_var = _Var("Pack A")
+    vista.status_label = _Label()
+    vista.pack_service = _PackServiceGrabador({"a": pack})
+    vista.on_add_to_pack()
+    assert pack.apps == ["chrome.exe"], (
+        f"con exe_path vacia hay que degradar a full_name, no guardar '': {pack.apps}"
+    )
+
+    # --- (3) duplicado: el `if not in apps` sigue vivo -----------------------
+    pack = Pack(id="a", name="Pack A", apps=[RUTA_CHROME])
+    vista = _armar(pack, ["chrome", "chrome2"])
+    vista.on_add_to_pack()
+    assert pack.apps == [RUTA_CHROME], f"se duplico la misma app en el pack: {pack.apps}"
+    assert vista.status_label.textos[-1].startswith("✅ 0 apps"), (
+        f"el contador de anadidas miente: {vista.status_label.textos[-1]}"
+    )
+    print("El Gestor guarda la ruta absoluta en el pack (FIX-003, escritor).")
+
+
+def test_orden_de_categorias_no_es_alfabetico():
+    """TASK-027 / FIX-004: el orden de secciones es `CATEGORY_ORDER`, no `sorted()`.
+
+    Por que una guarda `ast` ademas del comportamiento: los dos sitios
+    sintomaticos (`_render_list` y `_render_pack_card`) construyen widgets, y
+    probarlos exigiría una ventana de Tk. El repo ya usa este patrón
+    (TASK-026 lo hizo con `self.master.after`). La guarda corre PRIMERO, sin Tk,
+    y falla en <1 s si alguien reintroduce `sorted()` sobre las categorías.
+
+    MATA:
+      * `return list(cats)` (la identidad) -> la entrada barajada sigue barajada;
+      * `sorted(...)` -> ⚪ (U+26AA, BMP) sale PRIMERO y la aserción `!= sorted`
+        falla; es la medición del defecto, no una opinión sobre el orden;
+      * el centinela cambiado de signo -> las desconocidas dejan de ir al final;
+      * `sorted(categorias.keys())` en CUALQUIERA de los dos sitios -> la guarda;
+      * un `key=` en línea en vez de `ordenar_categorias` -> la guarda de uso,
+        para que no se "arregle" duplicando la política en cada vista.
+    """
+    import random
+    from woptimizer.config import CATEGORY_ORDER, ordenar_categorias
+
+    # --- comportamiento: entrada barajada con SEMILLA fija -------------------
+    entrada = list(CATEGORY_ORDER)
+    random.Random(20260930).shuffle(entrada)
+    salida = ordenar_categorias(entrada)
+    conocidas = [c for c in CATEGORY_ORDER if c in entrada]
+    assert salida[:len(conocidas)] == conocidas, (
+        "orden de categorias no es CATEGORY_ORDER: "
+        f"esperado {conocidas}, obtenido {salida}"
+    )
+    assert salida != sorted(entrada), (
+        "la salida es identica a sorted(): el defecto sigue vivo. Medido: "
+        f"sorted() pone {sorted(entrada)[0]!r} primero porque ⚪ Otros es U+26AA "
+        "y 🟢🟡🔴 estan en el plano suplementario"
+    )
+    assert salida[-1] == CATEGORY_ORDER[-1], (
+        "el centinela canonico (sin clasificar) va SIEMPRE el ultimo"
+    )
+    assert list(entrada) != salida or entrada == sorted(entrada, key=lambda c: 0), (
+        "ordenar_categorias no debe depender del orden de entrada para las conocidas"
+    )
+
+    # --- categorías desconocidas: AL FINAL, en su orden de entrada -----------
+    desconocidas = ["ZZZ inventada", "AAA inventada", "MMM inventada"]
+    mezcla = desconocidas + CATEGORY_ORDER[:3]
+    salida2 = ordenar_categorias(mezcla)
+    assert salida2[:3] == CATEGORY_ORDER[:3], (
+        f"las conocidas no van primero: {salida2}"
+    )
+    assert salida2[3:] == desconocidas, (
+        f"las desconocidas van al final conservando su orden relativo: {salida2}"
+    )
+
+    # --- guarda estatica sobre los DOS sitios -------------------------------
+    for nombre in ("process_manager_view.py", "pack_manager_view.py"):
+        ruta = os.path.join("src", "woptimizer", "ui", "views", nombre)
+        with open(ruta, encoding="utf-8") as fh:
+            arbol = ast.parse(fh.read())
+
+        usa_ordenador = False
+        for nodo in ast.walk(arbol):
+            if (isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Name)
+                    and nodo.func.id == "ordenar_categorias"):
+                usa_ordenador = True
+            if not (isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Name)
+                    and nodo.func.id == "sorted"):
+                continue
+            if any(kw.arg == "key" for kw in nodo.keywords):
+                continue  # sorted(categorias[cat], key=...) es legitimo
+            texto = ast.unparse(nodo.args[0]).lower() if nodo.args else ""
+            if "cat" in texto:
+                raise AssertionError(
+                    f"{ruta}:{nodo.lineno} vuelve a sorted() sobre categorias "
+                    f"({texto!r}): ordena por punto de codigo y saca ⚪ Otros "
+                    "primero. Usar config.ordenar_categorias (FIX-004)"
+                )
+        assert usa_ordenador, (
+            f"{ruta} no llama a ordenar_categorias: el orden de secciones debe "
+            "salir de CATEGORY_ORDER, no de una key en linea duplicada"
+        )
+    print("El orden de categorias es CATEGORY_ORDER y no alfabetico (FIX-004).")
+
+
+def test_toggle_favorite_desmarca():
+    """TASK-027 / FIX-006: la segunda pulsacion de la estrella DESMARCA.
+
+    El servicio ya sabia hacerlo: `set_favorite(None)` existe desde TASK-021 y
+    esta testeado en `test_pack_service_favorite_exclusive`. El bug era de UNA
+    linea en la UI, y por eso esta sonda no toca `PackService`.
+
+    El grabador devuelve INSTANCIAS NUEVAS en cada `get_all_packs()`, como el
+    servicio real tras un `model_copy`. Eso es lo que permite matar la lectura
+    de una instantánea: `render_pack` es la instancia que el renderiator habría
+    capturado, y su `is_favorite` es intencionadamente el VALOR VIEJO.
+
+    MATA:
+      * `set_favorite(pack_id)` incondicional (el estado anterior) -> el caso 2
+        registra "a" y no `None`;
+      * leer el `is_favorite` de la instantánea del render -> el grabador
+        devuelve instancias nuevas, la instantánea queda obsoleta y el caso 2
+        falla;
+      * el atajo `get_favorite_pack()` (el grabador lo tiene, para que la
+        mutación sea expresable) -> con DOS favoritos devuelve el primero y el
+        caso 4 falla: marcaría "b" en vez de desmarcarlo;
+      * quitar la guarda `if pack is None: return` (o, en su forma literal, el
+        `pack is not None and` de la guarda) -> el caso 3 registra "z", y con la
+        variante sin `and` además revienta con el `AttributeError` del `None`.
+    """
+    from woptimizer.models import Pack
+    from woptimizer.ui.views.pack_manager_view import PackManagerView
+
+    class _Grabador:
+        def __init__(self, estado):
+            self.estado = dict(estado)
+            self.llamadas = []
+
+        def get_all_packs(self):
+            return {k: Pack(id=k, name=k.upper(), is_favorite=v)
+                    for k, v in self.estado.items()}
+
+        def get_favorite_pack(self):
+            for k, v in self.estado.items():
+                if v:
+                    return self.get_all_packs()[k]
+            return None
+
+        def set_favorite(self, pack_id):
+            self.llamadas.append(pack_id)
+            self.estado = {k: (k == pack_id) for k in self.estado}
+
+    def _vista(grabador):
+        v = PackManagerView.__new__(PackManagerView)
+        v.pack_service = grabador
+        v.refresh_packs = lambda: None
+        # Instantanea que el render de la tarjeta habria capturado. El codigo
+        # real NO debe leerla: se queda obsoleta en cuanto el estado cambia.
+        v.render_pack = Pack(id="a", name="A", is_favorite=False)
+        return v
+
+    # OJO al ORDEN de los casos: es 2, 4, 1, 3 y no 1, 2, 3, 4. No es capricho,
+    # es ATRIBUCION: la tabla de mutaciones dice que el atajo
+    # `get_favorite_pack()` muere en el caso de dos favoritos, y ese caso tiene
+    # que ir antes del basico o la mutacion muere en el caso 1 y la muerte deja
+    # de decir que se detecto. Los otros tres (desmarcar, instantanea, id
+    # inexistente) siguen mueriendo en su caso.
+
+    # (2) YA favorito -> se desmarca (set_favorite(None)), leido EN VIVO
+    g = _Grabador({"a": True, "b": False})
+    v = _vista(g)
+    v.toggle_favorite("a")
+    assert g.llamadas == [None], (
+        f"la segunda pulsacion debe desmarcar (set_favorite(None)), no volver a "
+        f"marcar la misma: {g.llamadas}"
+    )
+    assert g.estado == {"a": False, "b": False}, f"el pack quedo marcado: {g.estado}"
+
+    # (4) DOS favoritos (alcanzable editando profiles.json): la estrella del
+    #     segundo lo desmarca a EL, no al primero.
+    g = _Grabador({"a": True, "b": True})
+    v = _vista(g)
+    v.toggle_favorite("b")
+    assert g.llamadas == [None], (
+        f"con dos favoritos hay que desmarcar en vivo el pack pulsado, no el "
+        f"primero de la lista: {g.llamadas}"
+    )
+    assert g.estado == {"a": False, "b": False}, f"el estado final no es el esperado: {g.estado}"
+
+    # (1) no favorito -> se marca
+    g = _Grabador({"a": False, "b": False})
+    v = _vista(g)
+    v.toggle_favorite("a")
+    assert g.llamadas == ["a"], f"una app no favorita debe marcarse: {g.llamadas}"
+    assert g.estado == {"a": True, "b": False}, f"el estado no quedo marcado: {g.estado}"
+
+    # (3) id que no existe: no lanza y no llama a set_favorite
+    g = _Grabador({"a": False})
+    v = _vista(g)
+    v.toggle_favorite("z")
+    assert g.llamadas == [], (
+        f"un id inexistente no debe tocar el servicio: {g.llamadas}"
+    )
+    print("La estrella desmarca el favorito en la segunda pulsacion (FIX-006).")
 
 
 if __name__ == "__main__":
@@ -1215,6 +5631,7 @@ if __name__ == "__main__":
     test_category_emoji_alignment()
     test_safety_badge_category_priority_order()
     test_gaming_service_should_kill()
+    test_execute_gaming_pack_integration()
     test_pack_service_crud()
     test_pack_service_delete()
     test_pack_service_favorite_exclusive()
@@ -1225,6 +5642,54 @@ if __name__ == "__main__":
     test_git_safe_commit_fail_safe()
     test_double_tap_guard()
     test_no_system_process_is_killable()
+    # TASK-026: FIX-001 / FIX-005 / FIX-007 / FIX-009
+    test_gaming_pack_fallback_is_deep_copy()
+    test_default_meta_matches_canonical_otros()
+    test_pack_service_backup_and_recovery()
+    test_do_load_publica_sin_tk()
+    # TASK-030: sondas P1-P8 (cada una con la mutacion exacta que mata)
+    test_save_atomic_nunca_toca_el_principal()
+    test_publicar_no_trunca_el_principal()
+    test_save_no_escribe_si_la_rotacion_no_puede_leer()
+    test_corrupcion_sin_backup_intenta_volar()
+    test_forma_legacy_no_tumba_la_app()
+    test_todas_las_clases_de_corrupcion_se_recuperan()
+    test_oserror_de_lectura_no_es_corrupcion()
+    test_attribute_error_ajeno_no_es_corrupcion()
+    # TASK-031: sondas L1-L7 (hojas validadas, .bak intacto, load() read-only)
+    test_la_rotacion_usa_la_misma_puerta_que_load()
+    test_la_hoja_malformada_se_clasifica()
+    test_load_no_escribe()
+    test_la_recuperacion_no_sobrescribe_el_bak()
+    test_sin_bak_legible_no_se_sobrescribe_el_principal()
+    test_un_campo_desconocido_no_es_corrupcion_y_no_se_borra()
+    test_packs_y_profiles_a_la_vez_es_corrupcion()
+    # TASK-031 iteracion 2: L8-L10 (raiz mal escrita, error de escritura,
+    # identidad clave==id) + L2 con la fila is_gaming y la fixture sin "id"
+    test_la_raiz_mal_escrita_no_destruye_los_packs()
+    test_un_error_de_escritura_no_es_un_campo_desconocido()
+    test_la_clave_del_mapa_es_la_identidad_del_pack()
+    # TASK-031 iteracion 3: L11 (la raiz LEGACY conserva sus claves extra) y
+    # L12 (una clave raiz nunca es un error de escritura) + L2 con las filas de
+    # `is_favorite` que si coaccionan y L9 con las variantes de GRAFIA.
+    test_la_raiz_legada_conserva_sus_claves_extra()
+    test_una_clave_raiz_nunca_es_un_error_de_escritura()
+    # TASK-027: FIX-003 (arranque seguro + escritor), FIX-004 (orden de
+    # categorias), FIX-006 (desmarcar favorito)
+    test_arranque_de_apps_no_usa_shell()
+    # TASK-027 iteracion 2 (el mutation-auditor dio FAIL): junction/symlink,
+    # hermano de prefijo (M10), caja de las letras y guarda anti-shell ciega.
+    test_un_junction_no_puede_colar_lo_que_hay_detras()
+    test_la_contencion_no_acepta_un_hermano_de_prefijo()
+    test_la_contencion_no_depende_de_la_caja()
+    test_la_guarda_de_shell_true_ve_atributos_y_aliases()
+    # TASK-027 iteracion 3: el hard link y su hermano (la COPIA PLENA) no
+    # cuelan. El cierre es la REGLA 9 (`_es_imagen_pe`), no `st_nlink`: medido,
+    # el 8,32% de los .exe/.com instalados tienen enlaces duros legitimos.
+    test_un_hard_link_no_es_una_hoja_y_el_script_no_pasa()
+    test_el_gestor_guarda_la_ruta_absoluta()
+    test_orden_de_categorias_no_es_alfabetico()
+    test_toggle_favorite_desmarca()
     print("\n--- Running Headless UI Test ---")
     test_headless_ui()
     print("\nALL TESTS PASSED.")

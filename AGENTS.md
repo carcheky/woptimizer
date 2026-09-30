@@ -13,8 +13,9 @@ Process manager gaming para Windows. Cierra apps en masa (gaming mode) y las rea
 
 ## 🧭 Flujo de Trabajo para Agentes (Taskmaster + OpenSpec + Docs Selectivos)
 1. **Orquestación de Tareas (Taskmaster):**
-   - Consulta la tarea activa ejecutando: `python .taskmaster/tm.py next` (o lee `.taskmaster/tasks.md`).
-   - Al completar la tarea, márcala con: `python .taskmaster/tm.py done <TASK_ID>`.
+   - ⚠️ **`tm.py` NO es ejecutable en este entorno** (lanza `subprocess` y falla con `spawn EPERM`).
+   - Consulta la tarea activa leyendo `.taskmaster/tasks.json`: usa el campo `active_task_id`, o la primera entrada con `"status": "pending"`.
+   - Al completar la tarea, pon `"status": "completed"` en su entrada del mismo fichero.
 2. **Especificaciones y Cambios (OpenSpec):**
    - Todo cambio arquitectónico o de interfaz debe estar documentado en `openspec/changes/<change-id>/`.
    - Consulta activa: `openspec/changes/2026-09-28-v3-ui-redesign/`.
@@ -63,16 +64,38 @@ src/woptimizer/
 ## Comandos Rápidos
 ```bash
 python run.py                   # Lanzar en modo desarrollo
-python .taskmaster/tm.py next   # Ver siguiente tarea pendiente
-python .taskmaster/tm.py list   # Ver estado de todas las tareas
+python run_tests.py             # 28 tests headless (no abre ventanas)
 python verify_ui_syntax.py      # Verificar sintaxis estática de la UI
+python validate_docs.py         # Validar documentación y changelogs
+python .taskmaster/git_safe_commit.py "msg"   # ÚNICA vía de versionado
 ```
+> ❌ `python .taskmaster/tm.py next|done|list` **no funciona aquí** (hace `subprocess`). Lee `.taskmaster/tasks.json`.
 
-## 🛠️ Skills Disponibles (.agents/skills/)
-- `id-pipeline`: Motor autónomo de I+D en bucle infinito de 3 pasos (1. Buscar qué hacer, 2. Planear, 3. Ejecutar). No se detiene nunca a menos que el usuario lo pause manualmente. **Cada pase DEBE registrarse en `.taskmaster/CHANGELOG.md`** (ver Sección 6 de la skill). Alterna modelos por paso × área (ver Sección 7).
-- `architect-review`: Arquitectura, auditoría de invariantes y planificación de Taskmaster / OpenSpec.
-- `openspec-dev`: Tech Lead e implementación con validación estática y headless.
-- `process-db-updater`: Analista de procesos y actualización de `assets/process_db.json`.
+## 🛠️ Roles del Pipeline (Agentes + Skill)
+
+> **Distingue los dos mecanismos.** Una *skill* es un fichero de instrucciones en `.agents/skills/`; un *agente* es una sesión propia, con contexto separado, que se delega con la herramienta `task`. Las skills **no** aparecen en el panel de agentes y **no** se pueden delegar con `task`.
+
+| Rol | Tipo | Dónde vive | Cómo se invoca |
+|---|---|---|---|
+| **Motor de I+D** | Skill | `.agents/skills/id-pipeline/` | `/id-pipeline` — la ejecuta el orquestador en su propia sesión |
+| **Arquitecto** | **Agente** | `~/.minimax/agents/architect-review/` | `task({agent_name: "architect-review"})` |
+| **Tech Lead / Dev** | **Agente** | `~/.minimax/agents/openspec-dev/` | `task({agent_name: "openspec-dev"})` |
+| **Analista de procesos** | **Agente** | `~/.minimax/agents/process-db-updater/` | `task({agent_name: "process-db-updater"})` |
+| **Auditor de tests** | **Agente** | `~/.minimax/agents/mutation-auditor/` | `task({agent_name: "mutation-auditor"})` |
+
+Los agentes son **sesiones independientes** con sus propias directrices en `agent.md`. El orquestador les pasa contexto quirúrgico (tarea, ficheros, restricciones) porque **no heredan esta conversación**.
+
+### El bucle tiene 4 pasos, no 3
+
+`1. Buscar → 2. Planear → 3. Ejecutar → 4. Auditar los tests → (1)`
+
+El **Paso 4** es obligatorio: `run_tests.py` en verde dice que el código hace lo que el test comprueba, **no** que el test compruebe algo. El `mutation-auditor` rompe cada fix a proposito y confirma que el test lo detecta; un ciclo no se cierra sin su `PASS`. Un superviviente en seguridad o datos se arregla, no se documenta.
+
+> ⚠️ **No inventes mecanismos.** `invoke_subagent`, `Role` y `TypeName` **no existen** en este runtime: la llamada falla con *"Unknown agent"*. Delega siempre con `task({agent_name, description, prompt})`.
+> ⚠️ **`tm.py` no es ejecutable aquí** (hace `subprocess` y el entorno lo bloquea con `spawn EPERM`). Lee `.taskmaster/tasks.json` directamente para saber cuál es la tarea activa.
+> ⚠️ **Nunca `git` a pelo**: el `.git` del árbol de trabajo está corrupto por el VFS de Nextcloud. Usa `python .taskmaster/git_safe_commit.py "<mensaje>"` y comprueba su código de salida.
+
+**Changelog:** cada pase escribe en **dos** ficheros — `CHANGELOG.md` (raíz, legible por el usuario) y `.taskmaster/CHANGELOG.md` (registro técnico). `validate_docs.py` lo comprueba.
 
 ## 🔄 Artefactos del Motor de I+D (`id-pipeline`)
 

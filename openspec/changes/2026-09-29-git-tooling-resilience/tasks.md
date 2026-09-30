@@ -69,7 +69,7 @@
         seguimiento que el ciclo #10 dejó pendientes)
 
 - [ ] **8. Tableros**
-  - [ ] 8.1 `python .taskmaster/tm.py done TASK-022`
+  - [ ] 8.1 Marcar TASK-022 como completada: `"status": "completed"` en `.taskmaster/tasks.json` (⚠️ `tm.py done` **no es ejecutable** en este entorno: lanza `subprocess` y falla con `spawn EPERM`)
   - [ ] 8.2 `.taskmaster/rd_journal.json` + `.taskmaster/CHANGELOG.md` `[CYCLE-011]`
   - [ ] 8.3 `STATUS.md`
 

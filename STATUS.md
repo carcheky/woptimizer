@@ -5,20 +5,20 @@
 ---
 
 ## 🟢 Salud General del Sistema
-- **Sintaxis Estática UI:** 🟢 Pasa al 100% (`verify_ui_syntax.py`, 7 módulos)
-- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **24 tests**: 23 backend + 1 headless UI)
+- **Sintaxis Estática UI:** 🟢 Pasa al 100% (`verify_ui_syntax.py`, 8 módulos)
+- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **57 tests**: 56 backend + 1 headless UI)
 - **Micro-Benchmark Base:** 182 ms (Init) | 16.4 ms (Escaneo 326 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
-- **Compilación PyInstaller:** 🟢 Listo y **al día** (`dist/woptimizer.exe`, 25.65 MB, incluye los fixes de los ciclos #9, #10 y #11)
+- **Compilación PyInstaller:** 🟡 Al día con el ciclo #11, **pendiente de regenerar** (no incluye los fixes de los ciclos #12, #13 y #14)
 - **Base de Datos de Procesos:** 73 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
-- **Versionado:** 🟢 El repo desacoplado en `%LOCALAPPDATA%\woptimizer_git\.git` está sano. **El `.git` dentro del árbol de trabajo está corrupto por el VFS de Nextcloud** — nunca uses `git` a pelo, solo `git_safe_commit.py`.
+- **Versionado:** ⚠️ **Ciclos #14 a #20 SIN COMMIT.** El shell del entorno falló con `spawn EPERM` de forma intermitente y `git_safe_commit.py` requiere `subprocess`. El árbol tiene cambios pendientes de versionar.
 
 ---
 
 ## 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 13 (`rd_journal.json` actualizado).
-- **Ciclo Actual #14:** Listo para Paso 1 — Descubrimiento autónomo.
-- **Última Acción:** Ciclo #13 TASK-024 — commit `0ad23bb`.
+- **Ciclos Completados:** 20 (`rd_journal.json` actualizado).
+- **Ciclo Actual #21:** Paso 1 — la tarea activa es `TASK-028` (deuda técnica).
+- **Última Acción:** Ciclo #20 TASK-027 — arranque de apps sin intérprete, orden de categorías real y favoritos. **57 tests en verde, Paso 4 = PASS tras 3 iteraciones, sin commit por bloqueo del entorno.**
 
 ---
 
@@ -36,29 +36,39 @@
 11. **[Ciclo #11 - Resiliencia & Robustez]:** 🔴 **El pipeline podía "completar" ciclos sin versionar nada** — `git_safe_commit.py`, la única puerta de versionado, salía con **código 0 ante cualquier fallo de commit**. El CHANGELOG MANDATORY registraba hashes que podían no existir y `validate_docs.py` no podía detectarlo. Rehecho con contrato de 4 códigos de salida y líneas canónicas `WOPT_*`, validación real del repo (sin fallback al `.git` corrupto del VFS) y flag `--verify`. El arquitecto corrigió 3 errores de la propuesta, el más grave: decidir "nada que comitear" buscando `"nothing to commit"` depende de `LANG` y **en un Windows en español ese texto nunca aparece**, lo que habría convertido un árbol limpio en un fallo → ahora se decide con `git diff --cached --quiet`. Checkpoint de empaquetado cerrado: `dist/woptimizer.exe` regenerado (25.65 MB) con los fixes de los ciclos #9 y #10.
 12. **[Ciclo #12 - Gaming & Telemetría UX]:** 🔴 **Regresión silenciosa de la reescritura v2→v3** — el patrón de doble pulsación para acciones destructivas (nacido de un incidente real: un `messagebox` que se abría *detrás* de la ventana) se perdió al reescribir, y **5 acciones destructivas quedaron sin confirmar nada**. La grave: "Cerrar Seleccionados" mata N procesos de un solo clic, agravada porque `refresh_dashboard` coloca los packs de dos en dos en la misma fila, así que el botón Gaming tenía un pack vecino pegado. Implementado **en un solo sitio**: `ui/confirmation.py` con `DoubleTapGuard` (máquina de estado pura, testeable headless) y `Confirmable` (mixin). `PackManagerView` recibió su `status_label`, que no tenía. Documentada la **Trampa #14**, que cierra la laguna #13 → #14.
 13. **[Ciclo #13 - Base de Datos & Procesos]:** 🛡️ **Blindaje anti-brick** — el escaneo real encontró 122 procesos sin registrar de 131. Se clasificaron en tres familias: los de sistema (prohibidos), el bloatware real (**+25 entradas**, 48 → 73: PowerToys, Armoury Crate, language servers, audio) y los del usuario (fuera). Añadido `SYSTEM_PROTECTED_PROCESSES` (34 nombres) aplicado por **tres vías**: al cargar la DB, al resolver metadatos, y en el propio kill —porque un `lsass.exe` escrito a mano en un pack también debe ser indestructible—. **Verificado: 0 procesos de sistema registrados como cerrables.**
+14. **[Ciclo #14 - Gaming & Telemetría UX]:** 🔴 **La configuración central del producto estaba desconectada** — `GamingService.should_kill_for_gaming()` existía y estaba testeado desde el ciclo #10, pero **nunca se invocó**: las 3 rutas de Gaming Mode solo llamaban a `kill_pack_apps(pack.apps)`, así que `keepers` y `target_categories` eran decorativos. La raíz era doble: `MainWindow` guardaba el servicio y **no se lo pasaba a las vistas**. Lo grave lo encontró la planificación: el guard heredado por blacklist de nombres **no protege** una evaluación por categoría, porque `svchost`/`explorer` no están en el blacklist y su categoría 🔴 era una casilla activable — marcarla cerraba todos los `svchost.exe` y dejaba Windows inservible. Implementada `execute_gaming_pack()` como **única puerta de kill** en `services/`, con **barrera de categoría roja** en dos capas, y corregido el fallo silencioso que habría desactivado los keepers (se comparaba contra el nombre sin extensión). Test **probado por mutación**: sin la barrera, `svchost` llega a `kill_processes`. 24 tests en verde.
+15. **[Ciclo #15 - Resiliencia & Robustez]:** 🔴 **Un error al guardar borraba toda la configuración del usuario** — `load()` ante un JSON corrupto sustituía el archivo por un pack vacío, y el `except (json.JSONDecodeError, Exception)` era en realidad `except Exception`, así que un `PermissionError` tomaba la misma ruta destructiva. **La documentación afirmaba que el backup existía desde el ciclo #2: nunca existió.** Implementados backup preventivo con recuperación desde `.bak`, `OSError` propagado, rotación que no pisa un backup sano, y escritura atómica. Además se cerró una race condition en `ProcessManagerView._do_load` (mutaba desde el hilo secundario mientras la ventana recorría el dict → `RuntimeError` y sets de PIDs desfasados) y se alineó el centinela `⚪ Otros` que usaba `?` ASCII en 3 sitios, uno de ellos un filtro de UI que no filtraba nada. **Dos de las cuatro premisas de la tarea resultaron falsas** (ver nota de proceso en el changelog). 28 tests en verde, los 4 verificados por mutación.
+16. **[Ciclo #16 - Pipeline]:** 🔧 **Los tres roles del pipeline pasaron de skills a agentes reales** (`architect-review`, `openspec-dev`, `process-db-updater`), así que aparecen en el panel del runtime y se delegan con `task` en vez de que el orquestador traduzca sus directrices a mano. La causa de que el propietario no los viera: `.agents/skills/` y el panel de agentes son **mecanismos distintos**, y la skill además pedía `invoke_subagent`, un mecanismo ya inexistente que rompía la primera invocación. Reparadas 5 referencias a `tm.py` (no ejecutable en este entorno) y la matriz de modelos, que pedía valores no soportados. Cerrados **dos falsos verdes del propio validador** introducidos en este y el ciclo anterior, y una regresión mía: al renombrar la sección de roles de `AGENTS.md`, el validador —que buscaba el encabezado por nombre literal— pasó a dar FAIL. Sin cambios en `src/`.
+17. **[Ciclo #17 - Pipeline]:** 🧬 **El bucle pasa de 3 a 4 pasos: alguien rompe el código a propósito para ver si los tests se enteran.** `run_tests.py` en verde dice que el código hace lo que el test comprueba, **no** que el test compruebe algo — la cobertura mide ejecución, no verificación. Nuevo agente `mutation-auditor` con una tabla de 12 mutaciones canónicas de este repo, que trabaja solo sobre copias y tiene prohibido reparar lo que encuentra. **Su primer arranque devolvió FAIL**: encontró 3 tests de los ciclos 14-15 que pasan con el bug puesto, incluido el de escritura atómica (mira que exista un `.tmp`, así que si la atomicidad desaparece y el `.tmp` nunca se crea, el assert sigue verde) y el de errores de permisos (acepta igual "no intentó guardar" que "intentó y falló"). También reparadas 5 referencias a `tm.py` en `AGENTS.md` que mandaban usar un comando no funcional. Sin cambios en `src/`.
 
 ---
 
 ## 🗂️ Rotación de Áreas (Matriz ID)
 | # | Área | Último ciclo | Subagente |
 |---|------|:---:|---|
-| 1 | Resiliencia & Robustez | **#11** | `openspec-dev` |
-| 2 | Gaming & Telemetría UX | **#12** | `openspec-dev` |
+| 1 | Resiliencia & Robustez | **#19** | `openspec-dev` |
+| 2 | Gaming & Telemetría UX | **#20** | `openspec-dev` |
 | 3 | Base de Datos & Procesos | **#13** | `process-db-updater` |
 | 4 | Rendimiento & Latencia | #7 | `openspec-dev` |
 | 5 | Testing & Calidad | #10 | `openspec-dev` |
 
-> **Siguiente en rotación:** Área 4 (Rendimiento & Latencia) — la más rezagada, sin tocar desde el ciclo #7. Subagente `openspec-dev`, modelo `pro` en pasos 2 y 3 por el riesgo de regresión.
+> **Tarea activa: `TASK-028`**. Backlog: `TASK-029` (robustez de UI: `start_pack_apps` sin `shell=True`, orden de categorías, desmarcar favorito), `TASK-028` (deuda técnica y saneamiento de tests) y `TASK-029` (sistema de diseño y refresco visual del front). Son de la auditoría `bugfix-audit-v3` y tienen prioridad sobre la rotación: son defectos conocidos, no exploración. `TASK-025` y `TASK-026` están cerrados.
 
 ---
 
 ## 📌 Checkpoints Periódicos
-- ✅ **Smoke test de compilación:** ejecutado en ciclo #11 (checkpoint de 3 ciclos desde el #8). Próximo tras el ciclo #14 o al añadir dependencias.
-- ✅ **`dist/woptimizer.exe` al día:** regenerado en el ciclo #11, incluye los fixes de los ciclos #9, #10 y #11.
+- ⏳ **Smoke test de compilación:** próximo tras el ciclo #14 (ya han pasado 3 desde el #11). `dist/woptimizer.exe` **no** incluye aún los fixes de los ciclos #12, #13 y #14.
+- ⚠️ **Commits pendientes de los ciclos #14 a #20:** el shell del entorno dio `spawn EPERM` intermitente y el versionado no pudo ejecutarse.
 
 ---
 
 ## ⚠️ Deuda Técnica Conocida
 - **11 ficheros `test_*.py` heredados en la raíz están MUERTOS:** hacen `import process_manager` (módulo de la v2 que ya no existe) y mueren en el import. **No se borran por decisión del propietario.** La cobertura viva vive **únicamente en `run_tests.py`**. Detallado en `docs/ai/testing-guide.md`.
 - **`.git` del árbol de trabajo corrupto (VFS de Nextcloud):** el historial vive desacoplado en `%LOCALAPPDATA%\woptimizer_git\.git`. No es reparable desde el árbol de trabajo; se acepta y se blinda con `git_safe_commit.py` y su flag `--verify` (ver la sección nueva de `docs/ai/sandbox-rules.md`).
+- **Shell intermitente en el entorno de agentes:** `spawn EPERM` en el envoltorio de Node bloquea la mayoría de invocaciones de shell, incluidos `tm.py` y `git_safe_commit.py`. Los subagentes pueden reintentar hasta conseguir ejecutar; el orquestador no tiene Bash utilizable. Afecta al versionado, no al producto.
+- **Sin commit desde el ciclo #14:** los ciclos #14 a #20 están en disco pero sin versionar, por el bloqueo de shell anterior. Hay que ejecutar `python .taskmaster/git_safe_commit.py "<mensaje>"` en cuanto el entorno lo permita.
+- **`CORRUPTION_ERRORS` no cubre `AttributeError`:** 3 de 7 formas de `profiles.json` malformado propagan y tumban el arranque. No hay pérdida de datos (no se escribe nada), pero contradice el docstring de `load()`. **Cerrado en el ciclo #18** (guarda de forma con `PerfilCorruptoError`).
+- **El validador no comprueba la tabla resumen ni la sección `Models`** de cada entrada del changelog: son responsabilidad del orquestador y no están automatizadas. Si `rd_journal.json` falta, está corrupto o no aporta ciclos, el ancla **falla con mensaje explícito** (no verde silencioso) — cerrado en el ciclo #16. Aun así, un `0 FAIL` solo prueba que pasaron las comprobaciones que existen, no que el changelog esté al día.
+- **🧬 3 SUPERVIVIENTES ABIERTOS (ciclo #17):** tests que pasan con el bug puesto, encontrados rompiendo el código a propósito. **No son deuda aceptada: son integridad de datos sin verificar.** (a) El test de escritura atómica solo mira que exista un `.tmp`, así que si la atomicidad desaparece y el `.tmp` nunca se crea, el assert sigue verde por la razón equivocada — falta probar que el principal queda intacto si el guardado se corta a mitad. (b) `except OSError: pass` acepta igual "no intentó guardar" que "intentó y falló" — un mutante que reintroduce `OSError` sobrevive con 28/28 verdes. (c) `CORRUPTION_ERRORS` no cubre `ValidationError`, `TypeError` ni `UnicodeDecodeError`, y los tres tumban `PackService()`. Resuelto en el ciclo #18; la ceguidad de las HOJAS es `TASK-031`.
+- **`docs/api.md` y `docs/index.md` documentan una API de la v2** (`is_admin()`, `taskkill`, auto-elevación) que ya no existe en el código. No son documentos de arranque, pero están desfasados.
 

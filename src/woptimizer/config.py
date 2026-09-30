@@ -35,7 +35,9 @@ PROFILES_FILE = os.path.join(_app_dir(), 'profiles.json')
 #   🔴 NO CERRAR  -> rojo     = critico de sistema o hardware (sistema, AV, overlays)
 #
 # Si un emoji no coincide con el del JSON, el lookup por categoria falla y el
-# proceso cae en "? Otros" perdiendo su semaforo de seguridad.
+# proceso cae en "⚪ Otros" (U+26AA, NO la interrogacion ASCII "?") perdiendo su
+# semaforo de seguridad. El centinela canonico vive en CATEGORY_ORDER[-1] y en
+# models.py; si cambia, cambia en los tres sitios a la vez (TASK-026 FIX-005).
 PROCESS_CATEGORIES: Dict[str, Dict[str, Any]] = {
     '🟢 Navegadores': {
         'priority': 'high',
@@ -93,6 +95,32 @@ SIMPLE_MODE_CATEGORIES = [
 ]
 
 CATEGORY_ORDER = list(PROCESS_CATEGORIES.keys()) + ['⚪ Otros']
+
+
+def ordenar_categorias(cats) -> list:
+    """Ordena los NOMBRES de categoria siguiendo CATEGORY_ORDER.
+
+    TASK-027 (FIX-004). Existe porque `sorted()` NO ordena "alfabeticamente"
+    cuando la cadena empieza por un emoji: ordena por PUNTO DE CODIGO, y el
+    centinela canonico ⚪ Otros es U+26AA (plano BMP) mientras que 🟢🟡🔴 estan
+    en el plano suplementario (U+1F7E2, U+1F7E1, U+1F534). Medido sobre la lista
+    real: `sorted()` pone ⚪ Otros PRIMERO y los 🔴 "NO CERRAR" antes que los 🟢
+    "SEGURO", o sea exactamente el orden contrario al que el semaforo comunica.
+
+    Reglas:
+      * manda `CATEGORY_ORDER` (no el color): la fuente de verdad es la misma que
+        ya usa `ProcessService.get_running_processes()`;
+      * `sorted` es ESTABLE, asi que las categorias desconocidas (centinela 999)
+        se quedan al final conservando su ORDEN DE ENTRADA entre ellas;
+      * no se deriva de `get_safety_badge`: el orden es presentacion, el
+        semaforo es otra frontera con sus propios tests.
+
+    Una sola funcion para los DOS sitios que la necesitan
+    (`process_manager_view._render_list` y `pack_manager_view._render_pack_card`):
+    con dos implementaciones, el defecto vuelve por la puerta que se olvide.
+    """
+    idx = {c: i for i, c in enumerate(CATEGORY_ORDER)}
+    return sorted(cats, key=lambda c: idx.get(c, 999))
 
 
 def get_safety_badge(category: str, priority: str = "none") -> dict:

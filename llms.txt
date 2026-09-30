@@ -5,7 +5,7 @@
 ## 🤖 Protocolo de Carga Selectiva de Contexto
 Para evitar saturar la ventana de contexto y prevenir alucinaciones:
 1. **NO leas toda la documentación junta.**
-2. Consulta la tarea activa en [Taskmaster](.taskmaster/tasks.md) (`python .taskmaster/tm.py next`).
+2. Consulta la tarea activa en `.taskmaster/tasks.json` (campo `active_task_id`, o la primera entrada con `"status": "pending"`). ⚠️ `python .taskmaster/tm.py next` **no es ejecutable** en este entorno.
 3. Carga **únicamente** el módulo de `docs/ai/` que coincida con tu tarea actual:
 
 ## 📚 Módulos de Documentación (docs/ai/)

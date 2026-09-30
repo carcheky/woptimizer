@@ -1,3 +1,161 @@
+## [CYCLE-020] 2026-09-30 - 2026-09-30-ui-hardening
+**Área**: Seguridad & Usabilidad
+**Change**: openspec/changes/2026-09-30-ui-hardening/
+**Estado**: COMPLETED - implementacion + matriz de mutacion propia (27/27 muertas), REVISADO por
+`mutation-auditor` (FAIL: 1 hallazgo ALTA + 3 MEDIUM/LOW), ITERACION 2 cerrada con 21/21 muertas e
+ITERACION 3 cerrada con 5/5 (hard link + su hermano, la COPIA) y 21/21 re-verificadas
+**Models**:
+- Implementacion: `openspec-dev`
+- Paso 4 (Pendiente): `mutation-auditor` sobre `openspec/changes/2026-09-30-ui-hardening/tasks.md` § 0
+
+### Decisiones de diseno (normativas, de `proposal.md`)
+1. **`_resolver_app(entrada, raices=None)` es decision pura; `_lanzar(ruta)` es el efecto.** El orden de las reglas ES la seguridad: vacio/NUL → UNC → nombre pelado solo dentro de raices → `normpath` → contencion → extension → `isfile`.
+2. **Sin blacklists de metacaracteres.** `C:\Program Files\Rock & Roll\game.exe` es legitima. Sin interprete no hay metacarácteres que escapar.
+3. **No se resuelve con `shutil.which()`**: con `shell=False`, `CreateProcess` busca el CWD antes que el PATH (`isfile("cmd")` → False, `which("cmd")` → `C:\WINDOWS\system32\cmd.EXE`).
+4. **La contencion va SIEMPRE despues de `normpath`**: `commonpath([cruda, 'C:\Program Files']) == 'C:\Program Files'` (medido) deja pasar el traversal.
+5. **`os.startfile` se resuelve como atributo del MODULO en tiempo de llamada** (`getattr(os, "startfile", None)`), nunca `from os import startfile`: es lo que permite que la sonda muera por la ASERCION y no por un `AttributeError`.
+6. **`ordenar_categorias` en `config.py`**, usada por los DOS sitios (por eso no pueden divergir). No se deriva de `get_safety_badge`.
+
+### Desviaciones respecto a la spec (declaradas, no parcheadas en silencio)
+- **`proposal.md` § 3.2 (firma literal de `toggle_favorite`) es INCOMPATIBLE con `tasks.md` T-27.4 caso 3.** Con `if pack is not None and pack.is_favorite: ... else: set_favorite(pack_id)`, un id inexistente cae en el `else` y llama `set_favorite("z")`, que en el servicio real **desmarca todos los favoritos y lo persiste**. Se anadio la guarda `if pack is None: return` (mutacion M23 medida). La decision de diseno (leer en vivo, `set_favorite(None)` en la segunda pulsacion, nada de `get_favorite_pack()`) se mantiene literal.
+- **`tasks.md` T-27.1 caso (a) usa `r"C:\Windows\notepad.exe & del /q C:\"`, que no es Python valido** (una cadena cruda no puede acabar en backslash). Se escribio con el separador doblado.
+- **El `Popen` sembrado lanza `BaseException`, no `AssertionError`**, porque el codigo viejo lo captura con `except Exception`: con `AssertionError` la reintroduccion de `shell=True` contaria `failed` y pasaria en VERDE.
+- **El encargo no declaraba el segundo sitio de FIX-004** (`pack_manager_view._render_pack_card`), que es donde el usuario configura que se mata. Arreglados los dos.
+- **El encargo no pedia la lista blanca de extensiones** (`.bat`/`.ps1`/`.vbs`/`.lnk` via `ShellExecute`), que es la pieza que hace aceptable `os.startfile` frente a `Popen(shell=True)`.
+
+### Ficheros tocados
+`src/woptimizer/services/process_service.py`, `src/woptimizer/config.py`,
+`src/woptimizer/ui/views/process_manager_view.py`,
+`src/woptimizer/ui/views/pack_manager_view.py`, `run_tests.py`,
+`docs/ai/architecture.md` (§ 14 nuevo), `docs/ai/ui-design-system.md`,
+`docs/ai/data-models.md`, `docs/known-issues.md` (Trampa #16), `CHANGELOG.md`,
+`.taskmaster/CHANGELOG.md`.
+
+### Mutaciones medidas (subproceso POR SONDA)
+27 mutaciones, **27 muertas**, 0 supervivientes. Las 9 de la tabla de T-27.1
+mueren en la asercion que nombra la spec; las 4 de T-27.2 en el caso 1/2/3; las
+4 de T-27.3 (identidad, `sorted`, centinela, guarda estatica de los dos sitios);
+las 4 de T-27.4 (incondicional, instantanea, `get_favorite_pack()`, id
+inexistente). Detalle en el informe del dev.
+
+### ITERACION 2 — el `mutation-auditor` dio FAIL (4 hallazgos, 1 ALTA)
+
+**El hallazgo grave no era un fallo de codigo sino una garantia documentada que era FALSA.**
+`architecture.md` §14 decia "solo se arranca lo que esta bajo las raices permitidas", y un
+junction de un comando colado en `%LOCALAPPDATA%` la incumplia. El alias
+`commonpath([<TEMP>\\jdir\\cmd.exe, LOCALAPPDATA])` devuelve `LOCALAPPDATA`: "contiene". Y
+`os.stat(...).st_file_attributes` tampoco lo ve (`0x20`, medido) porque sigue el enlace en el
+tramo intermedio.
+
+**Arreglo: regla 8 nueva en `_resolver_app`** — resolver la ruta real (fail-closed) y repetir
+contained + extension sobre ella; devolver la ruta REAL. Decisiones:
+- **`os.path.realpath(ruta, strict=True)`, SIN `ctypes`.** El encargo ofrecia
+  `GetFinalPathNameByHandle` por `ctypes` o `st_file_attributes`; la medicion descarta las dos: el
+  atributo no ve el enlace intermedio, y `ntpath.realpath` **ya es** el envoltorio de
+  `GetFinalPathNameByHandleW` (resultado medido, tambien con enlace de fichero). Menos codigo,
+  mismo resultado, y la separacion de capas no se mueve: sigue siendo `services/` la que habla
+  con el SO, y la UI sigue sin importar nada nuevo.
+- **Extension en el alias Y en el destino.** `.exe` -> enlace a un `.bat` **de una raiz
+  permitida** pasaba la contencion real y esquivaba la lista blanca entera (`ShellExecute` ->
+  `cmd.exe /c`). Este agujero NO venia en el encargo y es de la misma familia.
+- **Las raices se resuelven tambien.** Con la raiz lexica, un junction en un tramo de
+  `%LOCALAPPDATA%` rechazaria apps legitimas: el falso negativo. Sin sonda para esto, el arreglo
+  del "siempre" se colaba por el otro lado.
+- **Se devuelve la ruta real, no la escrita**: lo que se valida es lo que se arranca.
+- **M10 (contencion por prefijo)**: sonda nueva con hermano real + ficheros reales.
+- **Guarda anti-`shell=True`**: era CIEGA a `ast.Attribute` —`subprocess.Popen(app, shell=True)`,
+  la grafia EXACTA del bug original, pasaba. Ampliada a atributo + mapa de alias de `ImportFrom`,
+  y `shell` ya no exige `is True` (cualquier valor que no sea literal falso es interprete).
+  Extraida a `_hallazgos_shell_true(fuente, etiqueta)`, usada por las DOS sondas: dos guarditas
+  con coberturas distintas son cero guardas. La sonda nueva exige tambien los falsos positivos
+  que NO deben marcarse.
+- **Mayusculas: `os.path.normcase` en los dos lados, y NO se documenta como limitacion.**
+  `normcase` no ensancha el conjunto aceptado: declara la verdad del SO, asi que lo que entra es
+  exactamente lo que el SO abriria, y encima siguen aplicando la contencion y la extension
+  REALES. No sustituye a `commonpath` (el hermano de prefijo entraria igual), por eso M10 tiene
+  sonda propia. La sonda prueba las DOS direcciones: con `normcase` solo en un lado, la mitad
+  de los casos sigue fallando.
+
+**Ficheros tocados (iter 2)**: `src/woptimizer/services/process_service.py`, `run_tests.py`,
+`docs/ai/architecture.md` (§14, garantia corregida), `docs/ai/testing-guide.md` (56 tests + tabla
+de sondas), `docs/known-issues.md` (Trampa #17), `openspec/changes/2026-09-30-ui-hardening/tasks.md`
+(§1b), `CHANGELOG.md`, `.taskmaster/CHANGELOG.md`, `_mutmatrix_t027_iter2.py` (nuevo, la sonda
+ejecutable de la matriz).
+
+**Mutaciones medidas (iter 2, subproceso POR SONDA)**: `_mutmatrix_t027_iter2.py` copia `src/` a
+`%TEMP%` por mutacion, muta el **producto** y lanza **una sonda por subproceso**.
+**21 mutaciones, 21 muertas, 0 supervivientes.** A1-A10 (junction: borrar la resolucion real,
+contencion real siempre True, extension solo en el alias, `realpath` sin `strict`, rechazar todo
+reparse point, devolver la ruta lexica, fail-open, raices lexicas, sin motivo en el log,
+comparar la lexica contra las raices reales), M10 (`startswith`), C1-C3 (`normcase`), G1-G4 (la
+guarda) y P1/P2 (reintroducir `Popen(..., shell=True)` en el producto). Hay ademas 4 **cruces
+informativos** en la salida, con su motivo: una mutacion tiene que morir en la sonda que DECLARA
+esa propiedad, y ninguno de esos pares es un agujero porque cada propiedad si muere en su propia
+sonda.
+
+**Deuda declarada en la iteracion 2, CERRADA en la iteracion 3 (y la DEUDA ESTABA MAL FUNDADA).**
+La iteracion 2 decio, aqui, en el modulo, en `architecture.md` §14 y en `known-issues.md` (Trampa #17),
+que un **hard link** (`mklink /H`) "no es un reparse point, asi que ni `realpath` ni los atributos lo
+ven" y que "no es arreglable con esta regla y no hace falta". **Las dos mitades de esa razon eran
+falsas**, y el hallazgo del `mutation-auditor` de la iteracion 3 es que el caso **era** cerrable:
+
+* **"Ningun filtro de Windows lo ve" es FALSO**: `os.stat(ruta).st_nlink` vale **2** en un hard link
+  (medido). Si lo ve.
+* **Y da igual que lo vea, porque el hard link NO era el agujero.** Medido en esta maquina con las dos
+  variantes construidas de verdad: `_resolver_app` acepta el hard link (`alias.exe` -> `payload.bat`
+  fuera de las raices, `st_nlink == 2`) **y tambien una COPIA PLENA** del mismo `.bat` con nombre
+  `.exe` (`st_nlink == 1`, sin un solo enlace, sin junction, sin symlink y sin privilegios). Cerrar
+  solo el caso exotico habria sido seguridad de teatro: el trivial seguia abierto.
+* **La variante que se ofrecio como alternativa ("rechazar solo si el destino no esta en las
+  raices") NO ES IMPLEMENTABLE**: un hard link no tiene destino consultable (no hay API en Windows
+  que devuelva los otros nombres de un fichero a partir de su ruta), y aunque la hubiera seria
+  irrelevante, porque el atacante elige que nombre queda dentro de la raiz.
+* **Y `st_nlink > 1` a pelo es un error, medido**: de **2273** `.exe`/`.com` instalados en las seis
+  raices, **189 (8,32 %) tienen `st_nlink > 1`** (hasta 6), y son programas de Microsoft
+  (`msinfo32.exe`, `TabTip.exe`, los auxiliares de Edge, las herramientas de Hyper-V). Rechazar
+  "cualquier `st_nlink > 1`" habria roto el 8 % del software instalado. Por eso NO se ha hecho, y el
+  control (6) de la sonda nueva lo prohibe explicitamente.
+
+**El cierre es la REGLA 9 (`_es_imagen_pe`): el CONTENIDO, no el nombre.** La lista blanca de
+`.exe`/`.com` siempre quiso expresar que *`.exe` significa "imagen PE", no "algo que se arranca"*, pero
+se cumplia mirando el NOMBRE, y un hard link (o una copia) tiene el nombre que le pongas. La regla 9
+comprueba que el fichero lleva `MZ` y la firma `PE\0\0` en el offset que declara `e_lfanew`, DESPUES de
+la resolucion real, sobre el fichero que se va a arrancar de verdad. **Coste medido antes de escribirla**:
+2200 de 2273 `.exe`/`.com` instalados la cumplen y **ninguno de los 189 multi-enlazados falla** (0 falsos
+negativos en justo el caso que se queria cerrar); los 19 que no son appx de WindowsApps, la cache de MSI
+y un `.COM` DOS de 16 bits, ninguno lanzable. Fail-closed.
+
+**Mutaciones medidas (iter 3, subproceso POR SONDA)**: `_mutmatrix_t027_iter3.py`, **5 mutaciones, 5
+muertas, 0 supervivientes** (H1 borrar la regla 9, H2 la regla que no hace nada, H3 solo `MZ`, H4
+fail-open al no leer, H5 rechazar cualquier `st_nlink > 1`). Sonda:
+`test_un_hard_link_no_es_una_hoja_y_el_script_no_pasa`, con **hard link real** (`os.link`, sin
+privilegios) y que **falla en voz alta** si el entorno no deja construirlo.
+
+**Y un hallazgo propio sobre las sondas, que es lo importante de este pase**: al anadir la regla 9, los
+fixtures que hacian de "una app" eran ficheros **VACIOS**, y un `.exe` vacio no es un PE, asi que la
+regla nueva los rechazaba **por el motivo equivocado**. Dos propiedades dejaron de estar probadas sin
+que ninguna sonda se quejara: la extension real (mutacion **A3**) y la lista blanca (caso (b)). Se
+detecto porque se **re-ejecuto la matriz de la iteracion 2** (no porque la suite se rompiera: la suite
+estaba en verde). Corregido con el helper `_escribir_pe_minimo` y con el caso (b) ampliado: el **mismo
+contenido** con `.bat` no arranca y con `.exe` si, de modo que la diferencia la tiene que hacer la
+extension y no el contenido. La matriz de la iteracion 2 queda **21/21 muertas, 0 supervivientes**,
+re-verificada; la de la iteracion 3 es **5/5**.
+
+**Correccion de una afirmacion previa de este mismo changelog**: la iteracion 1 declaraba "27
+mutaciones, 27 muertas" y el `mutation-auditor` midio **29 mutaciones, 28 muertas** (el
+superviviente era M10, la contencion por prefijo, cerrada aqui). El numero de 27 estaba mal y
+esta corregido en el sitio. Y la iteracion 2 daba por cerrada una deuda cuya **razon era falsa**: una
+afirmacion de seguridad que no se sostiene no es una deuda declarada, es una garantia mal escrita.
+
+**Nota de entorno**: los 19 directorios `wopt_mut_*` de `%TEMP%` que hay en esta maquina son de
+un pase anterior (layout plano, `pack_service.py` en la raiz), no de este. Este pase no deja
+residuos: ni en `%TEMP%` ni en `%USERPROFILE%`.
+
+### Pendiente para el Paso 4
+`mutation-auditor` debe repetir las 9 mutaciones de T-27.1 sobre una copia de
+`src/`. Nota: si se cambia `os.startfile` por `subprocess.Popen([ruta], shell=False)`,
+la lista blanca de extensiones se vuelve innecesaria **y el caso (b) debe volver a morir**.
+
 # Changelog de pases — Motor id-pipeline
 
 > **Registro append-only de cada ciclo completado por el motor autónomo de I+D.**
@@ -391,4 +549,229 @@ Se recupera una proteccion que el usuario pidio expresamente y que la reescritur
 Se cierra la via por la que la app mas(score Real peligro: no es solo lo que la lista ofrece, sino lo que el usuario puede escribir a mano en un pack. Ademas se documenta el criterio de NO registrar procesos de sistema, que no estaba escrito en ninguna parte y que la proxima expansion de la base iba a reevaluar sin saberlo.
 
 
+---
+
+## [CYCLE-014] 2026-09-29 20:55 - 2026-09-29-gaming-service-runtime
+**Área**: Gaming & Telemetría UX (matriz área 2)
+**Change**: openspec/changes/2026-09-29-gaming-service-runtime/
+**Estado**: COMPLETED (sin commit: el entorno bloqueó el versionado, ver Outcome)
+**Models**:
+- Paso 1 (Buscar): `inherit` (el backlog tenía `active_task_id`; la búsqueda fue contrastar el bug contra el código real)
+- Paso 2 (Planear): `pro` (override sobre `inherit`: riesgo de regresión de seguridad — una barrera mal puesta permite matar procesos de sistema)
+- Paso 3 (Ejecutar): `inherit` (implementación acotada en 7 ficheros, siguiendo una spec ya auditada)
+
+### What
+- **Configuración muerta conectada al runtime**: `GamingService.should_kill_for_gaming()` existía y estaba testeado desde el ciclo #10, pero **nunca se invocó en runtime**. Las 3 rutas de Gaming Mode (tray, portada, gestor de packs) llamaban solo a `kill_pack_apps(pack.apps)`, así que `keepers` y `target_categories` eran decorativos: el usuario marcaba qué proteger y qué cerrar, y el motor nunca lo consultaba. Es la promesa central del producto, desconectada.
+- **La raíz era más profunda que el briefing**: `MainWindow` guardaba `gaming_service` (`main_window.py:15`) pero **no se lo pasaba a las vistas** (`:55-71`). El campo estaba muerto en dos niveles, no en uno.
+- **VECTOR DE BRICK detectado en planificación**: el guard heredado de `bugfix-audit-v3` ("filtrar los que NO estén en `SYSTEM_PROTECTED_PROCESSES`") es insuficiente. `svchost` y `explorer` están en la categoría `🔴 Sistema de Windows` y **no** en el blacklist de nombres, y esa categoría se ofrece como casilla activable en el acordeón del gestor de packs. Marcarla cerraba **todos los `svchost.exe`**: `is_system_protected('svchost')` es `False`, así que el blindaje de nombres no lo detiene. La garantía correcta no es ampliar el blacklist —que exige acordarse de cada nombre nuevo— sino una **barrera de categoría roja** independiente, aplicada dos veces (sobre `target_categories` y sobre la categoría de cada proceso).
+- **Segundo fallo silencioso, del mismo tipo**: `should_kill_for_gaming` compara por subcadena y los keepers se guardan como `"discord.exe"`, pero `get_running_processes` quita la extensión del campo `name`. Evaluar con `p.name` habría **desactivado keepers y apps en silencio** (Steam y Discord morirían siendo "keepers"). La suite no lo cubría porque sus aserciones pasan nombres con `.exe`.
+- **Implementado**: `execute_gaming_pack()` en `services/` como **única puerta de kill** —delega íntegro en `kill_processes`, no importa `psutil` ni `json`, y por tanto no puede abrir una vía al SO que las otras no tengan—. `force_refresh=True` (la cache TTL de 2 s devuelve procesos obsoletos), y los dos `if not pack.apps: return` que bloqueaban un Gaming Mode configurado solo por categorías.
+- **Contrato de UI**: se inyecta `GamingService` en las vistas con fallback defensivo, **no** se añade un método a `ProcessService` (que es el adaptador de `psutil` y no debe conocer el modelo `Pack`). Las 2 rutas de ventana siguen pasando por el `_require_double_tap` existente; el ítem del tray queda documentado como la **única** excepción, porque un `MenuItem` de pystray no es un widget y un diálogo está prohibido por la Trampa #14.
+
+### Outcome
+- Tests: **23 -> 24, 0 fallos** (`run_tests.py`); `verify_ui_syntax.py` EXITO (8/8 módulos)
+- **Commits: ninguno.** El shell del entorno falló con `spawn EPERM` de forma intermitente (~3 de 12 intentos pasaron) y `git_safe_commit.py` requiere `subprocess`. Los cambios quedan en el árbol sin versionar: `feat: conecta GamingService.execute_gaming_pack a las 3 rutas de Gaming Mode (TASK-025)`.
+- Docs: `docs/ai/architecture.md` (regla 11: ruta, contrato y garantías G-1..G-6) y `docs/ai/ui-design-system.md` (excepción del tray)
+- **El test discrimina, y está PROBADO por mutación**: un verificador neutralizó las dos barreras G-2 en una copia temporal y el test falló con `Llegaron: ['chrome.exe', 'onedrive.exe', 'svchost.exe']`. No es un test que "devuelve un int": captura la lista que llega a `kill_processes` y asserta sobre su contenido, con precondición explícita que verifica que `svchost` **no** está en el blacklist (si lo estuviera, el test dejaría de distinguir y lo dice).
+- Bug real encontrado y corregido durante la validación: `is_system_protected` es un `@staticmethod` de `ProcessService`, no una función de módulo. El `ImportError` del primer `run_tests.py` lo delató.
+- Verificación independiente: veredicto **PASS**, sin hallazgos críticos, altos ni medios.
+
+### Impact
+El Gaming Mode por fin hace lo que el usuario le configura, y —más importante— la nueva ruta no puede cerrar procesos de sistema aunque el usuario marque la categoría equivocada. La lección reutilizable queda en la spec: **una evaluación por categoría no se puede blindar con un blacklist de nombres**, porque el blacklist depende de que alguien se acuerde de añadir cada nombre nuevo. Aquí la defensa es la categoría, y el blacklist sigue siendo la segunda capa, no la primera.
+
+---
+
+## [CYCLE-015] 2026-09-29 21:40 - 2026-09-29-data-integrity-fixes
+**Área**: Resiliencia & Robustez (ejecutada como tarea de backlog, prioridad sobre rotación)
+**Change**: openspec/changes/2026-09-29-data-integrity-fixes/
+**Estado**: COMPLETED (sin commit: el entorno bloqueó el versionado)
+**Models**:
+- Paso 1 (Buscar): `inherit` (el backlog tenía la siguiente tarea; no hizo falta descubrimiento)
+- Paso 2 (Planear): `pro` (override: los 4 puntos tocaban integridad de datos y concurrencia en Tk)
+- Paso 3 (Ejecutar): `inherit` (spec ya auditada, 4 fixes acotados)
+
+### What
+- **FIX-007, riesgo máximo**: `process_manager_view._do_load` mutaba `self.processes` y `self.grouped_processes` **desde el hilo secundario**, mientras el hilo principal recorría ese mismo dict en el render → `RuntimeError: dictionary changed size during iteration`, y un set de PIDs desalineado entregado a `on_kill_selected`, que es el camino que mata procesos reales. Además dos `_do_load` solapados dejaban `grouped_processes` desfasado de `processes`. Ahora el hilo **solo calcula** y publica con un único `self.after(0, _apply)`.
+  - **La spec heredada era incorrecta**: `bugfix-audit-v3/tasks.md:23` pedía `self.master.after`, que está prohibido (`main_window.py:42-45` destruye la vista en toda navegación; `master` es `content_frame`, que sobrevive).
+- **FIX-009, y la premisa de la tarea era FALSA**: no faltaba "añadir un backup". El hallazgo real es mayor: `load()` ante un JSON corrupto **borraba todos los packs y sobrescribía con uno solo-Gaming**, y `except (json.JSONDecodeError, Exception)` es literalmente `except Exception`, así que un `PermissionError` tomaba **la misma ruta destructiva**. Ahora: backup preventivo, recuperación desde `.bak` **antes** de regenerar, `OSError` propagado sin escribir nada, rotación que **no** pisa un backup sano con un principal corrupto, y escritura atómica (`tmp` + `os.replace`).
+  - **Documentación que mentía**: `tasks.json` (TASK-011 `completed`), `v3.1-quality-of-life/tasks.md:5` (`[x]`) y `CHANGELOG.md:91` afirmaban que la rotación de backups existía desde el ciclo #2. No existía: `save()` era `open(...,'w')` + `json.dump` pelado. Grep de `.bak|shutil|copy2|os.replace` en `src/` → **cero coincidencias**.
+- **FIX-005**: `_DEFAULT_META` usaba la interrogación ASCII (U+003F) donde `config.py` y `models.py` usan el círculo (U+26AA). El efecto llegaba a **3 sitios**, no 1; el peor era un filtro de la UI (`pack_manager_view.py:179`) que comparaba contra el literal equivocado y por tanto **no filtraba nada**. También una aserción de `run_tests.py` (~1483) que era **tautológica**: afirmaba que una categoría no era un literal que ya no existía en el código.
+- **FIX-001, redefinido**: `get_gaming_pack()` usaba `model_copy()` shallow, pero la auditoría lo demostró **inalcanzable** — no tiene ningún llamador (todo va por `get_all_packs()`) y `load()` siempre termina en `_ensure_gaming_pack()`. El ciclo #10 ya cerró la vía real. Queda como deuda latente de 1 carácter, arreglada igualmente.
+
+### Outcome
+- Tests: **24 -> 28, 0 fallos** (`run_tests.py`); `verify_ui_syntax.py` EXITO (8/8); `validate_docs.py` 42 OK / 0 FAIL
+- **Commits: ninguno** (mismo bloqueo de shell que en el ciclo #14)
+- Docs: `data-models.md` (§4 contrato de escritura, §5 literal canónico, §6 backups, y corrección de la afirmación falsa de TASK-011), `architecture.md`, `ui-design-system.md`, `testing-guide.md` (tabla a 28, notas de concurrencia en Tk)
+- **Los 4 tests discriminan, verificado por mutación** en copia temporal, cada uno por su aserción prevista: FIX-001 `apps comparte objeto (shallow)`, FIX-005 `_DEFAULT_META[0] es '? Otros'`, FIX-009 `save() no creo el .bak preventivo` y, por separado, la recuperación. Para FIX-007 se probó además una **5ª mutación opaca** (`grouped_processes.clear()` desde el hilo, invisible al guard `ast`): también falla, así que el test no es solo lint estático.
+- Verificación independiente: **PASS**. Un bug del propio implementador lo delató la validación: importó `is_system_protected` como función de módulo cuando es un `@staticmethod` de `ProcessService`.
+- Hallazgo abierto (MEDIUM, no corregido): `CORRUPTION_ERRORS` no incluye `AttributeError`, así que **3 de 7 formas** de JSON malformado propagan y tumban el arranque. No hay pérdida de datos —no se escribe nada— pero es disponibilidad y contradice el docstring de `load()`.
+
+### Impact
+Dos de las cuatro premisas de la tarea resultaron falsas, y el hallazgo útil vino de auditarlas en vez de implementarlas tal cual: el problema de integridad de datos real no era "falta un backup" sino que **el archivo de configuración del usuario se borraba entero ante cualquier error, incluidos los de permisos**. La lección: `except (json.JSONDecodeError, Exception)` es `except Exception` — el contexto de la tupla sugiere dos categorías y no lo es.
+
+---
+
+## [CYCLE-019] 2026-09-30 09:10 - 2026-09-30-validate-pack-leaves
+**Área**: Resiliencia & Robustez
+**Change**: openspec/changes/2026-09-30-validate-pack-leaves/
+**Estado**: COMPLETED — **3 iteraciones del Paso 3, 1 FAIL y una re-auditoría intermedias**
+**Models**:
+- Paso 1 (Buscar): `inherit` — `TASK-031` era la `active_task_id` y `critical`
+- Paso 2 (Planear): `inherit` (con override: integridad de datos)
+- Paso 3 (Ejecutar): `inherit` ×3 (cada iteración con el informe del auditor)
+- Paso 4 (Auditar tests): `inherit` (`mutation-auditor`) ×3 → **FAIL, FAIL, PASS**
+
+### What — lo que el arquitecto REFUTÓ (ninguna premisa del encargo era cierta)
+1. *"La guarda valida el contenedor, no las hojas"* es **FALSO en la rama moderna**: `pack_service.py:171` es `return AppData(**raw_data)`, que ya detecta `keepers:"str"`. La rama ciega es **solo la legacy**, por un `Pack(...)` literal de **5 de 8 campos** (`pack_service.py:161-169`); los dos que faltaban eran `keepers` —la lista **anti-brick**— y `target_categories`.
+2. *"La solución es validar contra Pydantic"* **ya se hace**, y con esa guarda los 14 escenarios **siguen machacando el `.bak`**.
+3. *"Un `save()` posterior machaca el `.bak`"* es una **subestimación grave**: la causa es `_rotate_backup()` (`:206-207`) validando con `json.load` en vez de `_read_json`. **Dos definiciones de "no corrupto"** y el docstring describía la que no se ejecuta. Medido: el `.bak` sano moría en **7 de 8 escenarios**, incluidos los que el repo **afirmaba proteger**, y **no era un `save()` del usuario** sino el de `_ensure_gaming_pack()` **dentro de `load()`**. `data-models.md:53-55` afirmaba esa garantía: falsa.
+4. *Bonus:* `{"packs":…,"profiles":…}` borraba los packs legacy sin clasificar nada; y un campo raíz desconocido (`notas`) se perdía en el primer `save()`.
+
+### Decisión de producto (§3)
+**Una hoja mal formada es CORRUPCIÓN**, no un pack válido con un campo raro. Motivo: `keepers` es la lista anti-brick (`gaming_service.py:24`) y normalizarla a `[]` desarma el Gaming Mode de forma **invisible e irreversible**. Recuperar del `.bak` puede devolver otra versión, pero eso es **visible y diagnosticable**; un fichero borrado no se reconstruye. Se acepta con tres condiciones: mensaje con campo+pack+tipo, recuperación observable, y **sin `.bak` legible no se regenera a lo bruto**.
+
+### Las tres iteraciones del Paso 3
+- **Iteración 1** → el dev se auto-declaró 13/13 verde. **Auditoría: FAIL.** Encontró que `AppData.extra="allow"` era *load-bearing* contra la pérdida de datos y **ningún test la vigilaba**: con `extra="ignore"`, una raíz mal escrita (`perfiles`) hacía que el primer `save()` publicase `{"packs":…}` y **los packs del usuario desapareciesen del disco** (medido). Además: typo `keeper` aceptado en silencio → **anti-brick desarmado**; e `is_gaming:"true"` coercionado a `True` → pack **invisible e indeletable** (`delete_pack` lanza *"No se puede eliminar el pack de sistema"*).
+- **Iteración 2** → **Auditoría: FAIL** con 3 supervivientes medianos: **M8** (los extras de raíz, incluido `favorite` que existe en un `profiles.json` legacy real, se destruían en el primer `save()`), **M4b** (`is_favorite` laxo, hermano sin fijar del que sí se arregló) y **M13** (`_normalizar_clave` sin sonda). Además, falsos positivos: `names`→`name` e `ids`→`id` a distancia 1 se declaraban corrupción, lo que hacía **falsa** la afirmación documental de "cero falsos positivos".
+- **Iteración 3** → **Auditoría: PASS.** 19 mutaciones vigiladas, ningún superviviente en el rango declarado.
+
+### Mutaciones auditadas (Paso 4, iteración final)
+| Fix | Mutación | Veredicto | Motivo |
+|---|---|---|---|
+| Copia de la raíz | no copiarla | killed | `la clave raiz 'favorite' desaparecio del disco tras el save()` |
+| Copia de la raíz | copiar `profiles` también | killed | `el landmine solo explotaria en el segundo arranque` |
+| Vigilancia de hoja | solo en la moderna | killed | `[legacy/keeper]` |
+| Vigilancia de hoja | solo en la legacy | killed | `[moderna/keeper]` |
+| `is_favorite` | sin `strict` | killed | `_read_json dio None en vez de ValidationError` |
+| Normalización | `_normalizar_clave`→identidad | killed | `'IS-FAVORITE' se acepto como campo desconocido` |
+| Umbral | 1→2 pulsaciones | killed | `'note' esta a distancia 2 de 'name'` |
+| `extra` raíz | `AppData extra="ignore"` | killed | `quedan ['packs']: los packs se han perdido` |
+| `extra` hoja | `Pack extra="forbid"` | killed | `un campo desconocido se clasifico como corrupcion` |
+| `extra="allow"` raíz | raíz sin clave conocida | killed | `una clave de la RAIZ se declaro error de escritura` |
+
+### Outcome
+- Tests: **36 → 48**, 0 fallos. `verify_ui_syntax.py` EXITO. `validate_docs.py` 0 FAIL.
+- **VERDICT final: PASS.** Ningún camino destruye datos; ningún test decorativo.
+- **Propiedad estructural CONFIRMADA por medición** (el logro de diseño): `CLAVES_DE_PACK` se deriva de `Pack.model_fields`, así que añadir un campo nuevo al modelo hace que su error de escritura se clasifique **sin tocar una línea de la guarda**. El auditor lo verificó con un campo inventado, dos veces.
+- **La decisión de NO vigilar la raíz se sostiene con datos, no con opinión:** clasificarla haría `self._data = AppData()` y el siguiente `save()` publicaría `{"packs":{"gaming":…}}` → pérdida igual **y con un aviso encima**.
+- **El arreglo de M8 no abre un agujero nuevo:** 18 nombres reservados de Pydantic (`model_config`, `copy`, `model_dump`…) probados; ninguno tumba el arranque ni pierde el dato.
+- **Commits: ninguno** (persiste el bloqueo de shell).
+- Deuda menor, declarada y **no** certificate: 2 supervivientes de normalización que requieren **2+ pulsaciones** (fuera del umbral declarado de 1), y 2 citas documentales erróneas (`config.py:95` → `CATEGORY_ORDER` está en 97; `proposal.md:222-226` sigue diciendo "No bloqueante" para `extra="allow"`, refutado en `tasks.md` §3/§4).
+
+### Impact
+El ciclo más caro en tiempo hasta ahora —3 vueltas— y el que más justificó el Paso 4. La secuencia importa: el implementador se Declaró verde, el auditor lo refutó y encontró la pérdida de packs, la segunda iteración arregló eso pero abrió otra ruta, la tercera la cerró. **Sin el paso de auditoría, el `.bak` habría seguido destruyéndose y el ciclo habría publicado "48 tests en verde" tres veces.**
+
+La lección de diseño: **el fallo no estaba donde apuntaba el encargo, sino en una rotación de copias que usaba un criterio distinto del que se usaba para decidir si un archivo estaba dañado**. Dos definiciones de la misma pregunta, en el mismo fichero, es exactamente el tipo de divergencia que sobrevive a años de revisión.
+
+**Nota de proceso (autorrelevada):** el dev se salió de su lista de ficheros en `models.py` y lo declaró, con el motivo (`extra="forbid"` es la mutación que la sonda clave debe matar, y `extra="forbid"` es el default). Salidas justificadas y declaradas se pueden aceptar; salidas silenciosas no.
+
+---
+
+## [CYCLE-016] 2026-09-30 00:32 - roles-como-agentes
+**Área**: infraestructura del pipeline (a petición explícita del propietario)
+**Change**: ninguno (no toca `src/`); modifica `AGENTS.md` y `.agents/skills/id-pipeline/SKILL.md`
+**Estado**: COMPLETED (sin commit: persiste el bloqueo de shell)
+**Models**:
+- Paso 1 (Buscar): `inherit` (el dueño preguntó por qué no veía las skills; el trabajo salió de esa pregunta)
+- Paso 2 (Planear): `inherit` (sin cambios de arquitectura de producto; decisión de mecanismo)
+- Paso 3 (Ejecutar): `inherit` (traducción de 3 skills a 3 `agent.md` + reparación de referencias rotas)
+
+### What
+- **Los tres roles del pipeline pasaron de skills a agentes reales**: `architect-review`, `openspec-dev` y `process-db-updater` viven ahora en `~/.minimax/agents/<name>/agent.md` y aparecen en el panel del runtime.
+- **Causa raíz de "no veo las skills":** `.agents/skills/` es un mecanismo **distinto** del panel de agentes. Una skill es un fichero de instrucciones que carga el orquestador; un agente es una sesión propia delegable con `task`. Las cuatro estaban donde correspondía, pero el panel solo lista la segunda clase.
+- **Referencia rota en `id-pipeline`:** los pasos 2, 3 y la invocación de `process-db-updater` seguían mandando usar `invoke_subagent` con `Role` y `TypeName`, un mecanismo que **ya no existe** en este runtime. Consecuencia real: la primera invocación de `architect-review` falló con *"Unknown agent"*, y el orquestador tuvo que delegar a `worker` copiando las directrices a mano en el prompt — exactamente la traducción que los agentes reales eliminan.
+- **Sección 7 reescrita:** la matriz de modelos pedía `flash` / `inherit` / `pro`, valores que el runtime actual **no acepta** en `task` (rellenar `model` a mano produce error de resolución). Conservada como guía de **intensidad**, con la instrucción de resolver el modelo solo si el usuario lo pide.
+- **`AGENTS.md` actualizado** con una tabla que separa explícitamente skill de agente, y las tres trampas del entorno (`tm.py` no ejecutable, `git` a pelo prohibido, doble escritura de changelog).
+- **Cada `agent.md` incorpora las lecciones de los ciclos 14 y 15**, no solo el texto de la skill: la barrera de categoría roja frente al blacklist, el fallo de `p.name` sin extensión, `is_system_protected` como `@staticmethod`, el emoji `⚪ Otros` (U+26AA) y la reescritura de `print()` en ASCII.
+
+### Outcome
+- **Prueba de arranque real, no una aserción:** se delegó a `architect-review` un audit de humo. Respondió los 5 puntos con `archivo:línea`, identificó **sin pista** que `is_system_protected` es un `@staticmethod` de `ProcessService` y no una función de módulo (el mismo error que tumbó al implementador del ciclo 14), y razonó por su cuenta que el blacklist **no** protege `svchost` porque su categoría 🔴 no está en el frozenset. Cero ficheros modificados, cero git: respetó su propio scope.
+- Tests: sin cambios en `src/`, la suite sigue en 28/28.
+- **Commits: ninguno** (persiste el bloqueo de shell de los ciclos 14 y 15).
+- **Dos regresiones que introduje yo en este pase, ambas encontradas por el verificador:**
+  1. Al renombrar la sección de roles de `AGENTS.md` a "Roles del Pipeline", `validate_docs.py` seguía buscando el encabezado antiguo por nombre literal y pasó a dar FAIL. Un validador atado a un título deja de validar en cuanto el título mejora → ahora acepta ambos nombres.
+  2. **Falso verde en el ancla:** mi primer arreglo convertía el salto silencioso en FAIL, pero solo para el journal **corrupto**. El **ausente** seguía en verde, porque el `errors.append()` vivía dentro del `except` y el `if os.path.exists()` saltaba la rama entera. Y había un cuarto caso silencioso: journal válido pero con la lista vacía. Los tres fallan ahora con mensaje explícito, verificado con los 3 escenarios más un control.
+- Referencias rotas restantes en `id-pipeline/SKILL.md` reparadas: 5 usos de `tm.py next/done/list` (no ejecutable aquí → leer `tasks.json`), la columna "Modelo Recomendado" (valores no soportados → "intensidad") y la sección de validación, que **afirmaba** que el script comprobaba la sección `Models` de cada entrada cuando no lo hace. Documentados los límites reales del validador.
+- Los 3 skills de rol llevan ahora un banner **SUSTITUIDA POR UN AGENTE** con su contenido plegado en `<details>`. Motivo: eran una segunda fuente de verdad que divergía del agente y arrastraba referencias rotas.
+
+### Impact
+El pipeline deja de depender de que el orquestador recuerde traducir skills a prompts. Con los tres roles como agentes, la independencia es real: el arquitecto audita en su propia sesión sin ver la conversación, lo que hace que su "visto bueno" valga como criterio y no como rubber stamp. Antes esa separación era nominal.
+
+---
+
+## [CYCLE-017] 2026-09-30 01:15 - paso-4-mutation-auditor
+**Área**: Pipeline (petición explícita del propietario: "añade un paso que aporte mucho")
+**Change**: ninguno en `src/`; modifica `id-pipeline/SKILL.md`, `AGENTS.md` y crea el agente `mutation-auditor`
+**Estado**: **ABIERTO** — el Paso 4 devolvió FAIL (3 supervivientes). Sin `PASS` el ciclo no se cierra; el trabajo de infraestructura de este pase sí está hecho y verificado. (sin commit: persiste el bloqueo de shell)
+**Models**:
+- Paso 1 (Buscar): `inherit` (la pregunta del propietario *era* el encargo)
+- Paso 2 (Planear): `inherit` (decisión de proceso, no de arquitectura de producto)
+- Paso 3 (Ejecutar): `inherit` (nuevo agente + skill + AGENTS.md)
+- Paso 4 (Auditar los tests): `inherit` (`mutation-auditor`) → **VERDICT: FAIL**, ver abajo
+
+### What
+- **El bucle pasa de 3 a 4 pasos.** El nuevo **Paso 4** es "auditar los tests": un agente rompe el código a propósito y comprueba que los tests lo detecten. Sin su `PASS`, el ciclo no se cierra.
+- **Nuevo agente `mutation-auditor`** (`~/.minimax/agents/mutation-auditor/agent.md`). Trabaja **solo sobre copias en `%TEMP%`**, tiene prohibido escribir en el repo y prohibido reparar lo que encuentra. Lleva una **tabla de 12 mutaciones canónicas** de este repo, que es el conocimiento que costó tres ciclos descubrir.
+- **Regla dura añadida:** un sobreviviente en **seguridad o datos no se documenta como deuda, se arregla**. Documentar una brecha conocida es exactamente cómo se cuela un brick tres ciclos después.
+- **Reparadas 9 referencias a `tm.py`** en todo el repo (`AGENTS.md`, `id-pipeline/SKILL.md`, `tasks.md`, `docs/ai/INDEX.md`, `llms.txt` y un change activo) que seguían mandando ejecutar un comando **no funcional** en este entorno. Cualquier agente nuevo que leyera esas guías se atascaba en el paso 1. Nota: en el ciclo 16 se repararon las de la skill; aquí las del resto de la documentación.
+- La sección de validación de la skill afirmaba que el script comprobaba la sección `Models` de cada entrada: **no lo hace**. Reescrita con lo que comprueba de verdad y sus límites.
+
+### Outcome
+- **El primer arranque del agente nuevo encontró 3 supervivientes reales en los fixes del ciclo 15**, dados por cerrados:
+  1. **Atomicidad sin verificar.** El test comprueba que exista un `.tmp`, así que si la escritura deja de ser atómica y **nunca** crea el `.tmp`, el assert sigue pasando **por la razón equivocada**. Nadie prueba que `profiles.json` quede intacto si el `json.dump` se corta a mitad.
+  2. **`except OSError` acepta dos cosas distintas.** El caso D2 arma el escenario con `os.chmod(0o400)`: la escritura falla **por el mismo permiso que se quiere detectar**, y `except OSError: pass` acepta igual "no intentó escribir" que "intentó y reventó". Un mutante que reintroduce `OSError` en `CORRUPTION_ERRORS` **sobrevive con 28/28 en verde**.
+  3. **`CORRUPTION_ERRORS` sigue incompleto.** `ValidationError`, `TypeError` y `UnicodeDecodeError` no están cubiertos, y los tres **tumban `PackService()`** — se confirmó que `{"profiles": "texto"}` lanza `AttributeError`. Es el hallazgo que ya estaba abierto desde el ciclo 15, ahora con confirmación empírica.
+- Extras detectados: el guard `ast` del test de FIX-007 mata **antes** de que se compruebe la carrera real (al quitarlo, el test cuelga el bucle Tcl en lugar de fallar con `AssertionError`); y `get_gaming_pack()` / `_force_update_db()` siguen **sin ningún llamador** en `src/`.
+- El agente verificó por SHA-256 y mtime que **no escribió en el repo**, y declaró un incidente propio: dos mutaciones concurrentes contaminaron su copia, las detectó y repitió **en serie**.
+- Tests: sin cambios en `src/`; suite intacta en 28/28.
+- **Commits: ninguno** (persiste el bloqueo de shell desde el ciclo 14).
+
+### Impact
+El bucle ganó su paso más valioso justo cuando menos confianza había: los tests del ciclo 15 se habían marcado como discriminantes **porque el implementador lo afirmó**, y el mutation-auditor refutó esa afirmación en su primer minuto. La lección de fondo es la misma que sostiene el paso: **`run_tests.py` en verde no es evidencia de nada sobre la calidad del test**. Lo único que convierte un test en evidencia es romper el código y verlo morir.
+
+---
+
+## [CYCLE-018] 2026-09-30 02:10 - 2026-09-30-close-mutation-survivors
+**Área**: Resiliencia & Robustez
+**Change**: openspec/changes/2026-09-30-close-mutation-survivors/
+**Estado**: COMPLETED (cierra el FAIL del #17; deja TASK-031 abierta por hallazgo nuevo)
+**Models**:
+- Paso 1 (Buscar): `inherit` — el FAIL abierto del #17 manda sobre el backlog; TASK-027/028/029 siguen pendientes
+- Paso 2 (Planear): `inherit` (diseño de tests de fault-injection; el modelo caro se reservó al análisis de seguridad)
+- Paso 3 (Ejecutar): `inherit` (spec ya auditada, 2 ficheros de producción)
+- Paso 4 (Auditar tests): `inherit` (`mutation-auditor`) → **VERDICT: PASS** (7/7 mutaciones muertas)
+
+### What
+- **Cierra el FAIL del ciclo #17.** Los 3 tests que pasaban con el bug puesto están arreglados: (a) atomicidad probada por fault-injection dentro de `json.dump` afirmada sobre **bytes** del principal, sin hilos ni `sleep`; (b) el caso de permisos comprueba el **estado resultante**, no un contador de llamadas; (c) `AttributeError` ya no tumba `PackService()` al arrancar.
+- **El arquitecto refutó las TRES premisas del encargo, con mediciones:**
+  1. `CORRUPTION_ERRORS` **ya cubría** `ValidationError`/`TypeError`/`UnicodeDecodeError` (`pack_service.py:16`). El mutante sobrevivía porque **ningún test las miraba**: el arreglo era de test, no de código. El agujero real era `AttributeError` en la rama legacy (`pack_service.py:79`, `:90`), que **tumbaba `PackService()` al arrancar** con `{"profiles":"texto"}` — peor que el bug perseguido.
+  2. *"Falta un espía que afirme que `save()` NO se llamó"*: **falso por construcción.** Medido `save()=1, volcados=1` en el código correcto **y** en el mutante. Además `load()` escribe dos veces (`pack_service.py:59-61` + `:173`).
+  3. En Windows `chmod` solo niega **escritura**: la lectura sigue permitida, así que toda la familia con `chmod` es **ciega**. Tres escenarios probados, ninguno distingue.
+- **`AttributeError` excluido de `CORRUPTION_ERRORS` a propósito:** incluirlo convertiría cualquier bug interno en pérdida de packs. Y `except Exception` sigue rechazado por ser el bug del ciclo 15. Se valida la **forma** con `PerfilCorruptoError(ValueError)`.
+- **FIX-007 sin Tk:** arnés con `__new__` + propiedades que anotan el hilo. Permitió **quitar `faulthandler.dump_traceback_later(150, exit=True)`**, que hoy mataba el runner. El test de la vista ya no abre una ventana.
+- **El dev se salió de su lista de ficheros** en `docs/ai/architecture.md` (2 líneas) y lo declaro: su cambio dejaba falsas una referencia al watchdog eliminado y el nombre del test. Documentación que miente es peor que ninguna.
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo |
+|---|---|---|---|
+| Atomicidad | `os.replace` → `copyfile` | killed | `la escritura atomica no deja .tmp` |
+| Limpieza | sin `unlink` del temporal | killed | `un save fallido no debe dejar un .tmp` |
+| `except` | readmitir `OSError` | killed | `save() no lanzo el PermissionError de la rotacion` |
+| Guarda de forma | sin `isinstance(perfiles, dict)` | killed | `lanzo AttributeError(...) en vez de PerfilCorruptoError` |
+| `except` | `except Exception` en `load()` | killed | `un OSError de lectura no es corrupcion ... arranco en silencio` |
+| `except` | readmitir `AttributeError` | killed | `AttributeError NO puede estar en CORRUPTION_ERRORS` |
+| Hilo | `self.after(0,_apply)` → `_apply()` | killed | runtime: `'processes' se publico desde el hilo 26140, no desde el principal (19000)` |
+
+Ninguna muerte por ImportError o sintaxis. **La del hilo se verificó neutralizando el guard `ast`**: sigue roja en runtime y verde con el código intacto, o sea no tautológica.
+
+### Outcome
+- Tests: **28 → 36**, 0 fallos. `verify_ui_syntax.py` EXITO (8/8). `validate_docs.py` 50 OK / 0 FAIL.
+- **VERDICT del Paso 4: PASS.** El arbitrage del `except` dio bien: `null`, `[]`, `{"a":1}`, `0`, `true`, valor `null` y `label` no-str → los 7 se clasifican como corrupción y recuperan del `.bak` sano con cero escritura.
+- **Commits: ninguno** (persiste el bloqueo de shell).
+- **Hueco nuevo, abierto como `TASK-031` (critical):** la guarda valida el **contenedor**, no las **hojas**. Un pack con `keepers` o `target_categories` mal formados pasa, la rama legacy nunca lee esos campos, el `.bak` sano **nunca se consulta** y un `save()` posterior **lo machaca**. Pérdida silenciosa e irreversible. Pre-existente y no regresión de TASK-030, pero ningún test lo veía.
+
+### Impact
+El paso de auditoría no solo confirmó el arreglo: lo hizo **refutando el encargo**. Tres premisas que parecían verdad eran falsas, y la más grave (`AttributeError` tumbando el arranque) era **peor que el bug que se perseguía**. Un plan que hubiera seguido esas premisas habría escrito tests que pasan y no arreglado nada.
+
+**Nota de proceso (autorrelevada):** rompí dos veces `tasks.json` con ediciones por regex sobre JSON. La causa es siempre la misma —mi editor no entiende la estructura—, y la lección es usar un script de Python con `json.load`/`json.dump` para cualquier edición estructural, nunca sustitución de texto. Recuperado ambas veces sin pérdida.
 

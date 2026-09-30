@@ -2,7 +2,7 @@
 
 > Sistema de orquestación de tareas atómicas para agentes IA y desarrolladores.
 > Archivo de sincronización estructurado: `.taskmaster/tasks.json`
-> CLI de consulta rápida: `python .taskmaster/tm.py [list|next|done <id>]`
+> ⚠️ **La CLI no es ejecutable en este entorno** (lanza `subprocess` y falla con `spawn EPERM`). Consulta `.taskmaster/tasks.json` directamente: campo `active_task_id` o la primera entrada con `"status": "pending"`.
 
 ---
 
@@ -24,10 +24,10 @@
 ---
 
 ## 🧭 Flujo de Trabajo para IAs
-1. Consultar la siguiente tarea pendiente ejecutando `python .taskmaster/tm.py next` o leyendo este archivo.
+1. Consultar la siguiente tarea pendiente leyendo `.taskmaster/tasks.json` (`active_task_id`, o la primera con `"status": "pending"`). **No uses `tm.py`**: no es ejecutable aquí.
 2. Cargar **únicamente** la documentación indicada en la columna `Documentación Asociada` para no gastar tokens.
 3. Completar la tarea respetando las invariantes.
-4. Marcar la tarea como completada usando `python .taskmaster/tm.py done <ID>`.
+4. Marcar la tarea como completada poniendo `"status": "completed"` en `.taskmaster/tasks.json`.
 
 ---
 

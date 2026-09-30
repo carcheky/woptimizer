@@ -190,5 +190,103 @@
       "after": "24, 0 fallos"
     },
     "impact": "Escaneo real: 131 nombres de proceso unicos, 48 registrados, 122 sin registrar, clasificados en tres familias con consecuencias opuestas. 25 entradas nuevas de bloatware real (48 -> 73): PowerToys, consumo de Armoury Crate, language servers, audio enhance y actualizadores. Ningun proceso de sistema registrado. BLINDAJE ANTI-BRICK: SYSTEM_PROTECTED_PROCESSES con 34 nombres de nivel sistema, coincidencia exacta (nunca subcadena, que bloquearia procesos legitimos), aplicado por tres vias: saneado al cargar la DB (tambien protege frente a load_db_async que descarga de GitLab), en _get_process_meta antes que la DB y el fuzzy match, y en kill_processes/kill_pack_apps porque el pack lo escribe el usuario a mano. Desviaciones deliberadas del subagente a mejor: audio a yellow medium (toca la ruta de sonido y yellow no esta en target_categories del pack gaming), pila de control de Armoury Crate a rojo none por equivalencia con icue/razer/lghub, mpdefendercoreservice a rojo por prudencia. Ambiguidad resuelta: sihost estaba en las familias A y C del proposal y se resuelve como A. Verificado por el orquestador: 0 procesos de sistema registrados como cerrables."
+  },
+  {
+    "cycle": 14,
+    "date": "2026-09-29T20:55:00",
+    "area": "Gaming y Telemetria UX",
+    "slug": "2026-09-29-gaming-service-runtime",
+    "task": "TASK-025",
+    "status": "COMPLETED",
+    "commits": [],
+    "tests": {
+      "before": "23",
+      "after": "24, 0 fallos"
+    },
+    "impact": "CONFIGURACION MUERTA CONECTADA AL RUNTIME: GamingService.should_kill_for_gaming existia y estaba testeado, pero nunca se invoco. Las 3 rutas de Gaming Mode (tray, portada, gestor de packs) llamaban solo a kill_pack_apps(pack.apps), asi que keepers y target_categories eran configuracion muerta: el usuario marcaba que proteger y que cerrar, y el motor nunca lo consultaba. RAIZ mas profunda de lo que decia el briefing: MainWindow guardaba gaming_service (main_window.py:15) pero NO se lo pasaba a las vistas (:55-71), asi que el campo estaba muerto en dos niveles. El arquitecto detecto un VECTOR DE BRICK real: el guard heredado de bugfix-audit-v3 (filtrar por SYSTEM_PROTECTED_PROCESSES) es insuficiente, porque svchost y explorer estan en la categoria 'Sistema de Windows', NO estan en el blacklist de nombres, y esa categoria se ofrece como casilla activable: marcar la cerraba TODOS los svchost.exe y dejaba Windows inservible. La garantia correcta no es ampliar el blacklist (exige acordarse de cada nombre nuevo) sino una BARRERA DE CATEGORIA roja independiente, aplicada dos veces. Segundo fallo silencioso: should_kill_for_gaming compara por subcadena y los keepers se guardan como 'discord.exe' mientras get_running_processes quita la extension del campo name, asi que evaluar con p.name habria DESACTIVADO keepers y apps en silencio, y la suite no lo cubria porque sus aserciones pasan nombres con .exe. Implementado execute_gaming_pack en services/ (unica puerta de kill, delega en kill_processes y no puede abrir una via al SO que las otras no tengan), inyectado en las 3 rutas mas MainWindow, y levantados los dos 'if not pack.apps: return' que bloqueaban un Gaming Mode solo por categorias. TEST QUE DISCRIMINA, verificado por mutacion: un verificador neutralizo las dos barreras G-2 en una copia temporal y el test fallo con 'Llegaron: [chrome, onedrive, svchost]'. Un bug real aparecio durante la validacion: is_system_protected es un @staticmethod de ProcessService, no una funcion de modulo, y el ImportError lo delato. Sin commit: el shell del entorno dio spawn EPERM de forma intermitente y git_safe_commit.py requiere subprocess."
+  },
+  {
+    "cycle": 15,
+    "date": "2026-09-29T21:40:00",
+    "area": "Resiliencia & Robustez",
+    "slug": "2026-09-29-data-integrity-fixes",
+    "task": "TASK-026",
+    "status": "COMPLETED",
+    "commits": [],
+    "tests": {
+      "before": "24",
+      "after": "28, 0 fallos"
+    },
+    "impact": "CUATRO FALLAS DE INTEGRIDAD, Y LA AUDITORIA REFUTO DOS PREMISAS DE LA TAREA. FIX-007 (riesgo maximo): process_manager_view._do_load mutaba self.processes y self.grouped_processes desde el hilo secundario, con el hilo principal recorriendo ese dict en el render: RuntimeError dictionary changed size during iteration, y un set de PIDs incoherente entregado al kill. Ahora el hilo solo calcula y publica con self.after(0, _apply). La spec heredada pedia self.master.after y es INCORRECTO: main_window.py:42-45 destruye la vista en toda navegacion. FIX-009: la premisa 'hay que anadir un backup' era FALSA en su justificacion pero el hallazgo real es MAYOR: load() ante un JSON corrupto BORRABA TODOS los packs y sobrescribia con uno solo-Gaming, y 'except (json.JSONDecodeError, Exception)' es en realidad except Exception, asi que un PermissionError tambien tomaba la ruta destructiva. Ahora hay backup preventivo, recuperacion desde el .bak antes de regenerar, OSError propagado, rotacion que no pisa un backup sano con un principal corrupto, y escritura atomica (tmp + os.replace). Ademas: tasks.json, CHANGELOG y la spec v3.1 afirmaban que el backup ya existia desde el ciclo #2 (TASK-011 completed) y era FALSO. FIX-005: '_DEFAULT_META' usaba la interrogacion ASCII (U+003F) en vez de el circulo (U+26AA) que usan config.py y models.py, y el efecto se propagaba a 3 sitios; uno de ellos era un filtro de la UI que comparaba contra el literal equivocado, o sea un no-op silencioso. FIX-001: get_gaming_pack usaba model_copy shallow, pero la auditoria demostro que es INALCANZABLE (no tiene llamadores) y que el ciclo #10 ya cerro la via real: queda como deuda latente de 1 caracter. Verificacion por mutacion de los 4 tests: TODOS discriminan, cada uno por su asercion prevista. Hallazgo del verificador: CORRUPTION_ERRORS no cubre AttributeError, asi que 3 de 7 formas de JSON malformado propagan y tumba el arranque (MEDIUM, pendiente). Sin commit: mismo bloqueo de shell."
+  },
+  {
+    "cycle": 16,
+    "date": "2026-09-30T00:32:00",
+    "area": "Infraestructura del pipeline (peticion explicita del propietario)",
+    "slug": "roles-como-agentes",
+    "task": null,
+    "status": "COMPLETED",
+    "commits": [],
+    "tests": {
+      "before": "28",
+      "after": "28, sin cambios en src/"
+    },
+    "impact": "LOS TRES ROLES DEL PIPELINE PASARON DE SKILLS A AGENTES REALES, y se repararon referencias rotas quenian hacia tiempo que no funcionaban. Causa de la pregunta del propietario ('por que no veo las skills'): .agents/skills/ y el panel de agentes son mecanismos DISTINTOS. Una skill es un fichero de instrucciones que carga el orquestador; un agente es una sesion propia, delegable con task y visible en el panel. Las cuatro estaban correctamente colocadas, pero el panel solo muestra la segunda clase, asi que para el usuario no existian. El bug real era peor que la confusion visual: id-pipeline seguia mandando invocar invoke_subagent con Role y TypeName, un mecanismo que ya no existe en este runtime, y por eso la primera invocacion de architect-review fallo con Unknown agent y el orquestador hubo que delegar a worker copiando las directrices a mano. Eso es exactamente el trabajo que los agentes reales eliminan. Tambien se reescribio la seccion 7: la matriz pedia flash/inherit/pro, valores que el runtime actual NO acepta en task; se conservo como guia de intensidad con instruccion de resolver el modelo solo si el usuario lo pide. Prueba de arranque real, no una asercion: se delego al architect-review un audit de fumo y identifico SIN PISTA que is_system_protected es un @staticmethod de ProcessService (el mismo error que tumbo al implementador del ciclo 14) y razono por su cuenta que el blacklist NO protege svchost. Los tres agent.md incorporan las lecciones de los ciclos 14 y 15, no solo el texto de la skill. Sin cambios en src/; suite intacta en 28. Sin commit: persiste el bloqueo de shell."
+  },
+  {
+    "cycle": 17,
+    "date": "2026-09-30T01:15:00",
+    "area": "Pipeline (a peticion del propietario)",
+    "slug": "paso-4-mutation-auditor",
+    "task": null,
+    "status": "COMPLETED",
+    "commits": [],
+    "tests": {
+      "before": "28",
+      "after": "28, sin cambios en src/"
+    },
+    "impact": "EL BUCLE PASA DE 3 A 4 PASOS: se anade el Paso 4, auditar los tests, ejecutado por un agente nuevo (mutation-auditor) que ROMPE el codigo a proposito y comprueba que los tests lo detectan. Motivacion: run_tests.py en verde dice que el codigo hace lo que el test comprueba, NO que el test compruebe algo; la cobertura mide ejecucion y no verificacion. La practica esta consolidada en la industria como mutation testing (killed vs survived mutant), y la leccion que la respalda es que una guarda que solo a veces atrapa un bug es PEOR que no tener guarda porque crea confianza falsa, que es exactamente el fallo del ciclo 15. El agente lleva una tabla de 12 mutaciones canonicas de este repo (barrera de categoria, full_name vs p.name, coincidencia exacta, escritura atomica, copia profunda, centinela U+26AA, publicacion en hilo, force_refresh) y trabaja solo sobre copias en %TEMP%. PRIMER ARRANQUE, RESULTADO INMEDIATO Y VALIOSO: el agente encontro 3 SUPERVIVIENTES reales en los fixes del ciclo 15, que se cerraron con 28/28 en verde. (1) ATOMICIDAD: el test solo comprueba que existe un .tmp, asi que si la escritura deja de ser atomica y nunca crea el .tmp, el assert sigue pasando por la razon equivocada; nadie prueba que el principal quede intacto si el json.dump se corta a medias. (2) EXCEPT HONESTO: el caso D2 arma el escenario con os.chmod(0o400), con lo que la escritura falla por el mismo permiso que se quiere detectar, y except OSError: pass acepta indistintamente 'no intento escribir' de 'intento y revento'; ademas CORRUPTION_ERRORS sigue sin cubrir ValidationError, TypeError y UnicodeDecodeError, todos scenarios confirmados que tumban PackService(). (3) Un mutante de os.replace por shutil.copyfile muere por el artefacto .tmp y no por la garantia, o sea que el test no esta atado a la propiedad que dice verificar. Ademas detecto que el guard ast del test de FIX-007 mata la asercion antes de que se compruebe la carrera real. Tambien se repararon 5 referencias a tm.py en AGENTS.md que seguian mandando usar un comando no ejecutable en este entorno. Sin cambios en src/; suite intacta en 28. Sin commit: persiste el bloqueo de shell. Los 3 supervivientes quedan ABIERTOS para el ciclo 18: son de integridad de datos y no se documentan como deuda aceptada."
+  },
+  {
+    "cycle": 18,
+    "date": "2026-09-30T02:10:00",
+    "area": "Resiliencia & Robustez",
+    "slug": "2026-09-30-close-mutation-survivors",
+    "task": "TASK-030",
+    "status": "COMPLETED",
+    "commits": [],
+    "tests": {
+      "before": "28",
+      "after": "36, 0 fallos"
+    },
+    "impact": "CIERRA EL FAIL DEL CICLO 17: los 3 tests que pasaban con el bug puesto, arreglados y verificados por mutacion. El paso mas valioso del ciclo fue la AUDITORIA DEL ARQUITECTO, que REFUTO LAS TRES PREMISAS del encargo con mediciones, no opiniones: (1) CORRUPTION_ERRORS YA cubria ValidationError, TypeError y UnicodeDecodeError, asi que el mutante sobrevivia porque NINGUN TEST LAS MIRA: el arreglo era de test, no de codigo, y el agujero real era otro, AttributeError en la rama legacy, que tumbaba PackService() al arrancar con {\"profiles\":\"texto\"}, PEOR que el bug que se perseguía. (2) Un espia que afirme save() NO se llamo NO SIRVE: midio save()=1 y volcados=1 en el codigo correcto Y en el mutante, es indiscriminable por construccion, y load() escribe dos veces. (3) En Windows chmod solo niega ESCRITURA, la lectura sigue permitida, asi que toda esa familia de tests era ciega: probo tres escenarios solo-filesystem y ninguno distingue. Decisiones: atomicidad por inyeccion de fallo DENTRO de json.dump con handle real, afirmada sobre BYTES del principal, sin hilos y sin sleep; P1b con un copyfile hostil es lo unico que mata esa mutacion porque publicar no es observable de un solo hilo; AttributeError EXCLUIDO a proposito de CORRUPTION_ERRORS porque convertiria cualquier bug interno en perdida de packs, y except Exception rechazado por ser el bug del ciclo 15; se valida la FORMA con PerfilCorruptoError(ValueError). FIX-007: arnes SIN TK (__new__ mas propiedades que anotan el hilo), lo que permitio quitar el faulthandler(150, exit=True) que hoy mataba el runner. El mutation-auditor dio PASS: 7 de 7 mutaciones muertas por la asercion correcta, ninguna por sintaxis, y la del hilo verificada NEUTRALIZANDO el guard estatico, con el codigo intacto sigue verde. HALLAZGO NUEVO QUE QUEDA ABIERTO como TASK-031 (critica): la guarda valida el CONTENEDOR pero no las HOJAS, asi que un pack con keepers o target_categories mal formados se cuela, el .bak sano NUNCA se consulta y un save() posterior lo MACACA. Perdida silenciosa e irreversible. Pre-existente, no regresion, pero nadie lo veia. Sin commit: persiste el bloqueo de shell."
+  },
+  {
+    "cycle": 19,
+    "date": "2026-09-30T09:10:00",
+    "area": "Resiliencia & Robustez",
+    "slug": "2026-09-30-validate-pack-leaves",
+    "task": "TASK-031",
+    "status": "COMPLETED",
+    "commits": [],
+    "tests": {
+      "before": "36",
+      "after": "48, 0 fallos"
+    },
+    "impact": "EL CICLO MAS DURO HASTA AHORA: TRES ITERACIONES DEL PASO 3, CON UN FAIL Y UNA RE-AUDITORIA EN MEDIO. El arquitecto REFUTO la premisa central del encargo: 'la guarda valida el contenedor, no las hojas' es FALSO en la rama moderna (pack_service.py:171 es return AppData(**raw_data), que ya detecta keepers:'str'); la rama ciega es SOLO la legacy, por un Pack(...) literal de 5 de 8 campos, y los dos que faltaban eran keepers (la lista ANTI-BRICK) y target_categories. Y 'un save() posterior machaca el .bak' era una SUBESTIMACION GRAVE: la causa era _rotate_backup (206-207) validando con json.load en vez de _read_json, dos definiciones distintas de 'no corrupto', con el docstring describiendo la que no se ejecuta. Medido: el .bak sano moria en 7 de 8 escenarios, incluidos los que el repo AFIRMABA proteger, y no era un save() del usuario sino el de _ensure_gaming_pack() DENTRO de load(); data-models.md:53-55 afirmaba esa garantia y era FALSA. Decision de producto: una hoja mal formada es CORRUPCION, no un pack valido con un campo raro, porque keepers es la lista anti-brick y normalizarla a [] desarma el Gaming Mode de forma invisible e irreversible; recuperar del .bak puede devolver otra version, pero eso es visible y diagnosticable. PRIMERA AUDITORIA: FAIL. El dev se auto-declaro 13/13 verde y el auditor lo refuto: encontro que AppData.extra='allow' era load-bearing contra la perdida de datos y NADIE lo vigilaba; con extra='ignore' una raiz mal escrita (perfiles) hacia que el primer save() publicase {'packs':...} y los packs del usuario desapareciesen del disco. Ademas un typo 'keeper' se aceptaba en silencio y desarmaba el anti-brick, e is_gaming:'true' se coerciona a True dejando un pack invisible e indeletable. SEGUNDA ITERACION: FAIL con 3 supervivientes medianos (M8 extras de raiz destruidos en el primer save; M4b is_favorite laxo; M13 _normalizar_clave sin sonda). TERCERA ITERACION: PASS. La propiedad de diseno que mas importa quedo CONFIRMADA por medicion: CLAVES_DE_PACK se deriva de Pack.model_fields, asi que anadir un campo nuevo al modelo hace que su typo se clasifique automaticamente, sin tocar una linea de la guarda. El auditor verifico que copiar la raiz entera NO abria un agujero nuevo: probo 18 nombres reservados de Pydantic y ninguno tumba el arranque ni pierde el dato. La decision de NO vigilar la raiz tambien se sostiene por datos: clasificarla daria AppData() y el siguiente save() publicaria {'packs':{'gaming':...}}, o sea perdida igual y con aviso encima. Deuda menor declarada y NO certificado: 2 supervivientes de normalizacion que requieren 2+ pulsaciones (fuera del umbral declarado de 1), y 2 citas documentales erroneas. Sin commit: persiste el bloqueo de shell."
+  },
+  {
+    "cycle": 20,
+    "date": "2026-09-30T11:40:00",
+    "area": "Gaming & Telemetria UX / Seguridad",
+    "slug": "2026-09-30-ui-hardening",
+    "task": "TASK-027",
+    "status": "COMPLETED",
+    "commits": [],
+    "tests": {
+      "before": "48",
+      "after": "57, 0 fallos"
+    },
+    "impact": "TRES ITERACIONES, DOS FAIL Y UNA DE MEDIDA QUE REFUTO EL ARREGLO PEDIDO. El arquitecto refuto tres premisas: el orden CATEGORY_ORDER no es alfabetico (sorted() ordena por CODE POINT Unicode, y el circulo U+26AA sale PRIMERO porque esta en el BMP mientras los emojis del semaforo estan en el plano suplementario); FIX-004 tenia un SEGUNDO sitio no declarado (pack_manager_view.py:207, el acordeon del pack Gaming, o sea donde se CONFIGURA que se mata, y el ciclo 15 lo marco como sensible); y FIX-006 era mucho menor porque set_favorite(None) YA existia y ya estaba testeado, el bug era una linea de UI. El hallazgo que nadie habia visto: started era UNA MENTIRA, porque Popen('inexistente.exe', shell=True) devuelve rc=1 SIN lanzar, el except nunca se dispara y el toast miente en verde; por eso el contador paso a ser criterio de primera clase. AUDITORIA 1: FAIL. El dev se auto-declaro 27/27 verde y el auditor lo refuto: un JUNCTION dentro de una raiz permitida que apuntaba a C:\\Windows\\System32\\cmd.exe era ACEPTADO y arranca, porque normpath y commonpath son LEXICOS y no resuelven enlaces de directorio; la garantia de architecture.md era falsa. Ademas la guarda anti-shell=True solo miraba ast.Name, asi que subprocess.Popen(app, shell=True) LA GRAFIA EXACTA DEL BUG ORIGINAL no se detectaba. AUDITORIA 2: FAIL con la deuda del hard link mal fundada: el dev dijo que un hard link no lo ve ningun filtro, pero os.stat().st_nlink == 2 lo delata y el auditor lo dio por cerrable. ITERACION 3: el dev MIDIO ANTES DE ESCRIBIR y refuto el arreglo que le habian pedido: rechazar cualquier st_nlink > 1 daria 8,32% de falsos positivos (189 de 2273 ejecutables instalados, msinfo32.exe, TabTip.exe, auxiliares de Edge, herramientas de Hyper-V), y un hard link NO tiene destino consultable en Windows. Y el hallazgo que lo cambia todo: el hard link no es un caso especial, una COPIA PLENA se colaba igual, o sea que el filtro habria cerrado el caso exotico y dejado abierto el trivial: seguridad de teatro. Su solucion fue una REGLA 9 que comprueba que el fichero es una imagen PE (MZ + firma en e_lfanew), que es lo que la lista blanca siempre quiso expresar y no decia. AUDITORIA 3: PASS, con las cifras del dev reproducidas exactamente (2273 ejecutables, 2200 con PE, 189 con st_nlink>1, 0 de esos 189 fallan) y 19 rechazos que son todos MSI cache, appx y un .COM de 16 bits, ninguno lanzable. Y el propio dev detecto que al anadir la regla 9 sus fixtures .exe vacios empezaron a fallar POR EL MOTIVO EQUIVOCADO, dejando de probar la contencion y la extension sin que la suite se quejara: lo vio porque re-ejecuto la matriz de la iteracion anterior, no porque algo fallara. Sin commit: persiste el bloqueo de shell. Deuda menor: 1 superviviente BAJA (quitar el tope de e_lfanew deja la suite verde, pero es inerte) y 2 correcciones documentales."
   }
 ]

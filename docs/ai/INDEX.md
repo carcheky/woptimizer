@@ -18,6 +18,6 @@ En lugar de cargar toda la documentación en el prompt y saturar la ventana de c
 ---
 
 ## 🤖 Protocolo Obligatorio para Agentes IA
-1. **Paso 1:** Al iniciar una tarea, consulta `.taskmaster/tasks.json` (o ejecuta `python .taskmaster/tm.py next`) para conocer el módulo asociado a tu tarea.
+1. **Paso 1:** Al iniciar una tarea, consulta `.taskmaster/tasks.json` para conocer el módulo asociado a tu tarea. (`python .taskmaster/tm.py next` no es ejecutable en este entorno.)
 2. **Paso 2:** Lee **únicamente** ese archivo con `view_file`.
 3. **Paso 3:** No leas los demás archivos a menos que sea estrictamente necesario por dependencias cruzadas.

@@ -94,7 +94,11 @@ class WOptimizerApp:
                     import threading
                     def _run():
                         try:
-                            killed, failed, skipped, freed_mb = self.process_service.kill_pack_apps(gaming_pack.apps)
+                            # TASK-025: ruta de Gaming Mode. Un `MenuItem` de pystray
+                            # no es un widget y no tiene donde mostrar una doble
+                            # pulsacion; es la UNICA excepcion documentada a
+                            # `_require_double_tap` (ver docs/ai/ui-design-system.md).
+                            killed, failed, skipped, freed_mb = self.gaming_service.execute_gaming_pack(gaming_pack)
                             logger.info(f"Tray Gaming Mode: {killed} killed, {failed} failed, {freed_mb:.1f} MB freed")
                             # TASK-019: feedback nativo incluso con la ventana oculta
                             self.notification_service.notify_pack_activated(
