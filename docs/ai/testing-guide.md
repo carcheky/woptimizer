@@ -120,6 +120,8 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 76 | `test_el_feedback_de_pack_dice_la_verdad` | **TASK-035 ciclo 26 (S1, S4, S5, S9; iter 3) + TASK-036 (iter 4, 5 y 6):** el feedback de cierre dice la verdad en los **cuatro** desenlaces, por las **tres** puertas (gaming, pack normal y la no-gaming de la portada, que hasta la iteración 3 no se ejecutaba nunca), con el worker real, doble pulsación, hilo secundario real y `self.after` encolado. Desde la iteración 4 también entra por el worker de la **rama `start`** de `execute_pack` (que tampoco se ejecutaba nunca). Afirma el **texto exacto** (no "dice algo con 6"), incluido `killed == 1` como éxito, `"✅" not in texto` en las ramas `nada` y `fallo`, y la **omisión de la cláusula de MB con `freed_mb <= 0`**. Y afirma el **aviso del pack que no puede hacer nada** (vacío y Gaming inerte) por sus dos familias, con el color exacto, sin worker, sin nada encolado y **sin doble pulsación armada**, más el gaming sano con apps o con categorías (que no debe avisar). La barra de reposo se afirma por su **texto** (procesos activos y resumen del Gaming Mode) y los temporizadores se miden con un **reloj simulado de plazo absoluto** (t0, t=1000, t=5500, t=6500) en las **tres** puertas del banner, afirmando además que en `_timers_ui` queda exactamente un handle. **Iteración 5, dos bloques nuevos:** (a) el **verbo atado al método** en `start_pack` se afirma con un pack de la familia *opuesta* (gaming, `default_action="kill"`, sin apps), porque el pack vacío que ya había traía `default_action="start"` de serie y no distinguía `"start"` de `pack.default_action`; (b) el **contrato de canal no vacío** del aviso inline, que compara el `fg_color` del `status_label` **contra el fondo de reposo** (no contra el anterior: si el canal pintara `CANCEL`, el color ya sería `CANCEL` de antes y la comparación sería verde por construcción) y por eso detecta y descarta su propia versión vacía. **Iteración 6:** `kill_pack` con un pack **no gaming, vacío y `default_action="start"`** afirma el verbo **"apagar"**: el verbo lo decide la puerta, no el dato del pack (mata D5). **Iteración 7, cuatro bloques** (todos con el mismo arnés de doble de servicio, doble pulsación, hilo secundario y `after` encolado): (a) el **segundo** punto de guarda de `_aviso_pack_inerte`, al que el auditor de cierre mutó y el mutante sobrevivió — entra por `kill_pack` con un doble que entrega el pack **con** apps en las dos primeras lecturas y **sin** apps en el re-fetch, cuenta las lecturas y exige aviso, cero `kill_pack_apps` y cero worker (mata K-a); (b) la **tarjeta de la Portada** atada al `default_action` real por la vía real (`refresh_dashboard` → botón real → `cget("text")`), en las dos ramas y las dos direcciones, con un Gaming Mode de `default_action="start"` como control (mata P-d-a/b); (c) el **contrato de los llamantes** con una guarda `ast` que corre **primero** —el segundo argumento de `mensaje_sin_apps`/`mensaje_banner_sin_apps` tiene que ser una ACCION literal o `pack.default_action`— más la frontera: una acción desconocida (`"apagar"`, `"stop"`, `"Kill"`, `""`) es un `KeyError` con el nombre de la puerta, no un `"apagar"` silencioso (mata D5-c/e/f); (d) la **cadena causal** `create_user_pack` → `default_action="start"` → verbo de la puerta de apagar, medida con el `PackService` real y no con un `Pack(...)` de literales (mata D5-d) |
 | 77 | `test_el_gestor_de_procesos_tampoco_miente` | **TASK-035 ciclo 26 iter 3:** la **tercera** puerta de feedback, `ProcessManagerView.on_kill_selected`, que el fix de la iteración 2 y la guarda AST no tocaban y que pintaba `"<tick> 0 cerrados, 0 fallidos."` con `killed == 0`. Entra por `on_kill_selected` de verdad (doble pulsación, hilo secundario real, `after` encolado) y afirma texto y color exactos en los cuatro desenlaces; comprueba que se cierran los PIDs marcados, que el refresco de la lista se programa a 1000 ms y no al instante, y que `skipped` no se confunde con `failed`. **No mata ningún proceso**: el `ProcessService` es un doble |
 | 78 | `test_headless_ui` | UI completa se instancia y destruye en 1.5 s sin errores de runtime |
+| 79 | `test_el_validador_avisa_en_vez_de_tirar_la_excepcion` | **TASK-037 ciclo 27 (T-27.1 a T-27.4):** la rama `if n_tests is None:` de `validate_docs.py` era **código muerto**: `_recuento_de_tests` no tenía ni un `return None`, así que sus dos rutas (fichero ausente, fuente rota) salían con traceback en vez de con informe. El arreglo es el **productor** (`except OSError` sobre el `open()`, `except SyntaxError` —no `IndentationError`— sobre el `ast.parse()`), NO la rama, que ya estaba escrita para el contrato correcto; y T-27.2 extrae `_comprobar_recuento_de_tests(root, errors, ok)` para que la rama sea alcanzable desde un test. Cuatro fixtures en un `tempfile.mkdtemp()`: **sangría rota** (el caso que medido lanza `IndentationError`), **fichero ausente**, **sano** (la 4-tupla, no `None`) y **definido y no invocado** (que además exige que el mensaje **no** lleve el segmento `invocado y NO definido: .` con la lista vacía). Cada llamada va envuelta en un `try/except Exception` que convierte el crash en `AssertionError`, para que los mutantes M1/M2 mueran por la aserción y no por traceback |
+| 80 | `test_el_alcance_del_guard_de_llamantes_se_deriva_del_arbol` | **TASK-037 ciclo 27 (T-27.5 a T-27.7):** el guard del contrato de los llamantes tenía el alcance en una **tupla literal de dos ficheros**, que era una apuesta sobre qué ficheros importan `feedback` y la apuesta tenía un fichero mal (hay tres). El guard pasa a ser `_modulos_que_importan_feedback(raiz)` + `_guardar_contrato_de_llamantes(raiz, acciones_validas)`, y el alcance se **deriva** recorriendo `src/woptimizer/**` con `ast`. El test se monta sobre un **árbol sintético** en `%TEMP%` porque con el repo real no se distingue "derivé el alcance" de "escribí el alcance correcto a mano" (mutante M5): cinco módulos, **cuatro** importadores de `feedback` —dos conformes y dos con verbo cableado, uno de ellos **fuera de `ui/views/`** y otro en forma **`fb.mensaje_sin_apps(...)`** (`ast.Attribute`, que el `getattr(func,"id",None)` de antes se saltaba en silencio— y su import `from woptimizer.ui import feedback as fb`, que tampoco entraba en el alcance— mutantes M6 y M8)— y un quinto que **no** importa `feedback`. Control negativo obligatorio: `pack.default_action` y las ACCIONES literales `"start"`/`"kill"` no se pueden marcar, porque un guard que marca todo no vigila nada (mutante M7) |
 
 ### Notas de Aislamiento
 - Los tests de `PackService` usan `tempfile.NamedTemporaryFile` (helper `_pack_service_temporal()`) para no modificar `profiles.json` real. `test_pack_service_backup_and_recovery` limpia además los `.bak` y `.tmp` que genera, y restaura los permisos de solo lectura que usa para probar el `PermissionError`.
@@ -823,6 +825,123 @@ correcto por una razón concreta del producto, no por comodidad: la rama legacy 
 `kill_low_chat` en la raíz **viva `packs`** no lo resucita, porque `load()` no mira esa raíz para
 detectar el esquema retirado. **El riesgo residual existe pero es más estrecho de lo que parecía**,
 y el detector **no se cambia** por ello.
+
+## Ciclo 27: el alcance de un detector se deriva, o no es un detector (TASK-037)
+
+Este ciclo no toca el producto: es el turno de la rotación que le toca al **tooling que vigila al
+producto**, y los tres hallazgos que cierra son **la misma afirmación escrita en tres sitios** —
+*una promesa de cobertura escrita a mano que nadie mide*.
+
+### La regla que gobierna el diseño
+
+> Lo que un detector promete es «todo lo que hay». Para que eso sea cierto, su alcance tiene que
+> **derivarse** de la realidad, y la derivación tiene que **compararse** contra la realidad medida
+> con `ast`.
+
+| el alcance estaba escrito a mano | qué pasaba al mutarlo |
+|---|---|
+| el estado `None` estaba escrito en la rama; el productor no lo emitía | la rama se quedaba **muerta en verde** |
+| los ficheros que había que mirar estaban en una tupla literal | la lista desfasada **no daba síntoma**: el tercer módulo hoy no viola nada |
+| que el alcance sea el correcto **no se comprobaba en ninguna parte** | el guard podía volverse rama muerta y la suite seguía verde |
+
+### 1. La rama `if n_tests is None:` era código muerto (no «un agujero de seguridad»)
+
+`validate_docs.py` declaraba esa rama para el caso «no se puede derivar el número de tests», y su
+productor `_recuento_de_tests` **no tenía ni un `return None`**: o devolvía la 4-tupla o propagaba.
+Medido: con la fuente rota lanza `IndentationError` (subclase de `SyntaxError`) y con el fichero
+ausente `FileNotFoundError`. Las dos rutas salían con **traceback en vez de informe**.
+
+**Rigor en el informe**: esto **no produce falso verde**. `main()` termina con
+`sys.exit(0 if not errors else 1)`, así que una excepción sin capturar sale con rc=1 y nadie puede
+leer un `0 FAIL` donde no lo hay. Es un agujero de **diagnóstico**, no de detección, y la severidad
+es 🟡 por eso.
+
+El arreglo es el **productor** (`except OSError` sobre el `open()`, `except SyntaxError` sobre el
+`ast.parse()`), **no la rama**: la rama ya estaba escrita para el contrato correcto, y editarla sería
+dejar la expectativa a mano con un productor que no puede cumplirla. El `except` es `SyntaxError` y
+**no `IndentationError`** porque este es subclase: estrecharlo deja fuera `TabError` y reabre el
+mismo agujero por el otro lado (medido: las dos subclases aparecen con fixtures reales).
+
+Y el **refactor mínimo** que lo hace testeable: `_comprobar_recuento_de_tests(root, errors, ok)`.
+Sin raíz, esa rama solo se despertaba lanzando el validador entero contra el repo entero — es decir,
+nunca. Una rama que existe y nadie ejecuta es *exactamente* el defecto que se iba a arreglar, un
+nivel más abajo.
+
+### 2. El guard de los llamantes: de la tupla de dos ficheros a un alcance derivado
+
+La tupla literal `("views/dashboard_view.py", "views/pack_manager_view.py")` **no era una lista de
+ficheros**: era una **apuesta sobre qué ficheros importan `feedback`**, y la apuesta tenía un fichero
+mal. Medido con `ast` sobre `src/woptimizer/`: **tres** importadores.
+
+**Y esa apuesta no daba ningún síntoma.** `process_manager_view.py` solo importa `mensaje_cierre_pack`,
+que el guard no vigila, así que corregir la lista a mano con los tres ficheros reales **no cambia
+ningún resultado**. Ese es el motivo de que el control vaya sobre un **árbol sintético**: es lo
+único que distingue «derivé el alcance» de «escribí el alcance correcto a mano».
+
+El guard quedó en dos funciones de módulo con **raíz como parámetro**:
+
+* `_modulos_que_importan_feedback(raiz_paquete)` recorre `raiz_paquete/**.py` con `ast` y devuelve
+  los que importan el módulo `feedback`. Es **total por construcción**: un módulo que no importa
+  `feedback` no puede llamar a sus formateadores, así que no hay lista que mantener.
+* `_guardar_contrato_de_llamantes(raiz_paquete, acciones_validas)` aplica el contrato y falla
+  nombrando **fichero y línea**. Si el alcance apunta a un fichero que no existe, eso **también** es
+  un `AssertionError`: un alcance que no se puede leer es una apuesta, y una apuesta que se salta en
+  silencio es peor que no tener guard.
+
+### 3. Dos ceguidas de la MISMA causa, encontradas al escribir el control
+
+Las dos son «mirar una sola forma de la escritura»:
+
+| forma | nodo | qué hacía el guard de antes |
+|---|---|---|
+| `from woptimizer.ui.feedback import mensaje_sin_apps(...)` | `ast.Name` | la veía |
+| `fb.mensaje_sin_apps(...)` tras `import feedback as fb` | `ast.Attribute` | `getattr(func,"id",None)` → `None` → **`continue`** en silencio |
+| `from woptimizer.ui import feedback as fb` | `ImportFrom` con `module="ui"` y alias `feedback` | el módulo **no entraba en el alcance** |
+
+La segunda y la tercera son **la misma forma escrita de dos maneras**, y juntas son el agujero
+latente que la auditoría del ciclo 26 no vio: la forma **idiomática** de importar el módulo entero
+era invisible para el guard, justo la forma que hace posibles las llamadas `fb.mensaje_...` que
+tampoco se veían. Ninguna de las dos daba síntoma en `src/` (no hay ninguna llamada así), y por eso
+solo un árbol sintético las destapa.
+
+### La matriz de este ciclo
+
+Los nueve mutantes, todos por `AssertionError` (**no** por crash, que es lo que exige la lección del
+ciclo 26):
+
+| mutante | control que lo mata |
+|---|---|
+| M1 `except (OSError, SyntaxError)` → `except OSError` | fixture de sangría rota, vía el envoltorio que convierte el crash en aserción |
+| M2 → `except SyntaxError` | fixture de fichero ausente, ídem |
+| M3 la rama `n_tests is None` muerta | los fixtures dejan de dar línea `[FAIL]` |
+| M4 `errors.append` → `ok.append` | ídem, y además el resumen contaría un OK donde hay un fallo |
+| **M5 el alcance vuelve a una tupla literal** | el árbol sintético tiene un **cuarto** módulo que ninguna tupla del repo real contiene |
+| M6 el guard vuelve a mirar solo `ast.Name` | el módulo que llama en forma `fb.mensaje_sin_apps(...)` |
+| M7 el guard marca todo | el control negativo: `pack.default_action` y `"start"`/`"kill"` no se pueden marcar |
+| M8 el recorrido se limita a `ui/views/` | el módulo que cablea el verbo está **fuera** de `views/` |
+| M9 vuelve el segmento con lista vacía | el fixture de test definido y no invocado |
+
+**El control negativo no es opcional**: sin él, un guard que marcara todo daría el mismo verde que
+uno que no ve nada, que es la razón por la que un detector necesita las **dos** direcciones.
+
+**Un mutante de control que hay que correr**: M5 **más** M4 a la vez. Si uno muere solo por el otro,
+hay una dependencia invisible entre la rama y el alcance. Medido en este ciclo: cada uno muere por su
+propia aserción y el par combinado muere en la primera que se encuentra, así que **no se solapan**.
+
+### Cómo se auto-instrumenta un guard (el patrón, para el que venga)
+
+1. El guard se extrae a una **función de módulo que recibe la raíz**. Sin raíz no hay control: hay
+   que apuntarla al repo entero.
+2. El alcance se **deriva** con `ast`, y una entrada del alcance que no se puede leer es un fallo
+   explícito, no un salto.
+3. Se escribe un **árbol sintético** con un módulo de más que el repo real, **fuera** del
+   subdirectorio que el guard recorre por costumbre, y con un módulo más que **no** entra en el
+   alcance (control negativo).
+4. Se cubre **cada forma de escribir** la llamada y **cada forma de importar** lo vigilado. Una
+   forma sin cubrir es un agujero latente con la misma causa que el que se acaba de cerrar.
+5. Las llamadas del test al guard van envueltas en `try/except Exception → AssertionError`, para que
+   un mutante muera **por la aserción** y no por un traceback que el runner cuente como muerte sin
+   distinguir el motivo.
 
 ## Hallazgo abierto (fuera de alcance, declarado)
 

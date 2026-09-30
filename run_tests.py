@@ -48,6 +48,140 @@ def _esperar_a_morir(pid, timeout=5.0):
     return not _proceso_vivo(pid)
 
 
+# ---------------------------------------------------------------------------
+# TASK-037 (ciclo 27) -- EL CONTRATO DE LOS LLAMANTES, con alcance DERIVADO.
+#
+# "Quien llama pasa la ACCION, nunca el verbo" es lo que promete el docstring
+# de `ui/feedback._verbo`, y este guard es lo que lo hace cumplir. Vive a
+# nivel de modulo, con RAIZ como parametro, por dos motivos que son el mismo:
+#
+#   * su alcance se DERIVA recorriendo el arbol con `ast`, porque lo que un
+#     detector promete es "todo lo que hay", y para que eso sea cierto el
+#     alcance tiene que salir de medir la realidad y no de una lista escrita a
+#     mano (la lista de dos ficheros que llevaba era una apuesta con un
+#     fichero mal: hay tres importadores);
+#   * con la raiz como parametro, un test puede apuntarlo a un arbol temporal
+#     con un CUARTO modulo, que es lo unico que distingue "derive el alcance"
+#     de "escribi el alcance correcto a mano" (mutante M5).
+# ---------------------------------------------------------------------------
+FORMATEADORES_QUE_EXIGEN_ACCION = ("mensaje_sin_apps", "mensaje_banner_sin_apps")
+
+
+def _raiz_del_paquete():
+    """`<repo>/src/woptimizer`, la raiz desde la que se deriva el alcance."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "woptimizer")
+
+
+def _importa_el_modulo_feedback(nodo):
+    """True si el nodo de import trae el MODULO `feedback` al espacio de nombres.
+
+    Las TRES formas que existen de traerlo, y que las tres ponen un
+    formateador al alcance del modulo:
+
+      * `from woptimizer.ui.feedback import mensaje_sin_apps` -> `ImportFrom`
+        con `module` que acaba en `feedback` (tambien el relativo
+        `from .feedback import ...`, donde `module == "feedback"`);
+      * `from woptimizer.ui import feedback as fb` -> `ImportFrom` cuyo
+        `module` NO acaba en `feedback` pero cuyo ALIAS se llama `feedback`;
+      * `import woptimizer.ui.feedback as fb` -> nodo `Import` con el nombre
+        cualificado.
+
+    La segunda forma se encontro MIDiendo: el guard solo miraba `node.module`,
+    asi que un modulo que importa el modulo entero -- que es la forma
+    idiomatica de Python, y la que hace posibles las llamadas `fb.mensaje_...`
+    que el guard tampoco veía -- quedaba FUERA del alcance. Dos ceguidas con
+    la misma causa: mirar una sola forma de la escritura.
+    """
+    if isinstance(nodo, ast.ImportFrom):
+        modulo = nodo.module or ""
+        if modulo == "feedback" or modulo.endswith(".feedback"):
+            return True
+        return any(alias.name == "feedback" for alias in nodo.names)
+    if isinstance(nodo, ast.Import):
+        return any(
+            alias.name == "feedback" or alias.name.endswith(".feedback")
+            for alias in nodo.names
+        )
+    return False
+
+
+def _modulos_que_importan_feedback(raiz_paquete):
+    """DERIVADO con `ast`: los `.py` de `raiz_paquete` que importan `feedback`.
+
+    Un modulo que NO importa `feedback` no puede llamar a sus formateadores,
+    asi que la seleccion es total por construccion: no hay ningun fichero
+    escrito a mano en ninguna parte de este guard. Un modulo con un error de
+    sintaxis NO se salta en silencio: `ast.parse` propaga, porque un fichero
+    que no se puede leer no es un fichero conforme.
+    """
+    encontrados = []
+    for dirpath, dirs, files in os.walk(raiz_paquete):
+        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        for nombre in sorted(files):
+            if not nombre.endswith(".py"):
+                continue
+            ruta = os.path.join(dirpath, nombre)
+            with open(ruta, encoding="utf-8") as fh:
+                arbol = ast.parse(fh.read(), filename=ruta)
+            for nodo in ast.walk(arbol):
+                if isinstance(nodo, (ast.Import, ast.ImportFrom)):
+                    if _importa_el_modulo_feedback(nodo):
+                        encontrados.append(ruta)
+                        break
+    return sorted(encontrados)
+
+
+def _guardar_contrato_de_llamantes(raiz_paquete, acciones_validas):
+    """Falla nombrando FICHERO y LINEA si un llamante cablea un verbo.
+
+    Cubre las DOS formas de escribir la llamada, que antes eran una:
+
+      * `mensaje_sin_apps(n, accion)` tras `from ... import`, que es un
+        `ast.Name`;
+      * `fb.mensaje_sin_apps(n, accion)` tras `import feedback as fb`, que es
+        un `ast.Attribute`. Con `getattr(func, "id", None)` -- lo que habia --
+        el nodo `ast.Attribute` no tiene `id`, salia `None` y la llamada se
+        saltaba en silencio: un agujero LATENTE, la forma idiomatica de
+        Python era invisible para el guard (mutante M6).
+    """
+    for ruta in _modulos_que_importan_feedback(raiz_paquete):
+        assert os.path.isfile(ruta), (
+            f"el alcance del guard apunta a un fichero que no existe: {ruta}. Un "
+            "alcance que no se puede leer no es un alcance: es una apuesta, y una "
+            "apuesta que se salta en silencio es peor que no tener guard"
+        )
+        with open(ruta, encoding="utf-8") as fh:
+            arbol = ast.parse(fh.read(), filename=ruta)
+        relativo = os.path.relpath(ruta, raiz_paquete)
+        for llamada in ast.walk(arbol):
+            if not isinstance(llamada, ast.Call):
+                continue
+            if isinstance(llamada.func, ast.Name):
+                nombre = llamada.func.id
+            elif isinstance(llamada.func, ast.Attribute):
+                nombre = llamada.func.attr
+            else:
+                continue
+            if nombre not in FORMATEADORES_QUE_EXIGEN_ACCION:
+                continue
+            arg = llamada.args[1] if len(llamada.args) > 1 else None
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                if arg.value not in acciones_validas:
+                    raise AssertionError(
+                        f"{relativo}:L{llamada.lineno} {nombre} recibe {arg.value!r}, que no "
+                        f"es una ACCION (acciones: {sorted(acciones_validas)}). Quien llama "
+                        "pasa la ACCION, nunca el verbo"
+                    )
+            elif isinstance(arg, ast.Attribute) and arg.attr == "default_action":
+                pass
+            else:
+                raise AssertionError(
+                    f"{relativo}:L{llamada.lineno} el segundo argumento de {nombre} no es ni "
+                    "una ACCION literal ni `pack.default_action`, asi que el contrato del "
+                    f"docstring no se puede comprobar: {arg!r}"
+                )
+
+
 def _esperar_pid_de_archivo(path, timeout=10.0):
     """Devuelve el PID escrito en `path` cuando existe y el proceso esta vivo.
 
@@ -6566,6 +6700,323 @@ def test_la_documentacion_del_blindaje_no_puede_desfasarse():
     print(f"Las dos docs dicen el rango {rango} y los {len(reales)} nombres reales.")
 
 
+def test_el_validador_avisa_en_vez_de_tirar_la_excepcion():
+    """TASK-037, ciclo 27 (T-27.1, T-27.2, T-27.3, T-27.4): la rama
+    `if n_tests is None:` de `validate_docs.py` era CODIGO MUERTO.
+
+    `_recuento_de_tests` no tenia ni un `return None` en sus 34 lineas:
+    propagaba `FileNotFoundError` con el fichero ausente e
+    `IndentationError` con la fuente rota, y las dos rutas de la rama salian
+    con traceback en vez de con informe. O sea, la proteccion existia escrita y
+    el productor no sabia emitir el estado que ella declara: exactamente la
+    clase de guarda que este repo ya sufrio dos veces.
+
+    El arreglo es el PRODUCTOR (`try/except OSError` sobre el `open()`,
+    `try/except SyntaxError` sobre el `ast.parse()`), NO la rama, que ya
+    estaba escrita para el contrato correcto. Y el `except` es `SyntaxError`
+    y no `IndentationError` porque este ultimo es subclase: estrecharlo deja
+    fuera `TabError` y reabre el mismo agujero por el otro lado.
+
+    T-27.2 (`_comprobar_recuento_de_tests(root, errors, ok)`) es lo que hace
+    esto testeable: sin raiz, la rama solo se despertaba lanzando el validador
+    entero contra el repo entero.
+
+    Cada llamada va envuelta en un `try/except Exception` que convierte un
+    crash en `AssertionError`: los mutantes M1 (se cae `SyntaxError`) y M2 (se
+    cae `OSError`) tienen que morir por la AFIRMACION de este test, no por un
+    traceback que el runner cuente como muerte sin distinguir el motivo.
+    """
+    import shutil
+    import tempfile
+    import validate_docs as vd
+
+    def _sin_excepcion(que, *args):
+        try:
+            return que(*args)
+        except Exception as exc:                       # pragma: no cover
+            raise AssertionError(
+                f"{que.__name__} debia devolver None con un INFORME y tiro "
+                f"{type(exc).__name__}: {exc}. Sin este envoltorio el mutante "
+                "muere por traceback y el verificador no puede distinguir un "
+                "test que detecta el fallo de un mutante que revienta el codigo"
+            )
+
+    def _informe(root):
+        errors, ok = [], []
+        _sin_excepcion(vd._comprobar_recuento_de_tests, root, errors, ok)
+        return errors, ok
+
+    tmp = tempfile.mkdtemp(prefix="wopt_validador_")
+    try:
+        # (a) `run_tests.py` con la SANGRIA rota: es el caso que MEDIDO lanza
+        # `IndentationError` (subclase de `SyntaxError`). Y el hermano de
+        # tabuladores, `TabError`, que TAMBIEN es subclase: por eso el `except`
+        # del productor es `SyntaxError` y no `IndentationError`. Estrecharlo
+        # deja el tabulador fuera y reabre el hueco por el otro lado.
+        d_sangria = os.path.join(tmp, "sangria")
+        os.makedirs(d_sangria)
+        ruta_sangria = os.path.join(d_sangria, "run_tests.py")
+        with open(ruta_sangria, "w", encoding="utf-8") as fh:
+            fh.write("def test_alfa():\n    return 1\n        return 2\n")
+
+        # (b) `run_tests.py` AUSENTE: `FileNotFoundError` en el `open()`.
+        d_ausente = os.path.join(tmp, "ausente")
+        os.makedirs(d_ausente)
+
+        # (c) Sano: un test definido Y invocado.
+        d_sano = os.path.join(tmp, "sano")
+        os.makedirs(d_sano)
+        with open(os.path.join(d_sano, "run_tests.py"), "w", encoding="utf-8") as fh:
+            fh.write(
+                'def test_alfa():\n    return 1\n\n\n'
+                'if __name__ == "__main__":\n    test_alfa()\n'
+            )
+
+        # (d) Definido y NO invocado: el caso NORMAL, que ademas es el que
+        # produce el mensaje con el segmento huerfano.
+        d_huerfano = os.path.join(tmp, "huerfano")
+        os.makedirs(d_huerfano)
+        with open(os.path.join(d_huerfano, "run_tests.py"), "w", encoding="utf-8") as fh:
+            fh.write('def test_alfa():\n    return 1\n\n\nif __name__ == "__main__":\n    pass\n')
+
+        # --- (a) FUENTE ROTA -> INFORME, no traceback -------------------
+        assert _sin_excepcion(vd._recuento_de_tests, ruta_sangria) is None, (
+            "una fuente que no compila NO es un recuento de 0: es un recuento que "
+            "no se puede derivar, que es el estado que la rama declara"
+        )
+        errors, ok = _informe(d_sangria)
+        assert any("NO SE PUEDE DERIVAR" in e for e in errors), (
+            "una fuente que no compila tiene que producir una linea [FAIL] que "
+            f"nombre run_tests.py, no un traceback. Errors: {errors}"
+        )
+        assert not any("NO SE PUEDE DERIVAR" in o for o in ok), (
+            "el fallo de derivar el recuento no puede contarse como OK: seria un "
+            f"OK con rc=0. OK: {ok}"
+        )
+
+        # --- (b) FICHERO AUSENTE -> lo mismo -----------------------------
+        assert _sin_excepcion(vd._recuento_de_tests,
+                              os.path.join(d_ausente, "run_tests.py")) is None, (
+            "un run_tests.py ausente no es un recuento de 0: es un recuento que "
+            "no se puede derivar"
+        )
+        errors, _ok = _informe(d_ausente)
+        assert any("NO SE PUEDE DERIVAR" in e for e in errors), (
+            f"un run_tests.py ausente tiene que producir una linea [FAIL] que lo "
+            f"nombre, no un traceback. Errors: {errors}"
+        )
+
+        # --- (c) SANO -> la 4-tupla, y el `else:` sigue contando ---------
+        sano = _sin_excepcion(vd._recuento_de_tests, os.path.join(d_sano, "run_tests.py"))
+        assert sano == (1, 1, [], []), (
+            f"en el camino sano el productor tiene que devolver la 4-tupla, no None: {sano!r}"
+        )
+        errors, ok = _informe(d_sano)
+        assert not any("NO SE PUEDE DERIVAR" in e for e in errors), (
+            f"el camino sano no puede entrar en la rama de fallo. Errors: {errors}"
+        )
+        assert any("1 tests definidos = 1 invocados" in o for o in ok), (
+            f"el camino sano tiene que seguir dando su linea [OK]: si la rama se "
+            f"convierte en `pass`, el OK tambien desaparece. OK: {ok}"
+        )
+
+        # --- (d) DEFINIDO Y NO INVOCADO: el mensaje, sin segmento vacio ---
+        errors, _ok = _informe(d_huerfano)
+        lineas = [e for e in errors if e.startswith("run_tests.py:")]
+        assert len(lineas) == 1, (
+            f"un test definido y no invocado da exactamente una linea [FAIL] de "
+            f"run_tests.py, y ninguna mas: {errors}"
+        )
+        assert "definido y NO invocado: test_alfa" in lineas[0], (
+            f"el mensaje tiene que decir QUE test no se invoca: {lineas[0]!r}"
+        )
+        assert "invocado y NO definido" not in lineas[0], (
+            "`solo_invocados` esta VACIO, asi que el segmento 'invocado y NO "
+            f"definido: .' es ruido que dice que hay un huerfano donde no lo hay. "
+            f"Mensaje: {lineas[0]!r} (mutante M9)"
+        )
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print("Validador: 4 fixtures (sangria rota, ausente, sano, huerfano) con informe.")
+
+
+def test_el_alcance_del_guard_de_llamantes_se_deriva_del_arbol():
+    """TASK-037, ciclo 27 (T-27.5, T-27.6, T-27.7): el guard del contrato de
+    los llamantes tenia su alcance ESCRITO A MANO y nadie lo media.
+
+    Antes: `for relativo in ("views/dashboard_view.py", "views/pack_manager_view.py")`.
+    Esa tupla no era una lista de ficheros, era una APUESTA sobre que ficheros
+    importan `feedback`, y la apuesta tenia un fichero mal: con `ast` se miden
+    TRES importadores, no dos. Hoy eso NO da ningun sintoma (el tercero solo
+    usa `mensaje_cierre_pack`, que el guard no vigila), y por eso el arreglo
+    seria invisible: un mutante que sustituya la derivacion por la tupla
+    CORRECTA de tres ficheros reales pasa la suite entera sin cambiar un solo
+    resultado (mutante M5).
+
+    De ahi la exigencia de este test: un ARBOL SINTETICO, con un modulo
+    CUARTO que el guard tiene que marcar y que ninguna tupla de ficheros del
+    repo real puede contener. Un cuarto modulo, ademas, FUERA de `ui/views/`,
+    para que "recorrer el arbol" no se pueda convertir en "recorrer las vistas"
+    (mutante M8), y con la llamada en forma `fb.mensaje_sin_apps(...)`
+    (`ast.Attribute`), que era el agujero LATENTE del guard (mutante M6).
+
+    Y el control NEGATIVO, sin el cual el guard podria marcarlo todo y
+    quedarse en verde: `pack.default_action` y las ACCIONES literales `"start"`
+    y `"kill"` son las dos formas VALIDAS del contrato y no se pueden marcar
+    (mutante M7).
+    """
+    import shutil
+    import tempfile
+    from woptimizer.ui import feedback as fb
+
+    acciones_validas = set(fb.VERBOS)
+
+    # (0) El repo real: la derivacion tiene que encontrar los tres importadores
+    # medidos en CYCLE-027, y los tres call-sites reales tienen que pasar
+    # limpios (criterio B10). Aqui el guard falla con su propio AssertionError
+    # nombrando fichero y linea si un call-site real se sale del contrato.
+    reales = _modulos_que_importan_feedback(_raiz_del_paquete())
+    assert len(reales) >= 3, (
+        f"la derivacion solo encuentra {len(reales)} importadores de `feedback` y en "
+        f"CYCLE-027 se mideron tres. Si el alcance derivado deja de recorrer algo, el "
+        f"guard se acorta solo y nadie se entera: {reales}"
+    )
+    _guardar_contrato_de_llamantes(_raiz_del_paquete(), acciones_validas)
+
+    # Los cinco modulos del arbol sintetico. La llamada de `panel.py` y la de
+    # `widget.py` estan en la linea 6 de cada uno, y eso es lo que el test
+    # comprueba: que el guard nombre FICHERO y LINEA, no solo que proteste.
+    UNO = [
+        '"""CONFORME: ACCION literal, que es la primera forma valida."""',
+        "from woptimizer.ui.feedback import mensaje_banner_sin_apps",
+        "",
+        "",
+        "def _uno(pack):",
+        '    return mensaje_banner_sin_apps(pack, "start")',
+    ]
+    DOS = [
+        '"""CONFORME: `pack.default_action`, la segunda forma valida."""',
+        "from woptimizer.ui.feedback import mensaje_sin_apps",
+        "",
+        "",
+        "def _dos(pack):",
+        "    return mensaje_sin_apps(pack, pack.default_action)",
+    ]
+    LIMPIO = [
+        '"""No importa `feedback`: no puede llamar a un formateador y no se marca."""',
+        "",
+        "",
+        "def _limpio(pack):",
+        '    return "apagar " + pack.name',
+    ]
+    PANEL = [
+        '"""FUERA de `ui/views/`: el alcance se deriva de TODO el arbol."""',
+        "from woptimizer.ui.feedback import mensaje_sin_apps",
+        "",
+        "",
+        "def _panel(n):",
+        '    return mensaje_sin_apps(n, "apagar")',
+    ]
+    WIDGET = [
+        '"""FUERA de `ui/views/` y en forma `fb.mensaje_sin_apps(...)`."""',
+        "from woptimizer.ui import feedback as fb",
+        "",
+        "",
+        "def _widget(n):",
+        '    return fb.mensaje_sin_apps(n, "iniciar")',
+    ]
+
+    tmp = tempfile.mkdtemp(prefix="wopt_guard_")
+    try:
+        def _sembrar(sub, modulos):
+            base = os.path.join(tmp, sub)
+            for relativo, lineas in modulos:
+                destino = os.path.join(base, relativo)
+                os.makedirs(os.path.dirname(destino), exist_ok=True)
+                with open(destino, "w", encoding="utf-8", newline="\n") as fh:
+                    fh.write("\n".join(lineas) + "\n")
+            return base
+
+        arbol = _sembrar("arbol", [
+            ("views/uno.py", UNO),
+            ("views/dos.py", DOS),
+            ("limpio.py", LIMPIO),
+            ("panel.py", PANEL),
+            ("widget.py", WIDGET),
+        ])
+        conformes = _sembrar("conformes", [
+            ("views/uno.py", UNO),
+            ("views/dos.py", DOS),
+            ("limpio.py", LIMPIO),
+        ])
+        cableado = _sembrar("cableado", [("panel.py", PANEL)])
+        atributo = _sembrar("atributo", [("widget.py", WIDGET)])
+
+        # (1) EL ALCANCE SE DERIVA. Cuatro de los cinco modulos importan
+        # `feedback`; `limpio.py` no aparece porque no lo importa. Esta es la
+        # asercion que mata al mutante M5 (alcance vuelto a tupla literal).
+        alcance = [os.path.relpath(p, arbol).replace(os.sep, "/")
+                   for p in _modulos_que_importan_feedback(arbol)]
+        assert alcance == ["panel.py", "views/dos.py", "views/uno.py", "widget.py"], (
+            f"el alcance del guard tiene que DERIVARSE del arbol, no estar escrito a "
+            f"mano: la derivacion devolvio {alcance}. Si se sustituye por una tupla "
+            f"de ficheros, un CUARTO modulo (panel.py, y esta FUERA de `ui/views/`) no "
+            f"existe para el y el guard se queda mudo en verde"
+        )
+
+        # (2) CONTROL NEGATIVO. `pack.default_action`, `"start"` y `"kill"` son
+        # las dos formas validas: un guard que las marca no vigila nada, solo
+        # protesta (mutante M7).
+        try:
+            _guardar_contrato_de_llamantes(conformes, acciones_validas)
+        except AssertionError as exc:
+            raise AssertionError(
+                "el guard marco un llamante CONFORME: `pack.default_action` y las ACCIONES "
+                f"literales son las dos formas validas del contrato. Marcado: {exc}"
+            )
+
+        # (3) EL VERBO CABLEADO, en un modulo FUERA de `ui/views/`. Mutante M5
+        # (alcance escrito a mano) y M8 (recorrido recortado a `ui/views/`).
+        marca = None
+        try:
+            _guardar_contrato_de_llamantes(cableado, acciones_validas)
+        except AssertionError as exc:
+            marca = str(exc)
+        assert marca is not None, (
+            'un `mensaje_sin_apps(n, "apagar")` con el VERBO cableado tiene que matar el '
+            'guard. `panel.py` esta FUERA de `ui/views/` a proposito: con el recorrido '
+            "recortado a las vistas, el alcance se acorta en silencio y el verbo cableado "
+            "pasa"
+        )
+        assert "panel.py" in marca and "L6" in marca, (
+            f"el guard tiene que nombrar FICHERO y LINEA del cableado: {marca}"
+        )
+
+        # (4) LA FORMA `ast.Attribute`. `fb.mensaje_sin_apps(...)` tras
+        # `import feedback as fb` es la forma idiomatica de Python, y con
+        # `getattr(func, "id", None)` el nodo no tiene `id`: la llamada se
+        # saltaba en silencio (mutante M6).
+        marca = None
+        try:
+            _guardar_contrato_de_llamantes(atributo, acciones_validas)
+        except AssertionError as exc:
+            marca = str(exc)
+        assert marca is not None, (
+            '`fb.mensaje_sin_apps(n, "iniciar")` es una llamada como cualquier otra. Con '
+            '`getattr(func, "id", None)` el `ast.Attribute` devuelve `None` y la llamada se '
+            "salta en silencio: es la forma idiomatica de importar y era invisible"
+        )
+        assert "widget.py" in marca and "L6" in marca, (
+            f"el guard tiene que nombrar FICHERO y LINEA del cableado en forma atributo: {marca}"
+        )
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print(f"Guard del contrato: {len(reales)} importadores reales derivados, y en el arbol "
+          "sintetico 4 de 5 modulos entran con las dos formas de llamada cubiertas.")
+
+
 def test_el_log_rota_con_el_limite_declarado():
     """M3b: `architecture.md` §15 declara que el log rota, y no lo comprobaba
     nadie. El `isinstance(h, logging.FileHandler)` de la sonda T1 NO lo
@@ -8120,32 +8571,12 @@ def test_el_feedback_de_pack_dice_la_verdad():
         "una palabra no puede ser ACCION y verbo a la vez en el mapa de "
         f"`VERBOS`: {acciones_validas & verbos_del_mapa}"
     )
-    base_ui = os.path.dirname(fb.__file__)
-    for relativo in ("views/dashboard_view.py", "views/pack_manager_view.py"):
-        with open(os.path.join(base_ui, relativo), encoding="utf-8") as fh:
-            arbol = _ast.parse(fh.read())
-        for llamada in _ast.walk(arbol):
-            if not isinstance(llamada, _ast.Call):
-                continue
-            nombre = getattr(llamada.func, "id", None)
-            if nombre not in ("mensaje_sin_apps", "mensaje_banner_sin_apps"):
-                continue
-            arg = llamada.args[1] if len(llamada.args) > 1 else None
-            if isinstance(arg, _ast.Constant) and isinstance(arg.value, str):
-                if arg.value not in acciones_validas:
-                    raise AssertionError(
-                        f"{relativo}:L{llamada.lineno} {nombre} recibe {arg.value!r}, que no "
-                        f"es una ACCION (acciones: {sorted(acciones_validas)}). Quien llama "
-                        "pasa la ACCION, nunca el verbo"
-                    )
-            elif isinstance(arg, _ast.Attribute) and arg.attr == "default_action":
-                pass
-            else:
-                raise AssertionError(
-                    f"{relativo}:L{llamada.lineno} el segundo argumento de {nombre} no es ni "
-                    "una ACCION literal ni `pack.default_action`, asi que el contrato del "
-                    f"docstring no se puede comprobar: {arg!r}"
-                )
+    # El alcance lo DERIVA `_modulos_que_importan_feedback` recorriendo
+    # `src/woptimizer/**` con `ast` (TASK-037, ciclo 27). Antes era una tupla
+    # literal de dos ficheros, que era una apuesta sobre que ficheros importan
+    # `feedback` y la apuesta tenia un fichero mal: `process_manager_view.py`
+    # tambien importa. Ver `test_el_alcance_del_guard_de_llamantes_se_deriva_del_arbol`.
+    _guardar_contrato_de_llamantes(_raiz_del_paquete(), acciones_validas)
 
     # -----------------------------------------------------------------
     # 2. Arneses sin Tk para la parte dinamica
@@ -9795,6 +10226,11 @@ if __name__ == "__main__":
     test_el_punto_de_entrada_declara_el_log_antes_de_los_servicios()
     test_process_list_file_sigue_siendo_un_contrato()
     test_la_documentacion_del_blindaje_no_puede_desfasarse()
+    # TASK-037 (ciclo 27): la instrumentacion que vigila al producto, no el
+    # producto. La rama `n_tests is None` del validador era codigo muerto y el
+    # alcance del guard de llamantes estaba escrito a mano y desfasado.
+    test_el_validador_avisa_en_vez_de_tirar_la_excepcion()
+    test_el_alcance_del_guard_de_llamantes_se_deriva_del_arbol()
     test_el_log_rota_con_el_limite_declarado()
     test_config_no_configura_nada_al_importarse()
     # TASK-029: Sistema de diseno y refresco visual del front (UI-001 a UI-012)

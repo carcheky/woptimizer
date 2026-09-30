@@ -17,9 +17,27 @@ def _recuento_de_tests(ruta_run_tests):
     funciones `test_*` de modulo; `invoked`, las llamadas que hace el bloque
     `if __name__ == "__main__":`. Se exigen las dos cifras porque basta con lo
     de siempre para que un test exista en el fichero y no se ejecute nunca.
+
+    Devuelve `None` cuando el recuento NO se puede derivar (fichero ausente,
+    sin permisos, o fuente que no compila). Ese `None` es el estado que su
+    consumidor `if n_tests is None:` declara desde el ciclo 12 y que este
+    productor no sabia emitir: propagaba `FileNotFoundError` e
+    `IndentationError`, asi que la rama era codigo MUERTO y sus dos rutas
+    salian con traceback en vez de con informe. Arreglar el PRODUCTOR y no la
+    rama es lo unico que no deja la expectativa escrita a mano.
     """
-    with open(ruta_run_tests, encoding="utf-8") as f:
-        arbol = ast.parse(f.read())
+    try:
+        with open(ruta_run_tests, encoding="utf-8") as f:
+            fuente = f.read()
+    except OSError:
+        return None
+    try:
+        arbol = ast.parse(fuente, filename=ruta_run_tests)
+    except SyntaxError:
+        # `SyntaxError` y NO `IndentationError`: medido, la sonda lanza
+        # `IndentationError`, que es subclase, pero estrechar aqui dejaria
+        # fuera `TabError` y reabiria el mismo agujero por el otro lado.
+        return None
     defined = {
         nodo.name for nodo in arbol.body
         if isinstance(nodo, ast.FunctionDef) and nodo.name.startswith("test_")
@@ -43,6 +61,94 @@ def _recuento_de_tests(ruta_run_tests):
                 invocados.add(nodo.func.id)
     return (len(defined), len(invocados),
             sorted(defined - invocados), sorted(invocados - defined))
+
+
+def _comprobar_recuento_de_tests(root, errors, ok):
+    """Cuerpo del check 7, extraido a funcion CON RAIZ (TASK-037, ciclo 27).
+
+    Sin este refactor la rama `if n_tests is None:` solo se podia despertar
+    lanzando el validador entero contra el repo entero, es decir, nunca en un
+    test. Una rama que existe y nadie ejecuta es exactamente el defecto que
+    este ciclo arregla, un nivel mas abajo: por eso el productor se arregla Y
+    la rama se hace alcanzable en la misma pasada.
+    """
+    # El numero exigido se DERIVA del codigo con `ast` (los `def test_*` de
+    # modulo y las llamadas del `__main__`), no de una constante escrita a mano:
+    # una constante seria el mismo bug un nivel mas arriba. Ademas se exige que
+    # `defined == invoked`, que es lo que hacia que un test nuevo "existiera"
+    # sin ejecutarse nunca.
+    n_tests = _recuento_de_tests(os.path.join(root, "run_tests.py"))
+    if n_tests is None:
+        errors.append(
+            "run_tests.py: NO SE PUEDE DERIVAR el numero de tests. Sin el ancla no "
+            "hay forma de saber si los ficheros que lo declaran estan caducados"
+        )
+    else:
+        defined, invoked, solo_definidos, solo_invocados = n_tests
+        if solo_definidos or solo_invocados:
+            # Cada segmento se concatena SOLO si su lista tiene algo. Antes el
+            # segundo se concatenaba igual y un test definido y no invocado --
+            # el caso normal -- salia como `... | invocado y NO definido: .`,
+            # con un punto huerfano que decia "esta lista vacia es un huerfano".
+            huerfanos = []
+            if solo_definidos:
+                huerfanos.append("definido y NO invocado: " + ", ".join(solo_definidos))
+            if solo_invocados:
+                huerfanos.append("invocado y NO definido: " + ", ".join(solo_invocados))
+            errors.append(
+                f"run_tests.py: {defined} test(s) definidos y {invoked} invocado(s) en el "
+                f"`__main__`. {' | '.join(huerfanos)}. Un test definido y no invocado "
+                "pasa en verde porque no corre nunca"
+            )
+        else:
+            ok.append(f"run_tests.py: {defined} tests definidos = {invoked} invocados (derivado con ast)")
+
+        for relativo, patron in (
+            ("STATUS.md", r"run_tests\.py`?,?\s*\*\*(?P<num>\d+)\s+tests"),
+            ("AGENTS.md", r"run_tests\.py\s+#\s*(?P<num>\d+)\s+tests"),
+            ("README.md", r"run_tests\.py\s*#\s*(?P<num>\d+)\s+tests"),
+        ):
+            ruta_doc = os.path.join(root, relativo)
+            if not os.path.exists(ruta_doc):
+                errors.append(f"{relativo}: NO EXISTE, no se puede comprobar el recuento de tests")
+                continue
+            with open(ruta_doc, encoding="utf-8") as f:
+                cuerpo = f.read()
+            encontrados = [int(m.group("num")) for m in re.finditer(patron, cuerpo)]
+            if not encontrados:
+                errors.append(
+                    f"{relativo}: no declara el numero de tests de `run_tests.py` con la "
+                    f"forma que este check lee ({patron}). Si el texto cambio, cambia el "
+                    "patron aqui tambien: un validador que no encuentra lo que valida "
+                    "no es un validador"
+                )
+            elif any(n != defined for n in encontrados):
+                errors.append(
+                    f"{relativo}: declara {encontrados} tests y la verdad son {defined} "
+                    "(derivado de run_tests.py con ast). Actualiza el numero"
+                )
+            else:
+                ok.append(f"{relativo}: declara los {defined} tests que run_tests.py tiene de verdad")
+
+        # La tabla de `docs/ai/testing-guide.md` tiene una fila por test: si el
+        # recuento de la tabla no es el del codigo, la tabla es la que caduca.
+        guia = os.path.join(root, "docs", "ai", "testing-guide.md")
+        if os.path.exists(guia):
+            with open(guia, encoding="utf-8") as f:
+                cuerpo_guia = f.read()
+            filas = re.findall(r"^\|\s*(\d+)\s*\|\s*`test_", cuerpo_guia, re.MULTILINE)
+            if len(filas) != defined:
+                errors.append(
+                    f"docs/ai/testing-guide.md: la tabla tiene {len(filas)} filas de test y "
+                    f"run_tests.py tiene {defined}. Una tabla de una fila menos que el codigo "
+                    "se lee como si todo estuviera medido"
+                )
+            else:
+                ok.append(
+                    f"docs/ai/testing-guide.md: {len(filas)} filas de test, una por test definido"
+                )
+        else:
+            errors.append("docs/ai/testing-guide.md: NO EXISTE, no se puede comprobar la tabla")
 
 
 def main():
@@ -315,85 +421,12 @@ def main():
     else:
         errors.append("mkdocs.yml: NO EXISTE")
 
-    # 7. El RECUENTO DE TESTS no puede volver a caducar solo.
-    # Fallo medido: `STATUS.md` decia 75, `AGENTS.md` y `README.md` decian 28, y
-    # la verdad eran 78. Peor: este validador corria 72 comprobaciones y NINGUNA
-    # miraba un numero de tests, asi que daba "72 OK, 0 FAIL" con los tres
-    # ficheros caducados. Es la clase "el validador deduce de lo que valida"
-    # que este repo ya sufrio dos veces: si nadie mira el numero, nadie se
-    # avisa de que caduco.
-    #
-    # El numero exigido se DERIVA del codigo con `ast` (los `def test_*` de
-    # modulo y las llamadas del `__main__`), no de una constante escrita a mano:
-    # una constante seria el mismo bug un nivel mas arriba. Ademas se exige que
-    # `defined == invoked`, que es lo que hacia que un test nuevo "existiera"
-    # sin ejecutarse nunca.
-    n_tests = _recuento_de_tests(os.path.join(root, "run_tests.py"))
-    if n_tests is None:
-        errors.append(
-            "run_tests.py: NO SE PUEDE DERIVAR el numero de tests. Sin el ancla no "
-            "hay forma de saber si los ficheros que lo declaran estan caducados"
-        )
-    else:
-        defined, invoked, solo_definidos, solo_invocados = n_tests
-        if solo_definidos or solo_invocados:
-            huerfanos = (["definido y NO invocado: " + ", ".join(solo_definidos)]
-                        if solo_definidos else []) + \
-                       ["invocado y NO definido: " + ", ".join(solo_invocados)]
-            errors.append(
-                f"run_tests.py: {defined} test(s) definidos y {invoked} invocado(s) en el "
-                f"`__main__`. {' | '.join(huerfanos)}. Un test definido y no invocado "
-                "pasa en verde porque no corre nunca"
-            )
-        else:
-            ok.append(f"run_tests.py: {defined} tests definidos = {invoked} invocados (derivado con ast)")
-
-        for relativo, patron in (
-            ("STATUS.md", r"run_tests\.py`?,?\s*\*\*(?P<num>\d+)\s+tests"),
-            ("AGENTS.md", r"run_tests\.py\s+#\s*(?P<num>\d+)\s+tests"),
-            ("README.md", r"run_tests\.py\s*#\s*(?P<num>\d+)\s+tests"),
-        ):
-            ruta_doc = os.path.join(root, relativo)
-            if not os.path.exists(ruta_doc):
-                errors.append(f"{relativo}: NO EXISTE, no se puede comprobar el recuento de tests")
-                continue
-            with open(ruta_doc, encoding="utf-8") as f:
-                cuerpo = f.read()
-            encontrados = [int(m.group("num")) for m in re.finditer(patron, cuerpo)]
-            if not encontrados:
-                errors.append(
-                    f"{relativo}: no declara el numero de tests de `run_tests.py` con la "
-                    f"forma que este check lee ({patron}). Si el texto cambio, cambia el "
-                    "patron aqui tambien: un validador que no encuentra lo que valida "
-                    "no es un validador"
-                )
-            elif any(n != defined for n in encontrados):
-                errors.append(
-                    f"{relativo}: declara {encontrados} tests y la verdad son {defined} "
-                    "(derivado de run_tests.py con ast). Actualiza el numero"
-                )
-            else:
-                ok.append(f"{relativo}: declara los {defined} tests que run_tests.py tiene de verdad")
-
-        # La tabla de `docs/ai/testing-guide.md` tiene una fila por test: si el
-        # recuento de la tabla no es el del codigo, la tabla es la que caduca.
-        guia = os.path.join(root, "docs", "ai", "testing-guide.md")
-        if os.path.exists(guia):
-            with open(guia, encoding="utf-8") as f:
-                cuerpo_guia = f.read()
-            filas = re.findall(r"^\|\s*(\d+)\s*\|\s*`test_", cuerpo_guia, re.MULTILINE)
-            if len(filas) != defined:
-                errors.append(
-                    f"docs/ai/testing-guide.md: la tabla tiene {len(filas)} filas de test y "
-                    f"run_tests.py tiene {defined}. Una tabla de una fila menos que el codigo "
-                    "se lee como si todo estuviera medido"
-                )
-            else:
-                ok.append(
-                    f"docs/ai/testing-guide.md: {len(filas)} filas de test, una por test definido"
-                )
-        else:
-            errors.append("docs/ai/testing-guide.md: NO EXISTE, no se puede comprobar la tabla")
+    # 7. El RECUENTO DE TESTS no puede volver a caducar solo. Delegado a
+    # `_comprobar_recuento_de_tests(root, errors, ok)`, que se extrajo a
+    # funcion con raiz en el ciclo 27 T-27.2: sin eso su rama
+    # `if n_tests is None:` solo se podia despertar lanzando el validador
+    # entero contra el repo entero, es decir, nunca desde un test.
+    _comprobar_recuento_de_tests(root, errors, ok)
 
     # Reporte
     print("=" * 60)
