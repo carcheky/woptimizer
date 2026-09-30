@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-09-29T10:45:00Z",
-  "active_task_id": "TASK-033",
+  "active_task_id": "TASK-034",
   "tasks": [
     {
       "id": "TASK-001",
@@ -670,6 +670,24 @@
         "run_tests.py y validate_docs.py en verde"
       ],
       "notes": "Ciclo #24 del motor autónomo de I+D (Área 4: Rendimiento & Latencia). Aborda la latencia de escaneo descubierta en el benchmark con ~8x de aceleración."
+    },
+    {
+      "id": "TASK-034",
+      "title": "Expansión de Calidad y Pruebas Headless (Navegación UI y Contratos de Modelos)",
+      "description": "Añadir pruebas discriminantes headless para transiciones completas de navegación en MainWindow (_show_home, _show_packs, _show_process_manager) y validación estricta de contratos en modelos Pydantic (strict booleans, literals, extra=allow).",
+      "complexity": 3,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [],
+      "module": "run_tests.py",
+      "acceptance_criteria": [
+        "test_models_strict_validation_and_contracts valida strict=True en booleans, Literal en default_action, extra=allow y defaults de ProcessInfo",
+        "test_main_window_navigation_transitions valida la navegación sin bloqueo headless entre DashboardView, PackManagerView y ProcessManagerView con destrucción limpia de vistas y estilos de navegación",
+        "Ambos tests registrados en run_tests.py elevando la suite a 75 tests",
+        "docs/ai/testing-guide.md actualizado",
+        "run_tests.py y validate_docs.py en verde"
+      ],
+      "notes": "Ciclo #25 del motor autónomo de I+D (Área 5: Testing & Calidad). Cierra puntos ciegos en la verificación de navegación UI y contratos Pydantic."
     }
   ]
 }
