@@ -881,7 +881,7 @@
       "description": "Escanear procesos activos del sistema, filtrar contra SYSTEM_PROTECTED_PROCESSES e incorporar 5-8 nuevos procesos reales a assets/process_db.json con categorías, prioridades y descripciones canónicas.",
       "complexity": 2,
       "priority": "medium",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-043"
       ],
@@ -900,7 +900,7 @@
       "description": "Acelerar la resolución de categorías y semáforos en ProcessService mediante memoización de claves normalizadas y reducir refrescos UI redundantes.",
       "complexity": 3,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-044"
       ],

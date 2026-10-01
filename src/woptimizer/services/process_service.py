@@ -365,6 +365,7 @@ class ProcessService:
                         )
                     self._db_map = db_map
                     self._meta_cache.clear()
+                    self.invalidate_cache()  # TASK-045: Invalidación atómica de _proc_cache al recargar DB
                     self.is_db_loaded = True
         except Exception as e:
             logger.warning(f"Error cargando DB local: {e}")

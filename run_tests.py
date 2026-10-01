@@ -10577,7 +10577,7 @@ def test_tray_session_restoration_integration():
 
     mock_gaming_svc.restore_gaming_session.return_value = (2, 0)
 
-    with patch("customtkinter.CTk"), patch("woptimizer.ui.main_window.MainWindow"):
+    with patch("customtkinter.CTk"), patch("woptimizer.ui.app.MainWindow"):
         app = WOptimizerApp(
             process_service=mock_proc_svc,
             pack_service=mock_pack_svc,
@@ -10647,6 +10647,54 @@ def test_tray_session_restoration_integration():
                 )
 
     print("test_tray_session_restoration_integration OK.")
+
+
+def test_process_categorization_latency_and_memoization():
+    """TASK-045: Memoización de categorización de procesos e invalidación atómica.
+
+    Verifica que:
+    1. _categorize memoiza el resultado en _meta_cache.
+    2. Llamadas posteriores retornan la categoría memoizada O(1) sin consultar _db_map
+       (discriminante estricto: al vaciar _db_map, el hit O(1) preserva la categoría
+       catalogada y NO cae en el fallback _DEFAULT_META).
+    3. Entradas sintéticas inyectadas en _meta_cache se resuelven de inmediato sin pasar por _db_map.
+    4. Fallback de proceso desconocido también se memoiza.
+    5. _load_local_db() vacía _meta_cache e invalida atómicamente _proc_cache (deja _proc_cache en None).
+    """
+    from woptimizer.services.process_service import ProcessService, _DEFAULT_META
+
+    svc = ProcessService()
+    # 1. Proceso catalogado en DB: debe memoizarse en _meta_cache con su categoría específica
+    cat_chrome = svc._categorize("chrome")
+    assert cat_chrome != _DEFAULT_META[0], "chrome debe tener categoría catalogada diferente del fallback"
+    assert "chrome" in svc._meta_cache
+
+    # 2. Vaciar _db_map para probar que la segunda consulta usa el caché O(1)
+    svc._db_map = {}
+    cat_chrome_cached = svc._categorize("chrome")
+    assert cat_chrome_cached == cat_chrome, (
+        f"Debe retornar la categoría desde _meta_cache O(1) incluso con _db_map vacío: {cat_chrome_cached!r}"
+    )
+
+    # 3. Discriminación sintética adicional: entrada única que solo existe en _meta_cache
+    sentinel_cat = "CATEGORIA_CENTINELA_MEMOIZADA"
+    svc._meta_cache["app_sintetica_test"] = (sentinel_cat, "high", "Desc test")
+    assert svc._categorize("app_sintetica_test") == sentinel_cat, (
+        "La resolución debe devolver el valor memoizado directamente desde _meta_cache"
+    )
+
+    # 4. Fallback de proceso desconocido también se memoiza
+    cat_unk = svc._categorize("proceso_totalmente_desconocido_xyz")
+    assert cat_unk == _DEFAULT_META[0]
+    assert "proceso_totalmente_desconocido_xyz" in svc._meta_cache
+
+    # 5. Simular caché de procesos activo y verificar invalidación atómica en _load_local_db
+    svc._proc_cache = []
+    svc._load_local_db()
+    assert len(svc._meta_cache) == 0, "_meta_cache debe vaciarse al recargar la DB"
+    assert svc._proc_cache is None, "_proc_cache debe quedar en None tras invalidate_cache() en _load_local_db()"
+
+    print("test_process_categorization_latency_and_memoization OK.")
 
 
 if __name__ == "__main__":
@@ -10768,6 +10816,8 @@ if __name__ == "__main__":
     # TASK-042: Robustez de concurrencia y captura defensiva
     test_notification_service_rlock_and_concurrency()
     test_process_service_kill_defensive_zombie_and_oserror()
+    # TASK-045: Memoización de categorización e invalidación atómica
+    test_process_categorization_latency_and_memoization()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.
