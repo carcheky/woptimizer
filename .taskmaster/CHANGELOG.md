@@ -1,3 +1,20 @@
+## [CYCLE-029] 2026-10-01 09:10 — process-db-expansion-c29
+**Área**: Base de Datos & Procesos
+**Change**: openspec/changes/2026-10-01-process-db-expansion-c29/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Área 3)
+- Paso 2 (Planear): process-db-updater → VERIFICADO
+- Paso 3 (Ejecutar): process-db-updater → IMPLEMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (89 procesos validados sin omisiones ni solapamientos)
+
+### Cambios Clave
+- `assets/process_db.json`: +8 nuevos procesos reales (`89 total`).
+- 0 solapamientos con `SYSTEM_PROTECTED_PROCESSES` (34 procesos protegidos).
+- `test_process_db_schema_integrity` y `test_category_emoji_alignment` pasando al 100%.
+
+---
+
 ## [CYCLE-028] 2026-10-01 08:50 — gaming-session-restoration
 **Área**: Gaming & Telemetría UX
 **Change**: openspec/changes/2026-10-01-gaming-session-restoration/

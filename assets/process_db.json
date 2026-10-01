@@ -403,5 +403,45 @@
         "category": "🟢 Productividad",
         "priority": "high",
         "description": "Notificador de alimentación CA de ASUS. Informa sobre conexión del adaptador; no esencial durante el juego."
+    },
+    "gamingservices": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "low",
+        "description": "Servicios centrales de la tienda Xbox y juegos en Windows."
+    },
+    "gamingservicesnet": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "low",
+        "description": "Servicio de red auxiliar para juegos y tienda Xbox."
+    },
+    "adobecollabsync": {
+        "category": "🟢 Productividad",
+        "priority": "medium",
+        "description": "Sincronizador en segundo plano de documentos colaborativos de Adobe."
+    },
+    "filecoauth": {
+        "category": "🟢 Sincronización",
+        "priority": "medium",
+        "description": "Servicio de coautoría y sincronización de Microsoft Office."
+    },
+    "filesynchelper": {
+        "category": "🟢 Sincronización",
+        "priority": "medium",
+        "description": "Asistente auxiliar de sincronización de archivos de OneDrive."
+    },
+    "edgegameassist": {
+        "category": "🟢 Navegadores",
+        "priority": "low",
+        "description": "Asistente u overlay flotante de juegos integrado en Microsoft Edge."
+    },
+    "hass.agent": {
+        "category": "🟢 Productividad",
+        "priority": "low",
+        "description": "Agente de integración local para domótica con Home Assistant."
+    },
+    "gameinputredistservice": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "low",
+        "description": "Servicio redistribuible de entrada de mandos Microsoft GameInput."
     }
 }

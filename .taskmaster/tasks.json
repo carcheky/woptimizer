@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01T00:00:00Z",
-  "active_task_id": "TASK-038",
+  "active_task_id": "TASK-039",
   "tasks": [
     {
       "id": "TASK-001",
@@ -780,6 +780,25 @@
         "run_tests.py y validate_docs.py en verde 100%"
       ],
       "notes": "Ciclo #28 del motor autónomo de I+D (Área 2: Gaming & Telemetría UX)."
+    },
+    {
+      "id": "TASK-039",
+      "title": "Expansión y Actualización de la Base de Procesos (Ciclo #29)",
+      "description": "Escaneo de procesos vivos en Windows, filtrado irrestricto contra SYSTEM_PROTECTED_PROCESSES e inclusión de 8 nuevos procesos reales en assets/process_db.json (gamingservices, gamingservicesnet, adobecollabsync, filecoauth, filesynchelper, edgegameassist, hass.agent, gameinputredistservice = 89 total) con categorías y prioridades canónicas.",
+      "complexity": 2,
+      "priority": "medium",
+      "status": "completed",
+      "dependencies": [
+        "TASK-038"
+      ],
+      "module": "assets/process_db.json",
+      "acceptance_criteria": [
+        "89 procesos catalogados en assets/process_db.json sin omitir descripción ni categoría",
+        "0 solapamientos con SYSTEM_PROTECTED_PROCESSES",
+        "test_process_db_schema_integrity y test_category_emoji_alignment en verde (89 procesos validados)",
+        "run_tests.py y validate_docs.py en verde 100%"
+      ],
+      "notes": "Ciclo #29 del motor autónomo de I+D (Área 3: Base de Datos & Procesos)."
     }
   ]
 }
