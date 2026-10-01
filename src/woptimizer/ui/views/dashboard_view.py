@@ -322,8 +322,7 @@ class DashboardView(Confirmable, ctk.CTkFrame):
             self._empty_label.grid(columnspan=cols)
             return
 
-        packs = self.pack_service.get_all_packs()
-        favorites = [p for p in packs.values() if p.is_favorite and p.id in self._buttons_by_pack_id]
+        favorites = [p for p in self.pack_service.get_favorite_packs() if p.id in self._buttons_by_pack_id]
         if not favorites:
             return
         cols = self._calculate_columns(len(favorites))
@@ -338,8 +337,7 @@ class DashboardView(Confirmable, ctk.CTkFrame):
     def refresh_dashboard(self):
         self._update_resting_bar()
         self._show_restore_banner()
-        packs = self.pack_service.get_all_packs()
-        favorites = [p for p in packs.values() if p.is_favorite]
+        favorites = self.pack_service.get_favorite_packs()
 
         current_fav_ids = {p.id for p in favorites}
         cached_ids = set(self._buttons_by_pack_id.keys())

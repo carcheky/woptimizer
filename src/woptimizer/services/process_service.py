@@ -327,17 +327,8 @@ class ProcessService:
         self._CACHE_TTL: float = 2.0  # segundos
         self._load_local_db()
 
-    @property
-    def process_db(self) -> list:
-        """Compatibilidad: devuelve una lista de ProcessInfo desde el hashmap.
-        Solo se usa si algún código externo accede a process_db directamente."""
-        return [
-            ProcessInfo(name=k, full_name=k, pid=0,
-                        category=v[0], priority=v[1], description=v[2])
-            for k, v in self._db_map.items()
-        ]
-
     @staticmethod
+
     def is_system_protected(name: str) -> bool:
         """TASK-024: True si el nombre es de nivel sistema y jamas cerrable.
 
@@ -451,12 +442,6 @@ class ProcessService:
 
         self._meta_cache[name_clean] = _DEFAULT_META
         return _DEFAULT_META
-
-    def _get_priority(self, category: str) -> str:
-        for meta in self._db_map.values():
-            if meta[0] == category:
-                return meta[1]
-        return 'none'
 
     def _categorize(self, name: str) -> str:
         cat, _, _ = self._get_process_meta(name)

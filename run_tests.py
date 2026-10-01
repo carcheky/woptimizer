@@ -7802,6 +7802,9 @@ def test_contrast_wcag_aa():
             f"Fallo de contraste WCAG AA para {etiqueta}: ratio {ratio:.2f}:1 inferior a 4.5:1 "
             f"(fg={fg}, bg={bg})"
         )
+        assert theme.is_wcag_aa(fg, bg, large_text=False), (
+            f"is_wcag_aa devolvio False para {etiqueta}"
+        )
 
     # Texto grande o de acento en botones (umbral 3.0:1)
     pares_grandes = [
@@ -7813,10 +7816,14 @@ def test_contrast_wcag_aa():
             f"Fallo de contraste WCAG AA para texto grande {etiqueta}: ratio {ratio:.2f}:1 inferior a 3.0:1 "
             f"(fg={fg}, bg={bg})"
         )
+        assert theme.is_wcag_aa(fg, bg, large_text=True), (
+            f"is_wcag_aa devolvio False para texto grande {etiqueta}"
+        )
 
     # Discriminacion: comprobar que un par de bajo contraste falla
     par_invalido = theme.contrast_ratio("#777777", "#666666")
     assert par_invalido < 4.5, "El calculador de contraste no detecta contraste insuficiente"
+    assert not theme.is_wcag_aa("#777777", "#666666"), "is_wcag_aa no detecta contraste insuficiente"
 
     print("test_contrast_wcag_aa OK (todos los pares de interfaz cumplen WCAG AA >= 4.5:1 o >= 3.0:1).")
 
@@ -11634,6 +11641,71 @@ def test_no_legacy_test_files_in_root():
     print("test_no_legacy_test_files_in_root OK.")
 
 
+def test_dead_code_ast_guard():
+    """TASK-056 (ciclo 46): Guard AST de código muerto en src/woptimizer/**.
+
+    Verifica que toda función y método definido en los módulos de src/woptimizer
+    tenga al menos una referencia real dentro del código de producción o en
+    la suite de tests (run_tests.py), evitando funciones zombis o desconectadas.
+    """
+    print("Testing dead code AST guard across src/woptimizer/** (TASK-056)...")
+    import ast
+    from collections import Counter
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent
+    src_dir = repo_root / "src" / "woptimizer"
+
+    # 1. Derivar el alcance del árbol de módulos en src/woptimizer/**
+    src_files = [p for p in src_dir.rglob("*.py")]
+    assert len(src_files) >= 10, f"Se esperaban al menos 10 módulos en {src_dir}, hallados {len(src_files)}"
+
+    all_files = list(src_files) + [repo_root / "run_tests.py"]
+
+    # 2. Parsear cada archivo una vez y acumular frecuencias de nombres y atributos
+    symbol_counts = Counter()
+    definitions = []
+
+    for path in all_files:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        is_src = path in src_files
+        rel_path = path.relative_to(repo_root)
+
+        for node in ast.walk(tree):
+            if is_src and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                definitions.append((rel_path, node.lineno, node.name))
+            elif isinstance(node, ast.Name):
+                symbol_counts[node.id] += 1
+            elif isinstance(node, ast.Attribute):
+                symbol_counts[node.attr] += 1
+
+    # 3. Lista blanca justificada: métodos mágicos dunder, entrypoint main
+    whitelist = {
+        "main",  # Entry point de __main__.py y run.py
+    }
+
+    unreferenced = []
+    for rel_path, lineno, name in definitions:
+        if (name.startswith("__") and name.endswith("__")) or name in whitelist:
+            continue
+        if symbol_counts[name] == 0:
+            unreferenced.append(f"{rel_path}:{lineno} -> {name}")
+
+    assert not unreferenced, (
+        f"Se detectaron {len(unreferenced)} funciones/métodos sin ninguna referencia en el producto ni en tests:\n"
+        + "\n".join(f"  - {u}" for u in unreferenced)
+    )
+
+    # 4. Control negativo: verificar que funciones clave de producto son monitorizadas
+    monitored = {name for _, _, name in definitions}
+    assert "_force_update_db" in monitored, "_force_update_db debe estar en las funciones analizadas"
+    assert "get_favorite_packs" in monitored, "get_favorite_packs debe estar en las funciones analizadas"
+    assert "is_wcag_aa" in monitored, "is_wcag_aa debe estar en las funciones analizadas"
+    assert "_get_priority" not in monitored, "_get_priority debe haber sido eliminado de process_service.py"
+
+    print("test_dead_code_ast_guard OK (cero código muerto en src/woptimizer/**).")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -11764,6 +11836,8 @@ if __name__ == "__main__":
     test_docs_api_and_index_v3_contracts()
     # TASK-055: Guard anti-regresión y contratos de archivo de scripts test_*.py legacy
     test_no_legacy_test_files_in_root()
+    # TASK-056: Guard AST de código muerto en src/woptimizer/**
+    test_dead_code_ast_guard()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.
