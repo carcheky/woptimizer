@@ -482,5 +482,19 @@
       "after": "80 backend + 5 headless UI (85 totales, validados con ast por validate_docs.py)"
     },
     "impact": "Ampliación de Cobertura de Testing y Contratos de Persistencia Pydantic (TASK-041): +2 nuevos tests discriminantes en run_tests.py (test_pydantic_extra_fields_persistence y test_freed_mb_calculation_precision). Garantizada la inmutabilidad y persistencia de campos extra no estándar en AppData y Pack tras ciclos load()->save(), y precisión en el cálculo RSS de ProcessService.kill_processes. Auditoría Paso 4 = PASS."
+  },
+  {
+    "cycle": 32,
+    "date": "2026-10-01T15:30:00",
+    "area": "Resiliencia & Robustez",
+    "slug": "2026-10-01-system-resilience-hardening",
+    "task": "TASK-042",
+    "status": "COMPLETED",
+    "commits": [],
+    "tests": {
+      "before": "80 backend + 5 headless UI (85 totales)",
+      "after": "82 backend + 5 headless UI (87 totales, validados con ast por validate_docs.py)"
+    },
+    "impact": "Robustez de Concurrencia y Captura Defensiva en NotificationService y ProcessService (TASK-042): Reemplazo de Lock por RLock reentrante multihilo en NotificationService, captura defensiva de psutil.ZombieProcess y OSError en ProcessService.kill_processes y kill_pack_apps. +2 tests discriminantes en run_tests.py."
   }
 ]

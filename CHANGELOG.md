@@ -1,3 +1,19 @@
+## CYCLE-032 - 2026-10-01
+
+**Resiliencia & Robustez** — `TASK-042` (Robustez de Concurrencia y Captura Defensiva)
+
+> 🟢 **VERDICT FINAL: PASS** — Auditoría de resiliencia completada con éxito. **87 tests** (82 backend + 5 headless UI) pasando al 100%.
+
+### Corregido
+- **Resiliencia en `NotificationService`.** Reemplazo del primitivo `Lock` por `threading.RLock()` para garantizar reentrancia y tolerancia a bloqueos multihilo durante invocaciones concurrentes a `attach_tray()`, `detach_tray()` y `notify()`.
+- **Captura defensiva en `ProcessService`.** Ampliada la captura de excepciones en `kill_processes` y `kill_pack_apps` para manejar `psutil.ZombieProcess` y `OSError` (típicos de permisos WinError 5/87) sin interrumpir la métrica RSS liberada ni abortar la terminación de subprocesos.
+
+### Añadido
+- **`test_notification_service_rlock_and_concurrency`.** Verifica el tipo `RLock`, soporta invocaciones reentrantes y evalúa el comportamiento multihilo (5 hilos concurrentes) sin interbloqueos.
+- **`test_process_service_kill_defensive_zombie_and_oserror`.** Prueba la resistencia de `kill_processes` y `kill_pack_apps` ante `ZombieProcess` y `OSError` simulados en padres e hijos.
+
+---
+
 ## CYCLE-031 - 2026-10-01
 
 **Testing & Calidad** — `TASK-041` (Ampliación de Cobertura de Testing y Contratos de Persistencia Pydantic)

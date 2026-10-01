@@ -10456,6 +10456,112 @@ def test_freed_mb_calculation_precision():
     print("test_freed_mb_calculation_precision OK.")
 
 
+def test_notification_service_rlock_and_concurrency():
+    """TASK-042 (Ciclo #32): Valida que NotificationService usa RLock, soporta reentrancia
+    y se comporta de forma segura bajo concurrencia multihilo.
+    """
+    print("Testing NotificationService RLock y concurrencia (TASK-042)...")
+    import threading
+    from woptimizer.services.notification_service import NotificationService
+
+    svc = NotificationService()
+    assert isinstance(svc._lock, type(threading.RLock())), "NotificationService._lock debe ser RLock"
+
+    # Test de reentrancia
+    with svc._lock:
+        with svc._lock:
+            res = svc.notify("Reentrant", "Testing reentrancy lock")
+            assert isinstance(res, bool)
+
+    # Test multihilo
+    errors = []
+
+    def worker(idx):
+        try:
+            for _ in range(20):
+                svc.attach_tray(None)
+                svc.notify(f"Title {idx}", f"Message {idx}")
+                svc.detach_tray()
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(5)
+
+    assert not errors, f"Excepciones durante concurrencia multihilo en NotificationService: {errors}"
+    print("test_notification_service_rlock_and_concurrency OK.")
+
+
+def test_process_service_kill_defensive_zombie_and_oserror():
+    """TASK-042 (Ciclo #32): Valida la captura defensiva de psutil.ZombieProcess y OSError
+    en kill_processes y kill_pack_apps de ProcessService.
+    """
+    print("Testing ProcessService kill defensive ZombieProcess y OSError (TASK-042)...")
+    import psutil
+    from unittest.mock import patch, MagicMock
+    from woptimizer.services.process_service import ProcessService
+    from woptimizer.models import ProcessInfo
+
+    ps = ProcessService()
+
+    # 1. Simular ZombieProcess al consultar hijos
+    mock_parent = MagicMock()
+    mock_parent.memory_info.return_value = MagicMock(rss=10485760)  # 10 MiB
+    mock_parent.children.side_effect = psutil.ZombieProcess(pid=8888)
+
+    pinfo = ProcessInfo(
+        pid=8888,
+        name="zombie_app.exe",
+        full_name="zombie_app.exe",
+        category="🌐 Navegadores & Web",
+        cpu_percent=0.0,
+        memory_info={"rss": 10485760},
+        status="zombie"
+    )
+
+    with patch("psutil.Process", return_value=mock_parent):
+        killed, failed, skipped, freed_mb = ps.kill_processes([pinfo])
+        assert killed == 1
+        assert freed_mb == 10.0
+
+    # 2. Simular ZombieProcess en kill() del padre
+    mock_parent_zombie = MagicMock()
+    mock_parent_zombie.memory_info.return_value = MagicMock(rss=5242880)
+    mock_parent_zombie.children.return_value = []
+    mock_parent_zombie.kill.side_effect = psutil.ZombieProcess(pid=7777)
+
+    pinfo_zombie = ProcessInfo(
+        pid=7777,
+        name="zombie_parent.exe",
+        full_name="zombie_parent.exe",
+        category="🌐 Navegadores & Web",
+        cpu_percent=0.0,
+        memory_info={"rss": 5242880},
+        status="zombie"
+    )
+
+    with patch("psutil.Process", return_value=mock_parent_zombie):
+        killed, failed, skipped, freed_mb = ps.kill_processes([pinfo_zombie])
+        assert skipped == 1
+        assert killed == 0
+
+    # 3. Simular OSError en kill() del padre
+    mock_parent_oserror = MagicMock()
+    mock_parent_oserror.memory_info.return_value = MagicMock(rss=5242880)
+    mock_parent_oserror.children.return_value = []
+    mock_parent_oserror.kill.side_effect = OSError("WinError 5 Access Denied")
+
+    with patch("psutil.Process", return_value=mock_parent_oserror):
+        killed, failed, skipped, freed_mb = ps.kill_processes([pinfo_zombie])
+        assert failed == 1
+        assert killed == 0
+
+    print("test_process_service_kill_defensive_zombie_and_oserror OK.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -10572,6 +10678,9 @@ if __name__ == "__main__":
     # TASK-041: Persistencia de campos extra Pydantic y precisión en freed_mb
     test_pydantic_extra_fields_persistence()
     test_freed_mb_calculation_precision()
+    # TASK-042: Robustez de concurrencia y captura defensiva
+    test_notification_service_rlock_and_concurrency()
+    test_process_service_kill_defensive_zombie_and_oserror()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.

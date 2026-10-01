@@ -35,7 +35,7 @@ class NotificationService:
 
     def __init__(self) -> None:
         self._tray_icon: Optional[Any] = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._sent_count = 0
         self._dropped_count = 0
 

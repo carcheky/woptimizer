@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01T00:00:00Z",
-  "active_task_id": "TASK-041",
+  "active_task_id": "TASK-042",
   "tasks": [
     {
       "id": "TASK-001",
@@ -836,6 +836,25 @@
         "Suite de run_tests.py elevada a 85 tests y 100% en verde"
       ],
       "notes": "Ciclo #31 del motor autónomo de I+D (Área 5: Testing & Calidad)."
+    },
+    {
+      "id": "TASK-042",
+      "title": "Robustez de Concurrencia y Captura Defensiva en NotificationService y ProcessService",
+      "description": "Garantizar thread-safety en NotificationService con RLock para operaciones concurrentes en tray icon y reforzar captura defensiva de ZombieProcess y OSError en kill_processes de ProcessService. Ampliación de tests en run_tests.py.",
+      "complexity": 3,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [
+        "TASK-041"
+      ],
+      "module": "src/woptimizer/services/notification_service.py",
+      "acceptance_criteria": [
+        "Thread-safety en NotificationService garantizada con RLock en attach/detach y notify",
+        "ProcessService.kill_processes captura ZombieProcess y OSError al iterar hijos sin abortar ni corruptar freed_mb",
+        "Añadidos tests discriminantes en run_tests.py",
+        "run_tests.py y validate_docs.py en verde 100%"
+      ],
+      "notes": "Ciclo #32 del motor autónomo de I+D (Área 1: Resiliencia & Robustez)."
     }
   ]
 }

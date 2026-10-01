@@ -554,10 +554,10 @@ class ProcessService:
                     for child in parent.children(recursive=True):
                         try:
                             c_rss = child.memory_info().rss
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):
                             c_rss = 0
                         children_data.append((child, c_rss))
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):
                     children_data = []
 
                 # Matar hijos recursivamente primero (evita procesos huérfanos)
@@ -565,7 +565,7 @@ class ProcessService:
                     try:
                         child.kill()
                         freed_bytes += c_rss
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):
                         pass
 
                 # Matar el padre
@@ -573,11 +573,11 @@ class ProcessService:
                 freed_bytes += parent_rss
                 killed += 1
 
-            except psutil.NoSuchProcess:
-                # El proceso ya no existe, objetivo cumplido indirectamente
+            except (psutil.NoSuchProcess, psutil.ZombieProcess):
+                # El proceso ya no existe o quedo zombie, objetivo cumplido indirectamente
                 skipped += 1
-            except psutil.AccessDenied:
-                logger.warning(f"Access denied killing {pinfo.name}")
+            except (psutil.AccessDenied, OSError):
+                logger.warning(f"Access denied or OS error killing {pinfo.name}")
                 failed += 1
 
         # Invalidar cache tras matar procesos
@@ -616,7 +616,7 @@ class ProcessService:
                     # Capturar memoria del padre ANTES de matar
                     try:
                         proc_rss = proc.memory_info().rss
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):
                         proc_rss = 0
 
                     # Capturar hijos y su memoria ANTES de matar
@@ -625,10 +625,10 @@ class ProcessService:
                         for child in proc.children(recursive=True):
                             try:
                                 c_rss = child.memory_info().rss
-                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):
                                 c_rss = 0
                             children_data.append((child, c_rss))
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):
                         children_data = []
 
                     # Matar hijos recursivamente primero
@@ -636,14 +636,14 @@ class ProcessService:
                         try:
                             child.kill()
                             freed_bytes += c_rss
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):
                             pass
 
                     # Matar el padre
                     proc.kill()
                     freed_bytes += proc_rss
                     killed += 1
-            except psutil.AccessDenied:
+            except (psutil.AccessDenied, OSError):
                 failed += 1
             except (psutil.NoSuchProcess, psutil.ZombieProcess):
                 skipped += 1

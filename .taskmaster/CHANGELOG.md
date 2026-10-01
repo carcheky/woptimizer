@@ -1,3 +1,21 @@
+## [CYCLE-032] 2026-10-01 15:30 — system-resilience-hardening
+**Área**: Resiliencia & Robustez
+**Change**: openspec/changes/2026-10-01-system-resilience-hardening/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Área 1)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (+2 tests discriminantes validados)
+
+### Cambios Clave
+- `src/woptimizer/services/notification_service.py`: Reemplazo de `threading.Lock()` por `threading.RLock()` para thread-safety reentrante.
+- `src/woptimizer/services/process_service.py`: Captura defensiva de `psutil.ZombieProcess` y `OSError` en `kill_processes` y `kill_pack_apps`.
+- `run_tests.py`: +2 tests discriminantes (`test_notification_service_rlock_and_concurrency`, `test_process_service_kill_defensive_zombie_and_oserror`). Suite elevada a 87 tests al 100% en verde.
+- `docs/ai/architecture.md`: Actualización de la documentación viva.
+
+---
+
 ## [CYCLE-031] 2026-10-01 10:10 — testing-quality-expansion-c31
 **Área**: Testing & Calidad
 **Change**: openspec/changes/2026-10-01-testing-quality-expansion-c31/
