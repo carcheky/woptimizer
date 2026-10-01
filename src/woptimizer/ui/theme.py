@@ -48,6 +48,9 @@ RADIUS_LARGE: Final[int] = 8
 
 RADII: Final[Tuple[int, ...]] = (4, 6, 8)
 
+# --- Dimensiones y Layout ---
+ANCHO_MIN_CARD: Final[int] = 280
+
 
 # --- Utilidades WCAG AA ---
 def _srgb_channel_to_linear(c: float) -> float:

@@ -53,6 +53,7 @@ La jerarquía tipográfica está estrictamente acotada a una tupla de 6 valores 
   - Botones de favoritos para los packs marcados como `is_favorite = True`.
   - El botón del pack Gaming tiene estilo prioritario en verde Gaming (`#1DB954`).
   - Al hacer clic en un favorito, ejecuta su acción principal (apagar para gaming, arrancar para packs de trabajo).
+  - **Rejilla Dinámica Adaptativa (TASK-049):** Rejilla responsiva con columnas calculadas dinámicamente según el ancho real de `buttons_frame` y el token `theme.ANCHO_MIN_CARD` (280 px). La fórmula es `cols = max(1, min(len(favorites), ancho // ANCHO_MIN_CARD))`. En pantallas anchas distribuye uniformemente en 3 o 4 columnas; en ventanas estrechas colapsa a 2 o 1 columna. Los eventos `<Configure>` del frame re-maillan los botones en vivo sin destruirlos ni alterar el estado de confirmación. Columnas no utilizadas sueltan su peso (`weight=0, uniform=""`) para evitar columnas fantasma. El estado vacío `_empty_label` abarca la totalidad de las columnas calculadas (`columnspan=cols`).
 - **Barra de Navegación Inferior:**
   - Altura fija unificada (`height=44`, `pack_propagate(False)`).
   - Indicador de vista activa mediante acento visual y texto primario, sin fondos azules estridentes.

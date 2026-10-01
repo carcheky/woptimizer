@@ -109,8 +109,8 @@ class DashboardView(Confirmable, ctk.CTkFrame):
 
         self.buttons_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.buttons_frame.pack(fill="both", expand=True)
-        # Configurar grid para que los botones se centren o expandan
-        self.buttons_frame.grid_columnconfigure((0, 1), weight=1)
+        self._max_allocated_cols: int = 2
+        self.buttons_frame.bind("<Configure>", self._on_frame_configure)
 
         # TASK-023: doble pulsacion SOLO en la rama kill de execute_pack.
         self._init_confirmable(self.status_label, window_ms=VENTANA_MS_PORTADA)
@@ -280,6 +280,61 @@ class DashboardView(Confirmable, ctk.CTkFrame):
         if getattr(self, "notification_service", None):
             self.notification_service.notify_apps_launched("Restauración Gaming", started, failed)
 
+    def _destroy_favorite_buttons(self):
+        """TASK-049: Extrae la destrucción de botones favoritos de ambas ramas."""
+        self._forget_buttons()
+        for btn in self._buttons_by_pack_id.values():
+            btn.destroy()
+        self._buttons_by_pack_id.clear()
+
+    def _calculate_columns(self, num_favorites: int) -> int:
+        """TASK-049: Calcula columnas activas según ancho disponible y ANCHO_MIN_CARD."""
+        ancho_disponible = self.buttons_frame.winfo_width()
+        if ancho_disponible <= 1:
+            ancho_disponible = 800
+        max_cols = max(1, ancho_disponible // theme.ANCHO_MIN_CARD)
+        if num_favorites <= 0:
+            return max_cols
+        return max(1, min(num_favorites, max_cols))
+
+    def _reconfigure_grid_columns(self, cols: int):
+        """TASK-049: Asigna weight=1 a columnas activas y weight=0 a las sobrantes."""
+        for c in range(cols):
+            self.buttons_frame.grid_columnconfigure(c, weight=1, uniform="fav")
+        max_to_clean = max(getattr(self, "_max_allocated_cols", 2), cols)
+        for c in range(cols, max_to_clean):
+            self.buttons_frame.grid_columnconfigure(c, weight=0, uniform="")
+        self._max_allocated_cols = max(getattr(self, "_max_allocated_cols", 2), cols)
+
+    def _on_frame_configure(self, event=None):
+        """TASK-049: Manejador de evento <Configure> con filtro estricto de emisor."""
+        if event is not None and event.widget != self.buttons_frame:
+            return
+        self._regrid_favorites()
+
+    def _regrid_favorites(self):
+        """TASK-049: Re-maillado de favoritos al redimensionar la ventana."""
+        if not self._buttons_by_pack_id and not self._empty_label:
+            return
+        if self._empty_label and self._empty_label.winfo_exists():
+            cols = self._calculate_columns(0)
+            self._reconfigure_grid_columns(cols)
+            self._empty_label.grid(columnspan=cols)
+            return
+
+        packs = self.pack_service.get_all_packs()
+        favorites = [p for p in packs.values() if p.is_favorite and p.id in self._buttons_by_pack_id]
+        if not favorites:
+            return
+        cols = self._calculate_columns(len(favorites))
+        self._reconfigure_grid_columns(cols)
+        for i, pack in enumerate(favorites):
+            row = i // cols
+            col = i % cols
+            btn = self._buttons_by_pack_id.get(pack.id)
+            if btn and btn.winfo_exists():
+                btn.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+
     def refresh_dashboard(self):
         self._update_resting_bar()
         self._show_restore_banner()
@@ -290,11 +345,9 @@ class DashboardView(Confirmable, ctk.CTkFrame):
         cached_ids = set(self._buttons_by_pack_id.keys())
 
         if not favorites:
-            self._forget_buttons()
-            for btn in self._buttons_by_pack_id.values():
-                btn.destroy()
-            self._buttons_by_pack_id.clear()
-
+            self._destroy_favorite_buttons()
+            cols = self._calculate_columns(0)
+            self._reconfigure_grid_columns(cols)
             if not self._empty_label:
                 self._empty_label = ctk.CTkLabel(
                     self.buttons_frame,
@@ -302,33 +355,33 @@ class DashboardView(Confirmable, ctk.CTkFrame):
                     font=("Segoe UI", theme.FONT_SIZE_SUBHEADER),
                     text_color=theme.TEXT_MUTED
                 )
-                self._empty_label.grid(row=0, column=0, columnspan=2, pady=50)
+                self._empty_label.grid(row=0, column=0, columnspan=cols, pady=50)
+            else:
+                self._empty_label.grid(columnspan=cols)
             return
 
         if self._empty_label:
             self._empty_label.destroy()
             self._empty_label = None
 
+        cols = self._calculate_columns(len(favorites))
+        self._reconfigure_grid_columns(cols)
+
         # Reutilizar o reconstruir los botones
         if current_fav_ids != cached_ids:
-            self._forget_buttons()
-            for btn in self._buttons_by_pack_id.values():
-                btn.destroy()
-            self._buttons_by_pack_id.clear()
-
-            row = 0
-            col = 0
-            for pack in favorites:
+            self._destroy_favorite_buttons()
+            for i, pack in enumerate(favorites):
+                row = i // cols
+                col = i % cols
                 btn = self._create_favorite_button(pack, row, col)
                 self._buttons_by_pack_id[pack.id] = btn
-                col += 1
-                if col > 1:
-                    col = 0
-                    row += 1
         else:
-            for pack in favorites:
+            for i, pack in enumerate(favorites):
+                row = i // cols
+                col = i % cols
                 btn = self._buttons_by_pack_id.get(pack.id)
                 if btn:
+                    btn.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
                     btn.configure(
                         text=self._get_pack_button_text(pack),
                         command=lambda p=pack, b=btn: self.execute_pack(p, b)

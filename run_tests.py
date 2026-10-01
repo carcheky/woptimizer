@@ -11044,6 +11044,96 @@ def test_gaming_service_rlock_and_concurrency():
     print("test_gaming_service_rlock_and_concurrency OK.")
 
 
+def test_dashboard_favorite_grid_adaptive_contracts():
+    """TASK-049: Rejilla adaptativa al ancho de ventana para favoritos en DashboardView."""
+    print("Testing DashboardView adaptive favorites grid contracts...")
+    import customtkinter as ctk
+    from woptimizer.ui import theme
+    from woptimizer.ui.views.dashboard_view import DashboardView
+    from woptimizer.models import Pack
+
+    # 1. Contrato de token centralizado en theme.py
+    assert hasattr(theme, "ANCHO_MIN_CARD"), "theme.py debe exportar ANCHO_MIN_CARD"
+    assert theme.ANCHO_MIN_CARD == 280, f"ANCHO_MIN_CARD esperado 280, recibido {theme.ANCHO_MIN_CARD}"
+
+    class _FakePS:
+        def get_running_processes(self):
+            return []
+
+    class _FakePackS:
+        def __init__(self, num_packs=4):
+            self.packs = {
+                f"pack_{i}": Pack(id=f"pack_{i}", name=f"Pack {i}", is_favorite=True)
+                for i in range(num_packs)
+            }
+        def get_all_packs(self):
+            return self.packs
+
+    class _FakeGS:
+        def get_last_closed_apps(self):
+            return []
+
+    class _FakeNS:
+        pass
+
+    root = ctk.CTk()
+    root.withdraw()
+    try:
+        pack_service = _FakePackS(4)
+        dash = DashboardView(root, _FakePS(), pack_service, _FakeNS(), _FakeGS())
+
+        # 2. Con 4 favoritos y ancho de 1200 px:
+        # max_cols = 1200 // 280 = 4 columnas.
+        # Todos los botones deben ubicarse en la fila 0: (0, 0), (0, 1), (0, 2), (0, 3)
+        dash.buttons_frame.winfo_width = lambda: 1200
+        dash.refresh_dashboard()
+        assert len(dash._buttons_by_pack_id) == 4
+
+        btn_3 = dash._buttons_by_pack_id["pack_3"]
+        info_3 = btn_3.grid_info()
+        assert info_3["row"] == 0 and info_3["column"] == 3, (
+            f"Con 1200px y 4 favoritos, pack_3 debe estar en row 0 col 3, recibido: row {info_3['row']} col {info_3['column']}"
+        )
+
+        # 3. Re-grid al redimensionar a 600 px (current_fav_ids == cached_ids):
+        # max_cols = 600 // 280 = 2 columnas.
+        # Fila 0: (0, 0), (0, 1) | Fila 1: (1, 0), (1, 1).
+        dash.buttons_frame.winfo_width = lambda: 600
+        dash._regrid_favorites()
+
+        info_3_regrid = btn_3.grid_info()
+        assert info_3_regrid["row"] == 1 and info_3_regrid["column"] == 1, (
+            f"Tras reducir a 600px, pack_3 debe moverse a row 1 col 1, recibido: row {info_3_regrid['row']} col {info_3_regrid['column']}"
+        )
+
+        # 4. Las columnas sobrantes sueltan el peso (peso 0 para cols 2 y 3)
+        w2 = dash.buttons_frame.grid_columnconfigure(2)["weight"]
+        w3 = dash.buttons_frame.grid_columnconfigure(3)["weight"]
+        assert w2 == 0, f"Columna 2 debe tener peso 0 al reducir columnas, tiene {w2}"
+        assert w3 == 0, f"Columna 3 debe tener peso 0 al reducir columnas, tiene {w3}"
+
+        # 5. Placeholder de estado vacío ocupa todas las columnas calculadas
+        pack_service.packs.clear()
+        dash.buttons_frame.winfo_width = lambda: 1200
+        dash.refresh_dashboard()
+        assert dash._empty_label is not None, "El placeholder _empty_label debe existir con 0 favoritos"
+        empty_span = dash._empty_label.grid_info()["columnspan"]
+        assert empty_span == 4, f"_empty_label debe ocupar las 4 columnas calculadas, recibido {empty_span}"
+
+        # 6. Evento <Configure> filtra emisores ajenos
+        class _FakeEvent:
+            def __init__(self, widget):
+                self.widget = widget
+
+        # Evento desde widget ajeno (no debe recalcular columnas ni fallar)
+        dash._on_frame_configure(_FakeEvent(dash.status_label))
+        # Evento desde buttons_frame
+        dash._on_frame_configure(_FakeEvent(dash.buttons_frame))
+    finally:
+        root.destroy()
+    print("test_dashboard_favorite_grid_adaptive_contracts OK.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -11183,4 +11273,6 @@ if __name__ == "__main__":
     test_headless_ui()
     # TASK-046: Contratos de ciclo de vida y widgets en Confirmable mixin
     test_confirmable_mixin_lifecycle_and_widget_contracts()
+    # TASK-049: Rejilla adaptativa al ancho de ventana para favoritos en DashboardView
+    test_dashboard_favorite_grid_adaptive_contracts()
     print("\nALL TESTS PASSED.")
