@@ -11335,6 +11335,12 @@ def test_process_manager_db_update_button_and_feedback():
         )
         assert "Descargando" not in fail_text, "El mensaje no debe quedarse colgado en Descargando"
 
+        # Simular que _render_list se ejecuta: no debe sobreescribir el aviso de error
+        view._render_list()
+        assert "⚠️ DB no actualizada (sin red o repo no publicado). Se usa la local." in view.status_label.cget("text"), (
+            "El renderizado de procesos no debe pisar el aviso de fallo de DB"
+        )
+
         # Simular éxito de descarga en _force_update_db
         def _mock_load_success(callback=None, on_error=None):
             if callback:
@@ -11348,6 +11354,12 @@ def test_process_manager_db_update_button_and_feedback():
         success_text = view.status_label.cget("text")
         assert "✅ Base de datos actualizada con éxito." in success_text, (
             f"El éxito debe notificarse claramente en status_label, recibido: {success_text}"
+        )
+
+        # Simular que _render_list se ejecuta tras el éxito: no debe sobreescribir el aviso de éxito
+        view._render_list()
+        assert "✅ Base de datos actualizada con éxito." in view.status_label.cget("text"), (
+            "El renderizado de procesos no debe pisar el aviso de éxito de DB"
         )
 
         # Distinción estricta de textos
