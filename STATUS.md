@@ -9,16 +9,16 @@
 - **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **88 tests**: 82 backend + 6 headless UI. El número lo deriva `validate_docs.py` con `ast` desde `run_tests.py` y lo compara con los tres ficheros que lo declaran, así que ya no puede volver a caducar solo)
 - **Micro-Benchmark Base:** 182 ms (Init) | 4.97 ms (Escaneo 325 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
 - **Compilación PyInstaller:** 🟡 El ejecutable es un artefacto de distribución y se regenera al publicar; su desfase (del 2026-09-29) no lo vigila ningún checkpoint — ver "Checkpoints Periódicos"
-- **Base de Datos de Procesos:** 89 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
+- **Base de Datos de Procesos:** 96 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
 - **Versionado:** 🟢 Al día en git (`ece8778` feat(services): TASK-042).
 
 ---
 
 ### 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 33 (`rd_journal.json` actualizado).
-- **Ciclo Actual #33:** TASK-043 — Restauración de Sesión Gaming UX desde System Tray. 🟢 **Completado.**
-- **Última Acción:** Ciclo #33 TASK-043 — Integración de re-apertura de aplicaciones y notificaciones desde el system tray en `WOptimizerApp`. 🟢 +1 test discriminante (`test_tray_session_restoration_integration`), suite elevada a 88 tests al 100% en verde.
+- **Ciclos Completados:** 34 (`rd_journal.json` actualizado).
+- **Ciclo Actual #34:** TASK-044 — Expansión y Categorización de la Base de Procesos. 🟢 **Completado.**
+- **Última Acción:** Ciclo #34 TASK-044 — Incorporación de 7 nuevos procesos reales a `assets/process_db.json` (96 total). 🟢 Esquema e integridad 100% en verde (`test_process_db_schema_integrity`).
 
 ---
 
@@ -53,13 +53,13 @@
 ## 🗂️ Rotación de Áreas (Matriz ID)
 | # | Área | Último ciclo | Subagente |
 |---|------|:---:|---|
-| 1 | Resiliencia & Robustez | #27 | `openspec-dev` |
-| 2 | Gaming & Telemetría UX | #28 | `openspec-dev` |
-| 3 | Base de Datos & Procesos | **#29** | `process-db-updater` |
-| 4 | Rendimiento & Latencia | #24 | `openspec-dev` |
-| 5 | Testing & Calidad | #25 | `openspec-dev` |
+| 1 | Resiliencia & Robustez | #32 | `openspec-dev` |
+| 2 | Gaming & Telemetría UX | #33 | `openspec-dev` |
+| 3 | Base de Datos & Procesos | **#34** | `process-db-updater` |
+| 4 | Rendimiento & Latencia | #30 | `openspec-dev` |
+| 5 | Testing & Calidad | #31 | `openspec-dev` |
 
-> **Próxima área en rotación: Área 4 (Rendimiento & Latencia).** Último ciclo abordado: #24 (`TASK-033`).
+> **Próxima área en rotación: Área 4 (Rendimiento & Latencia).** Último ciclo abordado: #30 (`TASK-040`).
 
 ---
 

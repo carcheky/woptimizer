@@ -443,5 +443,40 @@
         "category": "🟡 Launchers Gaming",
         "priority": "low",
         "description": "Servicio redistribuible de entrada de mandos Microsoft GameInput."
+    },
+    "rtss": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "RivaTuner Statistics Server (RTSS). Monitorizacion de OSD y rendimiento en pantalla durante el juego; mantener para perfil de framerate."
+    },
+    "msiafterburner": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "MSI Afterburner. Control de overclocking, perfiles de reloj y ventilacion de GPU; mantener para estabilidad grafica."
+    },
+    "hwinfo64": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "HWiNFO64. Herramienta de monitorizacion en tiempo real de sensores, temperaturas y voltajes del equipo."
+    },
+    "galaxyclient": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Cliente principal de GOG Galaxy. Launcher y tienda de juegos de GOG; mantener solo durante sesiones con sus juegos."
+    },
+    "everything": {
+        "category": "🟢 Productividad",
+        "priority": "medium",
+        "description": "Voidtools Everything. Indexador de busqueda de archivos ultrarrapido en Windows; seguro de cerrar en modo gaming."
+    },
+    "gitkraken": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "GitKraken Desktop. Cliente grafico para control de versiones basado en Electron; alto consumo de memoria RAM."
+    },
+    "postman": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Postman API Client. Entorno de desarrollo y pruebas de APIs HTTP; consume 200-500 MB de RAM en segundo plano."
     }
 }

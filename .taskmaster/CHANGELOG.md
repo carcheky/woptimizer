@@ -1,3 +1,20 @@
+## [CYCLE-034] 2026-10-01 16:05 — process-db-expansion-c34
+**Área**: Base de Datos & Procesos
+**Change**: openspec/changes/2026-10-01-process-db-expansion-c34/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): process-db-updater (Área 3)
+- Paso 2 (Planear): process-db-updater → ESPECIFICACIÓN Y PROPOSAL REDACTADOS
+- Paso 3 (Ejecutar): process-db-updater → 7 PROCESOS REALES INTEGRADOS (96 TOTAL)
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (Esquema estricto validado por test_process_db_schema_integrity)
+
+### Cambios Clave
+- `assets/process_db.json`: +7 nuevos procesos (`rtss`, `msiafterburner`, `hwinfo64`, `galaxyclient`, `everything`, `gitkraken`, `postman`). Total: 96 entradas.
+- `docs/ai/data-models.md`: Actualizada documentación de modelos.
+- `openspec/changes/2026-10-01-process-db-expansion-c34/`: Creados `proposal.md` y `tasks.md`.
+
+---
+
 ## [CYCLE-033] 2026-10-01 15:45 — tray-session-restoration-ux
 **Área**: Gaming & Telemetría UX
 **Change**: openspec/changes/2026-10-01-tray-session-restoration-ux/

@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01T00:00:00Z",
-  "active_task_id": "TASK-043",
+  "active_task_id": "TASK-044",
   "tasks": [
     {
       "id": "TASK-001",
@@ -862,7 +862,7 @@
       "description": "Integrar opción contextual de 'Reabrir aplicaciones cerradas' en el menú pystray de System Tray invocando GamingService.restore_gaming_session y emitiendo notificaciones nativas.",
       "complexity": 3,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-042"
       ],
@@ -874,6 +874,25 @@
         "run_tests.py y validate_docs.py en verde 100%"
       ],
       "notes": "Ciclo #33 del motor autónomo de I+D (Área 2: Gaming & Telemetría UX)."
+    },
+    {
+      "id": "TASK-044",
+      "title": "Expansión y Categorización de la Base de Procesos de Windows (Ciclo #34)",
+      "description": "Escanear procesos activos del sistema, filtrar contra SYSTEM_PROTECTED_PROCESSES e incorporar 5-8 nuevos procesos reales a assets/process_db.json con categorías, prioridades y descripciones canónicas.",
+      "complexity": 2,
+      "priority": "medium",
+      "status": "pending",
+      "dependencies": [
+        "TASK-043"
+      ],
+      "module": "assets/process_db.json",
+      "acceptance_criteria": [
+        "Nuevos procesos catalogados en assets/process_db.json sin omitir descripción ni categoría",
+        "0 solapamientos con SYSTEM_PROTECTED_PROCESSES",
+        "test_process_db_schema_integrity y test_category_emoji_alignment en verde",
+        "run_tests.py y validate_docs.py en verde 100%"
+      ],
+      "notes": "Ciclo #34 del motor autónomo de I+D (Área 3: Base de Datos & Procesos)."
     }
   ]
 }
