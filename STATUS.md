@@ -16,9 +16,9 @@
 
 ### 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 37 (`rd_journal.json` actualizado).
-- **Ciclo Actual #37:** TASK-047 — Resiliencia de Concurrencia y Recuperación en GamingService. 🟢 **Completado.**
-- **Última Acción:** Ciclo #37 TASK-047 — `threading.RLock()` en `GamingService`, extracción atómica en `restore_gaming_session`, preservación defensiva ante excepciones y aislamiento no-OSError en `ProcessService.start_pack_apps`. 91 tests en verde (100% PASS), 4/4 mutaciones eliminadas por `mutation-auditor` (PASS).
+- **Ciclos Completados:** 38 (`rd_journal.json` actualizado).
+- **Ciclo Actual #38:** TASK-048 — Favoritos Acumulativos en PackService. 🟢 **Completado.**
+- **Última Acción:** Ciclo #38 TASK-048 — Favoritos acumulativos en `PackService`, `toggle_favorite` atómico con persistencia, blindaje gaming en `_ensure_gaming_pack`, validación `ValueError` en `set_favorite(None)`, retirada de `get_favorite_pack`. 92 tests en verde (100% PASS), 5/5 mutaciones eliminadas por `mutation-auditor` (PASS).
 
 ---
 
@@ -50,6 +50,7 @@
 25. **[Ciclo #35 - Rendimiento & Latencia]:** ⚡ **Optimización de categorización y memoización (TASK-045)** — resolución instantánea O(1) < 0.001 ms en `_meta_cache` e invalidación atómica de `_proc_cache` al recargar la base de datos local en `_load_local_db()`. Test estrictamente discriminante (`test_process_categorization_latency_and_memoization`) y mutaciones 5/5 aniquiladas por `mutation-auditor` (PASS). 89 tests en verde.
 26. **[Ciclo #36 - Testing & Calidad]:** 🧪 **Contratos de ciclo de vida en Confirmable (TASK-046)** — validación headless exhaustiva de la máquina de estados de confirmación destructiva en `src/woptimizer/ui/confirmation.py` (doble pulsación, throttling 300 ms en `_timers_ui`, sustitución con `changed_text`, expiración automática a 3000 ms, cancelación en destrucción y vaciado de reposo en `_forget_buttons()`). 90 tests en verde y Paso 4 = PASS (5/5 mutantes eliminados).
 27. **[Ciclo #37 - Resiliencia & Robustez]:** 🛡️ **Concurrencia y resiliencia en GamingService (TASK-047)** — cerrojo `threading.RLock()` reentrante protegiendo `_last_closed_apps`, extracción atómica sin doble arranque bajo concurrencia, rescate defensivo ante excepciones no controladas y aislamiento de fallos individuales en `ProcessService.start_pack_apps`. 91 tests en verde y Paso 4 = PASS (4/4 mutantes eliminados).
+28. **[Ciclo #38 - Core Services & Robustez]:** ⭐ **Favoritos acumulativos en PackService (TASK-048)** — erradicación de la exclusividad global de favoritos; `set_favorite(pack_id, value)` acumula sin tocar otros packs; `toggle_favorite(pack_id)` atómico e inversión en servicio; `_ensure_gaming_pack()` garantiza `is_favorite = True` del pack gaming ante recargas; validación con `ValueError` ante `pack_id` nulo/vacío; guard AST verificando erradicación de `get_favorite_pack()`. 92 tests en verde y Paso 4 = PASS (5/5 mutantes eliminados).
 
 ---
 

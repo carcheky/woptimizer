@@ -1,3 +1,32 @@
+## [CYCLE-038] 2026-10-01 23:05 — multi-favorites-and-db-download
+**Área**: Core Services & Robustez
+**Change**: openspec/changes/2026-10-01-multi-favorites-and-db-download/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Encargo 1 Propietario / Área 2)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (5/5 mutaciones eliminadas: M1, M2, M3a, M3b, M4, M5)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Favoritos acumulativos (no exclusividad) | Revertir a comportamiento exclusivo al marcar un favorito | killed | `AssertionError: Esperaba ['a', 'c'] acumulados, hay ['c']` en `run_tests.py:1006` |
+| Validación estricta de `pack_id` | Omitir `if not pack_id: raise ValueError(...)` permitiendo `None` o `""` | killed | `AssertionError: set_favorite(None, True) debió lanzar ValueError` en `run_tests.py:1039` |
+| Alternancia booleana en `toggle_favorite` | No invertir el valor booleano actual | killed | `AssertionError: Esperaba True tras primer toggle, obtuvo False` en `run_tests.py:1055` |
+| Persistencia a disco en `toggle_favorite` | Omitir `self.save()` tras actualizar en memoria | killed | `AssertionError` al recargar desde disco en `run_tests.py:1058` |
+| Restauración de favorito en pack gaming | Omitir `self._data.packs["gaming"].is_favorite = True` en `_ensure_gaming_pack` | killed | `AssertionError: _ensure_gaming_pack debe restaurar is_favorite=True en pack gaming existente` en `run_tests.py:1079` |
+| Erradicación total de `get_favorite_pack` | Reintroducir `def get_favorite_pack(self):` en `pack_service.py` | killed | `AssertionError: Función obsoleta get_favorite_pack() encontrada` en `run_tests.py:1030` |
+
+### Cambios Clave
+- `src/woptimizer/services/pack_service.py`: Refactorizado `set_favorite(pack_id, value)` a semántica acumulativa sin desmarcar otros packs. Añadido `toggle_favorite(pack_id) -> bool` que lee estado vivo, invierte, persiste y retorna el nuevo valor. Retirado `get_favorite_pack` e incorporado `get_favorite_packs() -> List[Pack]`. En `_ensure_gaming_pack()`, restaurado `is_favorite = True` defensivo. Validación `ValueError` ante `pack_id` nulo/vacío.
+- `src/woptimizer/ui/views/pack_manager_view.py`: Delegado `toggle_favorite(pack_id)` al método del servicio manteniendo fallback de retrocompatibilidad.
+- `run_tests.py`: Sustituido `test_pack_service_favorite_exclusive` por `test_pack_service_favorites_acumulan` y añadido `test_pack_service_favorite_contracts_and_resilience`. Actualizadas las 3 semillas con 2º argumento booleano en `set_favorite`.
+- `docs/ai/architecture.md`: Añadida sección 17 sobre semántica acumulativa e invariantes de favoritos.
+- `docs/ai/testing-guide.md`, `STATUS.md`, `AGENTS.md`, `README.md`: Suite elevada y sincronizada a 92 tests en verde.
+
+---
+
 ## [CYCLE-037] 2026-10-01 22:50 — gaming-session-concurrency-resilience
 **Área**: Resiliencia & Robustez
 **Change**: openspec/changes/2026-10-01-gaming-session-concurrency-resilience/

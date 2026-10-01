@@ -1,3 +1,23 @@
+## CYCLE-038 - 2026-10-01
+
+**Core Services & Robustez** — `TASK-048` (Favoritos Acumulativos y Resiliencia en PackService)
+
+> 🟢 **VERDICT FINAL: PASS** — Rediseño de favoritos acumulativos e invariantes de servicio auditado con éxito por `mutation-auditor` (5/5 mutaciones eliminadas: M1, M2, M3a, M3b, M4, M5, 0 supervivientes). **92 tests** (85 backend + 7 headless UI) pasando al 100%.
+
+### Añadido
+- **Favoritos Acumulativos en `PackService.set_favorite()`.** Se refactoriza `set_favorite(pack_id: str, value: bool) -> None` permitiendo marcar o desmarcar packs de forma acumulativa e independiente, eliminando la exclusividad global.
+- **Invariante de Capas con `PackService.toggle_favorite()`.** La lógica de alternancia e inversión de favoritos se traslada íntegramente al servicio: `toggle_favorite(pack_id: str) -> bool` consulta el estado vivo en memoria, lo invierte, persiste a disco (`self.save()`) y retorna el nuevo booleano.
+- **Validación Estricta de Identificadores.** `set_favorite` y `toggle_favorite` validan rigurosamente que `pack_id` no sea `None` ni una cadena vacía, lanzando `ValueError`.
+- **Blindaje del Pack Gaming en `_ensure_gaming_pack()`.** Al inicializar `PackService`, si el pack `gaming` ya existe en memoria, se restablece explícitamente `is_favorite = True`, impidiendo que un desmarcado accidental elimine la tarjeta de Gaming permanentemente.
+- **Retirada de `get_favorite_pack()`.** Método ambiguo singular eliminado y sustituido por `get_favorite_packs() -> List[Pack]`.
+- **Pruebas Discriminantes en `run_tests.py`.** Introducidos `test_pack_service_favorites_acumulan` y `test_pack_service_favorite_contracts_and_resilience` (con guard AST verificando que `get_favorite_pack` no figure en `src/woptimizer/**`).
+
+### Corregido
+- **Delegación en `PackManagerView.toggle_favorite()`.** Actualizado para delegar en `self.pack_service.toggle_favorite(pack_id)` cuando el servicio lo soporta, manteniendo compatibilidad hacia atrás en tests existentes.
+- **Corrección de semillas de test.** Actualizadas las 3 semillas de prueba en `run_tests.py` que invocaban `set_favorite` con 1 argumento (`servicio.set_favorite(..., True)`), evitando `TypeError`.
+
+---
+
 ## CYCLE-037 - 2026-10-01
 
 **Resiliencia & Robustez** — `TASK-047` (Resiliencia de Concurrencia y Recuperación en GamingService)

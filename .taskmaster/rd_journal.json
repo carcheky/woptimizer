@@ -580,5 +580,21 @@
       "after": "84 backend + 7 headless UI (91 totales, validados con ast por validate_docs.py)"
     },
     "impact": "Resiliencia de Concurrencia y Recuperación en GamingService (TASK-047): Sincronización multihilo con threading.RLock reentrante protegiendo _last_closed_apps en GamingService. Extracción atómica en restore_gaming_session impidiendo ejecuciones duplicadas de start_pack_apps, preservación defensiva del historial de apps ante excepciones no controladas y aislamiento robusto ante excepciones no-OSError en ProcessService.start_pack_apps. 100% mutaciones eliminadas (M1-M4) por mutation-auditor. Suite elevada a 91 tests."
+  },
+  {
+    "cycle": 38,
+    "date": "2026-10-01T23:05:00",
+    "area": "Core Services & Robustez",
+    "slug": "2026-10-01-multi-favorites-and-db-download",
+    "task": "TASK-048",
+    "status": "COMPLETED",
+    "commits": [
+      "c936115"
+    ],
+    "tests": {
+      "before": "84 backend + 7 headless UI (91 totales)",
+      "after": "85 backend + 7 headless UI (92 totales, validados con ast por validate_docs.py)"
+    },
+    "impact": "Favoritos Acumulativos en PackService (TASK-048): Rediseño de set_favorite a semántica estrictamente acumulativa sin exclusividad global. Introducción de toggle_favorite(pack_id) atómico que lee estado vivo y persiste a disco. Retirada definitiva de get_favorite_pack con guard AST verificador. Blindaje de pack gaming en _ensure_gaming_pack restaurando is_favorite=True. Validación estricta con ValueError ante pack_id None o vacío. 100% mutaciones eliminadas (5/5 M1-M5 KILLED) por mutation-auditor. Suite elevada a 92 tests."
   }
 ]

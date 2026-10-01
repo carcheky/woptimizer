@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01",
-  "active_task_id": "TASK-048",
+  "active_task_id": "TASK-049",
   "tasks": [
     {
       "id": "TASK-001",
@@ -957,7 +957,7 @@
       "description": "Encargo 1 del propietario",
       "complexity": 3,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "src/woptimizer/services/pack_service.py",
       "acceptance_criteria": [
