@@ -596,5 +596,22 @@
       "after": "85 backend + 7 headless UI (92 totales, validados con ast por validate_docs.py)"
     },
     "impact": "Favoritos Acumulativos en PackService (TASK-048): Rediseño de set_favorite a semántica estrictamente acumulativa sin exclusividad global. Introducción de toggle_favorite(pack_id) atómico que lee estado vivo y persiste a disco. Retirada definitiva de get_favorite_pack con guard AST verificador. Blindaje de pack gaming en _ensure_gaming_pack restaurando is_favorite=True. Validación estricta con ValueError ante pack_id None o vacío. 100% mutaciones eliminadas (5/5 M1-M5 KILLED) por mutation-auditor. Suite elevada a 92 tests."
+  },
+  {
+    "cycle": 39,
+    "date": "2026-10-01T23:12:00",
+    "area": "UI & Experiencia de Usuario",
+    "slug": "2026-10-01-multi-favorites-and-db-download",
+    "task": "TASK-049",
+    "status": "COMPLETED",
+    "commits": [
+      "2b81978",
+      "04dc19f"
+    ],
+    "tests": {
+      "before": "85 backend + 7 headless UI (92 totales)",
+      "after": "85 backend + 8 headless UI (93 totales, validados con ast por validate_docs.py)"
+    },
+    "impact": "Grid de Favoritos Adaptativo al Ancho de Ventana (TASK-049): Rejilla totalmente reactiva en DashboardView calculando dinámicamente el número de columnas (cols = min(n, max_cols)) según el ancho disponible y la constante centralizada ANCHO_MIN_CARD = 280 en ui/theme.py. Re-grid dinámico en eventos <Configure> con filtro estricto de emisor (event.widget == self.buttons_frame). Liberación explícita de peso (weight=0, uniform='') en columnas sobrantes. Expansión y redimensionamiento responsivo del placeholder de estado vacío ocupando todo el ancho de columnas. 100% mutaciones eliminadas (4/4 M1-M4 KILLED) por mutation-auditor. Suite elevada a 93 tests."
   }
 ]

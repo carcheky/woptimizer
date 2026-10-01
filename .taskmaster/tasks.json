@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01",
-  "active_task_id": "TASK-049",
+  "active_task_id": "TASK-050",
   "tasks": [
     {
       "id": "TASK-001",
@@ -979,7 +979,7 @@
       "description": "Encargo 1 (segunda mitad: 'adaptandose a el espacio de la ventana')",
       "complexity": 3,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-048"
       ],

@@ -16,9 +16,10 @@
 
 ### 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 38 (`rd_journal.json` actualizado).
-- **Ciclo Actual #38:** TASK-048 — Favoritos Acumulativos en PackService. 🟢 **Completado.**
-- **Última Acción:** Ciclo #38 TASK-048 — Favoritos acumulativos en `PackService`, `toggle_favorite` atómico con persistencia, blindaje gaming en `_ensure_gaming_pack`, validación `ValueError` en `set_favorite(None)`, retirada de `get_favorite_pack`. 92 tests en verde (100% PASS), 5/5 mutaciones eliminadas por `mutation-auditor` (PASS).
+- **Ciclos Completados:** 39 (`rd_journal.json` actualizado).
+- **Ciclo Actual #39:** TASK-049 — Grid de Favoritos Adaptativo al Ancho de Ventana. 🟢 **Completado.**
+- **Próxima Tarea:** TASK-050 (Ciclo #40) — Descarga de DB: Constante de URL, GitHub y Fallo Observable.
+- **Última Acción:** Ciclo #39 TASK-049 — Grid adaptativo en `DashboardView` con `ANCHO_MIN_CARD = 280`, cálculo dinámico de columnas `cols = min(n, max_cols)`, re-grid responsive en eventos `<Configure>` filtrando widgets ajenos, liberación de pesos a 0 en columnas sobrantes y placeholder reactivo. 93 tests en verde (100% PASS), 4/4 mutaciones eliminadas por `mutation-auditor` (PASS).
 
 ---
 
@@ -51,6 +52,7 @@
 26. **[Ciclo #36 - Testing & Calidad]:** 🧪 **Contratos de ciclo de vida en Confirmable (TASK-046)** — validación headless exhaustiva de la máquina de estados de confirmación destructiva en `src/woptimizer/ui/confirmation.py` (doble pulsación, throttling 300 ms en `_timers_ui`, sustitución con `changed_text`, expiración automática a 3000 ms, cancelación en destrucción y vaciado de reposo en `_forget_buttons()`). 90 tests en verde y Paso 4 = PASS (5/5 mutantes eliminados).
 27. **[Ciclo #37 - Resiliencia & Robustez]:** 🛡️ **Concurrencia y resiliencia en GamingService (TASK-047)** — cerrojo `threading.RLock()` reentrante protegiendo `_last_closed_apps`, extracción atómica sin doble arranque bajo concurrencia, rescate defensivo ante excepciones no controladas y aislamiento de fallos individuales en `ProcessService.start_pack_apps`. 91 tests en verde y Paso 4 = PASS (4/4 mutantes eliminados).
 28. **[Ciclo #38 - Core Services & Robustez]:** ⭐ **Favoritos acumulativos en PackService (TASK-048)** — erradicación de la exclusividad global de favoritos; `set_favorite(pack_id, value)` acumula sin tocar otros packs; `toggle_favorite(pack_id)` atómico e inversión en servicio; `_ensure_gaming_pack()` garantiza `is_favorite = True` del pack gaming ante recargas; validación con `ValueError` ante `pack_id` nulo/vacío; guard AST verificando erradicación de `get_favorite_pack()`. 92 tests en verde y Paso 4 = PASS (5/5 mutantes eliminados).
+29. **[Ciclo #39 - UI & Experiencia de Usuario]:** 📐 **Grid de favoritos adaptativo (TASK-049)** — cálculo reactivo de columnas según ancho disponible y `ANCHO_MIN_CARD` (280 px); re-grid automático en `<Configure>` filtrando widgets ajenos; liberación de pesos a 0 en columnas sobrantes; placeholder a pantalla completa sin zombis ni recreaciones innecesarias de botones. 93 tests en verde y Paso 4 = PASS (4/4 mutantes eliminados).
 
 ---
 
@@ -58,12 +60,12 @@
 | # | Área | Último ciclo | Subagente |
 |---|------|:---:|---|
 | 1 | Resiliencia & Robustez | **#37** | `openspec-dev` |
-| 2 | Gaming & Telemetría UX | #33 | `openspec-dev` |
+| 2 | Gaming & Telemetría UX | **#39** | `openspec-dev` |
 | 3 | Base de Datos & Procesos | #34 | `process-db-updater` |
 | 4 | Rendimiento & Latencia | #35 | `openspec-dev` |
 | 5 | Testing & Calidad | #36 | `openspec-dev` |
 
-> **Próxima área en rotación: Área 2 (Gaming & Telemetría UX).** Último ciclo abordado: #33 (`TASK-043`).
+> **Próxima área en backlog / rotación: Área 3 (Base de Datos & Procesos).** Tarea activa: `TASK-050` (Descarga de DB: Constante de URL, GitHub y Fallo Observable).
 
 ---
 

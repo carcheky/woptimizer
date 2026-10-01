@@ -1,3 +1,21 @@
+## CYCLE-039 - 2026-10-01
+
+**UI & Experiencia de Usuario** — `TASK-049` (Grid de Favoritos Adaptativo al Ancho de Ventana)
+
+> 🟢 **VERDICT FINAL: PASS** — Rejilla adaptativa y responsiva en Dashboard auditada con éxito por `mutation-auditor` (4/4 mutaciones eliminadas: M1, M2, M3, M4, 0 supervivientes). **93 tests** (85 backend + 8 headless UI) pasando al 100%.
+
+### Añadido
+- **Grid Adaptativo al Ancho de Ventana en `DashboardView`.** Se implementa `_calculate_columns(num_favorites: int) -> int` que deriva dinámicamente las columnas en función de `buttons_frame.winfo_width()` y la constante centralizada `theme.ANCHO_MIN_CARD` (280 px).
+- **Token Centralizado `ANCHO_MIN_CARD`.** Añadido `ANCHO_MIN_CARD: Final[int] = 280` a `src/woptimizer/ui/theme.py`, evitando números mágicos dispersos.
+- **Re-grid Dinámico en Eventos `<Configure>`.** Manejador `_on_frame_configure` y `_regrid_favorites()` que reubican automáticamente las tarjetas de packs favoritos al redimensionar la ventana, sin necesidad de destruir ni recrear botones cuando la lista no cambia (`current_fav_ids == cached_ids`).
+- **Filtro Estricto de Emisor de Eventos.** Se evita propagación espuria y bucles de redimensionamiento ignorando eventos `<Configure>` cuyo emisor no sea `self.buttons_frame`.
+- **Liberación de Pesos en Columnas Sobrantes.** `_reconfigure_grid_columns(cols: int)` asigna `weight=1, uniform="fav"` a las columnas activas y resetea limpiamente con `weight=0, uniform=""` las columnas que queden libres al estrechar la ventana.
+- **Placeholder de Estado Vacío Responsivo.** Cuando no hay favoritos marcados, `_empty_label` abarca dinámicamente todo el ancho disponible (`columnspan=cols`) adaptándose en vivo a cambios de tamaño.
+- **Extracción de Destrucción de Botones.** Creación del método auxiliar `_destroy_favorite_buttons()` eliminando duplicidad de código.
+- **Test Discriminante en `run_tests.py`.** Introducido `test_dashboard_favorite_grid_adaptive_contracts` (test #93) que verifica ubicación en rejilla, recolocación responsiva vía `<Configure>`, filtro de eventos ajenos, liberación de pesos en columnas y ajuste del placeholder.
+
+---
+
 ## CYCLE-038 - 2026-10-01
 
 **Core Services & Robustez** — `TASK-048` (Favoritos Acumulativos y Resiliencia en PackService)

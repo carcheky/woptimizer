@@ -1,3 +1,30 @@
+## [CYCLE-039] 2026-10-01 23:12 — multi-favorites-and-db-download
+**Área**: UI & Experiencia de Usuario
+**Change**: openspec/changes/2026-10-01-multi-favorites-and-db-download/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Encargo 1 Propietario / Área 2)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (4/4 mutaciones eliminadas: M1, M2, M3, M4)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Cálculo adaptativo de columnas | Forzar `_calculate_columns` a retornar 2 columnas fijas | killed | `AssertionError: Con 1200px y 4 favoritos, pack_3 debe estar en row 0 col 3, recibido: row 1 col 1` en `run_tests.py:11095` |
+| Re-grid dinámico en `<Configure>` | Omitir `self._regrid_favorites()` en `_on_frame_configure` | killed | `AssertionError: Tras reducir a 600px vía <Configure>, pack_3 debe moverse a row 1 col 1, recibido: row 0 col 3` en `run_tests.py:11116` |
+| Columnspan responsivo en placeholder | Hardcodear `columnspan=2` en `_empty_label.grid` | killed | `AssertionError: _empty_label debe adaptarse a 4 columnas tras <Configure>, recibido 2` en `run_tests.py:11138` |
+| Limpieza de pesos en columnas sobrantes | Omitir `grid_columnconfigure(c, weight=0, uniform="")` al reducir cols | killed | `AssertionError: Columna 2 debe tener peso 0 al reducir columnas, tiene 1` en `run_tests.py:11122` |
+
+### Cambios Clave
+- `src/woptimizer/ui/theme.py`: Añadida constante `ANCHO_MIN_CARD: Final[int] = 280`.
+- `src/woptimizer/ui/views/dashboard_view.py`: Implementados `_calculate_columns()`, `_reconfigure_grid_columns()`, `_on_frame_configure()`, `_regrid_favorites()` y `_destroy_favorite_buttons()`. Refactorizado `refresh_dashboard()` para layout responsivo y gestión limpia de columnas sobrantes.
+- `run_tests.py`: Añadido `test_dashboard_favorite_grid_adaptive_contracts` (test #93) probando distribución espacial, recolocación adaptativa ante eventos `<Configure>`, filtrado de emisor y span dinámico de placeholder.
+- `docs/ai/ui-design-system.md`: Documentada la rejilla adaptativa de favoritos, constante `ANCHO_MIN_CARD` y ciclo de vida del layout responsive.
+- `docs/ai/testing-guide.md`, `STATUS.md`, `AGENTS.md`, `README.md`: Suite actualizada y sincronizada a 93 tests en verde.
+
+---
+
 ## [CYCLE-038] 2026-10-01 23:05 — multi-favorites-and-db-download
 **Área**: Core Services & Robustez
 **Change**: openspec/changes/2026-10-01-multi-favorites-and-db-download/
