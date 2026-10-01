@@ -561,11 +561,16 @@ distingue por el texto (`⛔`), no inventándose un par de color que no cumple.
 - **Alias muertos: no.** `_show_kill_banner = _show_banner` estaba en `DashboardView` sin que nadie lo llamara; lo único que lo sostenía era su propio nombre en la lista blanca de la guarda. Es el mismo patrón que perdió el ciclo 22, así que se borró de los dos sitios.
 
 ### Actualización Manual de la Base de Datos en Gestor de Procesos (TASK-051 / Ciclo #41)
-- **Botón `btn_update_db` en el footer:** Ubicado junto a `btn_add_pack` con texto `"🔄 Actualizar DB"` y estilizado con `theme.CARD_BG` y altura de 28 px. Está cableado directamente a `self._force_update_db`.
+- **Botón `btn_update_db` en el footer:** Ubicado junto a `btn_add_pack` con texto `"🔄 Actualizar DB"` y estilizado con `theme.SURFACE_ALT` y altura de 28 px. Está cableado directamente a `self._force_update_db`.
 - **Reporte Observable y No Silencioso:** `_force_update_db()` ejecuta `self.process_service.load_db_async(callback=_on_success, on_error=_on_error)`. Las transiciones de estado en `status_label` son:
   - Inicio: `"⏳ Descargando base de datos de procesos..."`
   - Fallo observable: `"⚠️ DB no actualizada (sin red o repo no publicado). Se usa la local."`
   - Éxito distinguible: `"✅ Base de datos actualizada con éxito."`
 - **Invariante de Renderizado:** La variable `self._db_update_status` retiene el resultado de la actualización para que `_render_list()` no lo sobrescriba inadvertidamente con el texto genérico `"N apps distintas en ejecución."`. La pulsación manual de `refresh_processes()` resetea este estado.
 - **Desacoplamiento de Plataforma:** Erradicación total de menciones literales congeladas a plataformas remotas ("GitLab") en las vistas.
+
+### Desplegable de Packs sin Doble Indicador en Gestor de Procesos (TASK-052 / Ciclo #42)
+- **Constante Centralizada `PLACEHOLDER_PACK`:** Definida como `Final[str] = "Seleccionar Pack"` a nivel de módulo en `src/woptimizer/ui/views/process_manager_view.py`.
+- **Eliminación de Glifo de Flecha Duplicado:** Se erradica el caracter literal `▼` (`U+25BC`) del texto del placeholder. Dado que `CTkOptionMenu` ya renderiza internamente su propia flecha/indicador desplegable nativo, la inclusión del glifo en el texto generaba una doble flecha redundante y confusa.
+- **Invariante de Comparación e Inicialización:** Tanto la inicialización de `self.pack_var` y `self.pack_dropdown` como la lógica de reseteo en `_update_pack_dropdown` utilizan estrictamente la constante `PLACEHOLDER_PACK`, evitando divergencias entre ramas de UI.
 

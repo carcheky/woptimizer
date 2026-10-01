@@ -1,6 +1,6 @@
 import customtkinter as ctk
 import threading
-from typing import Dict, List
+from typing import Dict, List, Final
 from woptimizer.services.process_service import ProcessService
 from woptimizer.services.pack_service import PackService
 from woptimizer.services.notification_service import NotificationService
@@ -15,6 +15,9 @@ from woptimizer.ui.confirmation import (
 )
 from woptimizer.ui.feedback import mensaje_cierre_pack
 from woptimizer.ui import theme
+
+# TASK-052: Placeholder centralizado para el desplegable de packs sin glifo de flecha duplicado
+PLACEHOLDER_PACK: Final[str] = "Seleccionar Pack"
 
 
 def _agrupar(procs: List[ProcessInfo]) -> Dict[str, List[ProcessInfo]]:
@@ -104,11 +107,11 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
         self.footer.pack(fill="x", pady=(10, 0))
         
         # Desplegable Packs
-        self.pack_var = ctk.StringVar(value="Seleccionar Pack ▼")
+        self.pack_var = ctk.StringVar(value=PLACEHOLDER_PACK)
         self.pack_dropdown = ctk.CTkOptionMenu(
             self.footer,
             variable=self.pack_var,
-            values=["Seleccionar Pack ▼"],
+            values=[PLACEHOLDER_PACK],
             height=28,
             font=("Segoe UI", theme.FONT_SIZE_SMALL)
         )
@@ -225,8 +228,8 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
         if not values:
             values = ["Sin packs disponibles"]
         self.pack_dropdown.configure(values=values)
-        if self.pack_var.get() not in values and self.pack_var.get() != "Seleccionar Pack ▼":
-             self.pack_var.set(values[0] if values else "Seleccionar Pack ▼")
+        if self.pack_var.get() not in values and self.pack_var.get() != PLACEHOLDER_PACK:
+             self.pack_var.set(values[0] if values else PLACEHOLDER_PACK)
 
     def _filter_list(self):
         self._render_list(search_query=self.search_var.get().lower())

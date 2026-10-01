@@ -11371,6 +11371,88 @@ def test_process_manager_db_update_button_and_feedback():
     print("test_process_manager_db_update_button_and_feedback OK.")
 
 
+def test_process_manager_pack_dropdown_single_arrow_and_placeholder():
+    """TASK-052: Indicador único en desplegable de packs y placeholder centralizado."""
+    print("Testing ProcessManagerView pack dropdown single arrow and placeholder (TASK-052)...")
+    import ast
+    import inspect
+    import textwrap
+    import customtkinter as ctk
+    from unittest.mock import MagicMock
+    from woptimizer.ui.views import process_manager_view as pmv_mod
+    from woptimizer.ui.views.process_manager_view import ProcessManagerView
+    from woptimizer.models import Pack
+
+    # 1. Contrato de la constante: existe y no contiene el glifo ▼
+    assert hasattr(pmv_mod, "PLACEHOLDER_PACK"), "process_manager_view debe exportar la constante PLACEHOLDER_PACK"
+    assert "\u25bc" not in pmv_mod.PLACEHOLDER_PACK, "PLACEHOLDER_PACK no debe contener el glifo ▼"
+    assert "▼" not in pmv_mod.PLACEHOLDER_PACK, "PLACEHOLDER_PACK no debe contener el caracter de flecha ▼"
+    assert pmv_mod.PLACEHOLDER_PACK == "Seleccionar Pack", f"PLACEHOLDER_PACK inesperado: {pmv_mod.PLACEHOLDER_PACK}"
+
+    # 2. Análisis AST: el literal 'Seleccionar Pack' aparece exactamente UNA vez en todo el archivo (la definición)
+    pmv_path = inspect.getfile(pmv_mod)
+    with open(pmv_path, "r", encoding="utf-8") as f:
+        src_text = f.read()
+
+    assert src_text.count("Seleccionar Pack") == 1, (
+        f"El literal 'Seleccionar Pack' debe aparecer exactamente una vez (en la constante), "
+        f"encontrado {src_text.count('Seleccionar Pack')} veces"
+    )
+    assert "Seleccionar Pack ▼" not in src_text, "No debe quedar ninguna aparición de 'Seleccionar Pack ▼'"
+
+    # 3. Comprobación AST: _update_pack_dropdown compara contra PLACEHOLDER_PACK y no contra un literal
+    udp_source = textwrap.dedent(inspect.getsource(ProcessManagerView._update_pack_dropdown))
+    udp_tree = ast.parse(udp_source)
+    found_const_ref = False
+    for node in ast.walk(udp_tree):
+        if isinstance(node, ast.Name) and node.id == "PLACEHOLDER_PACK":
+            found_const_ref = True
+            break
+    assert found_const_ref, "_update_pack_dropdown debe referenciar la constante PLACEHOLDER_PACK"
+
+    # 4. Comprobación en Runtime Headless
+    root = ctk.CTk()
+    root.withdraw()
+    try:
+        mock_ps = MagicMock()
+        mock_ps.is_db_loaded = True
+        mock_ps.get_running_processes.return_value = []
+        mock_pack_s = MagicMock()
+        mock_pack_s.get_all_packs.return_value = {}
+
+        view = ProcessManagerView(root, mock_ps, mock_pack_s)
+
+        # Dropdown inicializado con la constante
+        assert view.pack_var.get() == pmv_mod.PLACEHOLDER_PACK, (
+            f"El pack_var inicial debe ser {pmv_mod.PLACEHOLDER_PACK}, recibido: {view.pack_var.get()}"
+        )
+        assert view.pack_dropdown.cget("values") == [pmv_mod.PLACEHOLDER_PACK], (
+            f"Los valores iniciales del dropdown deben ser {[pmv_mod.PLACEHOLDER_PACK]}"
+        )
+
+        # Cuando hay packs disponibles, el dropdown se actualiza
+        mock_pack_s.get_all_packs.return_value = {
+            "p1": Pack(id="p1", name="Productividad", apps=[]),
+            "p2": Pack(id="p2", name="Streaming", apps=[]),
+        }
+        view._update_pack_dropdown()
+        assert view.pack_dropdown.cget("values") == ["Productividad", "Streaming"]
+        # El placeholder inicial se mantiene si no se había seleccionado ningún pack
+        assert view.pack_var.get() == pmv_mod.PLACEHOLDER_PACK
+
+        # Si se selecciona un pack y luego se borra, se resetea a values[0] ("Sin packs disponibles")
+        view.pack_var.set("PackEliminado")
+        mock_pack_s.get_all_packs.return_value = {}
+        view._update_pack_dropdown()
+        assert view.pack_var.get() == "Sin packs disponibles"
+
+    finally:
+        root.destroy()
+
+    print("test_process_manager_pack_dropdown_single_arrow_and_placeholder OK.")
+
+
+
 
 
 if __name__ == "__main__":
@@ -11518,4 +11600,6 @@ if __name__ == "__main__":
     test_dashboard_favorite_grid_adaptive_contracts()
     # TASK-051: Botón de actualización de DB en ProcessManagerView y reporte honesto
     test_process_manager_db_update_button_and_feedback()
+    # TASK-052: Indicador único en desplegable de packs y placeholder centralizado
+    test_process_manager_pack_dropdown_single_arrow_and_placeholder()
     print("\nALL TESTS PASSED.")
