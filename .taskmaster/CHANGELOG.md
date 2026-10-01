@@ -1,3 +1,21 @@
+## [CYCLE-028] 2026-10-01 08:50 — gaming-session-restoration
+**Área**: Gaming & Telemetría UX
+**Change**: openspec/changes/2026-10-01-gaming-session-restoration/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Área 2)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (100% mutaciones eliminadas)
+
+### Cambios Clave
+- `GamingService._last_closed_apps`: Captura pre-kill de rutas `.exe` absolutas únicas.
+- `GamingService.restore_gaming_session()`: Reabre aplicaciones vía `start_pack_apps`.
+- `DashboardView._show_restore_banner`: UI thread-safe con botón "Reabrir Apps".
+- `test_gaming_service_session_restoration`: Test unitario registrando suite total de 81 tests.
+
+---
+
 ## [CYCLE-027] 2026-10-01 08:15 — guardas-que-no-guardan
 **Área**: Resiliencia & Robustez / Deuda Técnica
 **Change**: openspec/changes/2026-09-30-guardas-que-no-guardan/

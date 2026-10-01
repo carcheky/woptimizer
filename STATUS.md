@@ -6,7 +6,7 @@
 
 ### 🟢 Salud General del Sistema
 - **Sintaxis Estática UI:** 🟢 Pasa al 100% (`verify_ui_syntax.py`, 8 módulos)
-- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **80 tests**: 75 backend + 5 headless UI. El número lo deriva `validate_docs.py` con `ast` desde `run_tests.py` y lo compara con los tres ficheros que lo declaran, así que ya no puede volver a caducar solo)
+- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **81 tests**: 76 backend + 5 headless UI. El número lo deriva `validate_docs.py` con `ast` desde `run_tests.py` y lo compara con los tres ficheros que lo declaran, así que ya no puede volver a caducar solo)
 - **Micro-Benchmark Base:** 182 ms (Init) | 4.97 ms (Escaneo 325 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
 - **Compilación PyInstaller:** 🟡 El ejecutable es un artefacto de distribución y se regenera al publicar; su desfase (del 2026-09-29) no lo vigila ningún checkpoint — ver "Checkpoints Periódicos"
 - **Base de Datos de Procesos:** 81 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
@@ -16,9 +16,9 @@
 
 ### 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 27 (`rd_journal.json` actualizado).
-- **Ciclo Actual #28:** Paso 1 — Selección de nueva tarea en la rotación por áreas (Área 2: Gaming & Telemetría UX).
-- **Última Acción:** Ciclo #27 TASK-037 — Guardas que no guardan: el alcance de un detector se deriva o no es un detector. 🟢 **Cerrado tras auditoría del Paso 4 (PASS): 9/9 mutaciones aniquiladas por aserción, 0 supervivientes.** Eliminados tres puntos ciegos en validate_docs.py y contrato de llamantes AST. Recuento total derivado por AST: 80 tests.
+- **Ciclos Completados:** 28 (`rd_journal.json` actualizado).
+- **Ciclo Actual #29:** Paso 1 — Selección de nueva tarea en la rotación por áreas (Área 3: Base de Datos & Procesos).
+- **Última Acción:** Ciclo #28 TASK-038 — Restauración Inteligente de Apps tras Modo Gaming. 🟢 **Cerrado tras auditoría del Paso 4 (PASS).** Registro pre-kill de ejecutables cerrados (`_last_closed_apps`), método `restore_gaming_session()` y banner dinámico de restauración en `DashboardView`. Recuento total derivado por AST: 81 tests.
 
 ---
 
@@ -45,19 +45,20 @@
 20. **[Ciclo #23 - Base de Datos & Procesos]:** 📦 **Expansión y esquema estricto de process_db.json (TASK-032)** — 8 nuevos procesos reales añadidos (+8: braveupdate, xboxgamebarwidgets, xboxpcappft, whatsapp.root, crossdeviceresume, lightingservice, powertoys.mousewithoutbordershelper, acpowernotification = 81 total) con cero solapamiento con procesos protegidos. Cierre del mutante S1 mediante `test_process_db_schema_integrity` en `run_tests.py` para asegurar que ningún proceso omita campos requeridos o asigne prioridades erróneas. 71 tests backend + 1 UI en verde y Paso 4 = PASS (11/11 mutantes eliminados).
 21. **[Ciclo #24 - Rendimiento & Latencia]:** ⚡ **Aceleración masiva del escaneo de procesos (TASK-033)** — escaneo ultraligero sin consulta anticipada de 'exe' en `psutil.process_iter`, resolución on-demand defensiva (`get_process_exe_path`), `model_construct` y precomputación `_CAT_ORDER_IDX`. Latencia en frío reducida de ~31 ms a 5.53 ms (~5.6x a ~8x más rápido). 72 tests backend + 1 UI en verde y Paso 4 = PASS (6/6 mutantes eliminados).
 22. **[Ciclo #25 - Testing & Calidad]:** 🧪 **Expansión de calidad y pruebas headless de UI y modelos (TASK-034)** — eliminación de puntos ciegos mediante `test_models_strict_validation_and_contracts` (strict=True, Literals, extra='allow') y `test_main_window_navigation_transitions` (ciclo completo Dashboard -> Packs -> ProcessManager -> Dashboard con aserción de destrucción `not winfo_exists()`). 73 tests backend + 2 UI en verde y Paso 4 = PASS (7/7 mutantes eliminados).
+23. **[Ciclo #28 - Gaming & Telemetría UX]:** 🎮 **Restauración inteligente de apps tras Modo Gaming (TASK-038)** — registro pre-kill de ejecutables cerrados (`_last_closed_apps`), resolución lazy de rutas `.exe`, `restore_gaming_session()` en `GamingService` y banner dinámico con botón "Reabrir Apps" en `DashboardView`. 76 tests backend + 5 UI en verde y Paso 4 = PASS.
 
 ---
 
 ## 🗂️ Rotación de Áreas (Matriz ID)
 | # | Área | Último ciclo | Subagente |
 |---|------|:---:|---|
-| 1 | Resiliencia & Robustez | **#27** | `openspec-dev` |
-| 2 | Gaming & Telemetría UX | #26 | `openspec-dev` |
+| 1 | Resiliencia & Robustez | #27 | `openspec-dev` |
+| 2 | Gaming & Telemetría UX | **#28** | `openspec-dev` |
 | 3 | Base de Datos & Procesos | #23 | `process-db-updater` |
 | 4 | Rendimiento & Latencia | #24 | `openspec-dev` |
 | 5 | Testing & Calidad | #25 | `openspec-dev` |
 
-> **Próxima área en rotación: Área 2 (Gaming & Telemetría UX).** Último ciclo abordado: #26 (`TASK-035`/`TASK-036` y feedback honesto).
+> **Próxima área en rotación: Área 3 (Base de Datos & Procesos).** Último ciclo abordado: #23 (`TASK-032`).
 
 ---
 

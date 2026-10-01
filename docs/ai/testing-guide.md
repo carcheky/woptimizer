@@ -26,9 +26,9 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 ## Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **78 tests**: 73 de backend + 5 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **81 tests**: 76 de backend + 5 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
 
-> **Ese 78 no se escribe a mano, y por eso ya no puede caducar solo.** Fallo medido en el cierre
+> **Ese 81 no se escribe a mano, y por eso ya no puede caducar solo.** Fallo medido en el cierre
 > del ciclo 26: esta tabla decía 78, `STATUS.md` decía 75 y `AGENTS.md` y `README.md` decían 28 —
 > y `validate_docs.py` corría 72 comprobaciones **ninguna** de las cuales miraba un número de
 > tests, así que informaba "72 OK, 0 FAIL" con los tres ficheros caducados. Es la clase "el
@@ -56,7 +56,8 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 12 | `test_safety_badge_category_priority_order` | La categoría manda sobre la prioridad en `get_safety_badge` (regresión 🟡/🔴) |
 | 13 | `test_gaming_service_should_kill` | Orden de reglas de `should_kill_for_gaming`: keeper > apps > categoría objetivo |
 | 14 | `test_execute_gaming_pack_integration` | G0-G9 de `execute_gaming_pack`: barrera roja, keepers y kill recursivo real |
-| 15 | `test_pack_service_crud` | `create_user_pack` rechaza duplicados y el id reservado `gaming`; persiste en disco |
+| 15 | `test_gaming_service_session_restoration` | **TASK-038:** restauración inteligente de apps tras Modo Gaming (`_last_closed_apps`, `get_last_closed_apps`, `clear_last_closed_apps`, `restore_gaming_session`) |
+| 16 | `test_pack_service_crud` | `create_user_pack` rechaza duplicados y el id reservado `gaming`; persiste en disco |
 | 16 | `test_pack_service_delete` | `delete_pack`: `ValueError` en gaming, `False` si no existe, `True` en pack propio |
 | 17 | `test_pack_service_favorite_exclusive` | `set_favorite` deja como máximo 1 favorito; `set_favorite(None)` deja 0 |
 | 18 | `test_pack_service_reset_gaming` | `reset_gaming_pack` restaura apps y `target_categories` de `DEFAULT_GAMING_PACK` |

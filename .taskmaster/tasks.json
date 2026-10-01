@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01T00:00:00Z",
-  "active_task_id": "TASK-037",
+  "active_task_id": "TASK-038",
   "tasks": [
     {
       "id": "TASK-001",
@@ -759,6 +759,27 @@
         "CERO ediciones bajo src/woptimizer/. Este ciclo toca tooling que vigila al producto, no producto. Comprobable con git status --porcelain"
       ],
       "notes": "Ciclo 27, backlog vacio (TASK-035 y TASK-036 cerradas con PASS), asi que toca la Matriz de Rotacion. ALCANCE DECIDIDO POR architect-review: nucleo (1)+(2)+(3) en UN commit y UNA ronda de auditoria, porque los tres son la misma afirmacion escrita en tres sitios y ninguno se puede comprobar sin los otros dos. (1) sin (3) crearia una rama viva sin un solo test, que es el defecto que se iba a arreglar un nivel mas abajo. (2) sin (3) es un arreglo invisible: la tupla fija no da sintoma hoy. (2) y (3) son la misma edicion, porque el guard tiene que ser una funcion a la que se le pase una raiz para poder apuntarla a un arbol temporal. El punto (4), el residuo cosmético del mensaje, entra gratis: el test de (1) necesita un tercer fixture (un run_tests.py con un test definido y no invocado) para distinguir 'el mensaje se emite' de 'el mensaje es correcto', y con ese fixture en la mano el segmento huerfano esta en la linea que el test acaba de escribir. DOS CORRECCIONES AL ENCARGO, medidas: (a) el punto (2) NO es 'un tercer modulo no lo encuentra y da KeyError con traceback': hoy no hay sintoma, porque el tercer importador real (process_manager_view.py) solo usa mensaje_cierre_pack, que el guard no vigila. La AUSENCIA de sintoma es lo que hace peligroso al mutante M5, y es la razon de que el test se exija sobre arbol sintetico. (b) la rama de (1) NO produce falso verde: rc=1 en ambos fallos, asi que la severidad es amarillo (diagnostico) y no rojo (deteccion). Inflarla seria el error opuesto. HALLAZGO NO LISTADO EN EL ENCARGO: el guard es ciego a la forma `fb.mensaje_sin_apps(...)` porque getattr(func,'id',None) devuelve None para un ast.Attribute (run_tests.py:8130). Es un agujero latente, no un bug vivo, y por eso no estaba en la lista. FUERA DE ALCANCE CON DECISION: (5) el smoke test de compilacion NO es una tarea, es una decision. dist/woptimizer.exe es de 2026-09-29 y el checkpoint 'cada 3 ciclos' ha saltado cinco veces y se ha ignorado cinco. Decision de architect: el checkpoint deja de ser un contador de ciclos y pasa a dispararse por condicion (hay exe released y el codigo cambio desde el ultimo build), porque un checkpoint saltado cinco veces no es un checkpoint, es un semaforo amarillo de adorno. Pregunta al propietario, no bloqueante: si el exe se usa a diario, el desfase de 15 ciclos es un riesgo real, porque el doble tap del ciclo 12 y el blindaje anti-brick del 13 no estan dentro. (6) el validador no comprueba docs/ai/ es CIERTO y es el nucleo del proximo ciclo (Area 5, Testing & Calidad), con la decision ya tomada para que no vuelva a preguntarse: las afirmaciones documentales se verifican en run_tests.py y NO en validate_docs.py, porque un check del validador no es mutation-auditable. El precedente es test_la_documentacion_del_blindaje_no_puede_desfasarse, que re-deriva con ast los 34 nombres de SYSTEM_PROTECTED_PROCESSES y vive en la suite. Baseline medido antes de planificar: validate_docs.py da 77 OK / 0 FAIL rc=0, run_tests.py declara 78 tests y los cuatro ficheros que lo declaran estan de acuerdo, git_safe_commit --verify da WOPT_REPO_OK. Ver openspec/changes/2026-09-30-guardas-que-no-guardan/{proposal.md,tasks.md}."
+    },
+    {
+      "id": "TASK-038",
+      "title": "Restauración Inteligente de Apps tras Modo Gaming",
+      "description": "Ampliación de GamingService con _last_closed_apps para capturar las rutas absolutas de ejecutables cerrados durante el Modo Gaming (resolviendo get_process_exe_path previo a la terminación) y proveer get_last_closed_apps(), clear_last_closed_apps() y restore_gaming_session() que reabre las aplicaciones mediante start_pack_apps. Integración de banner/botón de restauración thread-safe en DashboardView.",
+      "complexity": 3,
+      "priority": "high",
+      "status": "completed",
+      "dependencies": [
+        "TASK-037"
+      ],
+      "module": "src/woptimizer/services/gaming_service.py",
+      "acceptance_criteria": [
+        "GamingService registra _last_closed_apps con las rutas absolutas de ejecutables terminados durante execute_gaming_pack",
+        "GamingService.get_last_closed_apps() y clear_last_closed_apps() funcionan correctamente",
+        "GamingService.restore_gaming_session() ejecuta start_pack_apps(self._last_closed_apps), vacía el historial y retorna (started, failed)",
+        "DashboardView muestra la opción de restauración en pantalla y despacha a hilos secundarios vía self.after(0, ...)",
+        "test_gaming_service_session_restoration añadido a run_tests.py en verde discriminante",
+        "run_tests.py y validate_docs.py en verde 100%"
+      ],
+      "notes": "Ciclo #28 del motor autónomo de I+D (Área 2: Gaming & Telemetría UX)."
     }
   ]
 }

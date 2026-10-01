@@ -417,5 +417,19 @@
       "after": "75 backend + 5 headless UI (80 totales, validados con ast por validate_docs.py)"
     },
     "impact": "Guardas que no guardan (TASK-037): (1) _recuento_de_tests en validate_docs.py emite None ante OSError y SyntaxError de run_tests.py, haciendo alcanzable la rama de fallo con informe en vez de traceback; (2) el guard del contrato de los llamantes de ui.feedback deriva su alcance recorriendo el arbol con ast en vez de una tupla literal desfasada, acepta ast.Attribute y ast.Name, y se valida con control sobre arbol sintetico; (3) huerfanos en validate_docs.py omite el segmento vacio si solo_invocados esta vacio. Recuento de suite elevado a 80 tests y sincronizado en STATUS.md, AGENTS.md, README.md y testing-guide.md. Auditoria Paso 4 = PASS (9/9 mutaciones M1..M9 eliminadas)."
+  },
+  {
+    "cycle": 28,
+    "date": "2026-10-01T08:50:00",
+    "area": "Gaming & Telemetría UX",
+    "slug": "2026-10-01-gaming-session-restoration",
+    "task": "TASK-038",
+    "status": "COMPLETED",
+    "commits": [],
+    "tests": {
+      "before": "75 backend + 5 headless UI (80 totales)",
+      "after": "76 backend + 5 headless UI (81 totales, validados con ast por validate_docs.py)"
+    },
+    "impact": "Restauración Inteligente de Apps tras Modo Gaming (TASK-038): registro pre-kill de rutas absolutas de ejecutables cerrados (_last_closed_apps), metodos get_last_closed_apps, clear_last_closed_apps y restore_gaming_session en GamingService, y banner dinámico con botón 'Reabrir Apps' thread-safe en DashboardView. 81 tests en verde y auditoría Paso 4 = PASS."
   }
 ]

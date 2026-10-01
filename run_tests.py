@@ -8753,10 +8753,20 @@ def test_el_feedback_de_pack_dice_la_verdad():
         def __init__(self):
             self.cierre = (0, 0, 0, 0.0)
             self.llamadas = 0
+            self._last_closed_apps = []
 
         def execute_gaming_pack(self, pack):
             self.llamadas += 1
             return self.cierre
+
+        def get_last_closed_apps(self):
+            return list(self._last_closed_apps)
+
+        def clear_last_closed_apps(self):
+            self._last_closed_apps = []
+
+        def restore_gaming_session(self):
+            return 0, 0
 
     class _Notis:
         def __init__(self):
@@ -10201,6 +10211,68 @@ def test_el_gestor_de_procesos_tampoco_miente():
     print("test_el_gestor_de_procesos_tampoco_miente OK (TASK-035, ciclo 26 iter 3).")
 
 
+def test_gaming_service_session_restoration():
+    """TASK-038: Valida el registro, consulta, vaciado y restauración de la sesión Gaming."""
+    print("Testing GamingService session restoration (TASK-038)...")
+    from woptimizer.services.gaming_service import GamingService
+    from woptimizer.models import Pack, ProcessInfo
+
+    class DummyProcessService:
+        def __init__(self):
+            self.started_apps = []
+        def _categorize(self, name):
+            return "🟢 Navegadores"
+        def get_running_processes(self, force_refresh=False):
+            return [
+                ProcessInfo.model_construct(name="app1", full_name="app1.exe", pid=101, category="🟢 Navegadores"),
+                ProcessInfo.model_construct(name="app2", full_name="app2.exe", pid=102, category="🟡 Media"),
+            ]
+        def get_process_exe_path(self, pid):
+            if pid == 101:
+                return r"C:\Program Files\App1\app1.exe"
+            elif pid == 102:
+                return r"C:\Program Files\App2\app2.exe"
+            return ""
+        def kill_processes(self, procs):
+            return len(procs), 0, 0, 50.0
+        def start_pack_apps(self, apps):
+            self.started_apps = list(apps)
+            return len(apps), 0
+
+    class DummyPackService:
+        pass
+
+    ps = DummyProcessService()
+    gs = GamingService(ps, DummyPackService())
+
+    # Precondición: sin sesión guardada
+    assert gs.get_last_closed_apps() == []
+
+    gaming_pack = Pack(id="gaming", name="Gaming", is_gaming=True, target_categories=["🟢 Navegadores", "🟡 Media"])
+    killed, failed, skipped, freed_mb = gs.execute_gaming_pack(gaming_pack)
+    assert killed == 2
+
+    closed_apps = gs.get_last_closed_apps()
+    assert len(closed_apps) == 2
+    assert r"C:\Program Files\App1\app1.exe" in closed_apps
+    assert r"C:\Program Files\App2\app2.exe" in closed_apps
+
+    # Probando clear_last_closed_apps
+    gs_dummy = GamingService(ps, DummyPackService())
+    gs_dummy._last_closed_apps = ["test.exe"]
+    gs_dummy.clear_last_closed_apps()
+    assert gs_dummy.get_last_closed_apps() == []
+
+    # Simular restauración
+    started, failed_rest = gs.restore_gaming_session()
+    assert started == 2
+    assert failed_rest == 0
+    assert ps.started_apps == closed_apps
+    assert gs.get_last_closed_apps() == []  # debe haberse vaciado
+
+    print("test_gaming_service_session_restoration OK.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -10224,6 +10296,7 @@ if __name__ == "__main__":
     test_safety_badge_category_priority_order()
     test_gaming_service_should_kill()
     test_execute_gaming_pack_integration()
+    test_gaming_service_session_restoration()
     test_pack_service_crud()
     test_pack_service_delete()
     test_pack_service_favorite_exclusive()

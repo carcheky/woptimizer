@@ -87,6 +87,26 @@ class DashboardView(Confirmable, ctk.CTkFrame):
         self.lbl_banner = self.status_label
         self.status_label.pack(side="left", padx=12)
 
+        # TASK-038: Banner/botón para restaurar apps cerradas en sesión Gaming
+        self.restore_frame = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+            height=36,
+            corner_radius=theme.RADIUS_MEDIUM
+        )
+        self.restore_button = ctk.CTkButton(
+            self.restore_frame,
+            text="",
+            font=("Segoe UI", theme.FONT_SIZE_BODY, "bold"),
+            fg_color=theme.ACCENT,
+            hover_color=theme.ACCENT_HOVER,
+            text_color=theme.TEXT_PRIMARY,
+            height=36,
+            corner_radius=theme.RADIUS_MEDIUM,
+            command=self._on_restore_clicked
+        )
+        self.restore_button.pack(fill="x", padx=0, pady=0)
+
         self.buttons_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.buttons_frame.pack(fill="both", expand=True)
         # Configurar grid para que los botones se centren o expandan
@@ -223,6 +243,7 @@ class DashboardView(Confirmable, ctk.CTkFrame):
             # no se escribe una MB que el usuario no puede cuadrar con nada.
             self._last_gaming_summary = f"{killed} cerrados{clausula_mb(freed_mb)}"
         self._update_resting_bar()
+        self._show_restore_banner()
 
         self._publicar_en_banner(msg, txt)
 
@@ -231,8 +252,37 @@ class DashboardView(Confirmable, ctk.CTkFrame):
         self._banner_timer = None
         self.status_banner_frame.pack_forget()
 
+    # ------------------------------------------------------------------
+    # Restauración Inteligente de Sesión Gaming (TASK-038)
+    # ------------------------------------------------------------------
+    def _show_restore_banner(self):
+        """Muestra u oculta la barra de restauración según el estado de la sesión Gaming."""
+        get_closed = getattr(self.gaming_service, "get_last_closed_apps", None)
+        closed_apps = get_closed() if callable(get_closed) else []
+        if closed_apps:
+            count = len(closed_apps)
+            self.restore_button.configure(text=f"🔄 Restaurar Apps Cerradas ({count})")
+            self.restore_frame.pack(fill="x", pady=(0, 8), before=self.buttons_frame)
+        else:
+            self.restore_frame.pack_forget()
+
+    def _on_restore_clicked(self):
+        def _run_restore():
+            started, failed = self.gaming_service.restore_gaming_session()
+            self.after(0, self._on_restore_finished, started, failed)
+
+        import threading
+        threading.Thread(target=_run_restore, daemon=True).start()
+
+    def _on_restore_finished(self, started: int, failed: int):
+        self._show_restore_banner()
+        self._show_start_banner(started, failed, "Restauración Gaming")
+        if getattr(self, "notification_service", None):
+            self.notification_service.notify_apps_launched("Restauración Gaming", started, failed)
+
     def refresh_dashboard(self):
         self._update_resting_bar()
+        self._show_restore_banner()
         packs = self.pack_service.get_all_packs()
         favorites = [p for p in packs.values() if p.is_favorite]
 

@@ -1,3 +1,16 @@
+## CYCLE-028 - 2026-10-01
+
+**Gaming & Telemetría UX** — `TASK-038` (Restauración Inteligente de Apps tras Modo Gaming)
+
+> 🟢 **VERDICT FINAL: PASS** — Auditoría del Paso 4 completada con éxito. **81 tests** (76 backend + 5 headless UI) pasando al 100%.
+
+### Añadido
+- **`GamingService._last_closed_apps` y resolución pre-kill de ejecutables.** `execute_gaming_pack` ahora resuelve las rutas absolutas `.exe` de los procesos antes de terminarlos y almacena los ejecutables únicos cerrados.
+- **`GamingService.restore_gaming_session()`.** Reabre las aplicaciones capturadas durante la última sesión gaming invocando `start_pack_apps()` y limpia el historial.
+- **Banner de Restauración en `DashboardView`.** Aparece dinámicamente con un botón "Reabrir Apps" para restaurar la sesión de trabajo con un solo clic tras salir de un juego.
+
+---
+
 ## CYCLE-027 - 2026-10-01
 
 **Resiliencia & Robustez / Deuda Técnica** — `TASK-037` (Guardas que no guardan: el alcance de un detector se deriva o no es un detector)
