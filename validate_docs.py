@@ -195,9 +195,13 @@ def _ciclos_de_commits(asuntos):
     """`(ciclos, con_marcador, sin_marcador)` de una lista de asuntos.
 
     El TERCER numero no es decorativo: es el punto ciego MEDIDO y lo imprime el
-    informe. Medido sobre el historial real: 43 de 154 subjects llevan marcador
-    y 111 no lo llevan (son los `feat(...)`, `fix(...)`, `test(...)`). Medirlo
-    en el informe es lo que impide que ese agujero se lea como cerrado.
+    informe. La cifra EXACTA no se escribe aqui, y no por vaguedad: caduca con
+    cada commit, y una cifra caducada en un docstring se relee como verdad. Lo
+    que si se afirma, porque es estable, es que MAS DE LA MITAD de los subjects
+    del repo no llevan marcador (son los `feat(...)`, `fix(...)`, `test(...)`).
+    El numero vivo lo reimprime el informe de `_comprobar_ancla_de_commits` en
+    cada pasada, y medirlo en el informe es lo que impide que ese agujero se lea
+    como cerrado.
     """
     ciclos = set()
     con_marcador = 0
@@ -210,8 +214,17 @@ def _ciclos_de_commits(asuntos):
     return ciclos, con_marcador, len(asuntos) - con_marcador
 
 
-def _comprobar_ancla_de_commits(root, errors, ok, journal_cycles=()):
+def _comprobar_ancla_de_commits(root, errors, ok, journal_cycles):
     """Historial de commits como TERCER testigo. -> `set[int]` de ciclos.
+
+    `journal_cycles` es POSICIONAL OBLIGATORIO, y no es estilo. Medido, el
+    intento 3 del ciclo 47: con `journal_cycles=()` por defecto, el mutante que
+    borra el cuarto argumento de la llamada es un CAMBIO DE COMPORTAMIENTO que
+    nadie nota -- el parser roto pasa en verde y el validador da `108 OK /
+    0 FAIL` -- porque el default convierte el error de cableado en un `()`
+    silencioso. Sin default, ese mismo mutante es un `TypeError` en la llamada y
+    tumba el validador entero, que es el unico estado en el que un cableado roto
+    no puede disfrazarse de criterio.
 
     Por que el historial y no otra cosa: ya esta FUERA del arbol de trabajo
     (`GIT_DIR` desacoplado, el mismo `GIT_DIR` que usa `git_safe_commit.py:67-79`),
@@ -224,8 +237,8 @@ def _comprobar_ancla_de_commits(root, errors, ok, journal_cycles=()):
     `journal_cycles` no es adorno: es lo que permite distinguir "el historial no
     aporta ningun ciclo" (un parser ROTO, que no puede pasar por verde) de "el
     historial tampoco dice nada porque el journal tampoco" (fallo que ya reporta
-    la rama del journal). El cableado lo pasa SIEMPRE; el default existe solo
-    para que un test pueda despertar el ancla sola.
+    la rama del journal). El cableado lo pasa SIEMPRE, y ahora no puede no
+    pasarlo.
 
     NUNCA verde por omision: si el historial no se puede leer se reporta el MOTIVO
     LITERAL y se devuelve `set()`. Un `except: return set()` silencioso es la misma
@@ -238,9 +251,10 @@ def _comprobar_ancla_de_commits(root, errors, ok, journal_cycles=()):
         r"%LOCALAPPDATA%\woptimizer_git\.git"
     )
     env["GIT_WORK_TREE"] = root
-    # `--all`: un ciclo cerrado en una rama tambien cuenta. Sin limite: son 154
+    # `--all`: un ciclo cerrado en una rama tambien cuenta. Sin limite: son ~157
     # subjects, y truncar dejaria ciclos sin exigir, que es el fallo que esto
-    # viene a cerrar.
+    # viene a cerrar. La cifra viva la reimprime el informe, en la linea de
+    # `ok` de esta misma funcion.
     args = ["git", "log", "--format=%s", "--all"]
     salida, motivo = None, None
     # UN reintento, por el `spawn EPERM` intermitente de este host. Si vuelve a
@@ -252,10 +266,17 @@ def _comprobar_ancla_de_commits(root, errors, ok, journal_cycles=()):
                 encoding="utf-8", errors="replace", timeout=120,
             )
         except Exception as exc:                    # noqa: BLE001
-            # No se estrecha a OSError: aqui valen tambien `FileNotFoundError`
-            # (git no instalado), `PermissionError` y el propio fallo del
-            # sandbox. "No pude ni comprobar" es un estado, no una excepcion
-            # concreta, y narrowed lo dejaria salir con traceback.
+            # NO se estrecha, y la razon HONESTA no es la que estaba escrita
+            # aqui hasta el ciclo 47. Medido: `FileNotFoundError.__mro__[1]` y
+            # `PermissionError.__mro__[1]` son los dos `OSError`, o sea que
+            # "no son OSError" era FALSO y las dos estaban covered de todos
+            # modos. Lo que de verdad alcanza este `except` y no es `OSError` es
+            # `subprocess.TimeoutExpired` (`SubprocessError` -> `Exception`),
+            # alcanzable por el `timeout=120` de la llamada de arriba, mas el
+            # propio fallo de `spawn EPERM` del sandbox cuando git ni llega a
+            # arrancar. Estrecharlo a `OSError` deja el timeout -- y solo el
+            # timeout -- saliendo con traceback, y "no pude ni comprobar" es un
+            # estado que hay que INFORMAR, no una excepcion concreta.
             motivo = f"git no llego a ejecutarse: {type(exc).__name__}: {exc}"
             continue
         if res.returncode != 0:
@@ -426,9 +447,24 @@ def _comprobar_ancla_del_changelog(root, errors, ok):
             )
 
 
+def validar(root):
+    """Los checks 1-7 enteros. -> `(errors, ok)`. Sin imprimir y sin salir.
 
-def main():
-    root = os.path.dirname(os.path.abspath(__file__))
+    D1 (TASK-057, ciclo 47, intento 3). Por que existe, medido: durante dos
+    iteraciones la suite llamo a las funciones PRIVADAS pasandoles a mano los
+    argumentos, asi que el cableado que suministra esos argumentos -- `main()` ->
+    `validar` -> `_comprobar_ancla_del_changelog` -> `_comprobar_ancla_de_commits`
+    -- no lo probaba NADIE. Borrada una linea de ese cableado, la suite entera
+    seguiria en verde: codigo testeado que el producto ya no invoca, la misma
+    clase de bug que TASK-056 y en el propio ciclo que debia cerrarlo.
+
+    Extrayendo el cuerpo a UNA funcion que `main()` llama, el producto y los
+    tests ejecutan la MISMA ruta por construccion, y "el cableado que nadie
+    prueba" deja de ser una categoria de bug: no hay dos rutas de validacion
+    posibles que puedan divergir. `root` es parametro -- y no se deriva de
+    `__file__` -- precisamente para que un test pueda apuntar el validador real
+    a un arbol sintetico.
+    """
     errors = []
     ok = []
 
@@ -626,6 +662,18 @@ def main():
     # `if n_tests is None:` solo se podia despertar lanzando el validador
     # entero contra el repo entero, es decir, nunca desde un test.
     _comprobar_recuento_de_tests(root, errors, ok)
+    return errors, ok
+
+
+def main():
+    """Imprime el informe de `validar(root)` y sale con su codigo. Nada mas.
+
+    Todo lo que decide ocurre en `validar`; aqui no hay ni una condicion. Un
+    `main()` con logica propia es una segunda ruta de validacion posible, que es
+    justo lo que D1 viene a hacer desaparecer.
+    """
+    root = os.path.dirname(os.path.abspath(__file__))
+    errors, ok = validar(root)
 
     # Reporte
     print("=" * 60)

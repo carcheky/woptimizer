@@ -26,7 +26,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 #### Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **104 tests**: 94 de backend + 10 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **103 tests**: 93 de backend + 10 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
 
 > **Ese 81 no se escribe a mano, y por eso ya no puede caducar solo.** Fallo medido en el cierre
 > del ciclo 26: esta tabla decía 78, `STATUS.md` decía 75 y `AGENTS.md` y `README.md` decían 28 —
@@ -142,14 +142,43 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 98 | `test_no_legacy_test_files_in_root` | **TASK-055 (Ciclo #45):** Guard anti-regresión y contratos de archivo de scripts `test_*.py` legacy (cero archivos `test_*.py` en la raíz del repositorio, preservación de los 11 ficheros trasladados en `docs/archive/legacy-root-tests/`, validez de `README.md` explicativo y aislamiento de `test_powershell_direct.py`) |
 | 99 | `test_dead_code_ast_guard` | **TASK-056 (Ciclo #46):** Guard AST de código muerto en `src/woptimizer/**` (recorrido exhaustivo del árbol de módulos, verificación de referencias en producción y tests para las 201 definiciones, lista blanca justificada y eliminación de residuos legacy `_get_priority` y `process_db`) |
 | 100 | `test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal` | **TASK-057 (Ciclo #47):** El requisito de registrar cada ciclo se exige por la **UNIÓN** de `rd_journal.json` y el historial de commits, para que el registro validado no sea su propio testigo (4 sondas con `GIT_DIR` en `tempfile`, nunca el historial real: parser que lee ciclo y no `TASK-` con cifras divergentes, residuo de un ciclo comiteado y ausente del journal que da 2 errores **acusando su conjunto** (el 047, nunca el 046) más el árbol espejo con journal {46,47} e historial {46} que exige 0 errores, unión que no sustituye al journal, y ancla ilegible que produce informe en vez de excepción o verde por omisión) |
-| 101 | `test_el_ancla_se_cablea_en_el_camino_real_del_validador` | **TASK-057 iter 2 (Ciclo #47, S2):** El ancla tiene que estar cableada en `main()`, no solo existir (**S2 del auditor**: la suite llamaba a las funciones privadas y `vd.main()` no lo invocaba nunca, así que borrar el cableado dejaba la suite entera verde). Copia el `validate_docs.py` real a un árbol temporal con el esqueleto que `main()` lee y lo ejecuta como subproceso: acusa el ciclo 999 comiteado y ausente del journal, exige `## CYCLE-999` y salida `1`; y su **mitad mutante** (el cableado sustituido por `pass`) tiene que hacer desaparecer el residuo, de modo que el test demuestra su capacidad de matar en vez de declararla |
-| 102 | `test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador` | **TASK-057 iter 2 (Ciclo #47, S5):** El `except (ValueError, OSError)` de la lectura de `.taskmaster/rd_journal.json` no se puede estrechar a `json.JSONDecodeError`: con un `PermissionError` real (inyectado en el `open` del módulo) el validador debe dar **informe con el motivo y un único error**, no traceback, y no puede confundirse con el estado "journal vacío" |
-| 103 | `test_el_ancla_de_commits_cae_al_git_dir_por_defecto` | **TASK-057 iter 2 (Ciclo #47, S3):** Sin `GIT_DIR` en el entorno (que ninguna sonda hermética recorre) el anclaje cae al repo desacoplado de `%LOCALAPPDATA%` y lee su ciclo; el fallback borrado deja `None` en el entorno de `subprocess` y `TypeError: environment can only contain strings` |
-| 104 | `test_un_parser_de_marcadores_roto_no_pasa_en_verde` | **TASK-057 iter 2 (Ciclo #47, S4):** Un historial legible con 0 ciclos con marcador es un parser **roto** y sale como `[FAIL]` si el journal sí aporta ciclos; con el journal vacío, en cambio, no hay acusación (desactivar la rama entera y quitarle su condición del journal son dos mutantes distintos, y cada sonda mata el suyo) |
+| 101 | `test_el_ancla_se_cablea_en_el_camino_real_del_validador` | **TASK-057 iter 3 (Ciclo #47, S2 + S2b):** El ancla tiene que estar cableada en la ruta que el producto ejecuta, no solo existir (**S2 del auditor**: la suite llamaba a las funciones privadas y `main()` no las invocaba nunca, así que borrar el cableado dejaba la suite entera verde). Copia el `validate_docs.py` real a un árbol temporal con el esqueleto que `validar(root)` lee y lo ejecuta como subproceso: acusa el ciclo 999 comiteado y ausente del journal, exige `## CYCLE-999` y salida `1`, y exige `Resumen:` en el informe. Sus **dos mitades mutantes**, cada una escrita desde la fuente intacta, exigen que el residuo desaparezca: (S2) el cableado del ancla sustituido por `pass`, y (S2b) `main()` sin llamar a `validar(root)`, que declara `0 OK / 0 FAIL` y sale con `0` |
+| 102 | `test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador` | **TASK-057 iter 2 (Ciclo #47, S5):** El `except (ValueError, OSError)` de la lectura de `.taskmaster/rd_journal.json` no se puede estrechar a `json.JSONDecodeError`: con un `PermissionError` real (inyectado en el `open` del módulo) el validador debe dar **informe con el motivo y un único error**, no traceback, y no puede confundirse con el estado "journal vacío". Desde la iteración 3 se asienta por `validar(root)` sobre el esqueleto real copiado |
+| 103 | `test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios` | **TASK-057 iter 3 (Ciclo #47, D1/D3/D4 — fusiona S3 y S4):** los cinco escenarios del ancla son **filas de una tabla**, no cinco tests, y todos se asientan por `validar(root)` —la misma función que `main()` llama— sobre el esqueleto real copiado **una vez** (1,7 MB). Cada fila mata un mutante distinto: (a) historial sin marcadores con journal que sí registra → parser roto `[FAIL]`; (b) el **mismo** historial con journal vacío → silencio (desactivar la rama y quitarle `and journal_cycles` son mutantes distintos y cada fila mata el suyo); (c) un ciclo cerrado en una **rama lateral** se acusa, por su conjunto y sin invertirlo (mata `--all` y la diferencia al revés); (d) journal que se lee pero no aporta ningún ciclo entero → `[FAIL]`; (e) sin `GIT_DIR` en el entorno el anclaje cae a `%LOCALAPPDATA%` y lee su ciclo (mata el fallback, que deja `None` en el entorno de `subprocess`) |
 
 
 
-### Notas de Aislamiento
+### El validador tiene UN solo camino de validación (D1–D4, TASK-057 iteración 3)
+
+Regla que sale de tres `FAIL` seguidos del `mutation-auditor` sobre el mismo código, y que se
+aplica a **cualquier** test nuevo del validador:
+
+1. **Asienta por `validar(root)` o por el subproceso. Nunca por una función privada.** La
+   diferencia no es de estilo: durante dos iteraciones la suite llamó a
+   `_comprobar_ancla_del_changelog` y a `_comprobar_ancla_de_commits` **pasándoles a mano los
+   argumentos**, así que el cableado que suministra esos argumentos no lo probaba nadie. Medido
+   sobre el producto real: con el parser de marcadores muerto *y* el cuarto argumento sin pasar,
+   `python validate_docs.py` daba `108 OK / 0 FAIL`. El fix estaba en código muerto. D1 extrajo
+   `validar(root)` para que el producto y los tests ejecuten la misma ruta **por construcción**.
+2. **Las funciones privadas son unitarias-no-contractuales.** Se pueden ejercitar, pero su
+   veredicto no prueba nada sobre el producto mientras su cableado no se pruebe. Por eso no son
+   objetivo de tests nuevos: el único test que toca `main()` es el de subproceso, y existe para
+   probar el `sys.exit` y que `main()` llame a `validar`.
+3. **Un parámetro opcional cuyo valor cambia el veredicto es un agujero.** `journal_cycles`
+   tenía default `()`, y por eso mutarlo era un cambio de comportamiento silencioso. Sin default,
+   es un `TypeError` en la llamada: el validador muere con traceback y el fallo es imposible de
+   confundir con un criterio.
+4. **Los escenarios son filas, no tests.** El esqueleto real (1,7 MB) se copia **una vez** por
+   test y cada escenario reescribe solo el journal, el changelog y el `GIT_DIR`. Un hallazgo
+   futuro cuesta una fila de `test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios`, no un
+   test de 40 líneas con su propia copia del árbol. Por eso esto converge donde las iteraciones 1
+   y 2 no: un test más por hallazgo tapaba el mutante visible y dejaba el mismo agujero un nivel
+   más abajo.
+
+El informe del `mutation-auditor` vive en
+`openspec/changes/2026-10-01-validator-independent-anchor/mutation-report.md`, no en la
+conversación: sin ese fichero un `FAIL` no es re-auditable por nombre.
+
 - Los tests de `PackService` usan `tempfile.NamedTemporaryFile` (helper `_pack_service_temporal()`) para no modificar `profiles.json` real. `test_pack_service_backup_and_recovery` limpia además los `.bak` y `.tmp` que genera, y restaura los permisos de solo lectura que usa para probar el `PermissionError`.
 - Las sondas de TASK-030 usan `_limpiar_perfiles(ruta)` (principal + `.bak` + `.tmp`, tolerando el flag de solo lectura) o un `tempfile.mkdtemp()` propio por fila, y lo limpian en `finally`. Los dobles se inyectan con `_doble_en(modulo, **atributos)`: sustituyen `json`/`shutil` **en los globales de `pack_service`**, no en la stdlib, así que el resto de la suite nunca ve el doble.
 - Los tests de `ProcessService` operan contra listas vacías o nombres inexistentes.

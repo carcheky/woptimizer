@@ -143,20 +143,35 @@ Opciones **descartadas con medición**, no con opinión (detalle en
 | Auto-referencia (tabla resumen del changelog, campo `commits`) | Ya demostrado como falso verde en el ciclo #15. |
 | Puerta humana (aprobación del propietario por ciclo) | Es la única independencia real, pero incompatible con la autonomía de coste 0 y no automatizable. |
 
-### Alcance medido (2026-10-02)
+### Alcance: lo que es estable, y donde hay que leer la cifra
 
-- **37 de 46 ciclos** del journal son corroborables por el historial.
-- **43 de 155 subjects** llevan marcador de ciclo; **112 no lo llevan**.
-- `ciclos_del_historial - ciclos_del_journal = ∅`: hoy la unión **no pone el repo en rojo**.
-- Del campo `commits` del journal: 11 entradas sin hash alguno, 12 con el hash como texto
-  libre y 23 como lista limpia; 3 de los hashes declarados no resuelven (§ tabla de opciones
-  de arriba).
+Este apartado **no** afirma una cifra fija de subjects, y es deliberado. La cifra caduca con cada
+commit, y una cifra caducada escrita en la documentación es peor que no escribirla: se relee como
+verdad y nadie vuelve a medirla. El dato vive en la línea de informe del validador, que lo
+reimprime **viva en cada pasada**:
 
-> ⚠️ **La segunda cifra caduca con cada commit** y por eso va marcada con su fecha de
-> medición en lugar de quedar escrita como un número fijo: el informe del validador la
-> reimprime viva en cada pasada (`historial de commits: N subject(s), M con marcador de
-> ciclo y K SIN marcador`), y ese es el dato que hay que leer. Si aquí y en el informe no
-> coinciden, el que caduca es este documento.
+```text
+historial de commits: N subject(s), M con marcador de ciclo y K SIN marcador
+(punto ciego medido); C ciclo(s) corroborables frente a los J del journal
+```
+
+Esa línea es el único sitio donde el número es de fiar. Si este documento y el informe no
+coinciden, **el que caduca es este documento**.
+
+Lo que sí es estable, y por eso se afirma sin cifra ni fecha de medición:
+
+- La **unión no es una sustitución**: los commits de cierre de los ciclos 1, 2, 3 y 15 a 20 no
+  llevan marcador de ciclo, así que si el historial sustituyera al journal, esos ciclos perderían
+  su único requisito.
+- **Más de la mitad de los subjects del repo no llevan marcador de ciclo** (son los `feat(...)`,
+  `fix(...)`, `test(...)`). La proporción es estable; el número absoluto no. Por eso un ciclo
+  cerrado con asunto `feat(...)` y sin entrada de journal sigue sin tercer testigo (punto 2 de la
+  limitación residual de más abajo).
+- `ciclos_del_historial - ciclos_del_journal = ∅` **hoy**: la unión no pone el repo en rojo. Es una
+  propiedad del estado actual, no una garantía, y la vigila el validador en cada pasada.
+- Del campo `commits` del journal: la mayoría de las entradas lo declaran como lista limpia de
+  hashes y unas pocas lo dejan vacío; los hashes que no resuelven son residuo conocido y van a
+  `TASK-059` (tabla de opciones de más arriba, con su medición del día en que se hizo).
 
 ### LIMITACIÓN RESIDUAL — el problema NO está cerrado
 
@@ -166,10 +181,12 @@ no lo estaba (ciclo #15):
 1. **El historial lo escribe el mismo actor que el journal.** La ganancia es de **clase de
    fallo** —reescribir historia frente a editar una clave de un JSON—, **no de independencia de
    actor**. Quien puede mentir en el journal puede mentir en los mensajes de commit.
-2. **112 de 155 commits no llevan marcador de ciclo** (son los `feat(...)`, `fix(...)`,
-   `test(...)`; medición del 2026-10-02, la cifra viva está en el informe). Si un ciclo se
-   comitea **sin** commit de cierre y **sin** entrada de journal, no hay tercer testigo y el
-   validador **no lo ve**. Cerrar eso es `TASK-059`, no esta tarea.
+2. **Más de la mitad de los commits no llevan marcador de ciclo** (son los `feat(...)`, `fix(...)`,
+   `test(...)`; la cifra viva —subjects leídos, con marcador y sin él— está en la línea de informe
+   del validador que se copia arriba). Si un ciclo se comitea **sin** commit de cierre y **sin**
+   entrada de journal, no hay tercer testigo y el validador **no lo ve**. Cerrar eso es
+   `git_safe_commit.py` rechazando el mensaje sin identificador de ciclo = **`TASK-059`**, no esta
+   tarea. Aquí **no** se HPEa más.
 3. **Un parser de marcador es una convención leída, no una verdad**: un asunto que mencione
    "ciclo 15" por hablar de él corrobora el 15. Solo puede **ablandar** el ancla, nunca
    endurecerla, así que no puede producir un FAIL falso — pero tampoco puede cerrar el punto 2.
@@ -204,10 +221,31 @@ espejo con journal `{46, 47}` e historial `{46}`, que tiene que dar **cero** err
 árbol donde acusar es, por construcción, acusar al revés.
 
 `test_el_ancla_se_cablea_en_el_camino_real_del_validador` **no duplica la ruta de validación**: copia
-el `validate_docs.py` real a un árbol temporal con el esqueleto de ficheros que `main()` lee y lo
-ejecuta como subproceso, de modo que se ejercitan `main()`, el `if os.path.exists(CHANGELOG.md)`,
-la línea de cableado y el `sys.exit` contra un residuo real (un commit del ciclo 999 que el journal
-no registra). Su segunda mitad escribe en esa copia el **mutante** (el cableado sustituido por
-`pass`) y exige que el residuo desaparezca del informe: el test demuestra su capacidad de matar en
-vez de declararla.
+el `validate_docs.py` real a un árbol temporal con el esqueleto de ficheros que `validar()` lee y lo
+ejecuta como subproceso, de modo que se ejercitan `main()`, `validar()`, el
+`if os.path.exists(CHANGELOG.md)`, la línea de cableado y el `sys.exit` contra un residuo real (un commit del ciclo 999 que el journal
+no registra). Sus **dos mitades mutantes**, cada una escrita desde la fuente intacta, exigen que el
+residuo desaparezca: el cableado del ancla sustituido por `pass`, y `main()` sin llamar a
+`validar(root)` (que declara `0 OK / 0 FAIL` y sale con `0`). El test demuestra su capacidad de
+matar en vez de declararla.
+
+**Iteración 3** (el `mutation-auditor` devolvió `FAIL` dos veces seguidas y el Circuit Breaker
+replanificó: `tasks.md` T-7). El hallazgo no era un hueco de cobertura sino una **categoría de
+bug**: los tests llamaban a las funciones privadas **pasándoles a mano los argumentos**, así que el
+cableado que suministra esos argumentos no lo probaba nadie. Medido sobre el producto real, con el
+parser de marcadores muerto *y* el cuarto argumento sin pasar, `validate_docs.py` daba
+`108 OK / 0 FAIL`: el fix de la iteración 2 era **código muerto en el camino real**. Un test más
+por hallazgo no convergía; la iteración 3 converge por construcción:
+
+| Decisión | Qué hace | Por qué converge donde 1 y 2 no |
+|---|---|---|
+| **D1** — un solo camino | `validar(root) -> (errors, ok)` con los checks 1-7; `main()` solo llama, imprime y hace `sys.exit` | Producto y tests ejecutan la **misma** función, así que "el cableado que nadie prueba" deja de ser una categoría de bug: no hay dos rutas que puedan divergir |
+| **D2** — el default se borra | `journal_cycles` pasa a **posicional obligatorio** | Mutarlo deja de ser un cambio de comportamiento y pasa a ser un `TypeError` en la llamada: el validador muere con traceback y muere el test de subproceso que ya existía, **sin escribir una línea de test nueva** |
+| **D3** — un solo camino también para los tests | Todo test contractual se asienta por `validar(root)` o por el subproceso; las privadas quedan **unitarias-no-contractuales** | Una función privada a la que se le pasan los argumentos a mano no prueba nada del producto mientras su cableado no se pruebe, y esa era la falsa cobertura |
+| **D4** — los escenarios son FILAS | `test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios`: cinco escenarios sobre el esqueleto real copiado **una vez** | Medido: 1,7 MB y una copia por test, así que un hallazgo futuro cuesta **una fila**, no un test de 40 líneas con su propia copia |
+
+La suite **bajó** de 104 a 103: `test_el_ancla_de_commits_cae_al_git_dir_por_defecto` (S3) y
+`test_un_parser_de_marcadores_roto_no_pasa_en_verde` (S4) se fusionaron en la tabla de
+escenarios, y sus mutantes mueren ahora por `validar(root)`. El informe de mutación de esta
+iteración vive en `openspec/changes/2026-10-01-validator-independent-anchor/mutation-report.md`.
 
