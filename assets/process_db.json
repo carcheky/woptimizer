@@ -543,5 +543,490 @@
         "category": "🔴 Sistema de Windows",
         "priority": "none",
         "description": "Motor WebView2 de Microsoft, incrustado dentro de otras apps (Widgets, Outlook, Office, utilidades de ASUS). No es un navegador abierto por el usuario: lo necesita cualquier app que dibuje su interfaz dentro. Se cataloga en rojo para que el modo juego no lo cierre; antes lo heredaba de 'msedge' por subcadena y acababa siendo cerrable."
+    },
+    "searchfilterhost": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Windows Search: aloja los extractores de metadatos de los archivos para que el buscador pueda indexarlos. Windows crea una instancia por cada filtro registrado; cerrarlas deja el indice de busqueda incompleto."
+    },
+    "searchprotocolhost": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Windows Search: lanza los manejadores de protocolo de busqueda (por ejemplo la vista previa de documentos). Windows crea una instancia por cada protocolo; es infraestructura del buscador del sistema."
+    },
+    "applicationframehost": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Anfitrion de aplicaciones de Windows. Aloja la ventana de las aplicaciones de la Store y de las vistas integradas del sistema; sin el no se dibujan."
+    },
+    "shellhost": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Anfitrion del escritorio de Windows (Shell Host). Forma parte del proceso explorer.exe y sostiene el escritorio, la barra de tareas y el menu Inicio."
+    },
+    "dashost": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Data Sharing Host. Da soporte a 'Compartir en las cercanias' (Nearby Sharing) y a la transferencia de datos entre equipos; lo usa el sistema, no una app instalada."
+    },
+    "aggregatorhost": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Aggregator Host. Proceso del sistema que agrega datos de varias fuentes para funciones integradas (compartir con las cercanias, diagnostico y almacenamiento)."
+    },
+    "midisrv": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "MIDI Service. Servicio de Windows que registra y coordina los dispositivos y aplicaciones MIDI del sistema (pianos electronicos, sintetizadores, secuenciadores)."
+    },
+    "wmiprvse": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "WMI Provider Host (System32\\wbem). Alojador de los proveedores de Instrumentacion de Administracion de Windows. Sin el fallan las consultas de hardware que hacen Armoury Crate, las utilidades de ASUS e Intel y las herramientas de diagnostico."
+    },
+    "vmcompute": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Hyper-V: Host Compute Service. Servicio de computo de las maquinas virtuales de Hyper-V. Windows lo mantiene cargado aunque no tengas ninguna VM abierta; cerrarlo corta el soporte de maquinas virtuales y de contenedores de Windows."
+    },
+    "vmms": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Hyper-V: Virtual Machine Management Service. Administra el ciclo de vida de las maquinas virtuales (arrancar, pausar, migrar y guardar su estado). Windows lo necesita para que Hyper-V funcione."
+    },
+    "vmwp": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Hyper-V: Virtual Machine Worker Process. Un worker por maquina virtual: ejecuta el codigo de la VM y sus dispositivos virtuales. Windows lo crea y lo destruye el solo al encender o apagar cada VM."
+    },
+    "powershell": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Windows PowerShell 5.1, el interprete de comandos que viene con el sistema. Es el padre de muchas tareas programadas y de scripts del sistema, y lo usan la Terminal y los editores para automatizar tareas: cerrarlo aborta lo que este ejecutando."
+    },
+    "tabtip": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Touch Keyboard and Handwriting Panel (teclado tactil de Windows), en la carpeta compartida de ink de Microsoft. Lo lanza el servicio del teclado tactil y escritura a mano. No es bloatware aunque se quede resident: es la entrada tactil del sistema."
+    },
+    "nvdisplay.container": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "NVIDIA Display Container LS. Servicio en modo usuario del driver de video NVIDIA, instalado y versionado por el propio driver (vive en DriverStore). Da soporte al Panel de control de NVIDIA y a los ajustes de pantalla; cerrarlo deja de abrir esos ajustes y puede perder la configuracion de visualizacion durante la partida."
+    },
+    "rtkauduservice64": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Realtek Audio Universal Service. Componente en modo usuario del driver de audio Realtek y puente entre el driver y Realtek Audio Console: deteccion de auriculares, efectos y perfiles. Su version la gobierna el paquete del driver en el DriverStore, no el usuario, asi que no se cierra desde aqui."
+    },
+    "jhi_service": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Intel Dynamic Application Loader Host Interface (JHI). Servicio en modo usuario del Intel Management Engine que deja hablar a las aplicaciones de Windows con el firmware de la placa. Lo instala el driver de MEI y vive en el DriverStore: su ciclo de vida depende del firmware, asi que no se toca."
+    },
+    "rstmwservice": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Intel RST Middleware Service. Servicio del driver Intel Rapid Storage Technology: puente entre el controlador de almacenamiento y las aplicaciones de la Store, y notificaciones de eventos de disco. Intel advierte de que su driver RST no se puede desinstalar sin dejar el equipo sin arranque, y este servicio forma parte de esa pila."
+    },
+    "wmiregistrationservice": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Intel Management Engine WMI Provider Registration. Servicio que registra el proveedor WMI del Intel ME, el microcontrolador incrustado en la placa. Lo lanza services.exe: es la via por la que el software de gestion del equipo lee ese hardware."
+    },
+    "wslservice": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "WSL: servicio de Windows Subsystem for Linux. Da soporte al arranque y al apagado de las distribuciones Linux y de la maquina virtual ligera que las ejecuta. Windows lo reinicia solo, pero pararlo deja WSL sin servicio."
+    },
+    "wslhost": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "WSL: anfitrion de la maquina virtual y de las sesiones de Linux. Hay una instancia por cada distro o proceso WSL vivo, asi que matarla termina de golpe todo lo que se este ejecutando dentro de esa distribucion, sin opcion de guardar."
+    },
+    "wslrelay": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "WSL: relay de red. Es el puente de las conexiones de la maquina virtual de WSL hacia el host, y el que se usa en el modo de red en espejo, en el que la distro comparte la pila de red del equipo."
+    },
+    "wsl": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "WSL: la herramienta de linea de comandos de Windows Subsystem for Linux. Cada instancia es una sesion de shell del usuario trabajando dentro de una distribucion, asi que cerrarla aborta el trabajo de esa sesion."
+    },
+    "vmmemwsl": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "WSL: proceso que representa la memoria de la maquina virtual de Linux. No es un programa, es la contabilidad de la RAM que WSL tiene tomada del sistema; matarlo destruye la VM y todo lo que haya dentro."
+    },
+    "msrdc": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "WSLg: cliente de escritorio remoto que dibuja las aplicaciones graficas de Linux dentro de Windows. Lo lanza la cadena wslservice -> wslhost -> msrdc y se apoya en la sesion compartida de WSLg; al cerrarlo desaparece la ventana de la app Linux abierta, no la distribucion."
+    },
+    "widgetboard": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Widgets de Windows 11: el panel de widgets de la barra de tareas. Es una aplicacion del sistema empaquetada por Microsoft, no una app opcional del usuario; se cataloga en rojo para que el modo juego no la cierre."
+    },
+    "widgetservice": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Servicio de la plataforma de Widgets de Windows. Mantiene cargado el proceso que dibuja los widgets aunque el panel este plegado. Es infraestructura del sistema."
+    },
+    "aac3572dramhal_x86": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "ASUS AURA Component: DRAM HAL. Capa de bajo nivel que controla la iluminacion RGB de los modulos de RAM. Se mantiene con el resto de la pila Aura (Armoury Crate, LightingsService) para no perder el perfil de iluminacion."
+    },
+    "aackingstondramhal_x86": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "ASUS AURA Component: DRAM HAL para modulos Kingston. Igual que el anterior: capa de bajo nivel del RGB de la RAM; comparte pila con Armoury Crate y el servicio de iluminacion."
+    },
+    "extensioncardhal_x86": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "ASUS AURA Component: HAL de la tarjeta de extension. Controla por hardware la iluminacion de la tarjeta de extension de la placa. Misma familia que los HAL de DRAM: se mantiene para no perder el perfil RGB."
+    },
+    "keepassxc-proxy": {
+        "category": "🔴 Antivirus y Seguridad",
+        "priority": "none",
+        "description": "KeePassXC: proxy de integracion con el navegador. Es el puente que permite al navegador ofrecer las credenciales de la boveda y rellenarlas automaticamente. No es bloatware, es una herramienta de seguridad: cerrarla rompe la autoinferencia de contrasenas."
+    },
+    "leagueclient": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Cliente de League of Legends (Riot). Proceso base del cliente; cargado en segundo plano ocupa RAM sin aportar nada en la partida."
+    },
+    "leagueclientux": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Interfaz del cliente de League of Legends. Electron con varias instancias; cargarlo antes de jugar libera RAM y CPU."
+    },
+    "leagueclientuxrender": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Renderizador del cliente de League of Legends. Es el que mas RAM consume de los tres procesos del cliente."
+    },
+    "rockstarservice": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Servicio de la biblioteca de juegos de Rockstar Games. Se queda residente para arrancar y actualizar GTA y Red Dead."
+    },
+    "epicwebhelper": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Proceso web del launcher de Epic Games. Mantiene la tienda y la sesion abierta aunque no se este jugando."
+    },
+    "steamerrorreporter": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Remitente de errores de Steam. Aparece cuando el cliente falla y puede quedarse cargado ocupando CPU."
+    },
+    "ubisoftgamelauncher": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Cliente principal de Ubisoft Connect. Necesario para autenticarse y arrancar los juegos de Ubisoft."
+    },
+    "uplayservice": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Servicio de autenticacion de Ubisoft (Uplay). Sin el no se puede iniciar sesion en los juegos de Ubisoft."
+    },
+    "originclientservice": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Servicio de cliente de Origin/EA. Descarga parches y mantiene la sesion de EA en segundo plano."
+    },
+    "originwebhelperservice": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Servicio web de Origin/EA. Mantiene la tienda y el vinculo con la cuenta de EA aunque no se este jugando."
+    },
+    "ffxivlauncher64": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Launcher de FINAL FANTASY XIV (Square Enix). Descarga parches y lanza el cliente del juego de 64 bits."
+    },
+    "librewolf": {
+        "category": "🟢 Navegadores",
+        "priority": "high",
+        "description": "Navegador LibreWolf, fork de Firefox orientado a la privacidad. Consume RAM como cualquier navegador."
+    },
+    "thunderbird": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Cliente de correo y noticias de Mozilla. Cerrable salvo que se este escribiendo o descargando correo."
+    },
+    "viber": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Cliente de mensajeria y llamadas de Viber. Cerrar salvo que se este usando como keeper."
+    },
+    "element": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Cliente de escritorio de Element para Matrix. Electron que abre varios procesos por sesion."
+    },
+    "teamviewer": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Acceso remoto de TeamViewer. Cerrarlo corta cualquier sesion remota que este abierta."
+    },
+    "anydesk": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Escritorio remoto de AnyDesk. Cerrarlo corta las conexiones remotas abiertas."
+    },
+    "rustdesk": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Acceso remoto libre de RustDesk. Cerrarlo corta las conexiones remotas abiertas."
+    },
+    "ms-teams": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Cliente nuevo de Microsoft Teams (2.0). Electron con la app de comunicacion de la organizacion."
+    },
+    "outlook": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Outlook clasico de Microsoft. Cliente de correo: cerrar puede cortar el envio o la descarga de mensajes."
+    },
+    "webex": {
+        "category": "🟡 Chat y Comunicación",
+        "priority": "low",
+        "description": "Cisco Webex Meetings. Videollamadas de empresa; cerrarlo corta la reunion si esta en curso."
+    },
+    "notion": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "App de escritorio de Notion. Electron que mantiene sincronizacion y notificaciones en segundo plano."
+    },
+    "obsidian": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Editor de notas Obsidian. Varios procesos en memoria, uno por panel abierto."
+    },
+    "evernote": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Evernote de escritorio. Mantiene la indiceacion de notas en segundo plano."
+    },
+    "notepad++": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Editor de texto y codigo Notepad++. Muy ligero, seguro de cerrar durante el juego."
+    },
+    "sublime_text": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Editor de texto Sublime Text. Seguro de cerrar durante el juego."
+    },
+    "pycharm64": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "IDE PyCharm de JetBrains. Carga el indice del proyecto en memoria y sigue indexando en segundo plano."
+    },
+    "webstorm64": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "IDE WebStorm de JetBrains. Carga el indice del proyecto en memoria y sigue indexando en segundo plano."
+    },
+    "intellij64": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "IDE IntelliJ IDEA de JetBrains. Carga el indice del proyecto en memoria y sigue indexando en segundo plano."
+    },
+    "goland64": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "IDE GoLand de JetBrains. Carga el indice del proyecto en memoria y sigue indexando en segundo plano."
+    },
+    "rider64": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "IDE Rider de JetBrains para .NET. Carga el indice del proyecto en memoria y sigue indexando en segundo plano."
+    },
+    "clion64": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "IDE CLion de JetBrains para C++. Carga el indice del proyecto en memoria y sigue indexando en segundo plano."
+    },
+    "phpstorm64": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "IDE PhpStorm de JetBrains para PHP. Carga el indice del proyecto en memoria y sigue indexando en segundo plano."
+    },
+    "datagrip64": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "IDE DataGrip de JetBrains para bases de datos. Carga el indice del proyecto en memoria."
+    },
+    "rubymine64": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "IDE RubyMine de JetBrains para Ruby. Carga el indice del proyecto en memoria."
+    },
+    "studio64": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Android Studio (IDE de JetBrains). Carga el indice del proyecto y el emulador en memoria."
+    },
+    "vlc": {
+        "category": "🟡 Media y Streaming",
+        "priority": "medium",
+        "description": "Reproductor multimedia VLC. Cerrable salvo que este reproduciendo algo en este momento."
+    },
+    "mpc-hc64": {
+        "category": "🟡 Media y Streaming",
+        "priority": "medium",
+        "description": "Media Player Classic Home Cinema en su version de 64 bits. Reproductor muy ligero."
+    },
+    "itunes": {
+        "category": "🟡 Media y Streaming",
+        "priority": "medium",
+        "description": "iTunes de Apple. Gestiona la biblioteca musical y el movil; cerrarlo puede cortar una sincronizacion."
+    },
+    "kodi": {
+        "category": "🟡 Media y Streaming",
+        "priority": "medium",
+        "description": "Centro de medios Kodi. Reproduce la biblioteca local y la de la red."
+    },
+    "moonlight": {
+        "category": "🟡 Media y Streaming",
+        "priority": "medium",
+        "description": "Cliente de streaming de juegos Moonlight. Solo trabaja mientras se esta jugando en remoto."
+    },
+    "parsec": {
+        "category": "🟡 Media y Streaming",
+        "priority": "medium",
+        "description": "Parsec, escritorio remoto para juegos. Solo trabaja durante una sesion remota activa."
+    },
+    "plex media server": {
+        "category": "🟡 Media y Streaming",
+        "priority": "medium",
+        "description": "Servidor de medios de Plex. Transcodifica y sirve la biblioteca en la red; cerrarlo corta el streaming en casa."
+    },
+    "plex transcoder": {
+        "category": "🟡 Media y Streaming",
+        "priority": "medium",
+        "description": "Transcodificador de Plex. Aparece solo al reproducir contenido y consume CPU y GPU."
+    },
+    "overwolf": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Plataforma de overlays de Overwolf. Mantener si se usa el overlay dentro del juego."
+    },
+    "nvidia overlay": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Overlay en juego de NVIDIA app (ShadowPlay, filtros). Mantener si se capturan clips o se usa el OSD."
+    },
+    "nvidia share": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Proceso de captura y comparticion de NVIDIA (ShadowPlay). Solo sirve mientras dura la partida."
+    },
+    "nvsphelper": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "NVIDIA ShadowPlay Helper. Escucha la tecla que abre el overlay; sin el, Alt+Z deja de responder."
+    },
+    "steelseriesgg": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "SteelSeries GG. Perfiles, macros e iluminacion de los perifericos SteelSeries: mantener."
+    },
+    "steelseriesengine": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Motor de SteelSeries. Gestiona los dispositivos conectados y sus perfiles: mantener."
+    },
+    "awcc": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Alienware Command Center (Dell). Perfiles de rendimiento, ventilacion y RGB: mantener."
+    },
+    "dragon center": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Dragon Center de MSI. Overclock, ventilacion y LED de la placa: mantener."
+    },
+    "msi_central_service": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Servicio central de MSI Center SDK. Habla con el hardware para aplicar overclock, fans y RGB: mantener."
+    },
+    "msi.centralserver": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "Servidor central de MSI Center SDK. Puente entre las apps de MSI y el hardware: mantener."
+    },
+    "avastsvc": {
+        "category": "🔴 Antivirus y Seguridad",
+        "priority": "none",
+        "description": "Servicio principal de Avast. Proteccion en tiempo real: nunca cerrar."
+    },
+    "avastui": {
+        "category": "🔴 Antivirus y Seguridad",
+        "priority": "none",
+        "description": "Interfaz de Avast residentemente en la bandeja. No aporta en partida, pero forma parte de la proteccion."
+    },
+    "avgsvc": {
+        "category": "🔴 Antivirus y Seguridad",
+        "priority": "none",
+        "description": "Servicio principal de AVG. Proteccion en tiempo real: nunca cerrar."
+    },
+    "avguard": {
+        "category": "🔴 Antivirus y Seguridad",
+        "priority": "none",
+        "description": "Guard de Avira. Motor de analisis en tiempo real: nunca cerrar."
+    },
+    "bdservicehost": {
+        "category": "🔴 Antivirus y Seguridad",
+        "priority": "none",
+        "description": "Servicio principal de Bitdefender. Proteccion en tiempo real: nunca cerrar."
+    },
+    "mbamservice": {
+        "category": "🔴 Antivirus y Seguridad",
+        "priority": "none",
+        "description": "Servicio de Malwarebytes. Motor de analisis y proteccion en tiempo real: nunca cerrar."
+    },
+    "nortonsecurity": {
+        "category": "🔴 Antivirus y Seguridad",
+        "priority": "none",
+        "description": "Norton Security. Proteccion en tiempo real: nunca cerrar."
+    },
+    "easyanticheat": {
+        "category": "🔴 Antivirus y Seguridad",
+        "priority": "none",
+        "description": "Easy Anti-Cheat (Epic). Anti-trampas de juegos online: cerrarlo deja el juego injugable y puede acabar en sancion."
+    },
+    "boxdrive": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "Cliente de Box. Monta la nube como unidad y sincroniza en segundo plano."
+    },
+    "pclouddrive": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "Cliente de pCloud Drive. Monta la nube como unidad y mantiene la cache sincronizada."
+    },
+    "freefilesync": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "FreeFileSync. Sincronizador de carpetas que queda residente vigilando los cambios."
+    },
+    "sugarsync": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "SugarSync Manager. Cliente de nube antiguo: sincroniza y hace copia en segundo plano."
+    },
+    "goodsync": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "GoodSync. Sincronizador entre carpetas locales y nube; permanece cargado."
     }
 }

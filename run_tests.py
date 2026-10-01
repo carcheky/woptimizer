@@ -10882,23 +10882,26 @@ def test_gaming_service_rlock_and_concurrency():
     def hold_lock():
         with gs._lock:
             lock_held.set()
-            release_lock.wait()
+            release_lock.wait(timeout=2.0)
 
-    t_holder = threading.Thread(target=hold_lock)
+    t_holder = threading.Thread(target=hold_lock, daemon=True)
     t_holder.start()
-    lock_held.wait()
+    assert lock_held.wait(timeout=2.0), "t_holder no pudo adquirir el cerrojo a tiempo"
 
-    t_restore = threading.Thread(target=gs.restore_gaming_session)
+    t_restore = threading.Thread(target=gs.restore_gaming_session, daemon=True)
     t_restore.start()
     time.sleep(0.02)
 
-    # Si restore_gaming_session no usa with self._lock:, vaciaría _last_closed_apps de inmediato sin esperar
-    assert gs._last_closed_apps == ["C:\\app_lock.exe"], (
-        "restore_gaming_session debe respetar self._lock y no vaciar apps mientras el cerrojo está tomado"
-    )
-    release_lock.set()
-    t_holder.join()
-    t_restore.join()
+    try:
+        # Si restore_gaming_session no usa with self._lock:, vaciaría _last_closed_apps de inmediato sin esperar
+        assert gs._last_closed_apps == ["C:\\app_lock.exe"], (
+            "restore_gaming_session debe respetar self._lock y no vaciar apps mientras el cerrojo está tomado"
+        )
+    finally:
+        release_lock.set()
+        t_holder.join(timeout=1.0)
+        t_restore.join(timeout=1.0)
+
     assert gs.get_last_closed_apps() == [], "Tras liberarse el cerrojo, restore_gaming_session debe vaciar apps"
 
     # 2. Concurrencia de 5 hilos en restore_gaming_session
@@ -10922,12 +10925,12 @@ def test_gaming_service_rlock_and_concurrency():
         results.append(res)
 
     for _ in range(5):
-        t = threading.Thread(target=worker)
+        t = threading.Thread(target=worker, daemon=True)
         threads.append(t)
         t.start()
 
     for t in threads:
-        t.join()
+        t.join(timeout=2.0)
 
     assert call_count == 1, f"start_pack_apps debió ser invocado exactamente 1 vez, invocado {call_count}"
     assert (2, 0) in results, "Exactamente 1 hilo debió recibir la tupla de éxito (2, 0)"

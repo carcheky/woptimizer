@@ -478,7 +478,16 @@ centinela `999` del sort, y rompe el filtro que lo excluye de `target_categories
 
 ## Base de Datos de Procesos (`assets/process_db.json`)
 
-Contiene actualmente **109** procesos catalogados (expandido en TASK-032 desde 73) con su semáforo de seguridad, categoría canónica y descripción contextual.
+Contiene actualmente **206** procesos catalogados con su semáforo de seguridad, categoría canónica y descripción contextual.
+
+Su historia tiene tres fases:
+1. **Ciclo 15 — 109 entradas**: lo que se vio vivo en el PC del usuario.
+2. **Ciclo 20 — 139 entradas**: +30 que caían en el centinela `⚪ Otros` ( drivers, HAL, WSL,
+   Hyper-V, Widgets), catalogados en `🔴` por la regla de infraestructura de más abajo.
+3. **Catálogo de referencia — 206 entradas**: +67 procesos de Windows de uso general y gaming
+   que **no están en este equipo**, verificados uno a uno online (no por escaneo local). El
+   objetivo es que al cambiar de PC, de navegador o de juego la app los reconozca con categoría y
+   semáforo correctos **sin volver a escanear**. Ver "Ampliación fuera de esta máquina" más abajo.
 
 ### Esquema
 `dict[str, dict]`. La clave es el **nombre del proceso en minúsculas y sin extensión**
@@ -553,9 +562,11 @@ módulo — corrección TASK-028 iteración 2, hallazgo **D4**), y sí están en
 `🔴 Sistema de Windows` en `assets/process_db.json`. Por eso existe la
 **barrera de categoría roja** (G-2, `architecture.md` §11): una lista negra de
 nombres no es una garantía, porque depende de que alguien se acuerde de añadir
-cada nombre nuevo. Lo mismo pasa con `applicationframehost`, `widgetboard` y
+cada nombre nuevo. Lo mismo pasó con `applicationframehost`, `widgetboard` y
 `widgetservice`: son componentes de shell, no están en el `frozenset` y una
-importación masiva de datos los volvería cerrables. **La barrera de categoría, no
+importación masiva de datos los habría vuelto cerrables. Desde el ciclo 20 los tres
+están además en `🔴 Sistema de Windows` / `none` en `assets/process_db.json`, con lo
+que la barrera de categoría cubre por partida doble. **La barrera de categoría, no
 la lista, es la garantía.**
 
 Y no confundir esta lista con los `patterns` de
@@ -564,14 +575,62 @@ otro fichero, son más amplios (incluyen `taskmgr`, `cmd`, `powershell`,
 `wsl`) y sirven para **clasificar**, no para **blindar**. No son intercambiables:
 sustituir una por otra abre un vector de brick o deja procesos de sistema cerrables.
 
+### Ampliación fuera de esta máquina (catálogo de referencia)
+
+Cuando no hay escaneo local, **el nombre es lo único que hay que verificar**. Sin la ruta real del
+exe no se puede confirmar la identidad con `psutil`, así que la ampliación se hizo online, entrada
+por entrada, y se aplicaron cuatro filtros:
+
+1. **El ejecutable tiene que existir de verdad.** Se busca el nombre real del proceso antes de
+   escribirlo, no el que "suena bien". Dos casos donde el nombre intuitivo era Wrong y el real
+   distinto: el launcher de Epic es `EpicGamesLauncher.exe`, no `epicgames.exe`; y Alienware
+   Command Center corre como `AWCC.exe`, no `AlienwareCommandCenter.exe` (ese es el paquete
+   Store). Si no se encuentra fuente que nombre el `.exe`, la entrada **no entra**: una
+   descripción inventada es peor que una entrada ausente.
+2. **Nombres que sobreviven al fuzzy bidireccional.** La búsqueda de `_get_process_meta()` acepta
+   subcadenas en los dos sentidos, así que un nombre corto o genérico (`agent`, `updater`,
+   `service`, `spd`, `signal`, `olk`) captura procesos ajenos. Descartados por eso:
+   - `agent.exe` (Battle.net), `upc.exe` (Ubisoft), `launcher.exe` (Rockstar): genéricos.
+   - `code` (VS Code): capturaría `CodeMeter.exe`, que es un dongle de licencias.
+   - `signal`: no se pudo descartar la colisión con un broker de Windows.
+   - `olk`: tres caracteres, demasiado corto.
+   - `itch` (itch.io): cuatro caracteres y palabra inglesa (`switch`, `pitch`…) que
+     contaminarían.
+   - Se añadió **solo el nombre más corto de cada familia** cuando los hijos lo contienen
+     (`mpc-hc` cubre `mpc-hc64`, `overwolf` cubre `overwolfbrowser`, `itunes` cubre
+     `ituneshelper`).
+3. **Ningún nombre de infraestructura en `🟢`/`🟡`.** Toda entrada nueva de driver, HAL, kernel,
+   Defender, Store, WSL, Hyper-V o antimalware va a `🔴` con `priority: "none"`. En esta
+   ampliación **no entró ni una sola** de infraestructura, ni en verde ni en amarillo.
+4. **Audio, red y autenticación nunca en `🟢`.** Por eso Plex, Moonlight, Parsec y los clientes de
+   escritorio remoto (`teamviewer`, `anydesk`, `rustdesk`) están en `🟡 Media y Streaming` /
+   `🟡 Chat y Comunicación` y no en verde: se pueden cerrar, pero un verde prometería que no pasa
+   nada y sí pasa (corta el streaming, corta una sesión remota).
+
+Las **5 parejas de subcadena** que quedan en el fichero son todas **intra-familia** (el hijo
+contiene al padre) y resuelven a la misma categoría, así que el fuzzy no puede producir una
+clasificación equivocada —además el lookup exacto va antes que el fuzzy:
+
+| clave corta | clave larga | app |
+|---|---|---|
+| `steam` | `steamerrorreporter` | Steam |
+| `teams` | `ms-teams` | Microsoft Teams |
+| `leagueclient` | `leagueclientux` → `leagueclientuxrender` | Cliente de Riot |
+
 ### Qué entra y qué no
 - **Sí**: bloatware y telemetría de terceros (PowerToys, procesos de consumo de Armoury Crate,
   mejoras de audio, language servers, actualizadores de drivers). Van a `🟢 Productividad`
   (`high`) o `🟡 Media y Streaming` (`medium`) cuando tocan la ruta de audio.
-- **No**: el entorno de trabajo del usuario (`pwsh`, `python`, `wsl`, terminales) — cerrarlos
-  rompería su propia sesión; y las pilas de control de hardware (`armsvc`, `asus_framework`,
-  `rogliveservice`, `gamesdk`, `asuscertservice`) van a `🔴 Overlays e Info` / `none`, igual que
-  `icue`, `razer` o `lghub`, porque cerrarlas deja el equipo sin perfil de ventilación o RGB.
+- **No**: el entorno de trabajo del usuario (`pwsh`, `python`, `minimax code`, `windowsterminal`,
+  `nodoze-1.1`) — cerrarlos rompería su propia sesión. Y las pilas de control de hardware
+  (`armsvc`, `asus_framework`, `rogliveservice`, `gamesdk`, `asuscertservice`) van a
+  `🔴 Overlays e Info` / `none`, igual que `icue`, `razer` o `lghub`, porque cerrarlas deja el
+  equipo sin perfil de ventilación o RGB.
+- **El criterio que separa Windows de las apps del usuario es la PROCEDENCIA, no el rol.**
+  `powershell` (System32\WindowsPowerShell, lo actualiza Windows Update) y `wsl` van en
+  `🔴 Sistema de Windows` / `none`; `pwsh` (instalación aparte en `Program Files\PowerShell\7`) y
+  `windowsterminal` se descartan. Mismo trabajo, distinto origen: lo que el sistema no instala
+  ni actualiza por si mismo, la app no lo cataloga.
 
 #### Infraestructura y hardware: una sola regla (ciclo 15)
 
@@ -582,11 +641,26 @@ solo así: la prohibición es sobre la CAPACIDAD DE CIERRE, no sobre lacatalogac
 1. Un proceso de infraestructura/hardware/driver **nunca** entra en `🟢` ni en `🟡`: esas son
    precisamente las categorías que `DEFAULT_GAMING_PACK.target_categories` marca como
    objetivo, así que en ellas es cerrable por definición.
-2. Si además **no aporta nada** —hoy cae en `⚪ Otros`, que no es objetivo de ninguna
-   categoría, y ningún fuzzy lo alcanza— **se descarta**: registrarlo solo suma riesgo al
-   matcher por subcadenas. Así se descartan los HAL de ASUS (`aac3572dramhal_x86`,
-   `aackingstondramhal_x86`, `extensioncardhal_x86`, que son `ASUS AURA COMPONENT — DRAM HAL`),
-   WSL, Hyper-V, Widgets, TabTip, SystemApps y los helpers de driver de DriverStore.
+2. ~~Si además **no aporta nada** —cae en `⚪ Otros`, que no es objetivo de ninguna categoría, y
+   ningún fuzzy lo alcanza— **se descarta**~~. **DEROGADO en el ciclo 20, con medición:**
+   la premisa —"el centinela es inocuo"— **es falsa en el Gestor de Procesos**.
+   `process_manager_view.py:129-139,329-353` dibuja una casilla por cada grupo **sin filtrar por
+   categoría** y `on_kill_selected` mata lo marcado; `kill_processes()`
+   (`process_service.py:540`) solo salta `SYSTEM_PROTECTED_PROCESSES`. Medido sobre **331**
+   instancias vivas: de 67 nombres sin catalogar, 30 ya estaban blindados por el `frozenset` y
+   los **37 restantes caían en `⚪ Otros` marcables** — drivers, HAL, WSL, Hyper-V y Widgets
+   incluidos. O sea: un driver sin catalogar no está protegido, está **a una casilla de ser
+   matado**. "No registrar" empeoraba la seguridad respecto de registrar en rojo.
+   Por eso ahora **se catalogan en `🔴` con `none`**: motor de búsqueda
+   (`searchfilterhost`, `searchprotocolhost`), shell (`shellhost`, `applicationframehost`,
+   `dashost`, `aggregatorhost`, `midisrv`, `wmiprvse`), Hyper-V (`vmcompute`, `vmms`, `vmwp`),
+   WSL (`wslservice`, `wslhost`, `wslrelay`, `wsl`, `vmmemwsl`, `msrdc`), Widgets
+   (`widgetboard`, `widgetservice`), `tabtip` y los helpers de DriverStore (`nvdisplay.container`,
+   `rtkauduservice64`, `jhi_service`, `rstmwservice`, `wmiregistrationservice`) en
+   `🔴 Sistema de Windows`; los HAL de ASUS (`aac3572dramhal_x86`,
+   `aackingstondramhal_x86`, `extensioncardhal_x86`, que son `ASUS AURA COMPONENT — DRAM HAL`)
+   en `🔴 Overlays e Info`, que es la categoría donde ya vive el resto de la pila RGB
+   (`armsvc`, `lightningservice`, `gamesdk`).
 3. Si aparece **cerrable hoy por un fuzzy accidental**, se registra en `🔴` con `none` como
    mitigación puntual, porque la base es la única palanca de este agente. El caso medido es
    `msedgewebview2`: heredaba `🟢 Navegadores` de la clave `msedge` por subcadena y el modo
@@ -598,6 +672,27 @@ sigue viva en `process_service.py:429-433` (substring bidireccional `pattern in 
 pattern`), que además es la razón de que `steam` arrastre a `steamservice`/`steamwebhelper` y
 `onedrive` a `onedrive.sync.service`. La cura es hacer el matching por límites de palabra/token
 en `process_service.py` (cambio de `openspec-dev`, fuera del alcance de este agente).
+
+#### La regla única del ciclo 20, y qué se dejó en el centinela a propósito
+
+**Regla:** *lo que es Windows o su pila de hardware se cataloga en `🔴` con `priority: "none"`
+y una descripción que diga por qué no se cierra; lo que es una app del usuario o no se puede
+verificar no se cataloga.* Un solo criterio, el de **procedencia**: si lo instala y lo actualiza
+el sistema, es del sistema.
+
+Quedan **7** nombres vivos en `⚪ Otros` tras el ciclo, y su permanencia es deliberada:
+
+| Nombre | Por qué no entra |
+|---|---|
+| `minimax code`, `python`, `pwsh`, `windowsterminal`, `nodoze-1.1` | App del usuario, no bloatware. No existe categoría que signifique "tu app, no es asunto mío", y meterlas en `🟢`/`🟡` las volvería objetivo del Gaming Mode. |
+| `crashpad_handler` | **Nombre genérico compartido** por Chrome, Electron y casi toda app moderna. La clave exacta solo describiría a Google Drive, y cualquier otro `crashpad_handler` heredaría esa descripción falsa. |
+| `spd` | **Clave de 3 letras** (cFosSpeed). Con el fuzzy bidireccional de `process_service.py:429-433`, `spd` se adjudicaría a cualquier proceso cuyo nombre contenga `spd` (y a todo nombre de 1-3 letras que sea subcadena suyo). Riesgo de adjudicar una categoría ajena mayor que el beneficio. |
+
+⚠️ **Los dos últimos se pueden cerrar desde el Gestor de Procesos** (no están en
+`SYSTEM_PROTECTED_PROCESSES`): es un riesgo residual asumido y medido, y bajo —cerrar un
+reporter de fallos de Chrome o el optimizador de red de cFosSpeed es reversible, al revés que
+tocar un driver. La cura de fondo es la misma del punto 3: matching por token en
+`process_service.py`.
 
 ⚠️ **`priority` NO es un mecanismo de protección.** La puerta de matado es
 `get_safety_badge(categoria)["tier"]` (`gaming_service.py:122-143`); `priority` solo se usa como

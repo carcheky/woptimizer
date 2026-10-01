@@ -1,7 +1,7 @@
 {
   "project": "woptimizer",
   "version": "3.0.1.dev0",
-  "updated_at": "2026-10-01T00:00:00Z",
+  "updated_at": "2026-10-01T22:30:00Z",
   "active_task_id": "TASK-047",
   "tasks": [
     {
@@ -950,6 +950,141 @@
         "run_tests.py y validate_docs.py en verde 100%"
       ],
       "notes": "Ciclo #37 del motor autónomo de I+D (Área 1: Resiliencia & Robustez)."
+    },
+    {
+      "id": "TASK-048",
+      "title": "Favoritos Acumulativos en PackService",
+      "description": "Encargo 1 del propietario",
+      "complexity": 3,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [],
+      "module": "src/woptimizer/services/pack_service.py",
+      "acceptance_criteria": [
+        "set_favorite(pack_id: str, value: bool) marca UN pack sin tocar el resto; None lanza ValueError",
+        "toggle_favorite(pack_id) lee estado VIVO, invierte, persiste y devuelve el nuevo valor",
+        "get_favorite_pack() retirado: sin llamadores en src/ y con multi-favoritos devuelve una respuesta falsa",
+        "_ensure_gaming_pack restaura is_favorite=True del pack gaming (hoy 'limpiar todos' lo deja muerto para siempre)",
+        "Tests discriminantes: acumula, rechaza None, alterna, y el pack gaming no pierde su favorito",
+        "Guard ast que prueba que get_favorite_pack no aparece en src/woptimizer/**",
+        "run_tests.py y validate_docs.py en verde 100%"
+      ],
+      "notes": "Encargo 1 del propietario. HALLAZGO PROPIO no estaba en el briefing: DEFAULT_GAMING_PACK nace is_favorite=True (pack_service.py:234) y _ensure_gaming_pack (pack_service.py:581-590) SOLO lo recrea si falta, nunca restaura is_favorite, asi que el set_favorite(None) actual borra la tarjeta Gaming de la portada de forma PERMANENTE. Verificado leyendo el codigo. Ademas get_favorite_pack (pack_service.py:644) no tiene ningun llamador en src/ y es la mutacion viva catalogada en mutation-auditor/agent.md:52.",
+      "origin": "reportado por el cliente",
+      "orchestrator_note": "Encargo verbal del propietario. SOLO ARQUITECTURA: planificado y registrado, NO desarrollado por el orquestador. Hay otro agente desarrollando en paralelo en este repo. Contrato en openspec/changes/2026-10-01-multi-favorites-and-db-download/"
+    },
+    {
+      "id": "TASK-049",
+      "title": "Grid de Favoritos Adaptativo al Ancho de Ventana",
+      "description": "Encargo 1 (segunda mitad: 'adaptandose a el espacio de la ventana')",
+      "complexity": 3,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [
+        "TASK-048"
+      ],
+      "module": "src/woptimizer/ui/views/dashboard_view.py",
+      "acceptance_criteria": [
+        "Columnas calculadas desde el ancho real de buttons_frame, con max(1, ...) y ANCHO_MIN_CARD en ui/theme.py",
+        "grid_columnconfigure con uniform y peso 0 en las columnas sobrantes al reducir",
+        "Re-grid al redimensionar: la rama else de dashboard_view.py:328-335 solo reconfigura texto y NUNCA recoloca",
+        "_empty_label con columnspan calculado en vez del 2 hardcodeado de la linea 305",
+        "Bloque de destruccion duplicado (lineas 292-296 y 313-317) extraido a un metodo",
+        "Tests: filas segun ancho, re-grid al cambiar ancho, placeholder a todo el ancho, peso liberado"
+      ],
+      "notes": "Encargo 1 (segunda mitad: 'adaptandose a el espacio de la ventana'). PREMISA FALSA del briefing, corregida: NO hay widgets zombis. _forget_buttons (ui/confirmation.py:184-187) solo hace cancel_on_destroy() + self._reposo.clear(); NUNCA toca _buttons_by_pack_id, asi que los bucles btn.destroy() de :294 y :315 SI destruyen. Lo que si se liquida es que ese bloque esta duplicado literalmente en las dos ramas y habra que tocarlo dos veces para el grid. El nucleo del encargo es T-10: sin re-maillar en <Configure>, ensanchar la ventana deja los botones en la rejilla vieja porque current_fav_ids == cached_ids hace que la rama else no reconstruya nada.",
+      "origin": "reportado por el cliente",
+      "orchestrator_note": "Encargo verbal del propietario. SOLO ARQUITECTURA: planificado y registrado, NO desarrollado por el orquestador. Hay otro agente desarrollando en paralelo en este repo. Contrato en openspec/changes/2026-10-01-multi-favorites-and-db-download/"
+    },
+    {
+      "id": "TASK-050",
+      "title": "Descarga de DB: Constante de URL, GitHub y Fallo Observable",
+      "description": "Encargo 2 del propietario",
+      "complexity": 3,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [],
+      "module": "src/woptimizer/services/process_service.py",
+      "acceptance_criteria": [
+        "DB_REMOTE_URL como constante de modulo apuntando a raw.githubusercontent.com (hoy hardcodeada en la linea 376)",
+        "load_db_async(callback=None, on_error=None): el except deja de ser un logger.warning mudo y avisa a la UI",
+        "Firma retrocompatible: refresh_processes (linea 162) ya llama con callback= y no se toca",
+        "Fallback a assets/process_db.json local con el saneado anti-brick conservado",
+        "Test que la URL es constante de modulo y que el literal no esta en el cuerpo del metodo",
+        "Test que un fallo de red se reporta por on_error y la DB local sigue funcionando",
+        "Corrigir docs/ai/architecture.md:37, que afirma una descarga desde GitLab que NUNCA ha funcionado"
+      ],
+      "notes": "Encargo 2 del propietario. HALLAZGO CRITICO verificado en esta sesion: el repo remoto NO EXISTE. api.github.com/users/carcheky -> 200 (la cuenta SI existe), pero raw.githubusercontent.com/carcheky/woptimizer/main/assets/process_db.json -> 404. La descarga nunca funciono y el except de la linea 392 se traga el error. PLATAFORMA: GitHub (decidida por el orquestador, revalidada aqui). La URL es una CONSTANTE: cambiar a GitLab es cambiar una linea. TEST DE RED VETADO por contrato: ningun test puede exigir que la descarga funcione de verdad, porque depende de una accion humana no realizada y daria verde un dia y rojo otro sin que cambie el codigo. ACCION HUMANA FUERA DEL GRAFO: publicar el repo y el assets/process_db.json en GitHub. Hasta entonces el resultado esperado del boton es 'no se pudo actualizar; se usa la local'.",
+      "origin": "reportado por el cliente",
+      "orchestrator_note": "Encargo verbal del propietario. SOLO ARQUITECTURA: planificado y registrado, NO desarrollado por el orquestador. Hay otro agente desarrollando en paralelo en este repo. Contrato en openspec/changes/2026-10-01-multi-favorites-and-db-download/"
+    },
+    {
+      "id": "TASK-051",
+      "title": "Boton de Actualizar DB Funcional y Honesto",
+      "description": "Encargos 2 y 4 del propietario: el boton no existe",
+      "complexity": 2,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [
+        "TASK-050"
+      ],
+      "module": "src/woptimizer/ui/views/process_manager_view.py",
+      "acceptance_criteria": [
+        "_force_update_db (lineas 166-169, HOY SIN NINGUN LLAMADOR) cableado a un boton real en el footer con command=",
+        "on_error pasado a load_db_async y fallo pintado en status_label con mensaje explicito",
+        "Mensajes de exito y de fallo distinguibles sin abrir el log",
+        "Literal '...desde GitLab...' de la linea 167 corregido: miente sobre la plataforma",
+        "Guard ast que prueba que existe un boton cuyo command apunta a _force_update_db"
+      ],
+      "notes": "Encargos 2 y 4 del propietario: el boton no existe. Verificado por grep en todo el repo: _force_update_db solo aparece en su definicion y en .taskmaster/CHANGELOG.md:1343, que ya lo marcaba como sin llamador (deuda registrada y sin cerrar, no hallazgo nuevo). PREMISA IMPRECISA del briefing corregida: el mensaje NO se queda colgado en 'Descargando...' para siempre; _render_list (lineas 227-231) lo sobrescribe con 'N apps distintas en ejecucion.', asi que un FALLO y un EXITO producen exactamente la misma pantalla. El defecto real es fallo silencioso que afirma que funciono, que es peor que un colgado. Precedente de la casa: PackService.mensaje_danado() (pack_service.py:604-609), Trampa #14 'nada se traga en silencio'.",
+      "origin": "reportado por el cliente",
+      "orchestrator_note": "Encargo verbal del propietario. SOLO ARQUITECTURA: planificado y registrado, NO desarrollado por el orquestador. Hay otro agente desarrollando en paralelo en este repo. Contrato en openspec/changes/2026-10-01-multi-favorites-and-db-download/"
+    },
+    {
+      "id": "TASK-052",
+      "title": "Placeholder del Desplegable sin Doble Flecha",
+      "description": "Encargo 3 del propietario",
+      "complexity": 1,
+      "priority": "medium",
+      "status": "pending",
+      "dependencies": [],
+      "module": "src/woptimizer/ui/views/process_manager_view.py",
+      "acceptance_criteria": [
+        "Constante de modulo PLACEHOLDER_PACK = 'Seleccionar Pack' SIN el glifo U+25BC",
+        "Las 4 apariciones del literal (lineas 107, 111, 196, 197) sustituidas por la constante",
+        "Quitar el glifo, no pelearse con el indicador nativo de CTkOptionMenu",
+        "Tests: sin glifo, literal centralizado (aparece 1 vez), y la comparacion usa la constante"
+      ],
+      "notes": "Encargo 3 del propietario. Verificado: el glifo '▼' esta en las lineas 107, 111, 196 y 197 del placeholder de un CTkOptionMenu, que ya dibuja su propio indicador a la derecha: ese glifo es la segunda flecha. El literal repetido 4 veces es el mecanismo por el que dos de ellas divergiran en el futuro, de ahi la constante. Ojo al code point: ▼ es U+25BC, no un triangulo ASCII ni U+25B6 (Trampa #16 y la de '⚪ Otros' U+26AA). Si el color del indicador nativo no casa con el del placeholder, la correccion sigue siendo quitar el glifo, NO tocar el widget nativo.",
+      "origin": "reportado por el cliente",
+      "orchestrator_note": "Encargo verbal del propietario. SOLO ARQUITECTURA: planificado y registrado, NO desarrollado por el orquestador. Hay otro agente desarrollando en paralelo en este repo. Contrato en openspec/changes/2026-10-01-multi-favorites-and-db-download/"
+    },
+    {
+      "id": "TASK-053",
+      "title": "Actualizar Tests de Exclusividad, Recuento y Documentacion",
+      "description": "Cierre del encargo",
+      "complexity": 2,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [
+        "TASK-048",
+        "TASK-049",
+        "TASK-050",
+        "TASK-051",
+        "TASK-052"
+      ],
+      "module": "run_tests.py",
+      "acceptance_criteria": [
+        "test_pack_service_favorite_exclusive (run_tests.py:989-1012) reescrito como acumulativo: sus 3 aserciones (1001, 1005, 1008-1009) son de exclusividad y las 3 se invierten",
+        "test_toggle_favorite_desmarca (run_tests.py:5734-5832): el Grabador (5777-5779) colapsa a un unico favorito; el caso (4) debe dejar {a:True, b:False}. CONSERVAR lectura en vivo, id inexistente y no-favorito se marca",
+        "Registros del runner actualizados en run_tests.py:10998 y :11053 (llama por nombre: un rename sin tocarlos es NameError, no fallo de asercion)",
+        "3 semillas con set_favorite de UN argumento corregidas: run_tests.py:3518, :3651, :3717 -> anadir , True",
+        "Recuento de tests al dia en los CUATRO ficheros: STATUS.md, AGENTS.md, README.md y docs/ai/testing-guide.md (base actual 91, lo deriva el check 7 de validate_docs.py con ast)",
+        "verify_ui_syntax.py, validate_docs.py y run_tests.py en verde 100%"
+      ],
+      "notes": "Cierre del encargo. RIESGO OCULTO: las 3 semillas de :3518/:3651/:3717 estan en tests de .bak y recuperacion; sin el 2o argumento es un TypeError DENTRO de esos tests, que senala el archivo equivocado y no 'el test de favoritos'. No es un test rojo, es una suite muerta por una firma. Ademas el caso (4) de test_toggle_favorite_desmarca invierte su asercion: hoy espera {a:False,b:False} con dos favoritos, y con acumulativos debe dejar {a:True,b:False} porque desmarcar 'b' no toca 'a'. Las 3 propiedades que hoy matan mutaciones (lectura en vivo, id inexistente, no-favorito se marca) se conservan.",
+      "origin": "reportado por el cliente",
+      "orchestrator_note": "Encargo verbal del propietario. SOLO ARQUITECTURA: planificado y registrado, NO desarrollado por el orquestador. Hay otro agente desarrollando en paralelo en este repo. Contrato en openspec/changes/2026-10-01-multi-favorites-and-db-download/"
     }
   ]
 }
