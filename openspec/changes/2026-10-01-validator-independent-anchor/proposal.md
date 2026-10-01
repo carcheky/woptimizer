@@ -93,7 +93,7 @@ exigidas pasa de `journal_cycles` a la union (sustituye `validate_docs.py:401-40
 | Opcion | Por que se descarta |
 |---|---|
 | **Anclar por fecha** (commits mas nuevos que la fecha del ultimo ciclo del journal) | **Medido y decorativo.** Las fechas del journal tienen resolucion de minuto y 5 ciclos comparten `2026-10-01T23:4x`; 152 de 153 commits son del mismo dia. Un ciclo 47 huerfano del mismo dia no se ve. |
-| **Verificar que cada hash del campo `commits` del journal exista** (direccion inversa) | **Medido: 41 hashes de 46 entradas NO resuelven** (ciclos 3-26 con el hash como texto libre tipo `617eef8 (architect)`; ciclos 30, 31, 33 con hash bien formado perdido con el `.git` corrupto del VFS). Como FAIL deja el validador permanentemente rojo por una perdida no reparable: es exactamente el patron "entrenar al lector a ignorar el semaforo". Va como **hallazgo a TASK-059**, no como check. |
+| **Verificar que cada hash del campo `commits` del journal exista** (direccion inversa) | **La justificacion de este descarte era una MEDIDA FALSA, y se corrige en la iteracion 2.** Decia "41 hashes de 46 entradas NO resuelven"; remedido el 2026-10-02 extrayendo el hash (`\b[0-9a-f]{7,40}\b`) en vez de medir el string del campo, la realidad es: **11 de las 46 entradas no declaran hash alguno** (ciclos 1, 2, 14-20, 27, 28: `commits` a `null` o `[]`), 12 lo declaran como texto libre (`617eef8 (architect)`, ciclos 3, 8-12, 21-26) y solo 23 como lista limpia; de los hashes declarados **solo 3 no resuelven** (`5623629` del ciclo 30, `ee4b753` del 31 y `12b9c3bf` del 33), de modo que el ciclo 33 es el unico que queda sin ninguno resoluble y el check daria **1 FAIL, no 41**. El error de origen era medir el string entero del campo en vez del hash: los ciclos 3-26 SI corroboran. Sigue yendo a **TASK-059** como hallazgo, pero por su residuo real (11 entradas que no declaran nada que comprobar, 3 hashes perdidos con el `.git` corrupto del VFS) y no por una perdida permanente de 41 hashes que nunca existio. |
 | **Encadenado criptografico de entradas del journal** (cada entrada hashea la anterior) | Detecta la reescritura retroactiva, **no** la omision: truncar la cadena al final es trivial. No toca el residuo de esta tarea. |
 | **Auto-referencia** (tabla resumen del changelog, o el propio campo `commits` del journal) | Ya demostrado como falso verde en el ciclo #15. |
 | **Puerta humana** (aprobacion del propietario por ciclo) | Es la unica independencia real, pero incompatible con la autonomia de coste 0 del proyecto y no automatizable. Se documenta como el unico cierre posible fuera de banda. |
@@ -105,7 +105,8 @@ Sigue siendo cierto, y hay que decirlo en `docs/ai/sandbox-rules.md`:
 
 1. El historial es escrito por el mismo actor que el journal. La ganancia es de **clase de fallo**
    (reescribir historia frente a editar una clave), no de independencia de actor.
-2. **110 de 153 commits no llevan marcador de ciclo** (los `feat(...)`, `fix(...)`, `test(...)`).
+2. **112 de 155 commits no llevan marcador de ciclo** (los `feat(...)`, `fix(...)`, `test(...)`;
+   medición del 2026-10-02, la cifra viva la reimprime el informe del validador).
    Si un ciclo se comitea **sin** commit de cierre y **sin** entrada de journal, no hay tercer
    testigo y el validador no lo ve. Cerrar esto es la tarea 059, no esta.
 3. Un parser de marcador es una convencion leida, no una verdad: un asunto que mencione
@@ -119,19 +120,23 @@ Todos con `GIT_DIR` apuntado a un repo temporal: **ningun test toca el historial
 | # | Criterio | Por que el test MUERE sin el fix |
 |---|---|---|
 | A1 | `_ciclos_de_commits(["chore(release): cerrar ciclo #46 (TASK-056) x", "feat(quality): TASK-056 sin marcador", "docs(cycle-43): cierre de ciclo 43"])` -> `({43, 46}, 2, 1)` | El mutante que parsea `TASK-` devuelve `{43, 56}`: falla aqui **y** pone el repo real en rojo, porque `## CYCLE-056` no existe. |
-| A2 | Repo temporal con un commit `chore(release): cerrar ciclo #47 (TASK-090)`, journal con solo el 46 y changelog sin `## CYCLE-047` -> **dos** `errors`, uno nombrando `rd_journal.json` y otro el changelog | Es el residuo literal de la tarea. Hoy el mismo arbol da `0 FAIL` porque el requisito sale del journal. Sin la union, el test ve `0` errors y muere. |
+| A2 | Repo temporal con un commit `chore(release): cerrar ciclo #47 (TASK-090)`, journal con solo el 46 y changelog sin `## CYCLE-047` -> **dos** `errors`, uno nombrando `rd_journal.json` (**por su conjunto: el 047, nunca el 046**) y otro el changelog; y su arbol espejo, journal `{46, 47}` con historial `{46}`, -> **cero** `errors` | Es el residuo literal de la tarea. Hoy el mismo arbol da `0 FAIL` porque el requisito sale del journal. Sin la union, el test ve `0` errors y muere. El arbol espejo es lo que mata la diferencia **invertida**: la asercion laxa por subcadena la dejaba pasar en verde mientras el validador accuse al reves (S1 del mutation-auditor). |
 | A3 | La union no es una sustitucion: journal `{3}` + commits `{4}` -> se exigen **los dos** | Si se reemplaza journal por commits, el ciclo 3 pierde su requisito: es el falso verde del ciclo #15 renacido. |
 | A4 | `GIT_DIR` a un directorio que no es repo -> `errors` no vacio, **sin excepcion**, y el requisito del journal sigue exigiendose | `except: return set()` silencioso es la misma clase de bug que la rama `if n_tests is None:` que era codigo muerto (CYCLE-027). |
 | A5 | `python validate_docs.py` sobre el repo real -> `0 FAIL` | Un regex mal anclado que demande ciclos inexistentes rompe el repo real. Medido hoy: commits {4..14, 21..46} es subconjunto del journal, luego la union no anade requisito. |
-| A6 | `run_tests.py` 99 -> 100, y los cuatro ficheros de recuento (STATUS.md, AGENTS.md, README.md, docs/ai/testing-guide.md) a 100 | El check 7 deriva el numero con `ast`; sin los cuatro, `validate_docs.py` falla. |
+| A6 | `run_tests.py` 99 -> 100, y los cuatro ficheros de recuento (STATUS.md, AGENTS.md, README.md, docs/ai/testing-guide.md) a 100 | El check 7 deriva el numero con `ast`; sin los cuatro, `validate_docs.py` falla. La iteracion 2 lo lleva a **104** por los cuatro tests de abajo. |
+| A7 | `main()` REAL ejecutado como subproceso sobre un arbol temporal con un commit del ciclo 999 ausente del journal -> el informe acusa el 999, exige `## CYCLE-999` y sale con `1`; y el mismo validador con el cableado sustituido por `pass` **deja de acusarlo** | Sin este criterio, borrar la linea `_comprobar_ancla_del_changelog(root, errors, ok)` del cuerpo de `main()` deja la suite entera en verde y el validador mudo responde `0 FAIL`: es codigo testeado que el producto ya no invoca (S2 del mutation-auditor, la misma clase que TASK-056). La segunda mitad del test es la que demuestra que el test detecta ese fallo y no solo que hoy lo detecta. |
+| A8 | `.taskmaster/rd_journal.json` que lanza `PermissionError` al leerse -> informe con el motivo y **un solo** error, sin excepcion | Estrechar `except (ValueError, OSError)` a `json.JSONDecodeError` deja el `PermissionError` fuera y el validador sale con traceback, sin comprobar nada de lo que viene despues (S5). |
+| A9 | Sin `GIT_DIR` en el entorno, con un repo de verdad en un `%LOCALAPPDATA%` temporal -> el anclaje lo lee y devuelve su ciclo | El fallback `env.get("GIT_DIR") or expandvars(...)` no lo recorre ninguna sonda hermetica; borrarlo deja `None` en el entorno de `subprocess` y `TypeError: environment can only contain strings` (S3). |
+| A10 | Historial legible con 0 ciclos con marcador: `[FAIL]` de parser roto si el journal aporta ciclos, y **silencio** si el journal esta vacio | La rama `if not ciclos and journal_cycles` no tenia cobertura: desactivarla entera o quitarle la condicion del journal sobrevivian cada una por su lado (S4). |
 
 ## 7. Ficheros a tocar
 
 | Fichero | Cambio |
 |---|---|
 | `validate_docs.py` | `import subprocess`; `_marcador_de_ciclo`; `_ciclos_de_commits`; `_comprobar_ancla_de_commits`; union en el check 5b. Sin tocar el resto. |
-| `run_tests.py` | `test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal` + registro en `__main__`. |
-| `docs/ai/sandbox-rules.md` | Seccion nueva "Ancla de trazabilidad en el historial" con la regla, el alcance y la limitacion residual del §5. |
+| `run_tests.py` | `test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal` + registro en `__main__`. **Iteracion 2** (mutacion-auditor dio `FAIL`): misma sonda con la sonda espejo A2b, mas `test_el_ancla_se_cablea_en_el_camino_real_del_validador`, `test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador`, `test_el_ancla_de_commits_cae_al_git_dir_por_defecto` y `test_un_parser_de_marcadores_roto_no_pasa_en_verde`. |
+| `docs/ai/sandbox-rules.md` | Seccion nueva "Ancla de trazabilidad en el historial" con la regla, el alcance y la limitacion residual del §5. **Iteracion 2**: tabla fix -> mutante -> veredicto, y las cifras del §4 corregidas (los "41 de 46 hashes no resuelven" eran una medicion falsa). |
 | `AGENTS.md`, `README.md`, `docs/ai/testing-guide.md`, `STATUS.md` | Solo la **cifra** 99 -> 100. En `STATUS.md` **no** se toca la seccion `## Deuda Tecnica Conocida`: esa es de `TASK-058`. |
 | `.taskmaster/CHANGELOG.md` + `CHANGELOG.md` + `rd_journal.json` | Los escribe el orquestador al cerrar el ciclo (paso 3 de la skill), no este cambio. |
 
@@ -141,4 +146,6 @@ Todos con `GIT_DIR` apuntado a un repo temporal: **ningun test toca el historial
   el estado previo ("deriva los ciclos de rd_journal.json") y quedara desfasada justo al cerrar
   esta. Serializado, sin colision: 057 toca la cifra de recuento, 058 las filas de deuda.
 - `TASK-059` (nueva): direction inversa (hashes del journal) + marcador de ciclo obligatorio en
-  `git_safe_commit.py`, con los 41 hashes no resolubles medidos como evidencia.
+  `git_safe_commit.py`. Su evidencia se **corrige en la iteracion 2**: no son 41 hashes
+  irrecuperables, son 3 hashes que no resuelven (`5623629`, `ee4b753`, `12b9c3bf`, el ultimo el
+  unico de una entrada sin ninguno resoluble) y 11 entradas que no declaran hash alguno. Ver §4.

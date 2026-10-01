@@ -138,7 +138,7 @@ Opciones **descartadas con medición**, no con opinión (detalle en
 | Opción | Por qué se descartó |
 |---|---|
 | Anclar por fecha (commits más nuevos que la fecha del último ciclo) | **Decorativo.** El journal tiene resolución de minuto y 5 ciclos comparten `2026-10-01T23:4x`; casi todos los commits son del mismo día. Un ciclo 47 huérfano del mismo día no se ve. |
-| Verificar que cada hash del campo `commits` del journal exista | **41 de 46 hashes no resuelven** (ciclos 3-26 con el hash como texto libre tipo `617eef8 (architect)`; 30, 31 y 33 con hash bien formado perdido con el `.git` corrupto del VFS). Como FAIL deja el validador permanentemente rojo por una pérdida **no reparable**. Es `TASK-059`. |
+| Verificar que cada hash del campo `commits` del journal exista | **Era `41 de 46 hashes no resuelven`, y era FALSO.** Remedido el 2026-10-02 extrayendo el hash (`\b[0-9a-f]{7,40}\b`) y no el string del campo: **11 de las 46 entradas no declaran hash alguno** (ciclos 1, 2, 14-20, 27, 28: `commits` a `null` o `[]`), y de las 35 que sí lo declaran solo **3 hashes no resuelven** (`5623629` del ciclo 30, `ee4b753` del 31 y `12b9c3bf` del 33) —los ciclos 30 y 31 resuelven por su segundo y tercer hash—, así que solo el **ciclo 33** queda sin ninguno resoluble: el check daría **1 FAIL, no 41**. El error de origen era medir el STRING (`617eef8 (architect)`) en vez del hash, la misma clase de bug que este ciclo existe para matar. Sigue yendo a `TASK-059`, pero por el residuo real (11 entradas que no declaran nada y 3 hashes perdidos con el `.git` corrupto del VFS), no por una cifra que nunca fue cierta. |
 | Encadenado criptográfico de entradas del journal | Detecta la **reescritura** retroactiva, no la **omisión**: truncar la cadena por el final es trivial. No toca este residuo. |
 | Auto-referencia (tabla resumen del changelog, campo `commits`) | Ya demostrado como falso verde en el ciclo #15. |
 | Puerta humana (aprobación del propietario por ciclo) | Es la única independencia real, pero incompatible con la autonomía de coste 0 y no automatizable. |
@@ -146,8 +146,17 @@ Opciones **descartadas con medición**, no con opinión (detalle en
 ### Alcance medido (2026-10-02)
 
 - **37 de 46 ciclos** del journal son corroborables por el historial.
-- **43 de 154 subjects** llevan marcador de ciclo; **111 no lo llevan**.
+- **43 de 155 subjects** llevan marcador de ciclo; **112 no lo llevan**.
 - `ciclos_del_historial - ciclos_del_journal = ∅`: hoy la unión **no pone el repo en rojo**.
+- Del campo `commits` del journal: 11 entradas sin hash alguno, 12 con el hash como texto
+  libre y 23 como lista limpia; 3 de los hashes declarados no resuelven (§ tabla de opciones
+  de arriba).
+
+> ⚠️ **La segunda cifra caduca con cada commit** y por eso va marcada con su fecha de
+> medición en lugar de quedar escrita como un número fijo: el informe del validador la
+> reimprime viva en cada pasada (`historial de commits: N subject(s), M con marcador de
+> ciclo y K SIN marcador`), y ese es el dato que hay que leer. Si aquí y en el informe no
+> coinciden, el que caduca es este documento.
 
 ### LIMITACIÓN RESIDUAL — el problema NO está cerrado
 
@@ -157,9 +166,10 @@ no lo estaba (ciclo #15):
 1. **El historial lo escribe el mismo actor que el journal.** La ganancia es de **clase de
    fallo** —reescribir historia frente a editar una clave de un JSON—, **no de independencia de
    actor**. Quien puede mentir en el journal puede mentir en los mensajes de commit.
-2. **111 de 154 commits no llevan marcador de ciclo** (son los `feat(...)`, `fix(...)`,
-   `test(...)`). Si un ciclo se comitea **sin** commit de cierre y **sin** entrada de journal, no
-   hay tercer testigo y el validador **no lo ve**. Cerrar eso es `TASK-059`, no esta tarea.
+2. **112 de 155 commits no llevan marcador de ciclo** (son los `feat(...)`, `fix(...)`,
+   `test(...)`; medición del 2026-10-02, la cifra viva está en el informe). Si un ciclo se
+   comitea **sin** commit de cierre y **sin** entrada de journal, no hay tercer testigo y el
+   validador **no lo ve**. Cerrar eso es `TASK-059`, no esta tarea.
 3. **Un parser de marcador es una convención leída, no una verdad**: un asunto que mencione
    "ciclo 15" por hablar de él corrobora el 15. Solo puede **ablandar** el ancla, nunca
    endurecerla, así que no puede producir un FAIL falso — pero tampoco puede cerrar el punto 2.
@@ -171,12 +181,33 @@ el punto ciego se **mida** en cada pasada en lugar de quedar verde.
 
 ### Cobertura del ancla
 
-`run_tests.py` -> `test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal()` monta
-cuatro árboles temporales con `GIT_DIR` en `tempfile` (**nunca** el historial real): el parser
-que debe leer ciclo y no `TASK-`, el residuo de un ciclo comiteado y ausente del journal (dos
-errores, uno que nombra `rd_journal.json` y otro el changelog), la unión que no sustituye al
-journal, y un `GIT_DIR` que no es repo, que tiene que producir **informe y no excepción**. Es un
-test que **discrimina**: los tres mutantes verificados (leer `TASK-` en vez de ciclo, sustituir
-la unión por el journal, y devolver `set()` en silencio con el ancla ilegible) mueren por
-aserción.
+**Iteración 1** — `run_tests.py` -> `test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal()`
+monta cuatro árboles temporales con `GIT_DIR` en `tempfile` (**nunca** el historial real): el
+parser que debe leer ciclo y no `TASK-`, el residuo de un ciclo comiteado y ausente del journal
+(dos errores, uno que nombra `rd_journal.json` y otro el changelog), la unión que no sustituye al
+journal, y un `GIT_DIR` que no es repo, que tiene que producir **informe y no excepción**.
+
+**Iteración 2** (el `mutation-auditor` devolvió `FAIL` con 12 supervivientes; estos cuatro tests
+son la respuesta a los que sobrevivieron y están registrados en
+`openspec/changes/2026-10-01-validator-independent-anchor/tasks.md` T-6):
+
+| Test | Qué sobrevivía | Mutante que muere |
+|---|---|---|
+| `test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal` (sondas A2 y **A2b**) | El residuo se comprobaba por una **subcadena laxa** (`"rd_journal.json NO lo registra"` + un `047` en cualquier error), así que la diferencia `ciclos_historial - ciclos_journal` invertida seguía verde mientras el validador accuse al revés | `ciclos_historial - ciclos_journal` -> `ciclos_journal - ciclos_historial` |
+| `test_el_ancla_se_cablea_en_el_camino_real_del_validador` | `main()` podía **dejar de llamar** al ancla: la suite solo invocaba las funciones privadas, y el criterio A5 era una afirmación, no un test | borrar la línea `_comprobar_ancla_del_changelog(root, errors, ok)` del cuerpo de `main()` |
+| `test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador` | `except (ValueError, OSError)` estrechado a `json.JSONDecodeError`: un `PermissionError` salía con traceback | `(ValueError, OSError)` -> `json.JSONDecodeError` |
+| `test_el_ancla_de_commits_cae_al_git_dir_por_defecto` | El fallback a `%LOCALAPPDATA%` no lo recorría ninguna sonda: al borrarlo, `None` en el entorno de `subprocess` y `TypeError` | `env.get("GIT_DIR") or expandvars(...)` -> `env.get("GIT_DIR")` |
+| `test_un_parser_de_marcadores_roto_no_pasa_en_verde` | La rama `if not ciclos and journal_cycles` no tenía cobertura: desactivarla, o quitarle la condición del journal, sobrevivían | borrar la rama; o `and journal_cycles` |
+
+El primero de esa tabla **acusa el conjunto concreto** (el 047, nunca el 046) y añade el árbol
+espejo con journal `{46, 47}` e historial `{46}`, que tiene que dar **cero** errores: es el único
+árbol donde acusar es, por construcción, acusar al revés.
+
+`test_el_ancla_se_cablea_en_el_camino_real_del_validador` **no duplica la ruta de validación**: copia
+el `validate_docs.py` real a un árbol temporal con el esqueleto de ficheros que `main()` lee y lo
+ejecuta como subproceso, de modo que se ejercitan `main()`, el `if os.path.exists(CHANGELOG.md)`,
+la línea de cableado y el `sys.exit` contra un residuo real (un commit del ciclo 999 que el journal
+no registra). Su segunda mitad escribe en esa copia el **mutante** (el cableado sustituido por
+`pass`) y exige que el residuo desaparezca del informe: el test demuestra su capacidad de matar en
+vez de declararla.
 

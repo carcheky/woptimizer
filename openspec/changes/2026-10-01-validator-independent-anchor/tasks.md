@@ -50,8 +50,8 @@ justo lo que `TASK-037`/`CYCLE-027` pago por no extraer `_comprobar_recuento_de_
       `README.md`, `docs/ai/testing-guide.md`. El check 7 deriva la cifra con `ast`: si uno se
       queda atras, `validate_docs.py` falla.
 - [ ] `docs/ai/sandbox-rules.md`: seccion nueva tras "### Cobertura" — la regla, el alcance
-      (37 de 46 ciclos corroborables, 110 de 153 commits sin marcador) y **la limitacion
-      residual tal cual esta en el §5 del proposal**, sin eupemismos.
+      (37 de 46 ciclos corroborables, 112 de 155 commits sin marcador, medición del 2026-10-02) y
+      **la limitacion residual tal cual esta en el §5 del proposal**, sin eupemismos.
 
 ## T-5. Verificacion antes de cerrar
 
@@ -62,10 +62,51 @@ justo lo que `TASK-037`/`CYCLE-027` pago por no extraer `_comprobar_recuento_de_
 
 ## Fuera de alcance (no lo hagas aqui)
 
-- Verificar los hashes del campo `commits` del journal: **41 de 46 entradas no resuelven** y
-  como FAIL deja el validador permanentemente rojo. Es `TASK-059`.
+- Verificar los hashes del campo `commits` del journal: **medido el 2026-10-02**, 11 de las 46
+  entradas no declaran hash alguno y solo **3 de los hashes declarados no resuelven**
+  (`5623629` del 30, `ee4b753` del 31, `12b9c3bf` del 33), o sea **1 entrada sin ningún hash
+  resoluble**: el check daría 1 FAIL, no los "41 de 46" que este documento afirmaba (era medir el
+  string `617eef8 (architect)` en vez del hash). Sigue fuera de alcance y es `TASK-059`, ahora por
+  su residuo real y no por una pérdida permanente inexistente.
 - Exigir el marcador de ciclo en `git_safe_commit.py`: cambia un contrato de codigos de salida
   normativo con su propio test. Es `TASK-059`.
 - La seccion `## Deuda Tecnica Conocida` de `STATUS.md`, incluida la fila del residuo: es
   `TASK-058`, que depende de esta. Aqui solo se actualiza la cifra de recuento.
 - `src/woptimizer/**`: cero cambios.
+
+## T-6. Iteracion 2 — cierre de los hallazgos del mutation-auditor (`FAIL`, 12 supervivientes)
+
+El `mutation-auditor` ejecuto 28 mutaciones y dio 16 muertas / 12 vivas. De los 12
+supervivientes, estos son los que tocaban a este cambio. El codigo del validador **no se
+tocó**: en los cinco casos la cobertura era la que faltaba, no la logica.
+
+- [x] **S1 (CRITICO)**: el residuo se comprueba por su **conjunto**, no por una subcadena laxa.
+      La asercion nueva exige que la linea de error nombre el `047` y **no** el `046`, y se anade
+      la sonda espejo **A2b** (journal `{46, 47}` con historial `{46}` -> `0` errores), que es el
+      unico arbol donde acusar es por construccion acusar al reves. Mata
+      `ciclos_historial - ciclos_journal` -> `ciclos_journal - ciclos_historial`.
+- [x] **S2 (CRITICO)**: `test_el_ancla_se_cablea_en_el_camino_real_del_validador`. Ejecuta el
+      `validate_docs.py` **real** como subproceso contra un arbol temporal (copia del esqueleto
+      que `main()` lee) y exige que acuse un residuo real; su mitad mutante corta el cableado y
+      exige que el residuo desaparezca. Mata borrar `_comprobar_ancla_del_changelog(root, errors,
+      ok)` del cuerpo de `main()` —justo el criterio A5, que era una afirmacion y no un test.
+- [x] **S5 (MEDIO)**: `test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador`.
+      `PermissionError` inyectado en el `open` del modulo: informe con el motivo y un solo error,
+      sin traceback. Mata `(ValueError, OSError)` -> `json.JSONDecodeError`.
+- [x] **S3 (MEDIO)**: `test_el_ancla_de_commits_cae_al_git_dir_por_defecto`. Sin `GIT_DIR` en el
+      entorno, con repo real en un `%LOCALAPPDATA%` temporal. Mata la supresion del fallback.
+- [x] **S4 (MEDIO)**: `test_un_parser_de_marcadores_roto_no_pasa_en_verde`. Dos sondas sobre el
+      mismo historial: `[FAIL]` de parser roto si el journal aporta ciclos, silencio si esta
+      vacio. Mata desactivar la rama y quitarle `and journal_cycles`.
+- [x] **Cifra falsa corregida**: los "41 de 46 hashes no resuelven" no eran ciertos. Remedidos
+      con el hash extraido (`\b[0-9a-f]{7,40}\b`): 11 entradas sin hash, 3 hashes que no resuelven,
+      1 entrada (ciclo 33) sin ninguno resoluble. Corregido en los cinco sitios que lo
+      declaraban: `docs/ai/sandbox-rules.md`, `proposal.md` (x2), este `tasks.md` y
+      `.taskmaster/tasks.json` (notas de TASK-057; descripcion, criterios y notas de TASK-059).
+- [x] **Conteos de la doc viva**: 154/111 -> 155/112 subjects, con la fecha de medicion y la nota
+      de que la cifra caduca con cada commit y la reimprime viva el informe del validador.
+- [x] **Marcador de ciclo en los commits de este ciclo**: `chore(release): cerrar ciclo #47
+      (TASK-057)`, para que el ciclo 47 se corrobore por el historial y no solo por el journal. Los
+      dos commits anteriores del ciclo 47 (`9aa7dd5` arquitectura y `dbe720d` codigo) NO lo llevan y
+      no se pueden reescribir sin reescribir historia: quedan como punto ciego declarado.
+- [x] `run_tests.py` 100 -> 104 y los cuatro ficheros de recuento sincronizados.
