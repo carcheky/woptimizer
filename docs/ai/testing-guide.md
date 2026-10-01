@@ -26,7 +26,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 #### Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **99 tests**: 89 de backend + 10 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **100 tests**: 90 de backend + 10 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
 
 > **Ese 81 no se escribe a mano, y por eso ya no puede caducar solo.** Fallo medido en el cierre
 > del ciclo 26: esta tabla decía 78, `STATUS.md` decía 75 y `AGENTS.md` y `README.md` decían 28 —
@@ -141,6 +141,7 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 97 | `test_docs_api_and_index_v3_contracts` | **TASK-054 (Ciclo #44):** Contratos de veracidad y actualidad en `docs/api.md` y `docs/index.md` (v3) (ausencia de residuos v2 eliminados, verificación en runtime de existencia de métodos citados de `ProcessService`, `PackService`, `GamingService`, `NotificationService` y modelos, prohibición de auto-elevación UAC en `index.md`, e integridad de archivos nav de `mkdocs.yml`) |
 | 98 | `test_no_legacy_test_files_in_root` | **TASK-055 (Ciclo #45):** Guard anti-regresión y contratos de archivo de scripts `test_*.py` legacy (cero archivos `test_*.py` en la raíz del repositorio, preservación de los 11 ficheros trasladados en `docs/archive/legacy-root-tests/`, validez de `README.md` explicativo y aislamiento de `test_powershell_direct.py`) |
 | 99 | `test_dead_code_ast_guard` | **TASK-056 (Ciclo #46):** Guard AST de código muerto en `src/woptimizer/**` (recorrido exhaustivo del árbol de módulos, verificación de referencias en producción y tests para las 201 definiciones, lista blanca justificada y eliminación de residuos legacy `_get_priority` y `process_db`) |
+| 100 | `test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal` | **TASK-057 (Ciclo #47):** El requisito de registrar cada ciclo se exige por la **UNIÓN** de `rd_journal.json` y el historial de commits, para que el registro validado no sea su propio testigo (4 sondas con `GIT_DIR` en `tempfile`, nunca el historial real: parser que lee ciclo y no `TASK-` con cifras divergentes, residuo de un ciclo comiteado y ausente del journal que da 2 errores, unión que no sustituye al journal, y ancla ilegible que produce informe en vez de excepción o verde por omisión) |
 
 
 

@@ -98,3 +98,85 @@ si no. Es el mecanismo de diagnóstico cuando el pipeline recibe un `!= 0` sin e
 `GIT_DIR` apuntado a rutas temporales inválidas y exige los códigos exactos del contrato
 (`3` y `2`). Es un test que **discrimina**: revierte el fix del código de salida y falla. No toca
 el repositorio real ni su historial.
+
+## Ancla de trazabilidad en el historial (TASK-057, ciclo 47)
+
+### La regla
+
+El requisito de registrar el ciclo N **exige una entrada de changelog por ciclo, y el conjunto
+exigido es la UNIÓN de dos fuentes**:
+
+```
+ciclos_requeridos = ciclos_del_journal | ciclos_del_historial
+```
+
+`validate_docs.py` -> `_comprobar_ancla_del_changelog()` implementa las dos mitades:
+
+- **`.taskmaster/rd_journal.json`**, que el orquestador escribe antes que los changelogs.
+- **El historial de commits** (`git log --format=%s --all`), del que se deriva el número de
+  ciclo con `_marcador_de_ciclo()`: regex `\b(?:ciclo|cycle)s?\b[\s:#-]*#?(\d{1,4})`,
+  case-insensitive, primera coincidencia.
+
+Es una **unión y no una sustitución**, y la diferencia no es de estilo. Medido: los commits de
+cierre de los ciclos 1, 2, 3 y 15 a 20 **no llevan marcador de ciclo**, así que si el historial
+sustituyera al journal, esos ciclos perderían su único requisito y el falso verde volvería por
+la puerta de atrás.
+
+El historial se lee con el **mismo `GIT_DIR` desacoplado** que usa `git_safe_commit.get_env()`
+(`GIT_DIR` del entorno si ya viene —es el hook que permite tests herméticos—, si no
+`%LOCALAPPDATA%\woptimizer_git\.git`; `GIT_WORK_TREE` = raíz del repo).
+
+### Por qué el historial y no otra cosa
+
+Porque está **fuera del árbol de trabajo**, es **append-only** y **direccionado por contenido**.
+Para que el ciclo N deje de ser exigible hay que **reescribir historia**, no editar una clave de
+un JSON. Es la máxima independencia alcanzable dentro de la banda de autonomía del proyecto.
+
+Opciones **descartadas con medición**, no con opinión (detalle en
+`openspec/changes/2026-10-01-validator-independent-anchor/proposal.md` §4):
+
+| Opción | Por qué se descartó |
+|---|---|
+| Anclar por fecha (commits más nuevos que la fecha del último ciclo) | **Decorativo.** El journal tiene resolución de minuto y 5 ciclos comparten `2026-10-01T23:4x`; casi todos los commits son del mismo día. Un ciclo 47 huérfano del mismo día no se ve. |
+| Verificar que cada hash del campo `commits` del journal exista | **41 de 46 hashes no resuelven** (ciclos 3-26 con el hash como texto libre tipo `617eef8 (architect)`; 30, 31 y 33 con hash bien formado perdido con el `.git` corrupto del VFS). Como FAIL deja el validador permanentemente rojo por una pérdida **no reparable**. Es `TASK-059`. |
+| Encadenado criptográfico de entradas del journal | Detecta la **reescritura** retroactiva, no la **omisión**: truncar la cadena por el final es trivial. No toca este residuo. |
+| Auto-referencia (tabla resumen del changelog, campo `commits`) | Ya demostrado como falso verde en el ciclo #15. |
+| Puerta humana (aprobación del propietario por ciclo) | Es la única independencia real, pero incompatible con la autonomía de coste 0 y no automatizable. |
+
+### Alcance medido (2026-10-02)
+
+- **37 de 46 ciclos** del journal son corroborables por el historial.
+- **43 de 154 subjects** llevan marcador de ciclo; **111 no lo llevan**.
+- `ciclos_del_historial - ciclos_del_journal = ∅`: hoy la unión **no pone el repo en rojo**.
+
+### LIMITACIÓN RESIDUAL — el problema NO está cerrado
+
+Se documenta sin adornos porque este repo ya pagó una vez por declarar cerrado un problema que
+no lo estaba (ciclo #15):
+
+1. **El historial lo escribe el mismo actor que el journal.** La ganancia es de **clase de
+   fallo** —reescribir historia frente a editar una clave de un JSON—, **no de independencia de
+   actor**. Quien puede mentir en el journal puede mentir en los mensajes de commit.
+2. **111 de 154 commits no llevan marcador de ciclo** (son los `feat(...)`, `fix(...)`,
+   `test(...)`). Si un ciclo se comitea **sin** commit de cierre y **sin** entrada de journal, no
+   hay tercer testigo y el validador **no lo ve**. Cerrar eso es `TASK-059`, no esta tarea.
+3. **Un parser de marcador es una convención leída, no una verdad**: un asunto que mencione
+   "ciclo 15" por hablar de él corrobora el 15. Solo puede **ablandar** el ancla, nunca
+   endurecerla, así que no puede producir un FAIL falso — pero tampoco puede cerrar el punto 2.
+4. La independencia real de actor **no existe dentro de la banda**: solo la puerta humana la da,
+   y el proyecto es explícitamente autónomo.
+
+El número de commits sin marcador se imprime en el informe del validador a propósito, para que
+el punto ciego se **mida** en cada pasada en lugar de quedar verde.
+
+### Cobertura del ancla
+
+`run_tests.py` -> `test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal()` monta
+cuatro árboles temporales con `GIT_DIR` en `tempfile` (**nunca** el historial real): el parser
+que debe leer ciclo y no `TASK-`, el residuo de un ciclo comiteado y ausente del journal (dos
+errores, uno que nombra `rd_journal.json` y otro el changelog), la unión que no sustituye al
+journal, y un `GIT_DIR` que no es repo, que tiene que producir **informe y no excepción**. Es un
+test que **discrimina**: los tres mutantes verificados (leer `TASK-` en vez de ciclo, sustituir
+la unión por el journal, y devolver `set()` en silencio con el ancla ilegible) mueren por
+aserción.
+

@@ -11712,6 +11712,214 @@ def test_dead_code_ast_guard():
     print("test_dead_code_ast_guard OK (cero código muerto en src/woptimizer/**).")
 
 
+def test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal():
+    """TASK-057: el validador no puede seguir exigiendo los ciclos solo a quien
+    escribe el registro.
+
+    El residuo literal: `rd_journal.json` lo escribe el MISMO orquestador que
+    despues pide la validacion. Un fichero distinto no es una fuente
+    independiente, asi que el requisito de registrar el ciclo N se seguia
+    deduciendo de un artefacto de la misma pipeline. Un residuo asi no se ve con
+    una revision: se ve con un arbol de mentira.
+
+    El testigo tercero es el HISTORIAL de commits y el requisito pasa a ser la
+    UNION:
+
+        ciclos_requeridos = ciclos_del_journal | ciclos_del_historial
+
+    Las cuatro sondas de abajo tienen un arbol que HOY da `0 FAIL`, y cada una
+    muere con una union ausente, con una union mal hecha o con un ancla muda:
+
+    - A1. Parser: `ciclo #46 (TASK-056)`. El mutante que parsea `TASK-` devuelve
+      `{43, 56}` y ademas pone el repo real en rojo, porque `## CYCLE-056` no
+      existe. Ciclo y tarea DIVERGEN: es el discriminante mas barato y el que
+      mas dano hace.
+    - A2. Residuo: commit `ciclo #47`, journal que solo llega al 46 y changelog
+      sin `## CYCLE-047` -> DOS errores, uno que nombra `rd_journal.json` y otro
+      el changelog. Sin el historial, el mismo arbol da cero.
+    - A3. La union NO es una sustitucion: journal `{3}` + commits `{4}` exige los
+      DOS. Sustituyendo, el 3 pierde su unico requisito (sus commits de cierre
+      no llevan marcador) y el falso verde del ciclo 15 renacido.
+    - A4. `GIT_DIR` que no es un repo -> `errors` NO vacio y NINGUNA excepcion.
+      Un `except: return set()` silencioso es la misma clase de bug que la rama
+      `if n_tests is None:`, que era codigo muerto (CYCLE-027): una guarda que se
+      salta sola cuando no puede comprobar ya no guarda nada.
+
+    NINGUN test toca el historial real: cada fixture tiene su `GIT_DIR` en
+    `tempfile`, y `os.environ["GIT_DIR"]` se restaura en el `finally`. Sin ese
+    `finally`, un `GIT_DIR` a un temporal ya borrado envenenaria a
+    `_entorno_git_del_repo()` (que respeta el `GIT_DIR` del entorno) y el fallo
+    apareceria en el test equivocado, dos pasos despues.
+
+    `_comprobar_ancla_del_changelog` se extrajo del cuerpo de `main()` por esto
+    mismo: `main()` deriva `root` de `__file__` y no admite argv, asi que sin
+    extraccion estas sondas solo se despertarian lanzando el validador entero
+    contra el repo entero. El cuerpo vive UNA vez, y el camino real y el de test
+    ejecutan el MISMO codigo: nada de un `--verify` con ruta propia.
+    """
+    import json
+    import shutil
+    import subprocess
+    import tempfile
+    import validate_docs as vd
+
+    def _git(args, cwd):
+        """`git` con reintentos: el `spawn EPERM` de este host es intermitente."""
+        # La fixture se monta SIN el `GIT_DIR` que otra fixture dejo puesto: si
+        # se hereda, `git init` y `git commit` operan sobre el repo del caso
+        # ANTERIOR y el fallo aparece dos sondas mas tarde, en el sitio
+        # equivocado. Aqui solo se monta la fixture; el `git log` del ancla lo
+        # lanza el validador con su propio entorno.
+        env = os.environ.copy()
+        env.pop("GIT_DIR", None)
+        env.pop("GIT_WORK_TREE", None)
+        ultimo = "(nunca llego a ejecutarse)"
+        for _intento in (1, 2, 3):
+            r = subprocess.run(
+                ["git"] + args, cwd=cwd, env=env, capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=120,
+            )
+            if r.returncode == 0:
+                return r.stdout or ""
+            ultimo = ((r.stderr or "") + (r.stdout or "")).strip()
+        raise AssertionError(
+            f"git {' '.join(args)} fallo tres veces en la fixture: {ultimo}. "
+            "Sin este envoltorio el fallo de git se pierde como falso verde"
+        )
+
+    def _informe(root):
+        """(errors, ok) del check 5b, con las excepciones convertidas en asercion."""
+        errors, ok = [], []
+        try:
+            vd._comprobar_ancla_del_changelog(root, errors, ok)
+        except Exception as exc:                       # pragma: no cover
+            raise AssertionError(
+                "el check 5b debia devolver un INFORME y tiro "
+                f"{type(exc).__name__}: {exc}. Sin este envoltorio un mutante que "
+                "revienta el codigo muere por traceback y el verificador no puede "
+                "distinguirlo de un test que detecta el fallo"
+            )
+        return errors, ok
+
+    tmp = tempfile.mkdtemp(prefix="wopt_ancla_")
+    git_dir_previo = os.environ.get("GIT_DIR")
+    try:
+        def _arbol(nombre, ciclos_journal, entradas_changelog, asunto=None):
+            """Raiz temporal con journal, CHANGELOG.md y, si `asunto`, UN commit."""
+            raiz = os.path.join(tmp, nombre)
+            os.makedirs(os.path.join(raiz, ".taskmaster"))
+            with open(os.path.join(raiz, ".taskmaster", "rd_journal.json"),
+                      "w", encoding="utf-8") as fh:
+                fh.write(json.dumps([{"cycle": c} for c in ciclos_journal]))
+            with open(os.path.join(raiz, "CHANGELOG.md"), "w", encoding="utf-8") as fh:
+                fh.write("# Changelog\n\n### Corregido\n\n")
+                for c in entradas_changelog:
+                    fh.write(f"\n## CYCLE-{c:03d}\n\nEntrada del ciclo {c}.\n")
+            if asunto is not None:
+                _git(["init", "-q", raiz], tmp)
+                _git(["-c", "user.email=ancla@woptimizer.invalid",
+                      "-c", "user.name=ancla",
+                      "-c", "commit.gpgsign=false",
+                      "commit", "-q", "--allow-empty", "-m", asunto], raiz)
+            return raiz
+
+        # --- A1. EL PARSER: ciclo != tarea ------------------------------------
+        subjects = [
+            "chore(release): cerrar ciclo #46 (TASK-056) guard AST de codigo muerto",
+            "feat(quality): TASK-056 sin marcador de ciclo",
+            "docs(cycle-43): cierre de ciclo 43, actualizacion de rd_journal",
+        ]
+        ciclos, con_marcador, sin_marcador = vd._ciclos_de_commits(subjects)
+        assert (ciclos, con_marcador, sin_marcador) == ({43, 46}, 2, 1), (
+            "el parser tiene que leer el numero de CICLO y no el de TAREA: "
+            f"obtenido {ciclos!r}, {con_marcador} con marcador y {sin_marcador} sin. "
+            "El mutante que parsea `TASK-` devuelve {43, 56} y pone el repo real "
+            "en rojo, porque `## CYCLE-056` no existe (ciclo 46 = TASK-056)"
+        )
+        # El `sin` de "sin marcador de ciclo" NO es un ciclo: la palabra sola,
+        # sin numero detras, no marca nada. Sin esta asercion un parser que
+        # admitiera `ciclo` sin digitos contaria el 56 del subject anterior.
+        assert vd._marcador_de_ciclo("feat(quality): TASK-056 sin marcador de ciclo") is None, (
+            "una palabra 'ciclo' sin numero detras no es un marcador de ciclo: "
+            "aceptarla fabricaria ciclos que no existen"
+        )
+
+        # --- A2. EL RESIDUO: comiteado y NO registrado -----------------------
+        raiz_r = _arbol("residuo", [46], [46],
+                        "chore(release): cerrar ciclo #47 (TASK-090)")
+        os.environ["GIT_DIR"] = os.path.join(raiz_r, ".git")
+        errors, _ok = _informe(raiz_r)
+        assert len(errors) == 2, (
+            "un ciclo 47 COMITEADO, ausente del journal y sin entrada en el "
+            f"changelog tiene que dar DOS errores; hay {len(errors)}: {errors}. "
+            "Sin el historial como testigo este arbol da 0 FAIL, que es "
+            "exactamente el residuo que la tarea persigue"
+        )
+        assert any("rd_journal.json NO lo registra" in e for e in errors), (
+            "uno de los dos errores tiene que NOMBRAR el residuo: hay trabajo "
+            f"comiteado que el journal no registra. Errors: {errors}"
+        )
+        assert any("CHANGELOG.md" in e and "047" in e for e in errors), (
+            "el otro error tiene que exigir la entrada `## CYCLE-047` del "
+            f"changelog legible. Errors: {errors}"
+        )
+
+        # --- A3. UNION, NO SUSTITUCION ---------------------------------------
+        raiz_u = _arbol("union", [3], [],
+                        "chore(release): cerrar ciclo #4 (TASK-091)")
+        os.environ["GIT_DIR"] = os.path.join(raiz_u, ".git")
+        errors, _ok = _informe(raiz_u)
+        faltantes = [e for e in errors if "sin entrada para el/los ciclo/s" in e]
+        assert len(faltantes) == 1, (
+            f"los ciclos exigidos se enumeran en UNA linea de fallo; hay {errors}"
+        )
+        assert "003" in faltantes[0] and "004" in faltantes[0], (
+            "el journal {3} y el historial {4} exigen LOS DOS: "
+            f"obtenido {faltantes[0]!r}. Si se SUSTITUYERA el journal por el "
+            "historial, el 3 perderia su unico requisito (sus commits de cierre "
+            "no llevan marcador) y seria el falso verde del ciclo 15 renacido"
+        )
+
+        # --- A4. ANCLA ILEGIBLE: informe, NUNCA excepcion ni verde ------------
+        raiz_s = _arbol("sin_repo", [46], [])
+        falso_git = os.path.join(tmp, "no_es_un_repo")
+        os.makedirs(falso_git)
+        os.environ["GIT_DIR"] = falso_git
+        errors4, ok4 = [], []
+        assert vd._comprobar_ancla_de_commits(raiz_s, errors4, ok4, [46]) == set(), (
+            "un GIT_DIR que no es un repo NO puede aportar ciclos: si devuelve "
+            "algo, el parser esta leyendo de otro sitio"
+        )
+        assert errors4, (
+            "un ancla ILEGIBLE no certifica: tiene que haber una linea [FAIL] "
+            "con el motivo literal del fallo, no un set() silencioso. Un "
+            "`except: return set()` es la misma clase de bug que la rama "
+            "`if n_tests is None:` que era codigo muerto (CYCLE-027)"
+        )
+        assert not any("corroborables" in o for o in ok4), (
+            "el historial ilegible no puede entrar en el informe por la via de "
+            f"los ciclos corroborables: OK: {ok4}"
+        )
+        errors, ok = _informe(raiz_s)
+        assert any("NO SE PUEDE LEER" in e for e in errors), (
+            f"el fallo del ancla tiene que seguir siendo visible en el informe "
+            f"del check 5b. Errors: {errors}"
+        )
+        assert any("CHANGELOG.md" in e and "046" in e for e in errors), (
+            "el historial caido NO puede relajar el journal: el ciclo 46 que el "
+            f"journal registra tiene que seguir exigiendo su entrada. Errors: {errors}"
+        )
+    finally:
+        if git_dir_previo is None:
+            os.environ.pop("GIT_DIR", None)
+        else:
+            os.environ["GIT_DIR"] = git_dir_previo
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print("Ancla de commits: parser ciclo!=tarea, residuo comiteado sin journal, "
+          "union (no sustitucion) y ancla ilegible con informe.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -11844,6 +12052,11 @@ if __name__ == "__main__":
     test_no_legacy_test_files_in_root()
     # TASK-056: Guard AST de código muerto en src/woptimizer/**
     test_dead_code_ast_guard()
+    # TASK-057: el validador exige la UNION de journal e historial de commits,
+    # para que el registro que se valida no sea el unico testigo de si un ciclo
+    # se cerro. Cuatro sondas: parser ciclo!=tarea, residuo comiteado sin
+    # journal, union (no sustitucion) y ancla ilegible con informe.
+    test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.
