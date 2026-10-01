@@ -1,3 +1,23 @@
+## CYCLE-044 - 2026-10-01
+
+**Documentación & Arquitectura** — `TASK-054` (Alinear docs/api.md y docs/index.md con la v3 real)
+
+> 🟢 **VERDICT FINAL: PASS** — Reescritura documental integral, erradicación de residuos legacy v2 y test de contrato documental auditados con éxito por `mutation-auditor` (4/4 mutaciones eliminadas: M1, M2, M3, M4, 0 supervivientes). **97 tests** (87 backend + 10 headless UI) pasando al 100%.
+
+### Añadido
+- **Test de Contrato Documental `test_docs_api_and_index_v3_contracts`.** Nuevo test #97 en `run_tests.py` que comprueba:
+  1. Ausencia estricta de términos prohibidos de la v2 (`is_admin`, `taskkill`, `powershell`, `saved_processes.json`, `ProcessManagerApp`) en `docs/api.md`.
+  2. Verificación en runtime mediante introspección (`hasattr`, `callable`) de que todos los métodos y modelos documentados existen realmente en `src/woptimizer/` (`ProcessService`, `PackService`, `GamingService`, `NotificationService`, `ProcessInfo`, `Pack`, `AppData`).
+  3. Ausencia de afirmaciones falsas sobre elevación de privilegios UAC nativa o scripts legacy (`.vbs`, `.pyw`, `taskkill`) en `docs/index.md`.
+  4. Integridad de los archivos referenciados en el bloque `nav` de `mkdocs.yml` asegurando que todos existen en disco.
+- **Sincronización Cuádruple de Métricas.** Actualizado el recuento canónico a 97 tests en `STATUS.md`, `AGENTS.md`, `README.md` y `docs/ai/testing-guide.md`.
+
+### Corregido
+- **Alineación de `docs/api.md` con la v3 Real.** Reescrito íntegramente contra los servicios desacoplados, modelos Pydantic v2 e inspección de procesos con `psutil`, eliminando referencias obsoletas a `taskkill`, PowerShell y scripts legacy.
+- **Alineación de `docs/index.md` con la v3 Real.** Actualizada la introducción, comandos de arranque (`python run.py`, `dist\woptimizer.exe`), árbol de estructura de directorios y características reales de la versión 3.
+
+---
+
 ## CYCLE-043 - 2026-10-01
 
 **Testing & Calidad** — `TASK-053` (Actualizar Tests de Exclusividad, Recuento y Documentación)

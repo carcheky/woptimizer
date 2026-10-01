@@ -1,3 +1,29 @@
+## [CYCLE-044] 2026-10-01 23:38 — align-v3-docs-contracts
+**Área**: Documentación & Arquitectura
+**Change**: openspec/changes/2026-10-01-align-v3-docs-contracts/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Deuda Técnica Conocida / Documentación & Arquitectura)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (4/4 mutaciones eliminadas: M1, M2, M3, M4)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Ausencia de residuos v2 en docs/api.md | Reintroducir `- is_admin()` en `docs/api.md` | killed | `AssertionError: Residuo v2 prohibido 'is_admin' encontrado en docs/api.md` |
+| Veracidad de métodos citados en api.md | Sustituir `get_running_processes` por `metodo_fantasma_no_existe` en `docs/api.md` | killed | `AssertionError: Metodo ProcessService.get_running_processes no esta documentado en docs/api.md` |
+| Ausencia de falsas afirmaciones UAC en index.md | Reintroducir `auto-eleva admin con UAC` en `docs/index.md` | killed | `AssertionError: Residuo v2 prohibido 'auto-eleva admin' encontrado en docs/index.md` |
+| Integridad del bloque nav en mkdocs.yml | Añadir ruta inexistente `- Roto: no_existe_archivo.md` en `mkdocs.yml` | killed | `AssertionError: Fichero nav 'no_existe_archivo.md' referenciado en mkdocs.yml no existe en disco` |
+
+### Cambios Clave
+- `docs/api.md`: Reescritura total alineada con la versión 3 (ProcessService, PackService, GamingService, NotificationService y modelos Pydantic v2). Erradicados todos los rastros de scripts v2 (`is_admin`, `taskkill`, `powershell`, `saved_processes.json`, `ProcessManagerApp`).
+- `docs/index.md`: Modernizada la introducción, comandos de inicio rápido, características v3 y árbol de código, eliminando falsas promesas de auto-elevación UAC nativa.
+- `run_tests.py`: Añadido test #97 `test_docs_api_and_index_v3_contracts` que valida programáticamente todas las prohibiciones y la correspondencia en runtime con los módulos de `src/woptimizer/`.
+- `STATUS.md`, `AGENTS.md`, `README.md`, `docs/ai/testing-guide.md`: Sincronización exacta a 97 tests en verde.
+
+---
+
 ## [CYCLE-043] 2026-10-01 23:33 — multi-favorites-and-db-download
 **Área**: Testing & Calidad
 **Change**: openspec/changes/2026-10-01-multi-favorites-and-db-download/

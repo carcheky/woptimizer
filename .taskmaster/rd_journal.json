@@ -678,5 +678,22 @@
       "after": "86 backend + 10 headless UI (96 totales, validados con ast por validate_docs.py)"
     },
     "impact": "Actualizar Tests de Exclusividad, Recuento y Documentación (TASK-053): Sincronización completa de la suite de pruebas con la semántica de favoritos acumulativos de TASK-048. Actualización de test_toggle_favorite_desmarca en run_tests.py garantizando que la deselección de un favorito preserva intactos a los demás en el caso multiselección. Inclusión de guard AST verificando la inexistencia de llamadas obsoletas a set_favorite con 1 argumento en todo el fichero de tests. Verificación y sincronización de los 96 tests en AGENTS.md, README.md, STATUS.md y testing-guide.md. 100% mutaciones eliminadas (4/4 M1-M4 KILLED) por mutation-auditor."
+  },
+  {
+    "cycle": 44,
+    "date": "2026-10-01T23:38:00",
+    "area": "Documentación & Arquitectura",
+    "slug": "2026-10-01-align-v3-docs-contracts",
+    "task": "TASK-054",
+    "status": "COMPLETED",
+    "commits": [
+      "3653db6"
+    ],
+    "tests": {
+      "before": "86 backend + 10 headless UI (96 totales)",
+      "after": "87 backend + 10 headless UI (97 totales, validados con ast por validate_docs.py)"
+    },
+    "impact": "Alinear docs/api.md y docs/index.md con la v3 real (TASK-054): Reescritura integral de docs/api.md contra los servicios reales de v3 (ProcessService, PackService, GamingService, NotificationService y modelos Pydantic v2), eliminando cualquier residuo obsoleto de v2 (is_admin, taskkill, powershell, saved_processes.json, ProcessManagerApp). Modernización de docs/index.md erradicando afirmaciones falsas de auto-elevación UAC nativa y scripts legacy (.vbs, .pyw). Creación del test de contrato documental #97 (test_docs_api_and_index_v3_contracts) que valida en runtime con hasattr/callable todos los métodos documentados y verifica la existencia de todos los archivos del nav de mkdocs.yml. 100% mutaciones eliminadas (4/4 M1-M4 KILLED) por mutation-auditor. Suite elevada a 97 tests."
   }
 ]
+

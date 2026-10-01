@@ -10,16 +10,16 @@
 - **Micro-Benchmark Base:** 182 ms (Init) | 4.97 ms (Escaneo 325 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
 - **Compilación PyInstaller:** 🟡 El ejecutable es un artefacto de distribución y se regenera al publicar; su desfase (del 2026-09-29) no lo vigila ningún checkpoint — ver "Checkpoints Periódicos"
 - **Base de Datos de Procesos:** 96 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
-- **Versionado:** 🟢 Al día en git (`9187a8c` feat(tests): TASK-053 sincronizacion de semantica acumulativa en test_toggle_favorite_desmarca y guard AST).
+- **Versionado:** 🟢 Al día en git (`3653db6` feat(docs): TASK-054 alineacion de docs/api.md y docs/index.md con v3 y test de contrato documental).
 
 ---
 
 ### 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 43 (`rd_journal.json` actualizado).
-- **Ciclo Actual #43:** TASK-053 — Actualizar Tests de Exclusividad, Recuento y Documentación. 🟢 **Completado.**
-- **Próxima Tarea:** TASK-054 (Ciclo #44) — Alinear docs/api.md y docs/index.md con la v3 real.
-- **Última Acción:** Ciclo #43 TASK-053 — Adaptación de `test_toggle_favorite_desmarca` a semántica de favoritos acumulativos con preservación en multiselección, guard AST contra llamadas unarias a `set_favorite`, y sincronización estricta de 96 tests en los 4 ficheros de métricas. 96 tests en verde (100% PASS), 4/4 mutaciones eliminadas por `mutation-auditor` (PASS).
+- **Ciclos Completados:** 44 (`rd_journal.json` actualizado).
+- **Ciclo Actual #44:** TASK-054 — Alinear docs/api.md y docs/index.md con la v3 real. 🟢 **Completado.**
+- **Próxima Tarea:** TASK-055 (Ciclo #45) — Los 10 test_*.py muertos y el script que LANZA notepad.
+- **Última Acción:** Ciclo #44 TASK-054 — Reescritura integral de `docs/api.md` y `docs/index.md` acorde a la arquitectura desacoplada de v3 (eliminación de `is_admin`, `taskkill`, `powershell`, scripts v2 y auto-elevación UAC). Incorporación del test #97 `test_docs_api_and_index_v3_contracts` con introspección runtime y chequeo de nav de mkdocs. 97 tests en verde (100% PASS), 4/4 mutaciones eliminadas por `mutation-auditor` (PASS).
 
 ---
 
