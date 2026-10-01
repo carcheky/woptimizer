@@ -1,3 +1,20 @@
+## CYCLE-035 - 2026-10-01
+
+**Rendimiento & Latencia** — `TASK-045` (Optimización de Latencia en Categorización de Procesos y Memoización)
+
+> 🟢 **VERDICT FINAL: PASS** — Optimización de categorización e invalidación atómica completada y auditada con éxito por `mutation-auditor` (0 supervivientes). **89 tests** (83 backend + 6 headless UI) pasando al 100%.
+
+### Añadido
+- **Invalidación atómica de caché al recargar la base de datos.** En `ProcessService._load_local_db()`, se ejecuta `self.invalidate_cache()` tras `self._meta_cache.clear()` para garantizar que la caché de procesos activos (`_proc_cache`) expire simultáneamente y no muestre categorías obsoletas.
+- **Memoización O(1) de metadatos.** Búsqueda instantánea en `_meta_cache` (< 0.001 ms) para cualquier proceso (catalogado, fuzzy o fallback).
+- **`test_process_categorization_latency_and_memoization`.** Test estrictamente discriminante en `run_tests.py` que verifica que la resolución de categorías consulta la memoria O(1) y que la recarga de base de datos invalida de manera atómica ambas cachés.
+
+### Corregido
+- **Aserción tautológica en test de categorización.** Corrección identificada por `mutation-auditor`: el test inicial usaba un proceso desconocido que caía en el fallback por defecto aun sin consultar la caché; actualizado para usar procesos catalogados y centinelas sintéticos, garantizando que el mutante sin caché es eliminado.
+- **Mock de MainWindow en test headless de Tray.** Corregido el target de patch a `woptimizer.ui.app.MainWindow` en `test_tray_session_restoration_integration` para evitar inicializaciones reales de frames en entornos headless.
+
+---
+
 ## CYCLE-034 - 2026-10-01
 
 **Base de Datos & Procesos** — `TASK-044` (Expansión y Categorización de la Base de Procesos de Windows)

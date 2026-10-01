@@ -1,3 +1,29 @@
+## [CYCLE-035] 2026-10-01 18:35 — categorization-latency-optimization
+**Área**: Rendimiento & Latencia
+**Change**: openspec/changes/2026-10-01-categorization-latency-optimization/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Área 4)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (5/5 mutaciones eliminadas: M1, M2, M3a, M3b, M4)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Invalidación atómica de `_proc_cache` en `_load_local_db()` | Eliminar `self.invalidate_cache()` | killed | `AssertionError: _proc_cache debe quedar en None tras invalidate_cache() en _load_local_db()` |
+| Vaciado de `_meta_cache` en `_load_local_db()` | Eliminar `self._meta_cache.clear()` | killed | `AssertionError: _meta_cache debe vaciarse al recargar la DB` |
+| Persistencia en `_meta_cache` de exact match | Eliminar `self._meta_cache[name_clean] = hit` | killed | `assert "chrome" in svc._meta_cache` |
+| Persistencia en `_meta_cache` de fallback | Eliminar `self._meta_cache[name_clean] = _DEFAULT_META` | killed | `assert "proceso_totalmente_desconocido_xyz" in svc._meta_cache` |
+| Hit O(1) de memoización en `_meta_cache` | Desconectar lookup: `cached = self._meta_cache.get(name_clean)` | killed | `AssertionError: Debe retornar la categoría desde _meta_cache O(1) incluso con _db_map vacío: '⚪ Otros'` |
+
+### Cambios Clave
+- `src/woptimizer/services/process_service.py`: En `_load_local_db()`, añadida llamada atómica a `self.invalidate_cache()` tras `self._meta_cache.clear()`.
+- `run_tests.py`: +1 test estrictamente discriminante (`test_process_categorization_latency_and_memoization`) y fix en target de mock para `test_tray_session_restoration_integration`. Suite elevada a 89 tests al 100% en verde.
+- `docs/ai/architecture.md` y `docs/ai/testing-guide.md`: Actualizada documentación viva y tabla de 89 tests.
+
+---
+
 ## [CYCLE-034] 2026-10-01 16:05 — process-db-expansion-c34
 **Área**: Base de Datos & Procesos
 **Change**: openspec/changes/2026-10-01-process-db-expansion-c34/

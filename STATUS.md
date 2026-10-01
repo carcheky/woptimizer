@@ -10,15 +10,15 @@
 - **Micro-Benchmark Base:** 182 ms (Init) | 4.97 ms (Escaneo 325 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
 - **Compilación PyInstaller:** 🟡 El ejecutable es un artefacto de distribución y se regenera al publicar; su desfase (del 2026-09-29) no lo vigila ningún checkpoint — ver "Checkpoints Periódicos"
 - **Base de Datos de Procesos:** 96 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
-- **Versionado:** 🟢 Al día en git (`ece8778` feat(services): TASK-042).
+- **Versionado:** 🟢 Al día en git (`96622ea` feat(services): TASK-045).
 
 ---
 
 ### 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 34 (`rd_journal.json` actualizado).
-- **Ciclo Actual #34:** TASK-044 — Expansión y Categorización de la Base de Procesos. 🟢 **Completado.**
-- **Última Acción:** Ciclo #34 TASK-044 — Incorporación de 7 nuevos procesos reales a `assets/process_db.json` (96 total). 🟢 Esquema e integridad 100% en verde (`test_process_db_schema_integrity`).
+- **Ciclos Completados:** 35 (`rd_journal.json` actualizado).
+- **Ciclo Actual #35:** TASK-045 — Optimización de Latencia en Categorización de Procesos y Memoización. 🟢 **Completado.**
+- **Última Acción:** Ciclo #35 TASK-045 — Resolución O(1) en `_meta_cache` e invalidación atómica de `_proc_cache` al recargar la DB. 89 tests en verde (100% PASS), 5/5 mutaciones eliminadas por `mutation-auditor` (PASS).
 
 ---
 
@@ -47,6 +47,7 @@
 22. **[Ciclo #25 - Testing & Calidad]:** 🧪 **Expansión de calidad y pruebas headless de UI y modelos (TASK-034)** — eliminación de puntos ciegos mediante `test_models_strict_validation_and_contracts` (strict=True, Literals, extra='allow') y `test_main_window_navigation_transitions` (ciclo completo Dashboard -> Packs -> ProcessManager -> Dashboard con aserción de destrucción `not winfo_exists()`). 73 tests backend + 2 UI en verde y Paso 4 = PASS (7/7 mutantes eliminados).
 23. **[Ciclo #28 - Gaming & Telemetría UX]:** 🎮 **Restauración inteligente de apps tras Modo Gaming (TASK-038)** — registro pre-kill de ejecutables cerrados (`_last_closed_apps`), resolución lazy de rutas `.exe`, `restore_gaming_session()` en `GamingService` y banner dinámico con botón "Reabrir Apps" en `DashboardView`. 76 tests backend + 5 UI en verde y Paso 4 = PASS.
 24. **[Ciclo #29 - Base de Datos & Procesos]:** 📦 **Expansión de process_db.json (TASK-039)** — 8 nuevos procesos reales añadidos (+8: gamingservices, gamingservicesnet, adobecollabsync, filecoauth, filesynchelper, edgegameassist, hass.agent, gameinputredistservice = 89 total) con 0 solapamientos con procesos protegidos del sistema.
+25. **[Ciclo #35 - Rendimiento & Latencia]:** ⚡ **Optimización de categorización y memoización (TASK-045)** — resolución instantánea O(1) < 0.001 ms en `_meta_cache` e invalidación atómica de `_proc_cache` al recargar la base de datos local en `_load_local_db()`. Test estrictamente discriminante (`test_process_categorization_latency_and_memoization`) y mutaciones 5/5 aniquiladas por `mutation-auditor` (PASS). 89 tests en verde.
 
 ---
 
@@ -55,11 +56,11 @@
 |---|------|:---:|---|
 | 1 | Resiliencia & Robustez | #32 | `openspec-dev` |
 | 2 | Gaming & Telemetría UX | #33 | `openspec-dev` |
-| 3 | Base de Datos & Procesos | **#34** | `process-db-updater` |
-| 4 | Rendimiento & Latencia | #30 | `openspec-dev` |
+| 3 | Base de Datos & Procesos | #34 | `process-db-updater` |
+| 4 | Rendimiento & Latencia | **#35** | `openspec-dev` |
 | 5 | Testing & Calidad | #31 | `openspec-dev` |
 
-> **Próxima área en rotación: Área 4 (Rendimiento & Latencia).** Último ciclo abordado: #30 (`TASK-040`).
+> **Próxima área en rotación: Área 5 (Testing & Calidad).** Último ciclo abordado: #31 (`TASK-041`).
 
 ---
 
