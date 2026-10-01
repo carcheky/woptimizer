@@ -11574,6 +11574,66 @@ def test_docs_api_and_index_v3_contracts():
     print("test_docs_api_and_index_v3_contracts OK.")
 
 
+def test_no_legacy_test_files_in_root():
+    """TASK-055 (ciclo 45): Guard anti-regresión y contratos de archivo de scripts test_*.py legacy.
+
+    Verifica:
+    1. Cero archivos test_*.py en la raíz del repositorio (run_tests.py es la única suite oficial).
+    2. docs/archive/legacy-root-tests/ existe y contiene los 11 archivos históricos trasladados.
+    3. docs/archive/legacy-root-tests/README.md existe y documenta los 10 scripts v2 y test_powershell_direct.py.
+    4. test_powershell_direct.py archivado contiene referencias a notepad (aislado de la raíz).
+    """
+    print("Testing absence of legacy test_*.py files in root and archive integrity (TASK-055)...")
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent
+
+    # 1. Guard anti-regresión: la raíz NO debe contener ningún test_*.py
+    legacy_in_root = [
+        f.name for f in repo_root.iterdir()
+        if f.is_file() and f.name.startswith("test_") and f.name.endswith(".py")
+    ]
+    assert not legacy_in_root, (
+        f"Se encontraron archivos test_*.py legacy en la raíz del repositorio: {legacy_in_root}. "
+        "Deben archivarse en docs/archive/legacy-root-tests/"
+    )
+
+    # 2. Integridad del archivo
+    archive_dir = repo_root / "docs" / "archive" / "legacy-root-tests"
+    assert archive_dir.is_dir(), f"El directorio de archivo no existe: {archive_dir}"
+
+    readme_file = archive_dir / "README.md"
+    assert readme_file.is_file() and readme_file.stat().st_size > 500, (
+        f"README.md en {readme_file} debe existir y contener documentación descriptiva"
+    )
+    readme_text = readme_file.read_text(encoding="utf-8")
+    assert "test_powershell_direct.py" in readme_text
+    assert "notepad" in readme_text.lower()
+    assert "process_manager" in readme_text
+
+    expected_archived = [
+        "test_categorization.py",
+        "test_debug_list.py",
+        "test_gaming_profile.py",
+        "test_gaming_session.py",
+        "test_harness_v2.py",
+        "test_harness.py",
+        "test_kill_expansion.py",
+        "test_kill_real.py",
+        "test_powershell_direct.py",
+        "test_profiles.py",
+        "test_relaunch_grouping.py",
+    ]
+    for filename in expected_archived:
+        target = archive_dir / filename
+        assert target.is_file(), f"Fichero legacy esperado {filename} no encontrado en {archive_dir}"
+
+    ps_direct = archive_dir / "test_powershell_direct.py"
+    assert "notepad.exe" in ps_direct.read_text(encoding="utf-8")
+
+    print("test_no_legacy_test_files_in_root OK.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -11702,6 +11762,8 @@ if __name__ == "__main__":
     test_process_service_db_download_contracts()
     # TASK-054: Contratos de veracidad y actualidad en docs/api.md y docs/index.md (v3)
     test_docs_api_and_index_v3_contracts()
+    # TASK-055: Guard anti-regresión y contratos de archivo de scripts test_*.py legacy
+    test_no_legacy_test_files_in_root()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.

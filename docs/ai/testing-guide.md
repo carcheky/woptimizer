@@ -26,7 +26,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 #### Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **97 tests**: 87 de backend + 10 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **98 tests**: 88 de backend + 10 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
 
 > **Ese 81 no se escribe a mano, y por eso ya no puede caducar solo.** Fallo medido en el cierre
 > del ciclo 26: esta tabla decía 78, `STATUS.md` decía 75 y `AGENTS.md` y `README.md` decían 28 —
@@ -139,6 +139,7 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 95 | `test_process_manager_db_update_button_and_feedback` | **TASK-051 (Ciclo #41):** Botón de actualización de DB en `ProcessManagerView` (`btn_update_db` cableado a `_force_update_db()`, reporte observable y honesto de fallos en `status_label`, distinción de estados y desacoplamiento de GitLab) |
 | 96 | `test_process_manager_pack_dropdown_single_arrow_and_placeholder` | **TASK-052 (Ciclo #42):** Indicador único en desplegable de packs (`PLACEHOLDER_PACK` centralizado sin glifo ▼ redundante, guard AST de literal único y verificación headless) |
 | 97 | `test_docs_api_and_index_v3_contracts` | **TASK-054 (Ciclo #44):** Contratos de veracidad y actualidad en `docs/api.md` y `docs/index.md` (v3) (ausencia de residuos v2 eliminados, verificación en runtime de existencia de métodos citados de `ProcessService`, `PackService`, `GamingService`, `NotificationService` y modelos, prohibición de auto-elevación UAC en `index.md`, e integridad de archivos nav de `mkdocs.yml`) |
+| 98 | `test_no_legacy_test_files_in_root` | **TASK-055 (Ciclo #45):** Guard anti-regresión y contratos de archivo de scripts `test_*.py` legacy (cero archivos `test_*.py` en la raíz del repositorio, preservación de los 11 ficheros trasladados en `docs/archive/legacy-root-tests/`, validez de `README.md` explicativo y aislamiento de `test_powershell_direct.py`) |
 
 
 
