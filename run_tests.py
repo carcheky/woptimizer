@@ -5846,9 +5846,17 @@ def test_toggle_favorite_desmarca():
                     return self.get_all_packs()[k]
             return None
 
-        def set_favorite(self, pack_id):
+        def toggle_favorite(self, pack_id):
             self.llamadas.append(pack_id)
-            self.estado = {k: (k == pack_id) for k in self.estado}
+            if pack_id in self.estado:
+                self.estado[pack_id] = not self.estado[pack_id]
+                return self.estado[pack_id]
+            return False
+
+        def set_favorite(self, pack_id, value=True):
+            self.llamadas.append((pack_id, value))
+            if pack_id in self.estado:
+                self.estado[pack_id] = value
 
     def _vista(grabador):
         v = PackManagerView.__new__(PackManagerView)
@@ -5859,49 +5867,51 @@ def test_toggle_favorite_desmarca():
         v.render_pack = Pack(id="a", name="A", is_favorite=False)
         return v
 
-    # OJO al ORDEN de los casos: es 2, 4, 1, 3 y no 1, 2, 3, 4. No es capricho,
-    # es ATRIBUCION: la tabla de mutaciones dice que el atajo
-    # `get_favorite_pack()` muere en el caso de dos favoritos, y ese caso tiene
-    # que ir antes del basico o la mutacion muere en el caso 1 y la muerte deja
-    # de decir que se detecto. Los otros tres (desmarcar, instantanea, id
-    # inexistente) siguen mueriendo en su caso.
-
-    # (2) YA favorito -> se desmarca (set_favorite(None)), leido EN VIVO
+    # (2) YA favorito -> se desmarca
     g = _Grabador({"a": True, "b": False})
     v = _vista(g)
     v.toggle_favorite("a")
-    assert g.llamadas == [None], (
-        f"la segunda pulsacion debe desmarcar (set_favorite(None)), no volver a "
-        f"marcar la misma: {g.llamadas}"
-    )
-    assert g.estado == {"a": False, "b": False}, f"el pack quedo marcado: {g.estado}"
+    assert g.llamadas == ["a"], f"se debe invocar toggle_favorite('a'): {g.llamadas}"
+    assert g.estado == {"a": False, "b": False}, f"el pack 'a' debió desmarcarse: {g.estado}"
 
-    # (4) DOS favoritos (alcanzable editando profiles.json): la estrella del
-    #     segundo lo desmarca a EL, no al primero.
+    # (4) DOS favoritos (TASK-048 / TASK-053): la estrella del segundo lo desmarca a ÉL
+    #     y preserva intacto el primero (favoritos acumulativos, no exclusivos).
     g = _Grabador({"a": True, "b": True})
     v = _vista(g)
     v.toggle_favorite("b")
-    assert g.llamadas == [None], (
-        f"con dos favoritos hay que desmarcar en vivo el pack pulsado, no el "
-        f"primero de la lista: {g.llamadas}"
+    assert g.llamadas == ["b"], f"se debe alternar 'b': {g.llamadas}"
+    assert g.estado == {"a": True, "b": False}, (
+        f"con favoritos acumulativos, desmarcar 'b' debe dejar 'a' marcado: {g.estado}"
     )
-    assert g.estado == {"a": False, "b": False}, f"el estado final no es el esperado: {g.estado}"
 
     # (1) no favorito -> se marca
     g = _Grabador({"a": False, "b": False})
     v = _vista(g)
     v.toggle_favorite("a")
     assert g.llamadas == ["a"], f"una app no favorita debe marcarse: {g.llamadas}"
-    assert g.estado == {"a": True, "b": False}, f"el estado no quedo marcado: {g.estado}"
+    assert g.estado == {"a": True, "b": False}, f"el estado debe quedar marcado: {g.estado}"
 
-    # (3) id que no existe: no lanza y no llama a set_favorite
+    # (3) id que no existe: no lanza y no llama al servicio
     g = _Grabador({"a": False})
     v = _vista(g)
     v.toggle_favorite("z")
     assert g.llamadas == [], (
         f"un id inexistente no debe tocar el servicio: {g.llamadas}"
     )
-    print("La estrella desmarca el favorito en la segunda pulsacion (FIX-006).")
+
+    # TASK-053: Comprobación AST de que no existe ninguna llamada a set_favorite con 1 argumento en run_tests.py
+    import ast
+    with open(__file__, "r", encoding="utf-8") as f:
+        tree = ast.parse(f.read())
+    single_arg_calls = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "set_favorite"):
+            if len(node.args) == 1:
+                single_arg_calls.append(node.lineno)
+    assert not single_arg_calls, f"Llamadas a set_favorite con 1 solo argumento halladas en run_tests.py líneas: {single_arg_calls}"
+
+    print("La estrella alterna favoritos acumulativamente (FIX-006 / TASK-053).")
 
 
 def test_logging_va_a_fichero_y_no_a_stderr():
