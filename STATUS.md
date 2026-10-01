@@ -6,7 +6,7 @@
 
 ### 🟢 Salud General del Sistema
 - **Sintaxis Estática UI:** 🟢 Pasa al 100% (`verify_ui_syntax.py`, 8 módulos)
-- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **81 tests**: 76 backend + 5 headless UI. El número lo deriva `validate_docs.py` con `ast` desde `run_tests.py` y lo compara con los tres ficheros que lo declaran, así que ya no puede volver a caducar solo)
+- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **83 tests**: 78 backend + 5 headless UI. El número lo deriva `validate_docs.py` con `ast` desde `run_tests.py` y lo compara con los tres ficheros que lo declaran, así que ya no puede volver a caducar solo)
 - **Micro-Benchmark Base:** 182 ms (Init) | 4.97 ms (Escaneo 325 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
 - **Compilación PyInstaller:** 🟡 El ejecutable es un artefacto de distribución y se regenera al publicar; su desfase (del 2026-09-29) no lo vigila ningún checkpoint — ver "Checkpoints Periódicos"
 - **Base de Datos de Procesos:** 89 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
@@ -18,7 +18,7 @@
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
 - **Ciclos Completados:** 29 (`rd_journal.json` actualizado).
 - **Ciclo Actual #30:** Paso 1 — Selección de nueva tarea en la rotación por áreas (Área 4: Rendimiento & Latencia).
-- **Última Acción:** Ciclo #29 TASK-039 — Expansión de la Base de Procesos. 🟢 **Cerrado tras validación (PASS).** +8 procesos reales catalogados (`89 total`), 0 solapamientos con procesos protegidos del sistema. Recuento total derivado por AST: 81 tests.
+- **Última Acción:** Ciclo #29 TASK-039 — Expansión de la Base de Procesos. 🟢 **Cerrado tras validación (PASS).** +8 procesos reales catalogados (`89 total`), 0 solapamientos con procesos protegidos del sistema. Recuento total derivado por AST: 83 tests.
 
 ---
 

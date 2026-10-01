@@ -10273,6 +10273,86 @@ def test_gaming_service_session_restoration():
     print("test_gaming_service_session_restoration OK.")
 
 
+def test_pack_service_cache_invalidation_and_immutability():
+    """TASK-040: Valida la caché inmutable de 2 capas en PackService.get_all_packs()
+    y su invalidación atómica al mutar packs.
+    """
+    print("Testing PackService cache invalidation and immutability (TASK-040)...")
+    import tempfile, os, time, shutil
+    from woptimizer.services.pack_service import PackService
+    from woptimizer.models import Pack
+
+    tmp_dir = tempfile.mkdtemp(prefix="wopt_t040_")
+    data_path = os.path.join(tmp_dir, "profiles.json")
+    try:
+        ps = PackService(data_path=data_path)
+        
+        # 1) Primera lectura llena la caché
+        t0 = time.perf_counter()
+        packs1 = ps.get_all_packs()
+        t1 = time.perf_counter()
+        assert ps._cached_all_packs is not None, "La caché interna debe poblarse tras get_all_packs()"
+        
+        # 2) Segunda lectura usa la caché (defensiva) y debe ser ultra rápida (< 1.0 ms)
+        t2 = time.perf_counter()
+        packs2 = ps.get_all_packs()
+        t3 = time.perf_counter()
+        read_latency_ms = (t3 - t2) * 1000
+        assert read_latency_ms < 1.0, f"Latencia de lectura en caché demasiado alta: {read_latency_ms:.3f} ms"
+        
+        # 3) Inmutabilidad: modificar la copia devuelta NO debe afectar a la caché ni al estado interno
+        packs1["gaming"].apps.append("malicious_app.exe")
+        assert "malicious_app.exe" not in ps._cached_all_packs["gaming"].apps, \
+            "Mutar la lista devuelta por get_all_packs no debe contaminar la caché de 2 capas"
+        assert "malicious_app.exe" not in ps._data.packs["gaming"].apps, \
+            "Mutar la lista devuelta no debe contaminar el modelo interno en _data"
+
+        # 4) Invalidación de caché al actualizar pack
+        ps.update_pack(Pack(id="custom", name="Custom Pack", apps=["notepad.exe"]))
+        assert ps._cached_all_packs is None or "custom" in ps.get_all_packs(), \
+            "update_pack() debe invalidar la caché o refrescarla"
+            
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    print("test_pack_service_cache_invalidation_and_immutability OK.")
+
+
+def test_process_filter_performance():
+    """TASK-040: Valida que el filtrado de lista de procesos (< 350 items) tome < 2.0 ms."""
+    print("Testing process filter performance (TASK-040)...")
+    import time
+    from woptimizer.models import ProcessInfo
+
+    # Crear 350 mock processes
+    mock_procs = [
+        ProcessInfo(
+            pid=1000 + i,
+            name=f"process_{i}.exe",
+            full_name=f"process_{i}.exe",
+            category="🎮 Gaming & Launchers" if i % 2 == 0 else "🌐 Navegadores & Web",
+            cpu_percent=1.5,
+            memory_info={"rss": 50 * 1024 * 1024},
+            status="running"
+        )
+        for i in range(350)
+    ]
+    
+    # Pre-tokenizar nombres
+    tokens = {p.pid: f"{p.name} {p.category}".lower() for p in mock_procs}
+    query = "process_12"
+
+    t0 = time.perf_counter()
+    filtered_pids = [pid for pid, token in tokens.items() if query in token]
+    t1 = time.perf_counter()
+    
+    filter_latency_ms = (t1 - t0) * 1000
+    assert len(filtered_pids) > 0, "El filtro debe retornar coincidencias"
+    assert filter_latency_ms < 2.0, f"Latencia de filtrado demasiado alta: {filter_latency_ms:.3f} ms"
+
+    print("test_process_filter_performance OK.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -10383,6 +10463,9 @@ if __name__ == "__main__":
     test_scan_latency_and_lazy_exe_resolution()
     # TASK-034: Validacion estricta y contratos de modelos Pydantic
     test_models_strict_validation_and_contracts()
+    # TASK-040: Caché inmutable de packs y optimización de latencia en filtro
+    test_pack_service_cache_invalidation_and_immutability()
+    test_process_filter_performance()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.

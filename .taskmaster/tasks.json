@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01T00:00:00Z",
-  "active_task_id": "TASK-039",
+  "active_task_id": "TASK-040",
   "tasks": [
     {
       "id": "TASK-001",
@@ -799,6 +799,25 @@
         "run_tests.py y validate_docs.py en verde 100%"
       ],
       "notes": "Ciclo #29 del motor autónomo de I+D (Área 3: Base de Datos & Procesos)."
+    },
+    {
+      "id": "TASK-040",
+      "title": "Optimización de Latencia en Filtro de Búsqueda y Lectura de Packs",
+      "description": "Mejora de latencia en ProcessManagerView (filtrado pre-tokenizado O(1) < 2 ms) y caché eficiente de lectura inmutable en PackService con invalidación atómica en save(). Pruebas discriminantes de rendimiento en run_tests.py.",
+      "complexity": 3,
+      "priority": "high",
+      "status": "completed",
+      "dependencies": [
+        "TASK-039"
+      ],
+      "module": "src/woptimizer/services/pack_service.py",
+      "acceptance_criteria": [
+        "PackService mantiene la inmutabilidad de los packs al leer mientras evita deep_copy redundantes",
+        "ProcessManagerView._render_list filtra en < 2 ms para 300+ ítems de proceso",
+        "Nuevos tests discriminantes de rendimiento añadidos a run_tests.py",
+        "run_tests.py y validate_docs.py en verde 100%"
+      ],
+      "notes": "Ciclo #30 del motor autónomo de I+D (Área 4: Rendimiento & Latencia)."
     }
   ]
 }

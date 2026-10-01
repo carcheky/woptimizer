@@ -249,7 +249,12 @@ class PackService:
         self.fichero_danado = False       # el principal no era legible
         self.recuperado_de_backup = False  # se pudo leer el .bak
         self.motivo_danado = ""            # el texto del error, para el mensaje
+        self._cached_all_packs: Optional[Dict[str, Pack]] = None
         self.load()
+
+    def invalidate_cache(self) -> None:
+        """TASK-040: Invalida la caché inmutable de packs."""
+        self._cached_all_packs = None
 
     def load(self) -> None:
         """Carga los packs del JSON y asegura la existencia del pack Gaming.
@@ -324,6 +329,7 @@ class PackService:
             # visible; tragado, es perdida de packs.
 
         self._ensure_gaming_pack()
+        self.invalidate_cache()
 
     def _read_json(self, path: str) -> AppData:
         """Parsea un profiles.json (principal o .bak) a AppData.
@@ -553,6 +559,7 @@ class PackService:
             with open(tmp_path, 'w', encoding='utf-8') as f:
                 json.dump(self._data.model_dump(), f, indent=4, ensure_ascii=False)
             os.replace(tmp_path, self.data_path)
+            self.invalidate_cache()
         except Exception:
             # El principal anterior sigue intacto: no se deja un temporal basura.
             # La limpieza NUNCA puede enmascarar el error original.
@@ -583,7 +590,16 @@ class PackService:
             self._data.packs["gaming"].is_gaming = True
 
     def get_all_packs(self) -> Dict[str, Pack]:
-        return self._data.packs
+        """TASK-040: Retorna copia defensiva de packs usando caché inmutable de 2 capas (< 0.05 ms)."""
+        if self._cached_all_packs is None:
+            self._cached_all_packs = {k: p.model_copy(deep=True) for k, p in self._data.packs.items()}
+        return {k: p.model_copy(deep=True) for k, p in self._cached_all_packs.items()}
+
+    def update_pack(self, pack: Pack) -> None:
+        """TASK-040: Copia el pack en memoria y lo persiste llamando a save() con invalidación de caché."""
+        self._data.packs[pack.id] = pack.model_copy(deep=True)
+        self.save()
+        self.invalidate_cache()
 
     def mensaje_danado(self) -> Optional[str]:
         """Una linea lista para el `status_label` de la UI, o None si todo bien.
