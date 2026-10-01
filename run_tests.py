@@ -10603,12 +10603,48 @@ def test_tray_session_restoration_integration():
 
             assert restore_cb is not None, "Se debe asociar un callback a '🔄 Reabrir aplicaciones cerradas'"
 
-            with patch.object(app.notification_service, "notify_apps_launched") as mock_notify:
+            with patch("threading.Thread") as mock_thread_cls, \
+                 patch.object(app.notification_service, "notify_apps_launched") as mock_notify_launched:
+                mock_thread_inst = MagicMock()
+                mock_thread_cls.return_value = mock_thread_inst
+
+                def _inline_start():
+                    target = mock_thread_cls.call_args.kwargs.get("target") or mock_thread_cls.call_args[1].get("target")
+                    target()
+
+                mock_thread_inst.start.side_effect = _inline_start
+
                 restore_cb(mock_icon_instance, None)
-                time.sleep(0.2)
+
+                assert mock_thread_cls.called, "restore_cb DEBE instanciar un threading.Thread"
+                daemon_flag = mock_thread_cls.call_args.kwargs.get("daemon")
+                assert daemon_flag is True, "El hilo de restauración debe crearse con daemon=True"
+                assert mock_thread_inst.start.called, "El hilo de restauración debe ser iniciado con start()"
 
                 mock_gaming_svc.restore_gaming_session.assert_called_once()
-                mock_notify.assert_called_once_with("Restauración Gaming", 2, 0)
+                mock_notify_launched.assert_called_once_with("Restauración Gaming", 2, 0)
+
+            # Escenario 2: Sin apps pendientes (0, 0) (Discriminación M5)
+            mock_gaming_svc.restore_gaming_session.reset_mock()
+            mock_gaming_svc.restore_gaming_session.return_value = (0, 0)
+
+            with patch("threading.Thread") as mock_thread_cls, \
+                 patch.object(app.notification_service, "notify") as mock_notify_simple:
+                mock_thread_inst = MagicMock()
+                mock_thread_cls.return_value = mock_thread_inst
+
+                def _inline_start_2():
+                    target = mock_thread_cls.call_args.kwargs.get("target") or mock_thread_cls.call_args[1].get("target")
+                    target()
+
+                mock_thread_inst.start.side_effect = _inline_start_2
+
+                restore_cb(mock_icon_instance, None)
+
+                mock_gaming_svc.restore_gaming_session.assert_called_once()
+                mock_notify_simple.assert_called_once_with(
+                    "woptimizer", "No hay aplicaciones pendientes de restauración."
+                )
 
     print("test_tray_session_restoration_integration OK.")
 
