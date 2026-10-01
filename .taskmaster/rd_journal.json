@@ -613,5 +613,21 @@
       "after": "85 backend + 8 headless UI (93 totales, validados con ast por validate_docs.py)"
     },
     "impact": "Grid de Favoritos Adaptativo al Ancho de Ventana (TASK-049): Rejilla totalmente reactiva en DashboardView calculando dinámicamente el número de columnas (cols = min(n, max_cols)) según el ancho disponible y la constante centralizada ANCHO_MIN_CARD = 280 en ui/theme.py. Re-grid dinámico en eventos <Configure> con filtro estricto de emisor (event.widget == self.buttons_frame). Liberación explícita de peso (weight=0, uniform='') en columnas sobrantes. Expansión y redimensionamiento responsivo del placeholder de estado vacío ocupando todo el ancho de columnas. 100% mutaciones eliminadas (4/4 M1-M4 KILLED) por mutation-auditor. Suite elevada a 93 tests."
+  },
+  {
+    "cycle": 40,
+    "date": "2026-10-01T23:17:00",
+    "area": "Base de Datos & Procesos",
+    "slug": "2026-10-01-multi-favorites-and-db-download",
+    "task": "TASK-050",
+    "status": "COMPLETED",
+    "commits": [
+      "2937a83"
+    ],
+    "tests": {
+      "before": "85 backend + 8 headless UI (93 totales)",
+      "after": "86 backend + 8 headless UI (94 totales, validados con ast por validate_docs.py)"
+    },
+    "impact": "Descarga de DB: Constante de URL, GitHub y Fallo Observable (TASK-050): Centralización de la URL de descarga remota en la constante de módulo DB_REMOTE_URL apuntando al repositorio oficial en GitHub. load_db_async enriquecido con parámetro on_error reportando honestamente fallos de conectividad o HTTP en lugar de silenciarlos. Fallback local robusto ejecutando _load_local_db() para mantener el sistema 100% operativo con la base empaquetada y el blindaje anti-brick intacto. 100% mutaciones eliminadas (4/4 M1-M4 KILLED) por mutation-auditor. Suite elevada a 94 tests."
   }
 ]

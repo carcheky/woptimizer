@@ -1,3 +1,29 @@
+## [CYCLE-040] 2026-10-01 23:17 — multi-favorites-and-db-download
+**Área**: Base de Datos & Procesos
+**Change**: openspec/changes/2026-10-01-multi-favorites-and-db-download/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Encargo 2 Propietario / Área 3)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (4/4 mutaciones eliminadas: M1, M2, M3, M4)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Constante de módulo `DB_REMOTE_URL` | Hardcodear URL literal de GitHub dentro del cuerpo de `load_db_async` | killed | `AssertionError: El literal de URL de GitHub no debe estar hardcodeado en load_db_async; debe usar DB_REMOTE_URL` en `run_tests.py:11172` |
+| Notificación observable a `on_error` | Omitir invocación a `on_error(err_msg)` ante excepción en `load_db_async` | killed | `AssertionError: load_db_async debió invocar on_error ante fallo de red` en `run_tests.py:11200` |
+| Fallback a DB local empaquetada | Omitir `self._load_local_db()` ante fallo de red | killed | `AssertionError: La DB local debe quedar cargada tras fallo de red (fallback local)` en `run_tests.py:11211` |
+| Plataforma canónica GitHub | Mutar `DB_REMOTE_URL` apuntando a GitLab u otra plataforma | killed | `AssertionError: DB_REMOTE_URL debe apuntar al endpoint oficial de GitHub, obtenido: ...` en `run_tests.py:11162` |
+
+### Cambios Clave
+- `src/woptimizer/services/process_service.py`: Extraída constante `DB_REMOTE_URL` en GitHub. Añadido parámetro `on_error` a `load_db_async` para notificación honesta de excepciones. Garantizado fallback local síncrono ante fallo de red. Preservado rango exacto `33-48` de `SYSTEM_PROTECTED_PROCESSES`.
+- `run_tests.py`: Añadido `test_process_service_db_download_contracts` (test #94) con inspección AST, mocks deterministas de red sin peticiones reales y validación de categorías y blindaje offline.
+- `docs/ai/architecture.md`: Actualizada regla 3 y añadida sección 18 con detalles arquitectónicos de sincronización remota y fallback local.
+- `docs/ai/testing-guide.md`, `STATUS.md`, `AGENTS.md`, `README.md`: Suite actualizada y sincronizada a 94 tests en verde.
+
+---
+
 ## [CYCLE-039] 2026-10-01 23:12 — multi-favorites-and-db-download
 **Área**: UI & Experiencia de Usuario
 **Change**: openspec/changes/2026-10-01-multi-favorites-and-db-download/

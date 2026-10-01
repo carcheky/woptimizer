@@ -1,3 +1,20 @@
+## CYCLE-040 - 2026-10-01
+
+**Base de Datos & Procesos** — `TASK-050` (Descarga de DB: Constante de URL, GitHub y Fallo Observable)
+
+> 🟢 **VERDICT FINAL: PASS** — Centralización de URL remota, reporte observable de errores y fallback local auditados con éxito por `mutation-auditor` (4/4 mutaciones eliminadas: M1, M2, M3, M4, 0 supervivientes). **94 tests** (86 backend + 8 headless UI) pasando al 100%.
+
+### Añadido
+- **Constante Centralizada de Plataforma `DB_REMOTE_URL`.** Definida en `src/woptimizer/services/process_service.py` (`https://raw.githubusercontent.com/carcheky/woptimizer/main/assets/process_db.json`), desacoplando la URL del cuerpo del método y facilitando migraciones transparentes.
+- **Reporte Observable de Errores con `on_error`.** `load_db_async(callback=None, on_error=None)` ahora reporta honestamente excepciones de red y HTTP al callback `on_error(err_msg)` en lugar de tragarse el error con un log mudo.
+- **Fallback Local y Blindaje Anti-Brick Offline.** Si la descarga falla por ausencia de red o repositorio remoto no publicado, `ProcessService` ejecuta de inmediato `self._load_local_db()`, manteniendo el sistema 100% operativo con la base empaquetada y el blindaje de 34 procesos protegidos del sistema.
+- **Test Discriminante en `run_tests.py`.** Introducido `test_process_service_db_download_contracts` (test #94) con comprobación AST contra literales hardcodeados, simulación de fallo de red con invocación observable a `on_error`, verificación de fallback local y simulación de éxito.
+
+### Corregido
+- **Corrección Documental en `docs/ai/architecture.md`.** Actualizada la regla 3 y añadida la sección 18, eliminando la afirmación errónea de descarga activa desde GitLab y documentando el nuevo contrato de sincronización en GitHub.
+
+---
+
 ## CYCLE-039 - 2026-10-01
 
 **UI & Experiencia de Usuario** — `TASK-049` (Grid de Favoritos Adaptativo al Ancho de Ventana)
