@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01",
-  "active_task_id": "TASK-055",
+  "active_task_id": "TASK-056",
   "tasks": [
     {
       "id": "TASK-001",
@@ -1111,7 +1111,7 @@
       "description": "Deuda declarada en STATUS",
       "complexity": 2,
       "priority": "medium",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "raiz del repo",
       "acceptance_criteria": [

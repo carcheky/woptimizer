@@ -694,6 +694,23 @@
       "after": "87 backend + 10 headless UI (97 totales, validados con ast por validate_docs.py)"
     },
     "impact": "Alinear docs/api.md y docs/index.md con la v3 real (TASK-054): Reescritura integral de docs/api.md contra los servicios reales de v3 (ProcessService, PackService, GamingService, NotificationService y modelos Pydantic v2), eliminando cualquier residuo obsoleto de v2 (is_admin, taskkill, powershell, saved_processes.json, ProcessManagerApp). Modernización de docs/index.md erradicando afirmaciones falsas de auto-elevación UAC nativa y scripts legacy (.vbs, .pyw). Creación del test de contrato documental #97 (test_docs_api_and_index_v3_contracts) que valida en runtime con hasattr/callable todos los métodos documentados y verifica la existencia de todos los archivos del nav de mkdocs.yml. 100% mutaciones eliminadas (4/4 M1-M4 KILLED) por mutation-auditor. Suite elevada a 97 tests."
+  },
+  {
+    "cycle": 45,
+    "date": "2026-10-01T23:43:00",
+    "area": "Testing & Calidad",
+    "slug": "2026-10-01-archive-legacy-root-tests",
+    "task": "TASK-055",
+    "status": "COMPLETED",
+    "commits": [
+      "85930de"
+    ],
+    "tests": {
+      "before": "87 backend + 10 headless UI (97 totales)",
+      "after": "88 backend + 10 headless UI (98 totales, validados con ast por validate_docs.py)"
+    },
+    "impact": "Los 10 test_*.py muertos y el script que LANZA notepad (TASK-055): Traslado sin borrado de los 11 archivos de prueba legacy de la raíz a docs/archive/legacy-root-tests/, documentando en su README.md la distinción entre los 10 scripts v2 que morían por importar el módulo extinto process_manager y el caso crítico de test_powershell_direct.py, que ejecutaba llamadas de PowerShell y abría Notepad en la sesión del usuario. Creación del test #98 (test_no_legacy_test_files_in_root) con guard anti-regresión que asegura que ningún test_*.py resida en la raíz e inspecciona la integridad de los 11 ficheros archivados. 100% mutaciones eliminadas (4/4 M1-M4 KILLED) por mutation-auditor. Suite elevada a 98 tests."
   }
 ]
+
 

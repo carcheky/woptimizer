@@ -1,3 +1,30 @@
+## [CYCLE-045] 2026-10-01 23:43 — archive-legacy-root-tests
+**Área**: Testing & Calidad
+**Change**: openspec/changes/2026-10-01-archive-legacy-root-tests/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Deuda declarada en STATUS.md / Testing & Calidad)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (4/4 mutaciones eliminadas: M1, M2, M3, M4)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Guard anti-regresión en raíz | Reintroducir un archivo `test_dummy.py` en la raíz | killed | `AssertionError: Se encontraron archivos test_*.py legacy en la raíz del repositorio` |
+| Presencia de documentación de archivo | Eliminar `docs/archive/legacy-root-tests/README.md` | killed | `AssertionError: README.md en ... debe existir y contener documentación descriptiva` |
+| Preservación de ficheros requeridos | Omitir `test_powershell_direct.py` del archivo | killed | `AssertionError: Fichero legacy esperado test_powershell_direct.py no encontrado en ...` |
+| Verificación de contenido del script crítico | Alterar `test_powershell_direct.py` sustituyendo `notepad.exe` | killed | `AssertionError` (falla la aserción de comprobación de contenido) |
+
+### Cambios Clave
+- `docs/archive/legacy-root-tests/`: Traslado de los 11 archivos `test_*.py` que residían en la raíz del proyecto.
+- `docs/archive/legacy-root-tests/README.md`: Documentación exhaustiva que clasifica los 10 scripts v2 dependientes de `process_manager` y el script autónomo `test_powershell_direct.py`.
+- `run_tests.py`: Incorporado test #98 `test_no_legacy_test_files_in_root` que bloquea la aparición de ficheros `test_*.py` en la raíz e inspecciona el archivo histórico.
+- `openspec/changes/2026-10-01-archive-legacy-root-tests/`: Documentación formal de cambio con `proposal.md` y `tasks.md`.
+- `STATUS.md`, `AGENTS.md`, `README.md`, `docs/ai/testing-guide.md`: Sincronización exacta a 98 tests en verde.
+
+---
+
 ## [CYCLE-044] 2026-10-01 23:38 — align-v3-docs-contracts
 **Área**: Documentación & Arquitectura
 **Change**: openspec/changes/2026-10-01-align-v3-docs-contracts/

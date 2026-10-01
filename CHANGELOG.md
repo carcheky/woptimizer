@@ -1,3 +1,17 @@
+## CYCLE-045 - 2026-10-01
+
+**Testing & Calidad** — `TASK-055` (Los 10 test_*.py muertos y el script que LANZA notepad)
+
+> 🟢 **VERDICT FINAL: PASS** — Archivo histórico de scripts de prueba de la raíz, documentación exhaustiva y guard anti-regresión auditados con éxito por `mutation-auditor` (4/4 mutaciones eliminadas: M1, M2, M3, M4, 0 supervivientes). **98 tests** (88 backend + 10 headless UI) pasando al 100%.
+
+### Añadido
+- **Archivo Histórico en `docs/archive/legacy-root-tests/`.** Trasladados sin eliminación los 11 archivos de prueba procedentes de la arquitectura legacy v2 (`test_categorization.py`, `test_debug_list.py`, `test_gaming_profile.py`, `test_gaming_session.py`, `test_harness_v2.py`, `test_harness.py`, `test_kill_expansion.py`, `test_kill_real.py`, `test_powershell_direct.py`, `test_profiles.py`, `test_relaunch_grouping.py`).
+- **README Explicativo y Documentación de Riesgo.** Creado `docs/archive/legacy-root-tests/README.md` detallando la clasificación de los 10 scripts v2 que morían por `ModuleNotFoundError: No module named 'process_manager'` frente al riesgo de ejecución autónoma de `test_powershell_direct.py` (que lanzaba `notepad.exe` e invocaba `taskkill` y PowerShell).
+- **Test Guard Anti-Regresión `test_no_legacy_test_files_in_root`.** Nuevo test #98 en `run_tests.py` que asegura que ningún fichero `test_*.py` permanezca o vuelva a crearse en la raíz del repositorio, y verifica la presencia, tamaño e integridad de los 11 ficheros y el README en el directorio de archivo.
+- **Sincronización Cuádruple de Métricas.** Actualizado el recuento canónico a 98 tests en `STATUS.md`, `AGENTS.md`, `README.md` y `docs/ai/testing-guide.md`.
+
+---
+
 ## CYCLE-044 - 2026-10-01
 
 **Documentación & Arquitectura** — `TASK-054` (Alinear docs/api.md y docs/index.md con la v3 real)
