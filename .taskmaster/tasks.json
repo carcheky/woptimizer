@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01T00:00:00Z",
-  "active_task_id": "TASK-044",
+  "active_task_id": "TASK-045",
   "tasks": [
     {
       "id": "TASK-001",
@@ -893,6 +893,24 @@
         "run_tests.py y validate_docs.py en verde 100%"
       ],
       "notes": "Ciclo #34 del motor autónomo de I+D (Área 3: Base de Datos & Procesos)."
+    },
+    {
+      "id": "TASK-045",
+      "title": "Optimización de Latencia en Categorización de Procesos y Memoización de Metadatos",
+      "description": "Acelerar la resolución de categorías y semáforos en ProcessService mediante memoización de claves normalizadas y reducir refrescos UI redundantes.",
+      "complexity": 3,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [
+        "TASK-044"
+      ],
+      "module": "src/woptimizer/services/process_service.py",
+      "acceptance_criteria": [
+        "ProcessService._categorize atiende peticiones en < 0.001 ms mediante lookup memoizado",
+        "Nuevos tests discriminantes de rendimiento en run_tests.py",
+        "run_tests.py y validate_docs.py en verde 100%"
+      ],
+      "notes": "Ciclo #35 del motor autónomo de I+D (Área 4: Rendimiento & Latencia)."
     }
   ]
 }
