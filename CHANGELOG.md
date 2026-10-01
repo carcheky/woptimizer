@@ -1,3 +1,18 @@
+## CYCLE-043 - 2026-10-01
+
+**Testing & Calidad** — `TASK-053` (Actualizar Tests de Exclusividad, Recuento y Documentación)
+
+> 🟢 **VERDICT FINAL: PASS** — Actualización de semántica acumulativa en tests de favoritos, erradicación de llamadas obsoletas a `set_favorite` y comprobación AST auditadas con éxito por `mutation-auditor` (4/4 mutaciones eliminadas: M1, M2, M3, M4, 0 supervivientes). **96 tests** (86 backend + 10 headless UI) pasando al 100%.
+
+### Añadido
+- **Guard AST de Inexistencia de `set_favorite` Unario.** Integrada verificación estática en `run_tests.py` que recorre el árbol sintáctico comprobando que ninguna invocación a `set_favorite` recibe un único argumento.
+- **Sincronización de Comportamiento Acumulativo en `test_toggle_favorite_desmarca`.** Adaptado el mock `_Grabador` para soportar `toggle_favorite` y semántica acumulativa. En el caso multiselección (caso 4), desmarcar un favorito preserva intactos a los demás (`{"a": True, "b": False}`).
+
+### Corregido
+- **Alineación del Runner de Tests.** Verificados y actualizados los registros de ejecución en `run_tests.py` y sincronizados los 96 tests en la tabla canónica de `docs/ai/testing-guide.md` y archivos de métricas.
+
+---
+
 ## CYCLE-042 - 2026-10-01
 
 **UI & Experiencia de Usuario** — `TASK-052` (Placeholder del Desplegable sin Doble Flecha en ProcessManagerView)

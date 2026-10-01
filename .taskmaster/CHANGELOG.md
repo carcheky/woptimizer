@@ -1,3 +1,27 @@
+## [CYCLE-043] 2026-10-01 23:33 — multi-favorites-and-db-download
+**Área**: Testing & Calidad
+**Change**: openspec/changes/2026-10-01-multi-favorites-and-db-download/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Encargos 1-4 Propietario / Área 5)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (4/4 mutaciones eliminadas: M1, M2, M3, M4)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Comportamiento acumulativo en Grabador | Restablecer lógica exclusiva en `_Grabador.toggle_favorite` | killed | `AssertionError: el pack 'a' debió desmarcarse: {'a': True, 'b': False}` en `run_tests.py:5865` |
+| Inversión correcta de estado | Fijar `self.estado[pack_id] = True` sin invertir en `toggle_favorite` | killed | `AssertionError: el pack 'a' debió desmarcarse: {'a': True, 'b': False}` en `run_tests.py:5865` |
+| Preservación de otros favoritos en caso 4 | Reclamar que todos se desmarcan (`{"a": False, "b": False}`) | killed | `AssertionError: con favoritos acumulativos, desmarcar 'b' debe dejar 'a' marcado: {'a': True, 'b': False}` en `run_tests.py:5875` |
+| Guard AST contra set_favorite unario | Inyectar llamada `set_favorite("mutant")` con 1 solo argumento | killed | `AssertionError: Llamadas a set_favorite con 1 solo argumento halladas en run_tests.py líneas: [...]` en `run_tests.py:5910` |
+
+### Cambios Clave
+- `run_tests.py`: Refactorizado `test_toggle_favorite_desmarca` con semántica acumulativa y guard AST contra llamadas unarias a `set_favorite`.
+- `docs/ai/testing-guide.md`, `STATUS.md`, `AGENTS.md`, `README.md`: Sincronización exacta a 96 tests en verde.
+
+---
+
 ## [CYCLE-042] 2026-10-01 23:30 — multi-favorites-and-db-download
 **Área**: UI & Experiencia de Usuario
 **Change**: openspec/changes/2026-10-01-multi-favorites-and-db-download/

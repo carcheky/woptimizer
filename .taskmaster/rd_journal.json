@@ -662,5 +662,21 @@
       "after": "86 backend + 10 headless UI (96 totales, validados con ast por validate_docs.py)"
     },
     "impact": "Placeholder del Desplegable sin Doble Flecha (TASK-052): Centralización del texto del selector de packs en la constante PLACEHOLDER_PACK = 'Seleccionar Pack' en process_manager_view.py, erradicando el glifo redundante '▼' que duplicaba la flecha nativa de CTkOptionMenu. Homogeneización en inicialización de dropdown y lógica de reseteo en _update_pack_dropdown usando estrictamente la constante. Test discriminante #96 con análisis AST garantizando literal único en el módulo y validación en runtime headless. 100% mutaciones eliminadas (4/4 M1-M4 KILLED) por mutation-auditor. Suite elevada a 96 tests."
+  },
+  {
+    "cycle": 43,
+    "date": "2026-10-01T23:33:00",
+    "area": "Testing & Calidad",
+    "slug": "2026-10-01-multi-favorites-and-db-download",
+    "task": "TASK-053",
+    "status": "COMPLETED",
+    "commits": [
+      "9187a8c"
+    ],
+    "tests": {
+      "before": "86 backend + 10 headless UI (96 totales)",
+      "after": "86 backend + 10 headless UI (96 totales, validados con ast por validate_docs.py)"
+    },
+    "impact": "Actualizar Tests de Exclusividad, Recuento y Documentación (TASK-053): Sincronización completa de la suite de pruebas con la semántica de favoritos acumulativos de TASK-048. Actualización de test_toggle_favorite_desmarca en run_tests.py garantizando que la deselección de un favorito preserva intactos a los demás en el caso multiselección. Inclusión de guard AST verificando la inexistencia de llamadas obsoletas a set_favorite con 1 argumento en todo el fichero de tests. Verificación y sincronización de los 96 tests en AGENTS.md, README.md, STATUS.md y testing-guide.md. 100% mutaciones eliminadas (4/4 M1-M4 KILLED) por mutation-auditor."
   }
 ]

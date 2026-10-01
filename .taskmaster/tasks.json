@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01",
-  "active_task_id": "TASK-053",
+  "active_task_id": "TASK-054",
   "tasks": [
     {
       "id": "TASK-001",
@@ -1065,7 +1065,7 @@
       "description": "Cierre del encargo",
       "complexity": 2,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-048",
         "TASK-049",
