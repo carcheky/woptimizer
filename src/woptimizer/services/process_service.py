@@ -817,17 +817,17 @@ class ProcessService:
         """
         started, failed = 0, 0
         for app in apps:
-            ruta = self._resolver_app(app)
-            if ruta is None:
-                failed += 1
-                logger.warning(f"App '{app}' no se arranco: la ruta no supera la "
-                               f"validacion de arranque.")
-                continue
             try:
+                ruta = self._resolver_app(app)
+                if ruta is None:
+                    failed += 1
+                    logger.warning(f"App '{app}' no se arranco: la ruta no supera la "
+                                   f"validacion de arranque.")
+                    continue
                 self._lanzar(ruta)
                 started += 1
                 logger.info(f"Launched app: {ruta}")
-            except OSError as e:
+            except (OSError, Exception) as e:
                 failed += 1
-                logger.warning(f"Failed to launch app '{ruta}': {e}")
+                logger.warning(f"Failed to launch app '{app}': {e}")
         return started, failed

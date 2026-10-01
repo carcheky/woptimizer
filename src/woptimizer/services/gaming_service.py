@@ -1,3 +1,4 @@
+import threading
 from typing import List, Tuple
 from woptimizer.config import get_safety_badge
 from woptimizer.models import ProcessInfo, Pack
@@ -8,26 +9,37 @@ class GamingService:
     def __init__(self, process_service: ProcessService, pack_service: PackService):
         self.process_service = process_service
         self.pack_service = pack_service
+        self._lock = threading.RLock()
         self._last_closed_apps: List[str] = []
 
     def get_last_closed_apps(self) -> List[str]:
         """Retorna una copia de la lista de ejecutables pendientes de restauración."""
-        return list(self._last_closed_apps)
+        with self._lock:
+            return list(self._last_closed_apps)
 
     def clear_last_closed_apps(self) -> None:
         """Limpia la lista de ejecutables almacenados en la sesión actual."""
-        self._last_closed_apps = []
+        with self._lock:
+            self._last_closed_apps = []
 
     def restore_gaming_session(self) -> Tuple[int, int]:
         """Reabre las aplicaciones cerradas en la última sesión de Modo Gaming.
 
         Invoca ProcessService.start_pack_apps, vacía el historial y retorna (started, failed).
         """
-        apps_to_restore = list(self._last_closed_apps)
-        self._last_closed_apps = []
+        with self._lock:
+            apps_to_restore = list(self._last_closed_apps)
+            self._last_closed_apps = []
         if not apps_to_restore:
             return 0, 0
-        return self.process_service.start_pack_apps(apps_to_restore)
+        try:
+            return self.process_service.start_pack_apps(apps_to_restore)
+        except Exception:
+            with self._lock:
+                for app in reversed(apps_to_restore):
+                    if app not in self._last_closed_apps:
+                        self._last_closed_apps.insert(0, app)
+            raise
 
     def should_kill_for_gaming(self, process_name: str, gaming_pack: Pack) -> bool:
         """
@@ -145,7 +157,8 @@ class GamingService:
                 exe_clean = exe.strip()
                 if exe_clean and exe_clean not in closed_paths:
                     closed_paths.append(exe_clean)
-        self._last_closed_apps = closed_paths
+        with self._lock:
+            self._last_closed_apps = closed_paths
 
         # G8 - la unica llamada a la via de kill (G-4 y G-5 heredados).
         killed, failed, skipped, freed_mb = self.process_service.kill_processes(to_kill)

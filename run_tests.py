@@ -10844,6 +10844,104 @@ def test_confirmable_mixin_lifecycle_and_widget_contracts():
     print("test_confirmable_mixin_lifecycle_and_widget_contracts OK.")
 
 
+def test_gaming_service_rlock_and_concurrency():
+    """TASK-047 (Ciclo #37): Resiliencia de concurrencia y recuperación en GamingService.
+
+    Valida:
+      1. Presencia de RLock reentrante en GamingService._lock.
+      2. Thread-safety: 5 hilos concurrentes llamando a restore_gaming_session()
+         no duplican ejecuciones de start_pack_apps (exactamente 1 ejecución de lote).
+      3. Preservación defensiva de _last_closed_apps ante fallos/excepciones imprevistas.
+      4. Aislamiento de excepciones no-OSError en ProcessService.start_pack_apps.
+    """
+    print("Testing GamingService RLock and concurrency resilience (TASK-047)...")
+    import threading
+    import time
+    from unittest.mock import MagicMock
+    from woptimizer.services.gaming_service import GamingService
+    from woptimizer.services.process_service import ProcessService
+    from woptimizer.services.pack_service import PackService
+
+    # 1. RLock reentrante
+    mock_ps = MagicMock(spec=ProcessService)
+    mock_packs = MagicMock(spec=PackService)
+    gs = GamingService(mock_ps, mock_packs)
+
+    assert hasattr(gs, "_lock"), "GamingService debe poseer un cerrojo _lock"
+    assert isinstance(gs._lock, type(threading.RLock())), "GamingService._lock debe ser de tipo threading.RLock"
+    # Reentrancia
+    with gs._lock:
+        with gs._lock:
+            pass
+
+    # 2. Concurrencia de 5 hilos en restore_gaming_session
+    gs._last_closed_apps = ["C:\\app1.exe", "C:\\app2.exe"]
+    call_count = 0
+    call_lock = threading.Lock()
+
+    def delayed_start_pack_apps(apps):
+        nonlocal call_count
+        with call_lock:
+            call_count += 1
+        time.sleep(0.03)
+        return (len(apps), 0)
+
+    mock_ps.start_pack_apps.side_effect = delayed_start_pack_apps
+
+    results = []
+    threads = []
+    def worker():
+        res = gs.restore_gaming_session()
+        results.append(res)
+
+    for _ in range(5):
+        t = threading.Thread(target=worker)
+        threads.append(t)
+        t.start()
+
+    for t in threads:
+        t.join()
+
+    assert call_count == 1, f"start_pack_apps debió ser invocado exactamente 1 vez, invocado {call_count}"
+    assert (2, 0) in results, "Exactamente 1 hilo debió recibir la tupla de éxito (2, 0)"
+    assert results.count((0, 0)) == 4, f"4 hilos debieron recibir (0, 0), recibidos: {results}"
+    assert gs.get_last_closed_apps() == [], "El historial _last_closed_apps debe quedar vacío tras restauración"
+
+    # 3. Preservación defensiva ante excepciones en start_pack_apps
+    gs._last_closed_apps = ["C:\\crash_app.exe", "C:\\save_me.exe"]
+    mock_ps.start_pack_apps.side_effect = RuntimeError("Simulated start failure")
+
+    exception_raised = False
+    try:
+        gs.restore_gaming_session()
+    except RuntimeError:
+        exception_raised = True
+
+    assert exception_raised is True, "restore_gaming_session debe propagar la excepción hacia el llamante"
+    assert gs.get_last_closed_apps() == ["C:\\crash_app.exe", "C:\\save_me.exe"], (
+        "Las apps cerradas deben preservarse íntegramente ante fallos imprevistos en start_pack_apps"
+    )
+
+    # 4. Aislamiento en ProcessService.start_pack_apps ante excepciones no-OSError
+    real_ps = ProcessService()
+    launched = []
+
+    def mock_resolver(app):
+        if app == "boom.exe":
+            raise RuntimeError("Corrupted executable path resolution")
+        return f"C:\\dummy\\{app}"
+
+    real_ps._resolver_app = mock_resolver
+    real_ps._lanzar = lambda ruta: launched.append(ruta)
+
+    started, failed = real_ps.start_pack_apps(["boom.exe", "ok.exe"])
+    assert failed == 1, "La app con fallo no-OSError debe sumarse a failed"
+    assert started == 1, "La app válida subsiguiente debe arrancarse exitosamente"
+    assert launched == ["C:\\dummy\\ok.exe"]
+
+    print("test_gaming_service_rlock_and_concurrency OK.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -10965,6 +11063,8 @@ if __name__ == "__main__":
     test_process_service_kill_defensive_zombie_and_oserror()
     # TASK-045: Memoización de categorización e invalidación atómica
     test_process_categorization_latency_and_memoization()
+    # TASK-047: Resiliencia de concurrencia y recuperación en GamingService
+    test_gaming_service_rlock_and_concurrency()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.

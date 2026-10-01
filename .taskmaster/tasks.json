@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01T00:00:00Z",
-  "active_task_id": "TASK-046",
+  "active_task_id": "TASK-047",
   "tasks": [
     {
       "id": "TASK-001",
@@ -930,6 +930,26 @@
         "Suite de run_tests.py elevada a 90 tests y 100% en verde"
       ],
       "notes": "Ciclo #36 del motor autónomo de I+D (Área 5: Testing & Calidad)."
+    },
+    {
+      "id": "TASK-047",
+      "title": "Resiliencia de Concurrencia y Recuperación en GamingService",
+      "description": "Introducir RLock reentrante en GamingService para proteger el historial _last_closed_apps contra condiciones de carrera concurrentes (invocaciones simultáneas desde tray y dashboard), garantizar restauración atómica con preservación de estado ante excepciones no capturadas, y reforzar la captura defensiva en ProcessService.start_pack_apps.",
+      "complexity": 3,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [
+        "TASK-046"
+      ],
+      "module": "src/woptimizer/services/gaming_service.py",
+      "acceptance_criteria": [
+        "RLock reentrante en GamingService protegiendo _last_closed_apps en lecturas, mutaciones y restauración",
+        "Restauración atómica sin duplicación de ejecuciones concurrentes",
+        "Preservación de apps no lanzadas si ocurre una excepción inesperada durante la restauración",
+        "Nuevos tests discriminantes de concurrencia y resiliencia en run_tests.py",
+        "run_tests.py y validate_docs.py en verde 100%"
+      ],
+      "notes": "Ciclo #37 del motor autónomo de I+D (Área 1: Resiliencia & Robustez)."
     }
   ]
 }

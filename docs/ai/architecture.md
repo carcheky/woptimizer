@@ -290,3 +290,10 @@
        de usuario que declare `factory` **y** `kill_low_chat` en la raíz viva `packs` **no**
        resucita el esquema retirado, porque `load()` no mira esa raíz para detectarlo. El riesgo
        residual es más estrecho de lo que parecía y **el detector no se cambia** por ello.
+
+16. **Invariante: Concurrencia y Resiliencia en GamingService (TASK-047 / Ciclo #37):**
+    - **Cerrojo reentrante (RLock):** GamingService inicializa self._lock = threading.RLock() para coordinar el acceso multihilo a _last_closed_apps.
+    - **Prevención de condiciones de carrera:** La invocación de 
+estore_gaming_session() desde hilos asíncronos concurrentes (System Tray y Dashboard) extrae atómicamente la lista de aplicaciones bajo el cerrojo antes de llamar a ProcessService.start_pack_apps. La ejecución de arranque se realiza fuera del cerrojo para evitar bloqueos innecesarios en la interfaz.
+    - **Preservación defensiva de estado:** Si start_pack_apps sufre una excepción no controlada, las aplicaciones no arrancadas se re-insertan atómicamente en _last_closed_apps (with self._lock:) antes de propagar la excepción, impidiendo la pérdida irreversible de la sesión del usuario.
+    - **Aislamiento en ProcessService.start_pack_apps:** Toda resolución y lanzamiento de apps captura (OSError, Exception) por elemento, aislando errores individuales para garantizar que un fallo en una app no aborte el procesamiento del resto del lote.
