@@ -523,7 +523,7 @@
     "task": "TASK-044",
     "status": "COMPLETED",
     "commits": [
-      "pending"
+      "a589f3a"
     ],
     "tests": {
       "before": "82 backend + 6 headless UI (88 totales)",
