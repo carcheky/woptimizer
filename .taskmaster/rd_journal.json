@@ -726,8 +726,28 @@
       "after": "89 backend + 10 headless UI (99 totales, validados con ast por validate_docs.py)"
     },
     "impact": "Guard de código muerto: que el código esté USADO, no solo testeado (TASK-056): Creación del test #99 (test_dead_code_ast_guard) que inspecciona todas las 201 definiciones en src/woptimizer/** exigiendo referencias reales en el producto o en tests, con lista blanca justificada. Erradicación definitiva de los métodos legacy y propiedades zombies _get_priority y process_db en process_service.py. Conexión de get_favorite_packs() en DashboardView sustituyendo comprensión manual de listas. Integración y verificación directa de is_wcag_aa en test_contrast_wcag_aa. 100% mutaciones eliminadas (4/4 M1-M4 KILLED) por mutation-auditor. Suite elevada a 99 tests."
+  },
+  {
+    "cycle": 47,
+    "date": "2026-10-01T23:59:00",
+    "area": "Arquitectura & Calidad",
+    "slug": "2026-10-01-validator-independent-anchor",
+    "task": "TASK-057",
+    "status": "IN_PROGRESS",
+    "commits": [
+      "9aa7dd5",
+      "dbe720d",
+      "614e5ff"
+    ],
+    "tests": {
+      "before": "99 totales",
+      "after": "104 totales (validados con ast por validate_docs.py)"
+    },
+    "impact": "Testigo tercero de trazabilidad: el requisito de registrar un ciclo pasa a ser la UNION de rd_journal.json y el historial de commits, porque el journal lo escribe el mismo actor que despues pide la validacion. Dos auditorias seguidas dieron FAIL: el patron que se repitio es que los tests llamaban a las funciones privadas pasandoles a mano los argumentos, asi que el cableado que los suministra nunca se probo (S2 en main(), luego A1 en validate_docs.py:371). Replanificado: un solo camino de validacion validar(root) y borrar el default journal_cycles=() para que el fallo sea imposible por construccion. Ademas se corrigio una afirmacion falsa que se habia propagado a 5 ficheros (41 de 46 hashes no resuelven: son 1).",
+    "audit": {
+      "verdict": "FAIL (x2), replanificado, intento 3 pendiente",
+      "round1": "28 mutaciones, 12 supervivientes; criticos S1 (residuo en una sola direccion) y S2 (main() sin cablear el ancla, verde)",
+      "round2": "las 6 declaradas mueren correctamente; sobreviven A1 (journal_cycles no llega al ancla -> 0 FAIL con el parser muerto), A2 (--all) y M1/M2"
+    }
   }
 ]
-
-
-

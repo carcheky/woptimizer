@@ -217,6 +217,7 @@ El agente tiene la tabla de mutaciones canónicas de este repo (barrera de categ
 - ❌ **No repares los supervivientes.** Los reporta; los arregla `openspec-dev`. Si un fix muere por la mutación, el ciclo es un FAIL y hay que rehacerlo.
 - Un `PASS` significa **Paso 1, siguiente tarea**. No significa "fin". `FAIL` → vuelve al Paso 3 con el informe. `PARTIAL` → anótalo en el changelog y decide: si lo no verificado tocaba **seguridad o datos**, no cierres el ciclo.
 - ✅ **Registra el resultado en el changelog** con la tabla fix → mutación → veredicto. Sin ese registro, el paso no se hizo.
+- ✅ **El informe del Paso 4 vive EN EL REPO, no en la conversación.** Escribe `openspec/changes/<change-id>/mutation-report.md` con **un identificador por mutante** (mínimo una letra: `S1`, `A2`, `M3`) junto a su veredicto y su motivo. Sin ese fichero, un `FAIL` no es re-auditable: el ciclo 47 discovers sus 12 supervivientes por número y tres ciclos después nadie puede comprobar cuáles eran, y el mismo hallazgo se reinventa. Precedente: `openspec/changes/2026-10-01-multi-favorites-and-db-download/mutation-plan.md`. La tabla del changelog es el resumen legible; este fichero es el registro con nombres, y los dos se escriben.
 
 ---
 

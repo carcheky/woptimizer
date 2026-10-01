@@ -110,3 +110,101 @@ tocó**: en los cinco casos la cobertura era la que faltaba, no la logica.
       dos commits anteriores del ciclo 47 (`9aa7dd5` arquitectura y `dbe720d` codigo) NO lo llevan y
       no se pueden reescribir sin reescribir historia: quedan como punto ciego declarado.
 - [x] `run_tests.py` 100 -> 104 y los cuatro ficheros de recuento sincronizados.
+
+## T-7. Iteracion 3 (re-planificacion del Circuit Breaker) - UN solo camino de validacion
+
+El `mutation-auditor` dio `FAIL` dos veces. La segunda mato las 6 declaradas y encontro 3
+supervivientes **en el codigo que el propio ciclo anadio**. Midiendo el producto real con
+copias mutadas (`validate_docs.py` ejecutado de verdad sobre un arbol copiado), el patron se
+cierra en un numero: **con el parser de marcadores muerto Y el 4o argumento sin pasar, el
+validador da `108 OK / 0 FAIL`.** El fix S4 es codigo MUERTO en el camino real.
+
+### La leccion, en una frase
+
+`validate_docs.py:371` llama `_comprobar_ancla_de_commits(root, errors, ok, journal_cycles)`
+y la funcion declara `journal_cycles=()` por defecto (`validate_docs.py:213`). El test de S4
+(`run_tests.py:12357`) llama a la funcion **PRIVADA pasandole `[46]` a mano**, asi que el
+cableado que suministra ese argumento no lo prueba nadie. Un test mas por hallazgo no
+converge: tapa el mutante visible y deja el mismo agujero un nivel mas abajo. **Se tapa
+haciendo el error IMPOSIBLE, no anadiendo una asercion.**
+
+### Decisiones de diseno
+
+- **D1 - Un solo camino.** Se extrae `validar(root) -> (errors, ok)` con TODO el cuerpo de
+  los checks 1-7. `main()` solo la llama, imprime y hace `sys.exit`. No hay dos rutas de
+  validacion posibles por construccion: si `main()` y los tests ejecutan la misma funcion,
+  "el cableado que nadie prueba" deja de ser una categoria de bug.
+- **D2 - El default se borra.** `journal_cycles` pasa a **posicional obligatorio**. Con el
+  default eliminado, el mutante M2 (no pasar el 4o argumento) deja de ser un cambio de
+  comportamiento y pasa a ser un `TypeError` en la llamada: el validador muere con
+  traceback y **muere el test de subproceso que ya existe**, sin escribir una linea nueva.
+  Un parametro opcional cuyo valor cambia el veredicto es la raiz de A1.
+- **D3 - Un solo camino tambien para los tests.** Todo test del validador llega a su asercion
+  por `validar(root)`. Las funciones privadas **dejan de ser objetivo de tests nuevos**: se
+  declaran unitarias-no-contractuales. El unico test que ejercita `main()` es el de
+  subproceso, y existe para probar el `exit` y que `main()` llame a `validar`.
+- **D4 - Los escenarios son FILAS, no tests.** Un unico test con tabla de escenarios sobre
+  Copies del esqueleto real. Medido: `docs/` 0,4 MB + `openspec/` 0,5 MB + 0,8 MB de
+  ficheros raiz = **1,7 MB por copia**, y se copia **UNA vez** por test. Anadir un escenario
+  futuro cuesta una fila, no un test: por eso esto converge donde las iteraciones 1 y 2 no.
+
+### Contrato de mutaciones del intento 3
+
+| # | Mutante | Asercion que lo mata | Test |
+|---|---|---|---|
+| M2 | borrar el 4o arg en la llamada (con default) | `Resumen:` ausente del informe (TypeError) | subproceso, 1a mitad, YA EXISTE |
+| D2 | `<- sin default` | identico al anterior | ninguno nuevo |
+| A1 | desactivar `if not ciclos and journal_cycles:` (`validate_docs.py:285`) | fila (a): `"NO aporta ningun ciclo"` en `errors` | tabla, fila (a) |
+| A1b | quitarle `and journal_cycles` | fila (b): `"NO aporta ningun ciclo"` **ausente** | tabla, fila (b) |
+| M1 | desactivar `if not journal_cycles and journal_usable:` (`:360`) | fila (d): `"no contiene ningun ciclo valido"` en `errors` | tabla, fila (d) |
+| M1b | quitarle `and journal_usable` | `len(errors) == 1` con journal `PermissionError` | `test_el_journal_ilegible...`, YA EXISTE |
+| A2 | quitar `--all` (`:244`) | fila (c): el ciclo de una RAMA lateral se acusa | tabla, fila (c) |
+| S2 | borrar el cableado del ancla | mitad mutante del subproceso | YA EXISTE |
+| S2b | borrar la llamada `validar(root)` de `main()` | 2o mutante del subproceso (4 lineas) | subproceso, YA EXISTE |
+
+Por que A1b muere con una fila y no con una asercion nueva: las filas (a) y (b) comparten el
+**mismo** historial sin marcadores y solo cambian el journal, asi que podar la condicion se
+delata en una de las dos. Es la misma tecnica que A2b en la iteracion 1, que ya funciono.
+
+### Ficheros a tocar
+
+1. `validate_docs.py` - extraer `validar(root)`, `main()` adelgaza, **borrar el default** de
+   `journal_cycles`, y corregir el comentario mentiroso de `:254-258`.
+2. `run_tests.py` - **fusionar** `test_un_parser_de_marcadores_roto_no_pasa_en_verde` +
+   `test_el_ancla_de_commits_cae_al_git_dir_por_defecto` en
+   `test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios` (5 filas). Anadir 4 lineas al
+   subproceso para el mutante S2b. **0 tests nuevos, 1 fusion: 104 -> 103.**
+3. Los cuatro ficheros de recuento si baja a 103: `STATUS.md:9`, `AGENTS.md:68`, `README.md`
+   y la tabla de `docs/ai/testing-guide.md` (una fila menos), mas el `__main__` de
+   `run_tests.py`. El check 7 de `validate_docs.py` los deriva con `ast` y avisa si no.
+4. `docs/ai/sandbox-rules.md:149` - la cifra de subjects caduca con cada commit (ver abajo).
+
+### Lo que CIERRA y lo que se DECLARA
+
+- **CIERRA**: el residuo "ciclo comiteado sin journal" se acusa en el camino real, con el
+  parser vivo o muerto, con o sin `--all`, y el fallo de git es un informe con motivo.
+- **SE DECLARA residual, no se HPEa mas**: 112 de 156 subjects no llevan marcador de ciclo,
+  asi que un ciclo cerrado con asunto `feat(...)` y sin entrada de journal sigue sin tercer
+  testigo. El cierre de eso es `git_safe_commit.py` rechazando el mensaje sin identificador
+  de ciclo = **TASK-059**, ya pendiente. Esta tarea NO lo reintenta.
+- **Cierra sucio que el intento 3 debe arreglar**: el repo esta **en rojo ahora mismo**
+  (`107 OK / 2 FAIL`) acusando el ciclo **047** comiteado y ausente de `rd_journal.json` y de
+  `CHANGELOG.md`. Es el ancla mordiendo por primera vez el repo real. Registra el ciclo 47 en
+  el journal y en los dos changelogs, o el validador no puede volver a verde.
+- `src/woptimizer/**`: cero cambios.
+
+### Los tres puntos sueltos (verificados, todos de correccion inmediata)
+
+- **`validate_docs.py:254-258` esta mal escrito.** Medido: `FileNotFoundError.__mro__[1]` es
+  `OSError` y `PermissionError.__mro__[1]` es `OSError`. **Las dos SON subclases de OSError**,
+  asi que no justifican un `except Exception`. La justificacion honesta del `except Exception`
+  es `subprocess.TimeoutExpired` -> `SubprocessError` -> `Exception`, alcanzable por el
+  `timeout=120` de la linea 252. Reescribe el comentario; **el `except` no se estrecha**.
+- **`docs/ai/sandbox-rules.md:149` dice "43 de 155 subjects"**. Medido hoy: **156 subjects,
+  44 con marcador, 112 sin**. Dos de las tres cifras caducadas. Decision: **dejar de afirmar
+  la cifra fija**, decir que el validador la reimprime viva en su linea de informe y que hay
+  que mirar ahi. Una cifra con fecha de medicion tambien caduca.
+- **El informe de mutación no queda en ningun artefacto.** `openspec/changes/2026-10-01-validator-independent-anchor/`
+  solo tiene `proposal.md` y `tasks.md`; los 12 supervivientes del intento 1 no son
+  re-audiables por nombre. Ya hay precedente (`mutation-plan.md` en
+  `2026-10-01-multi-favorites-and-db-download`). Cerrado en la skill (ver `SKILL.md`).

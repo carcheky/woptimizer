@@ -1,3 +1,50 @@
+## [CYCLE-047] 2026-10-01 23:59 - validator-independent-anchor
+**Área**: Arquitectura & Calidad
+**Change**: openspec/changes/2026-10-01-validator-independent-anchor/
+**Estado**: IN_PROGRESS — **FAIL x2, REPLANIFICADO** (intento 3 pendiente)
+**Models**:
+- Paso 1 (Buscar): flash (backlog: active_task_id TASK-057)
+- Paso 2 (Planear): architect-review — DISEÑO ACEPTADO; 2ª invocación: REPLANIFICACIÓN por Circuit Breaker
+- Paso 3 (Ejecutar): openspec-dev — intento 1 (`dbe720d`) e intento 2 (`614e5ff`)
+- Paso 4 (Auditar tests): mutation-auditor — **FAIL** (28 mut, 12 sobrev) y **FAIL** (24 mut, 3 sobrev de severidad ALTA)
+
+### Mutaciones auditadas (Paso 4, ronda 1 — FAIL)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Parser ciclo ≠ tarea | regex → `TASK-(\d{1,4})` | killed | `obtenido {56}, 2 con marcador y 1 sin` |
+| Unión no sustitución | `ciclos_requeridos = set(journal_cycles)` | killed | `tiene que dar DOS errores; hay 1` |
+| Ancla ilegible avisa | `errors.append` → `_ = (` | killed | `tiene que haber una linea [FAIL] con el motivo literal` |
+| **Dirección del residuo** | invertir `ciclos_historial - ciclos_journal` | **SURVIVED** | acusaba al revés y dejaba el repo rojo |
+| **Cableado en `main()`** | borrar la llamada a `_comprobar_ancla_del_changelog` | **SURVIVED** | suite completa verde y validador en `105 OK, 0 FAIL` con el ancla apagada |
+| `max()` numérico | `max(str(c) for c in ...)` | killed | `Unknown format code 'd' for object of type 'str'` |
+| Respeto del `GIT_DIR` del entorno | ignorarlo | killed | `el otro error tiene que exigir la entrada ## CYCLE-047` |
+
+### Mutaciones auditadas (Paso 4, ronda 2 — FAIL)
+| Fix | Mutacion | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| S1 dirección del residuo | invertir el conjunto | killed | `el residuo son los ciclos que EL HISTORIAL TIENE Y EL JOURNAL NO` |
+| S2 cableado en `main()` | borrar la llamada | killed | `el ancla tiene que CORRER dentro de main(): su linea de informe ... no aparece` |
+| S5 `except` del journal | estrechar a `json.JSONDecodeError` | killed | `debía devolver un INFORME y tiró PermissionError` |
+| S3 fallback `GIT_DIR` | suprimir `expandvars` | killed | `TypeError: environment can only contain strings` |
+| S4 rama del parser roto | `if False:` / `if not ciclos:` | killed | `eso es un parser ROTO y tiene que salir como [FAIL]` |
+| **A1 `journal_cycles` al ancla** | no pasar el 4º argumento | **SURVIVED** | **validador real en `108 OK / 0 FAIL` con el parser muerto** |
+| **A2 `--all`** | quitar `--all` | **SURVIVED** | con un ciclo en rama lateral el residuo se pierde |
+| **M1/M2 rama journal vacío** | borrar / invertir | **SURVIVED** | 2 FAIL pasan a 1 FAIL |
+
+### Cambios Clave
+- `validate_docs.py`: 3 funciones nuevas (`_ciclos_de_commits`, `_comprobar_ancla_de_commits`, `_comprobar_ancla_del_changelog`), unión de fuentes y cableado en `main()`.
+- `run_tests.py`: +4 tests del ciclo (100 → 104).
+- `docs/ai/sandbox-rules.md`: regla nueva, alcance medido y LIMITACIÓN RESIDUAL explícita.
+- Corrección de la afirmación falsa "41 de 46 hashes" en 5+ ficheros: la cifra real es **1**.
+
+### Por qué dos FAIL seguidos (nota de proceso)
+El patrón que se repitió tres veces es el mismo: **los tests llaman a las funciones privadas pasándoles a mano los argumentos, así que el cableado que suministra esos argumentos no se prueba**. Arreglar el hallazgo visible dejaba el mismo agujero un nivel más abajo. La replanificación abandona "añadir una aserción por hallazgo" y pasa a **un solo camino de validación** (`validar(root)`) más **borrar el default `journal_cycles=()`**, de modo que el fallo sea un `TypeError` imposible de ocultar y muera un test que ya existe, con cero líneas de test nuevas. Además la suite debe BAJAR de 104 a 103 fusionando dos tests en una tabla de escenarios: los validadores no crecen por aprendizaje, crecen por defecto.
+
+### Impact
+El ciclo cumple el objetivo en el papel y falló en la práctica: el ancla nueva **sí** llegó a morder el repo real (107 OK / 2 FAIL, acusando el ciclo 047 comiteado y ausente del journal), que es exactamente el residuo que se perseguía. La lección: una garantía nueva necesita un test que falle cuando la garantía esté desconectada, y ese test tiene que ejecutar el camino real, no llamar a la pieza.
+
+---
+
 ## [CYCLE-046] 2026-10-01 23:48 — dead-code-guard
 **Área**: Arquitectura & Calidad
 **Change**: openspec/changes/2026-10-01-dead-code-guard/

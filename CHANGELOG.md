@@ -1,3 +1,22 @@
+## CYCLE-047 - 2026-10-01
+
+**Arquitectura & Calidad** - `TASK-057` (Ancla de trazabilidad de ciclos: que el registro no dependa de quien lo escribe)
+
+> 🔴 **Dos auditorias seguidas dieron FAIL.** Se re-planifico y sigue en curso. **104 tests** en verde.
+
+### Anadido
+- **Un tercer testigo para "este ciclo quedo registrado".** Antes, esa pregunta solo se le podia hacer al diario interno del motor, y ese diario lo escribe el mismo motor que despues se autoverifica. Ahora el requisito se exige tanto al diario **como** al historial de commits: para que un ciclo deje de exigirse habria que reescribir la historia de git, no editar una linea de un JSON.
+- **El validador avisa cuando no puede comprobar.** Si el historial de commits no se puede leer, el chequeo sale en rojo diciendo el motivo literal, en vez de darse por satisfecho en silencio. Un validador que no puede mirar y aun asi dice "todo bien" es peor que uno que no existe, porque entrena a leer la luz verde como si fuera rutina.
+
+### Corregido
+- 🔴 **Una cifra falsa que se habia propagado a 5 ficheros.** Decia que "41 de 46 entradas del diario no tienen hash resoluble". **Medido de verdad: 1.** Once entradas no declaran hash alguno y, de las 35 que si, solo el ciclo 33 se queda sin ninguno resoluble. El error fue medir el texto de la entrada (`617eef8 (architect)`) en vez del hash. La consecuencia era grave: una tarea pendiente (TASK-059) descartaba esa verificacion arguing que dejaria el validador permanentemente en rojo, cuando daria **un** fallo, no 41. Corregido en la documentacion, en la especificacion y en el tablero.
+- **Un comentario que decia una falsehood tecnica.** El codigo justificaba no estrechar el manejo de errores diciendo que `FileNotFoundError` y `PermissionError` "no son OSError". **Son subclases de OSError.** La razon real es otra, y ya esta escrita bien.
+
+### El hallazgo que devolvio el trabajo a la mesa
+- 🔴 Los tests llamaban a las funciones internas del validador pasandoles **a mano** los argumentos. Eso hacia que el codigo que conecta esas funciones jamas se ejecutara en las pruebas: se podia **desenchufar el chequeo entero y la suite seguia en verde**. Es justo el fallo que el ciclo anterior (TASK-056) existia cerrar para el codigo del producto, reproducido en el propio validador. Repetido tres veces, el plan de reparacion cambio: en vez de añadir una asercion por hallazgo, el chequeo se hara imposible de desconectar por construccion.
+
+---
+
 ## CYCLE-046 - 2026-10-01
 
 **Arquitectura & Calidad** — `TASK-056` (Guard de código muerto: que el código esté USADO, no solo testeado)
