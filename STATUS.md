@@ -10,16 +10,16 @@
 - **Micro-Benchmark Base:** 182 ms (Init) | 4.97 ms (Escaneo 325 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
 - **Compilación PyInstaller:** 🟡 El ejecutable es un artefacto de distribución y se regenera al publicar; su desfase (del 2026-09-29) no lo vigila ningún checkpoint — ver "Checkpoints Periódicos"
 - **Base de Datos de Procesos:** 96 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
-- **Versionado:** 🟢 Al día en git (`05b283d` fix(tests): liquidar mutante M2 con prueba de contención en GamingService).
+- **Versionado:** 🟢 Al día en git (`d48c116` feat(ui): TASK-051 boton de actualizacion de DB y reporte honesto en ProcessManagerView).
 
 ---
 
 ### 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 40 (`rd_journal.json` actualizado).
-- **Ciclo Actual #40:** TASK-050 — Descarga de DB: Constante de URL, GitHub y Fallo Observable. 🟢 **Completado.**
-- **Próxima Tarea:** TASK-051 (Ciclo #41) — Botón de Actualizar DB Funcional y Honesto.
-- **Última Acción:** Ciclo #40 TASK-050 — Centralización de `DB_REMOTE_URL` en GitHub, parámetro `on_error` con reporte observable y honesto en `load_db_async`, preservación de fallback local en `_load_local_db()`, preservación de rango AST `process_service.py:33-48`. 94 tests en verde (100% PASS), 4/4 mutaciones eliminadas por `mutation-auditor` (PASS).
+- **Ciclos Completados:** 41 (`rd_journal.json` actualizado).
+- **Ciclo Actual #41:** TASK-051 — Botón de Actualizar DB Funcional y Honesto en ProcessManagerView. 🟢 **Completado.**
+- **Próxima Tarea:** TASK-052 (Ciclo #42) — Placeholder del Desplegable sin Doble Flecha.
+- **Última Acción:** Ciclo #41 TASK-051 — Botón '🔄 Actualizar DB' en ProcessManagerView, manejo observable con on_error, distinción de descarga en curso, éxito y fallo con fallback local sin sobreescritura en _render_list(), y eliminación total de GitLab. 95 tests en verde (100% PASS), 4/4 mutaciones eliminadas por `mutation-auditor` (PASS).
 
 ---
 
@@ -54,6 +54,7 @@
 28. **[Ciclo #38 - Core Services & Robustez]:** ⭐ **Favoritos acumulativos en PackService (TASK-048)** — erradicación de la exclusividad global de favoritos; `set_favorite(pack_id, value)` acumula sin tocar otros packs; `toggle_favorite(pack_id)` atómico e inversión en servicio; `_ensure_gaming_pack()` garantiza `is_favorite = True` del pack gaming ante recargas; validación con `ValueError` ante `pack_id` nulo/vacío; guard AST verificando erradicación de `get_favorite_pack()`. 92 tests en verde y Paso 4 = PASS (5/5 mutantes eliminados).
 29. **[Ciclo #39 - UI & Experiencia de Usuario]:** 📐 **Grid de favoritos adaptativo (TASK-049)** — cálculo reactivo de columnas según ancho disponible y `ANCHO_MIN_CARD` (280 px); re-grid automático en `<Configure>` filtrando widgets ajenos; liberación de pesos a 0 en columnas sobrantes; placeholder a pantalla completa sin zombis ni recreaciones innecesarias de botones. 93 tests en verde y Paso 4 = PASS (4/4 mutantes eliminados).
 30. **[Ciclo #40 - Base de Datos & Procesos]:** 🌐 **Sincronización remota y fallback observable (TASK-050)** — constante de plataforma `DB_REMOTE_URL` apuntando a GitHub; parámetro `on_error` con reporte observable y honesto en `load_db_async`; fallback local indestructible manteniendo blindaje anti-brick de 34 procesos; contrato estricto de pruebas offline sin llamadas reales a red. 94 tests en verde y Paso 4 = PASS (4/4 mutantes eliminados).
+31. **[Ciclo #41 - UI & Experiencia de Usuario]:** 🔄 **Botón de actualización de DB y feedback honesto (TASK-051)** — botón interactivo en ProcessManagerView conectado asíncronamente a `_force_update_db()`; feedback observable en `status_label` distinguiendo descarga, fallo con fallback local y éxito; inmunidad contra sobreescritura en `_render_list()`; eliminación de acoplamiento estático a GitLab. 95 tests en verde y Paso 4 = PASS (4/4 mutantes eliminados).
 
 ---
 
@@ -61,7 +62,7 @@
 | # | Área | Último ciclo | Subagente |
 |---|------|:---:|---|
 | 1 | Resiliencia & Robustez | **#37** | `openspec-dev` |
-| 2 | Gaming & Telemetría UX | **#39** | `openspec-dev` |
+| 2 | Gaming & Telemetría UX | **#41** | `openspec-dev` |
 | 3 | Base de Datos & Procesos | **#40** | `process-db-updater` |
 | 4 | Rendimiento & Latencia | #35 | `openspec-dev` |
 | 5 | Testing & Calidad | #36 | `openspec-dev` |

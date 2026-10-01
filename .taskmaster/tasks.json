@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01",
-  "active_task_id": "TASK-051",
+  "active_task_id": "TASK-052",
   "tasks": [
     {
       "id": "TASK-001",
@@ -1024,7 +1024,7 @@
       "description": "Encargos 2 y 4 del propietario: el boton no existe",
       "complexity": 2,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-050"
       ],

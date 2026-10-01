@@ -1,3 +1,29 @@
+## [CYCLE-041] 2026-10-01 23:25 — multi-favorites-and-db-download
+**Área**: UI & Experiencia de Usuario
+**Change**: openspec/changes/2026-10-01-multi-favorites-and-db-download/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Encargos 2 y 4 Propietario / Área 2)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (4/4 mutaciones eliminadas: M1, M2, M3, M4)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Botón `btn_update_db` conectado | Modificar `command=self._force_update_db` a `command=None` | killed | `AssertionError: ProcessManagerView._build_ui debe contener un botón cuyo command apunte a self._force_update_db` en `run_tests.py:11293` |
+| Manejo observable de fallo de red | Omitir parámetro `on_error` en llamada a `load_db_async` | killed | `AssertionError: El fallo de red debe notificarse honestamente en status_label, recibido: ✅ Base de datos actualizada con éxito.` en `run_tests.py:11333` |
+| Preservación de banner en `_render_list` | Omitir comprobación `if getattr(self, "_db_update_status", None):` en `_render_list` | killed | `AssertionError: El renderizado de procesos no debe pisar el aviso de fallo de DB` en `run_tests.py:11340` |
+| Desacoplamiento de plataforma | Reintroducir literal 'GitLab' en el texto del botón o vista | killed | `AssertionError: process_manager_view.py no debe contener menciones congeladas a 'GitLab'` en `run_tests.py:11299` |
+
+### Cambios Clave
+- `src/woptimizer/ui/views/process_manager_view.py`: Añadido botón interactivo `btn_update_db` con token `theme.SURFACE_ALT`. Cableado a `_force_update_db()`, gestión atómica de estados de carga/éxito/fallo honesto, y preservación en `_render_list()`.
+- `run_tests.py`: Añadido test #95 `test_process_manager_db_update_button_and_feedback` blindado contra las 4 mutaciones M1-M4.
+- `docs/ai/ui-design-system.md`: Documentado el nuevo botón `btn_update_db`, sus tokens visuales y la máquina de estados de feedback honesto en la sección de ProcessManagerView.
+- `docs/ai/testing-guide.md`, `STATUS.md`, `AGENTS.md`, `README.md`: Suite actualizada y sincronizada a 95 tests en verde.
+
+---
+
 ## [CYCLE-040] 2026-10-01 23:17 — multi-favorites-and-db-download
 **Área**: Base de Datos & Procesos
 **Change**: openspec/changes/2026-10-01-multi-favorites-and-db-download/

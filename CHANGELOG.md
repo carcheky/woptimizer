@@ -1,3 +1,21 @@
+## CYCLE-041 - 2026-10-01
+
+**UI & Experiencia de Usuario** — `TASK-051` (Botón de Actualizar DB Funcional y Honesto en ProcessManagerView)
+
+> 🟢 **VERDICT FINAL: PASS** — Botón de actualización manual, reporte honesto en barra de estado y blindaje contra sobreescrituras auditados con éxito por `mutation-auditor` (4/4 mutaciones eliminadas: M1, M2, M3, M4, 0 supervivientes). **95 tests** (86 backend + 9 headless UI) pasando al 100%.
+
+### Añadido
+- **Botón `btn_update_db` ("🔄 Actualizar DB") en Footer de ProcessManagerView.** Añadido en la barra de acciones de la vista de procesos, cumpliendo el tamaño táctil mínimo (28 px de alto) con estilos de tema unificados (`theme.SURFACE_ALT`, `theme.SURFACE_HOVER`).
+- **Conexión Funcional y Concurrente a `_force_update_db()`.** Se conecta el botón a la descarga asíncrona de `process_service.load_db_async()`, evitando congelamiento de la interfaz de usuario durante la petición.
+- **Reporte Honesto y Observable en `status_label`.** Feedback inmediato que transiciona de estado: `"⏳ Descargando base de datos de procesos..."` a resultado final diferenciado: éxito (`"✅ Base de datos actualizada con éxito."`) o fallo transparente con fallback local (`"⚠️ DB no actualizada (sin red o repo no publicado). Se usa la local."`).
+- **Protección contra Sobreescritura en `_render_list()`.** Al finalizar la recarga de procesos, `_render_list()` respeta `_db_update_status` impidiendo que el recuento neutro de procesos en ejecución pise el aviso observable de éxito o de fallo.
+- **Test Discriminante en `run_tests.py`.** Introducido `test_process_manager_db_update_button_and_feedback` (test #95) con inspección AST de enlace al botón, guard estricto contra menciones a 'GitLab', simulación asíncrona de fallo/éxito y verificación de que `_render_list()` no destruye el banner de estado.
+
+### Corregido
+- **Desacoplamiento Total de GitLab.** Eliminadas todas las cadenas y referencias estáticas a "GitLab" en la vista de procesos, asegurando alineación completa con el repositorio oficial.
+
+---
+
 ## CYCLE-040 - 2026-10-01
 
 **Base de Datos & Procesos** — `TASK-050` (Descarga de DB: Constante de URL, GitHub y Fallo Observable)
