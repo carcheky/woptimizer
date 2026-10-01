@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01",
-  "active_task_id": "TASK-052",
+  "active_task_id": "TASK-053",
   "tasks": [
     {
       "id": "TASK-001",
@@ -1046,7 +1046,7 @@
       "description": "Encargo 3 del propietario",
       "complexity": 1,
       "priority": "medium",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "src/woptimizer/ui/views/process_manager_view.py",
       "acceptance_criteria": [

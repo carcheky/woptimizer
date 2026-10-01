@@ -10,16 +10,16 @@
 - **Micro-Benchmark Base:** 182 ms (Init) | 4.97 ms (Escaneo 325 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
 - **Compilación PyInstaller:** 🟡 El ejecutable es un artefacto de distribución y se regenera al publicar; su desfase (del 2026-09-29) no lo vigila ningún checkpoint — ver "Checkpoints Periódicos"
 - **Base de Datos de Procesos:** 96 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
-- **Versionado:** 🟢 Al día en git (`d48c116` feat(ui): TASK-051 boton de actualizacion de DB y reporte honesto en ProcessManagerView).
+- **Versionado:** 🟢 Al día en git (`38ed3f2` feat(ui): TASK-052 placeholder centralizado PLACEHOLDER_PACK y eliminacion de doble flecha en dropdown).
 
 ---
 
 ### 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 41 (`rd_journal.json` actualizado).
-- **Ciclo Actual #41:** TASK-051 — Botón de Actualizar DB Funcional y Honesto en ProcessManagerView. 🟢 **Completado.**
-- **Próxima Tarea:** TASK-052 (Ciclo #42) — Placeholder del Desplegable sin Doble Flecha.
-- **Última Acción:** Ciclo #41 TASK-051 — Botón '🔄 Actualizar DB' en ProcessManagerView, manejo observable con on_error, distinción de descarga en curso, éxito y fallo con fallback local sin sobreescritura en _render_list(), y eliminación total de GitLab. 95 tests en verde (100% PASS), 4/4 mutaciones eliminadas por `mutation-auditor` (PASS).
+- **Ciclos Completados:** 42 (`rd_journal.json` actualizado).
+- **Ciclo Actual #42:** TASK-052 — Placeholder del Desplegable sin Doble Flecha en ProcessManagerView. 🟢 **Completado.**
+- **Próxima Tarea:** TASK-053 (Ciclo #43) — Actualizar Tests de Exclusividad, Recuento y Documentación.
+- **Última Acción:** Ciclo #42 TASK-052 — Constante `PLACEHOLDER_PACK` centralizada ('Seleccionar Pack') en ProcessManagerView, erradicación de glifo ▼ redundante, reseteo consistente en `_update_pack_dropdown`. 96 tests en verde (100% PASS), 4/4 mutaciones eliminadas por `mutation-auditor` (PASS).
 
 ---
 
@@ -55,6 +55,7 @@
 29. **[Ciclo #39 - UI & Experiencia de Usuario]:** 📐 **Grid de favoritos adaptativo (TASK-049)** — cálculo reactivo de columnas según ancho disponible y `ANCHO_MIN_CARD` (280 px); re-grid automático en `<Configure>` filtrando widgets ajenos; liberación de pesos a 0 en columnas sobrantes; placeholder a pantalla completa sin zombis ni recreaciones innecesarias de botones. 93 tests en verde y Paso 4 = PASS (4/4 mutantes eliminados).
 30. **[Ciclo #40 - Base de Datos & Procesos]:** 🌐 **Sincronización remota y fallback observable (TASK-050)** — constante de plataforma `DB_REMOTE_URL` apuntando a GitHub; parámetro `on_error` con reporte observable y honesto en `load_db_async`; fallback local indestructible manteniendo blindaje anti-brick de 34 procesos; contrato estricto de pruebas offline sin llamadas reales a red. 94 tests en verde y Paso 4 = PASS (4/4 mutantes eliminados).
 31. **[Ciclo #41 - UI & Experiencia de Usuario]:** 🔄 **Botón de actualización de DB y feedback honesto (TASK-051)** — botón interactivo en ProcessManagerView conectado asíncronamente a `_force_update_db()`; feedback observable en `status_label` distinguiendo descarga, fallo con fallback local y éxito; inmunidad contra sobreescritura en `_render_list()`; eliminación de acoplamiento estático a GitLab. 95 tests en verde y Paso 4 = PASS (4/4 mutantes eliminados).
+32. **[Ciclo #42 - UI & Experiencia de Usuario]:** 🔽 **Placeholder único en desplegable (TASK-052)** — extracción a constante `PLACEHOLDER_PACK` en ProcessManagerView sin glifo ▼ redundante; eliminación de doble flecha visual con `CTkOptionMenu`; test #96 discriminante con análisis AST. 96 tests en verde y Paso 4 = PASS (4/4 mutantes eliminados).
 
 ---
 
@@ -62,7 +63,7 @@
 | # | Área | Último ciclo | Subagente |
 |---|------|:---:|---|
 | 1 | Resiliencia & Robustez | **#37** | `openspec-dev` |
-| 2 | Gaming & Telemetría UX | **#41** | `openspec-dev` |
+| 2 | Gaming & Telemetría UX | **#42** | `openspec-dev` |
 | 3 | Base de Datos & Procesos | **#40** | `process-db-updater` |
 | 4 | Rendimiento & Latencia | #35 | `openspec-dev` |
 | 5 | Testing & Calidad | #36 | `openspec-dev` |

@@ -1,3 +1,17 @@
+## CYCLE-042 - 2026-10-01
+
+**UI & Experiencia de Usuario** — `TASK-052` (Placeholder del Desplegable sin Doble Flecha en ProcessManagerView)
+
+> 🟢 **VERDICT FINAL: PASS** — Centralización del placeholder y erradicación del glifo redundante de flecha auditados con éxito por `mutation-auditor` (4/4 mutaciones eliminadas: M1, M2, M3, M4, 0 supervivientes). **96 tests** (86 backend + 10 headless UI) pasando al 100%.
+
+### Añadido
+- **Constante Centralizada de Módulo `PLACEHOLDER_PACK`.** Definida como `Final[str] = "Seleccionar Pack"` en `src/woptimizer/ui/views/process_manager_view.py`, centralizando el texto y eliminando divergencias entre la inicialización y la lógica de reseteo.
+- **Eliminación del Glifo Redundante `▼`.** Removido el caracter `▼` (`U+25BC`) del texto del placeholder para evitar la doble flecha visual, ya que `CTkOptionMenu` incluye su propio indicador nativo dibujado por CustomTkinter.
+- **Invariante en Comparación de Desplegable.** Se actualiza `_update_pack_dropdown()` para utilizar estrictamente la constante `PLACEHOLDER_PACK` al verificar si el valor actual requiere reseteo.
+- **Test Discriminante en `run_tests.py`.** Introducido `test_process_manager_pack_dropdown_single_arrow_and_placeholder` (test #96) con inspección de ausencia de glifos en la constante, guard AST que asegura que el literal aparece una sola vez en el código fuente, verificación de uso de la constante en `_update_pack_dropdown` y validación en runtime headless.
+
+---
+
 ## CYCLE-041 - 2026-10-01
 
 **UI & Experiencia de Usuario** — `TASK-051` (Botón de Actualizar DB Funcional y Honesto en ProcessManagerView)

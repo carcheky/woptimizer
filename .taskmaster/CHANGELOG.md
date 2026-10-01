@@ -1,3 +1,29 @@
+## [CYCLE-042] 2026-10-01 23:30 — multi-favorites-and-db-download
+**Área**: UI & Experiencia de Usuario
+**Change**: openspec/changes/2026-10-01-multi-favorites-and-db-download/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Encargo 2 Propietario / Área 2)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (4/4 mutaciones eliminadas: M1, M2, M3, M4)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Glifo de flecha ausente en constante | Reintroducir `▼` en el valor de `PLACEHOLDER_PACK` | killed | `AssertionError: PLACEHOLDER_PACK no debe contener el glifo ▼` en `run_tests.py:11388` |
+| Literal centralizado en constante | Duplicar el literal hardcodeado en `self.pack_var = StringVar(value="Seleccionar Pack")` | killed | `AssertionError: El literal 'Seleccionar Pack' debe aparecer exactamente una vez (en la constante), encontrado 2 veces` en `run_tests.py:11400` |
+| Comparación vía constante en dropdown | Comparar contra literal `"Seleccionar Pack"` en lugar de `PLACEHOLDER_PACK` | killed | `AssertionError: El literal 'Seleccionar Pack' debe aparecer exactamente una vez (en la constante), encontrado 2 veces` en `run_tests.py:11400` |
+| Inicialización correcta de values | Modificar `values=[PLACEHOLDER_PACK]` a `values=["Invalido"]` en `_build_ui` | killed | `AssertionError: Los valores iniciales del dropdown deben ser ['Seleccionar Pack']` en `run_tests.py:11430` |
+
+### Cambios Clave
+- `src/woptimizer/ui/views/process_manager_view.py`: Definida constante `PLACEHOLDER_PACK = "Seleccionar Pack"`. Eliminadas 4 apariciones del literal y glifo duplicado `▼`. Refactorizado `_update_pack_dropdown` para usar la constante.
+- `run_tests.py`: Añadido test #96 `test_process_manager_pack_dropdown_single_arrow_and_placeholder` blindado contra las 4 mutaciones M1-M4.
+- `docs/ai/ui-design-system.md`: Documentada la centralización de `PLACEHOLDER_PACK` y la eliminación de la doble flecha redundante en la sección de ProcessManagerView.
+- `docs/ai/testing-guide.md`, `STATUS.md`, `AGENTS.md`, `README.md`: Suite actualizada y sincronizada a 96 tests en verde.
+
+---
+
 ## [CYCLE-041] 2026-10-01 23:25 — multi-favorites-and-db-download
 **Área**: UI & Experiencia de Usuario
 **Change**: openspec/changes/2026-10-01-multi-favorites-and-db-download/

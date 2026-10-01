@@ -646,5 +646,21 @@
       "after": "86 backend + 9 headless UI (95 totales, validados con ast por validate_docs.py)"
     },
     "impact": "Botón de Actualizar DB Funcional y Honesto (TASK-051): Incorporación en ProcessManagerView del botón '🔄 Actualizar DB' conectado a _force_update_db() en lugar de estar desconectado o huérfano. Manejo observable de estado con feedback en status_label diferenciando claramente descarga en progreso, fallo honesto con fallback ('⚠️ DB no actualizada (sin red o repo no publicado). Se usa la local.') y éxito ('✅ Base de datos actualizada con éxito.'). Blindaje en _render_list() para no sobreescribir el banner de estado con el recuento neutro de procesos. Eliminación completa de menciones acopladas a 'GitLab'. 100% mutaciones eliminadas (4/4 M1-M4 KILLED) por mutation-auditor. Suite elevada a 95 tests."
+  },
+  {
+    "cycle": 42,
+    "date": "2026-10-01T23:30:00",
+    "area": "UI & Experiencia de Usuario",
+    "slug": "2026-10-01-multi-favorites-and-db-download",
+    "task": "TASK-052",
+    "status": "COMPLETED",
+    "commits": [
+      "38ed3f2"
+    ],
+    "tests": {
+      "before": "86 backend + 9 headless UI (95 totales)",
+      "after": "86 backend + 10 headless UI (96 totales, validados con ast por validate_docs.py)"
+    },
+    "impact": "Placeholder del Desplegable sin Doble Flecha (TASK-052): Centralización del texto del selector de packs en la constante PLACEHOLDER_PACK = 'Seleccionar Pack' en process_manager_view.py, erradicando el glifo redundante '▼' que duplicaba la flecha nativa de CTkOptionMenu. Homogeneización en inicialización de dropdown y lógica de reseteo en _update_pack_dropdown usando estrictamente la constante. Test discriminante #96 con análisis AST garantizando literal único en el módulo y validación en runtime headless. 100% mutaciones eliminadas (4/4 M1-M4 KILLED) por mutation-auditor. Suite elevada a 96 tests."
   }
 ]
