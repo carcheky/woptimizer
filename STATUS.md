@@ -10,16 +10,16 @@
 - **Micro-Benchmark Base:** 182 ms (Init) | 4.97 ms (Escaneo 325 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
 - **Compilación PyInstaller:** 🟡 El ejecutable es un artefacto de distribución y se regenera al publicar; su desfase (del 2026-09-29) no lo vigila ningún checkpoint — ver "Checkpoints Periódicos"
 - **Base de Datos de Procesos:** 96 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
-- **Versionado:** 🟢 Al día en git (`85930de` feat(tests): TASK-055 archivo de 11 test_*.py legacy en docs/archive/legacy-root-tests y guard anti-regresion).
+- **Versionado:** 🟢 Al día en git (`7c61b3e` feat(quality): TASK-056 guard AST de codigo muerto, erradicacion de _get_priority/process_db y conexion de get_favorite_packs/is_wcag_aa).
 
 ---
 
 ### 🔄 Estado de la Ejecución Perpetua
-- **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 45 (`rd_journal.json` actualizado).
-- **Ciclo Actual #45:** TASK-055 — Los 10 test_*.py muertos y el script que LANZA notepad. 🟢 **Completado.**
-- **Próxima Tarea:** TASK-056 (Ciclo #46) — Guard de código muerto: que el código esté USADO, no solo testeado.
-- **Última Acción:** Ciclo #45 TASK-055 — Traslado seguro y sin borrado de los 11 archivos `test_*.py` de la raíz a `docs/archive/legacy-root-tests/`. Documentación en `README.md` de la distinción técnica de los 10 scripts v2 frente a `test_powershell_direct.py`. Incorporación del test #98 `test_no_legacy_test_files_in_root` con guard anti-regresión e inspección del archivo. 98 tests en verde (100% PASS), 4/4 mutaciones eliminadas por `mutation-auditor` (PASS).
+- **Modo:** ⏸️ PAUSADO — Solicitado por el usuario tras completar el Ciclo #46.
+- **Ciclos Completados:** 46 (`rd_journal.json` actualizado).
+- **Ciclo Actual #46:** TASK-056 — Guard de código muerto: que el código esté USADO, no solo testeado. 🟢 **Completado.**
+- **Próxima Tarea:** TASK-057 (Ciclo #47) — Ancla de ciclos del validador que no dependa de quien escribe el registro.
+- **Última Acción:** Ciclo #46 TASK-056 — Implementación del test #99 `test_dead_code_ast_guard` con barrido dinámico de las 201 definiciones en `src/woptimizer/**`. Eliminación de código zombie (`_get_priority`, `process_db`), conexión directa de `get_favorite_packs()` en `DashboardView` y aserción de `is_wcag_aa` en `test_contrast_wcag_aa`. 99 tests en verde (100% PASS), 4/4 mutaciones eliminadas por `mutation-auditor` (PASS).
 
 ---
 

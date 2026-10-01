@@ -1,3 +1,20 @@
+## CYCLE-046 - 2026-10-01
+
+**Arquitectura & Calidad** — `TASK-056` (Guard de código muerto: que el código esté USADO, no solo testeado)
+
+> 🟢 **VERDICT FINAL: PASS** — Análisis estático exhaustivo de referencias para las 201 funciones/métodos del código, saneamiento de código muerto y guard AST auditados con éxito por `mutation-auditor` (4/4 mutaciones eliminadas: M1, M2, M3, M4, 0 supervivientes). **99 tests** (89 backend + 10 headless UI) pasando al 100%.
+
+### Añadido
+- **Test Guard AST `test_dead_code_ast_guard`.** Nuevo test #99 en `run_tests.py` que recorre dinámicamente todo el árbol de `src/woptimizer/**` extrayendo las 201 definiciones de funciones y métodos, acumulando frecuencias de referencias (`Name` y `Attribute`) y verificando que no existan símbolos huérfanos sin llamadores reales en el producto ni en tests.
+- **Conexión de `get_favorite_packs` en la Portada.** `DashboardView` ahora utiliza formalmente el método `self.pack_service.get_favorite_packs()` en lugar de reinventar el filtrado con comprensiones locales de listas.
+- **Integración y Verificación de `is_wcag_aa`.** El helper de contraste accesible de `ui/theme.py` ahora se evalúa y comprueba directamente en `test_contrast_wcag_aa`.
+- **Sincronización Cuádruple de Métricas.** Actualizado el recuento canónico a 99 tests en `STATUS.md`, `AGENTS.md`, `README.md` y `docs/ai/testing-guide.md`.
+
+### Corregido
+- **Eliminación de Métodos y Propiedades Muertas.** Removidos `_get_priority` y `process_db` de `src/woptimizer/services/process_service.py`, eliminando restos legacy de la versión 2 que carecían de consumidores.
+
+---
+
 ## CYCLE-045 - 2026-10-01
 
 **Testing & Calidad** — `TASK-055` (Los 10 test_*.py muertos y el script que LANZA notepad)

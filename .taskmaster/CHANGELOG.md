@@ -1,3 +1,30 @@
+## [CYCLE-046] 2026-10-01 23:48 — dead-code-guard
+**Área**: Arquitectura & Calidad
+**Change**: openspec/changes/2026-10-01-dead-code-guard/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Deuda detectada en revisión / Arquitectura & Calidad)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (4/4 mutaciones eliminadas: M1, M2, M3, M4)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Detección de funciones huérfanas en services | Inyectar `funcion_muerta_huerfana_xyz` sin referencias en `process_service.py` | killed | `AssertionError: Se detectaron 1 funciones/métodos sin ninguna referencia: [...] funcion_muerta_huerfana_xyz` |
+| Detección de métodos huérfanos en UI | Inyectar `metodo_dashboard_muerto_abc` sin referencias en `dashboard_view.py` | killed | `AssertionError: Se detectaron 1 funciones/métodos sin ninguna referencia: [...] metodo_dashboard_muerto_abc` |
+| Verificación de eliminación de `_get_priority` | Reintroducir `_get_priority` en `process_service.py` | killed | `AssertionError: _get_priority` (detectado como unreferenced / no eliminado) |
+| Eficacia de la aserción de no-huérfanos | Inyectar `zombie_function_uncalled` en `process_service.py` | killed | `AssertionError: Se detectaron 1 funciones/métodos sin ninguna referencia: [...] zombie_function_uncalled` |
+
+### Cambios Clave
+- `src/woptimizer/services/process_service.py`: Eliminados el método muerto `_get_priority` y la propiedad zombie `process_db`.
+- `src/woptimizer/ui/views/dashboard_view.py`: Conectada la llamada formal a `self.pack_service.get_favorite_packs()` en `refresh_dashboard()` y `_regrid_favorites()`.
+- `run_tests.py`: `test_contrast_wcag_aa` ahora evalúa directamente `theme.is_wcag_aa()`. Creado test #99 `test_dead_code_ast_guard` con análisis estático AST sobre todo el árbol de `src/woptimizer/**`.
+- `openspec/changes/2026-10-01-dead-code-guard/`: Formalizada especificación y tareas del cambio.
+- `STATUS.md`, `AGENTS.md`, `README.md`, `docs/ai/testing-guide.md`: Sincronización exacta a 99 tests en verde.
+
+---
+
 ## [CYCLE-045] 2026-10-01 23:43 — archive-legacy-root-tests
 **Área**: Testing & Calidad
 **Change**: openspec/changes/2026-10-01-archive-legacy-root-tests/

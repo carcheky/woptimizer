@@ -6683,8 +6683,9 @@ def test_process_list_file_sigue_siendo_un_contrato():
     )
 
     consumidores = ("test_gaming_session.py", "test_harness.py", "test_harness_v2.py")
+    archive_dir = os.path.join(raiz, "docs", "archive", "legacy-root-tests")
     for nombre in consumidores:
-        ruta = os.path.join(raiz, nombre)
+        ruta = os.path.join(archive_dir, nombre)
         assert os.path.isfile(ruta), f"ha desaparecido el consumidor protegido por FIX-014: {nombre}"
         with open(ruta, encoding="utf-8") as fh:
             arbol_t = ast.parse(fh.read(), filename=ruta)
@@ -9847,6 +9848,9 @@ def test_el_feedback_de_pack_dice_la_verdad():
                 def get_all_packs(self):
                     return {p.id: p for p in self.packs}
 
+                def get_favorite_packs(self):
+                    return [p for p in self.packs if p.is_favorite]
+
             tarjeta_start = Pack(id="t_start", name="Arranque", is_favorite=True,
                                  apps=list(APPS), default_action="start")
             tarjeta_kill = Pack(id="t_kill", name="Apagado", is_favorite=True,
@@ -11085,6 +11089,8 @@ def test_dashboard_favorite_grid_adaptive_contracts():
             }
         def get_all_packs(self):
             return self.packs
+        def get_favorite_packs(self):
+            return [p for p in self.packs.values() if p.is_favorite]
 
     class _FakeGS:
         def get_last_closed_apps(self):

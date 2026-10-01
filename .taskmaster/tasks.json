@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01",
-  "active_task_id": "TASK-056",
+  "active_task_id": "TASK-057",
   "tasks": [
     {
       "id": "TASK-001",
@@ -1130,7 +1130,7 @@
       "description": "Deuda NO declarada en STATUS",
       "complexity": 3,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "run_tests.py",
       "acceptance_criteria": [
