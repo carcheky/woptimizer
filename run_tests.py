@@ -11095,15 +11095,27 @@ def test_dashboard_favorite_grid_adaptive_contracts():
             f"Con 1200px y 4 favoritos, pack_3 debe estar en row 0 col 3, recibido: row {info_3['row']} col {info_3['column']}"
         )
 
-        # 3. Re-grid al redimensionar a 600 px (current_fav_ids == cached_ids):
+        # 3. Re-grid adaptativo activado por evento <Configure> (ancho reducido a 600 px):
         # max_cols = 600 // 280 = 2 columnas.
         # Fila 0: (0, 0), (0, 1) | Fila 1: (1, 0), (1, 1).
         dash.buttons_frame.winfo_width = lambda: 600
-        dash._regrid_favorites()
 
+        class _FakeEvent:
+            def __init__(self, widget):
+                self.widget = widget
+
+        # Evento desde widget ajeno: NO debe regriddear (pack_3 sigue en col 3)
+        dash._on_frame_configure(_FakeEvent(dash.status_label))
+        info_3_ignored = btn_3.grid_info()
+        assert info_3_ignored["row"] == 0 and info_3_ignored["column"] == 3, (
+            "Evento de widget ajeno no debe provocar re-grid de favoritos"
+        )
+
+        # Evento desde buttons_frame: DEBE regriddear
+        dash._on_frame_configure(_FakeEvent(dash.buttons_frame))
         info_3_regrid = btn_3.grid_info()
         assert info_3_regrid["row"] == 1 and info_3_regrid["column"] == 1, (
-            f"Tras reducir a 600px, pack_3 debe moverse a row 1 col 1, recibido: row {info_3_regrid['row']} col {info_3_regrid['column']}"
+            f"Tras reducir a 600px vía <Configure>, pack_3 debe moverse a row 1 col 1, recibido: row {info_3_regrid['row']} col {info_3_regrid['column']}"
         )
 
         # 4. Las columnas sobrantes sueltan el peso (peso 0 para cols 2 y 3)
@@ -11112,23 +11124,19 @@ def test_dashboard_favorite_grid_adaptive_contracts():
         assert w2 == 0, f"Columna 2 debe tener peso 0 al reducir columnas, tiene {w2}"
         assert w3 == 0, f"Columna 3 debe tener peso 0 al reducir columnas, tiene {w3}"
 
-        # 5. Placeholder de estado vacío ocupa todas las columnas calculadas
+        # 5. Placeholder de estado vacío ocupa todas las columnas calculadas y responde a resize
         pack_service.packs.clear()
-        dash.buttons_frame.winfo_width = lambda: 1200
+        dash.buttons_frame.winfo_width = lambda: 600
         dash.refresh_dashboard()
         assert dash._empty_label is not None, "El placeholder _empty_label debe existir con 0 favoritos"
-        empty_span = dash._empty_label.grid_info()["columnspan"]
-        assert empty_span == 4, f"_empty_label debe ocupar las 4 columnas calculadas, recibido {empty_span}"
+        empty_span_600 = dash._empty_label.grid_info()["columnspan"]
+        assert empty_span_600 == 2, f"_empty_label inicial debe ocupar 2 columnas (600px), recibido {empty_span_600}"
 
-        # 6. Evento <Configure> filtra emisores ajenos
-        class _FakeEvent:
-            def __init__(self, widget):
-                self.widget = widget
-
-        # Evento desde widget ajeno (no debe recalcular columnas ni fallar)
-        dash._on_frame_configure(_FakeEvent(dash.status_label))
-        # Evento desde buttons_frame
+        # Redimensionar a 1200px con empty_label activo vía <Configure>
+        dash.buttons_frame.winfo_width = lambda: 1200
         dash._on_frame_configure(_FakeEvent(dash.buttons_frame))
+        empty_span_1200 = dash._empty_label.grid_info()["columnspan"]
+        assert empty_span_1200 == 4, f"_empty_label debe adaptarse a 4 columnas tras <Configure>, recibido {empty_span_1200}"
     finally:
         root.destroy()
     print("test_dashboard_favorite_grid_adaptive_contracts OK.")
