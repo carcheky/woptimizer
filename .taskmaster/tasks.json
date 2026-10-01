@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01T22:30:00Z",
-  "active_task_id": "TASK-047",
+  "active_task_id": "TASK-048",
   "tasks": [
     {
       "id": "TASK-001",
@@ -937,7 +937,7 @@
       "description": "Introducir RLock reentrante en GamingService para proteger el historial _last_closed_apps contra condiciones de carrera concurrentes (invocaciones simultáneas desde tray y dashboard), garantizar restauración atómica con preservación de estado ante excepciones no capturadas, y reforzar la captura defensiva en ProcessService.start_pack_apps.",
       "complexity": 3,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-046"
       ],

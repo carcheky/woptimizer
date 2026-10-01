@@ -1,3 +1,30 @@
+## [CYCLE-037] 2026-10-01 22:50 — gaming-session-concurrency-resilience
+**Área**: Resiliencia & Robustez
+**Change**: openspec/changes/2026-10-01-gaming-session-concurrency-resilience/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Área 1)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (4/4 mutaciones eliminadas: M1, M2, M3, M4)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| RLock reentrante en `GamingService` | En `__init__`, asignar `self._lock = threading.Lock()` o no asignarlo | killed | `AssertionError: GamingService._lock debe ser de tipo threading.RLock` en `run_tests.py:10871` |
+| Exclusión mutua en `restore_gaming_session` | Extraer `apps_to_restore` sin `with self._lock:` | killed | `AssertionError: restore_gaming_session debe respetar self._lock y no vaciar apps mientras el cerrojo está tomado` en `run_tests.py:10901` |
+| Preservación defensiva de estado ante fallo | Omitir bloque de rescate en `except Exception:` | killed | `AssertionError: Las apps cerradas deben preservarse íntegramente ante fallos imprevistos en start_pack_apps` en `run_tests.py:10948` |
+| Aislamiento de excepciones no-OSError en lote | En `start_pack_apps`, capturar solo `except OSError:` | killed | `RuntimeError: Corrupted executable path resolution` en `run_tests.py:10964` |
+
+### Cambios Clave
+- `src/woptimizer/services/gaming_service.py`: Inicializado `threading.RLock()` en `__init__`. Protegidos `get_last_closed_apps`, `clear_last_closed_apps`, `execute_gaming_pack` y `restore_gaming_session` bajo el cerrojo con extracción atómica y re-inserción defensiva en caso de excepción.
+- `src/woptimizer/services/process_service.py`: Ampliada captura en `start_pack_apps` a `(OSError, Exception)` aislando fallos por aplicación sin interrumpir el lote.
+- `run_tests.py`: Añadido `test_gaming_service_rlock_and_concurrency` (test #91) con prueba de contención de cerrojo, concurrencia de 5 hilos, preservación de estado y aislamiento no-OSError.
+- `docs/ai/architecture.md`: Añadida sección 16 sobre invariantes de concurrencia y resiliencia en `GamingService`.
+- `docs/ai/testing-guide.md`, `STATUS.md`, `AGENTS.md`, `README.md`: Suite elevada a 91 tests en verde.
+
+---
+
 ## [CYCLE-036] 2026-10-01 18:50 — confirmable-mixin-contracts
 **Área**: Testing & Calidad
 **Change**: openspec/changes/2026-10-01-confirmable-mixin-contracts/

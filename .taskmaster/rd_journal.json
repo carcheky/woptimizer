@@ -563,5 +563,22 @@
       "after": "83 backend + 7 headless UI (90 totales, validados con ast por validate_docs.py)"
     },
     "impact": "Pruebas de Contratos de Ciclo de Vida y Estados en Mixin Confirmable (TASK-046): Validación headless completa de la máquina de estados de Confirmable en run_tests.py (test_confirmable_mixin_lifecycle_and_widget_contracts). Cobertura exhaustiva de transiciones de 1a/2a pulsación, throttling (300 ms en _timers_ui), cancelación en destrucción cancel_on_destroy con timers activos y limpieza de reposo en _forget_buttons. Mutantes M1 a M4 aniquilados al 100% por mutation-auditor. Suite elevada a 90 tests."
+  },
+  {
+    "cycle": 37,
+    "date": "2026-10-01T22:50:00",
+    "area": "Resiliencia & Robustez",
+    "slug": "2026-10-01-gaming-session-concurrency-resilience",
+    "task": "TASK-047",
+    "status": "COMPLETED",
+    "commits": [
+      "5ecccd1",
+      "05b283d"
+    ],
+    "tests": {
+      "before": "83 backend + 7 headless UI (90 totales)",
+      "after": "84 backend + 7 headless UI (91 totales, validados con ast por validate_docs.py)"
+    },
+    "impact": "Resiliencia de Concurrencia y Recuperación en GamingService (TASK-047): Sincronización multihilo con threading.RLock reentrante protegiendo _last_closed_apps en GamingService. Extracción atómica en restore_gaming_session impidiendo ejecuciones duplicadas de start_pack_apps, preservación defensiva del historial de apps ante excepciones no controladas y aislamiento robusto ante excepciones no-OSError en ProcessService.start_pack_apps. 100% mutaciones eliminadas (M1-M4) por mutation-auditor. Suite elevada a 91 tests."
   }
 ]

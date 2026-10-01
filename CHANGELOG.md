@@ -1,3 +1,21 @@
+## CYCLE-037 - 2026-10-01
+
+**Resiliencia & Robustez** — `TASK-047` (Resiliencia de Concurrencia y Recuperación en GamingService)
+
+> 🟢 **VERDICT FINAL: PASS** — Sincronización multihilo y aislamiento defensivo completado y auditado con éxito por `mutation-auditor` (4/4 mutaciones eliminadas: M1, M2, M3, M4, 0 supervivientes). **91 tests** (84 backend + 7 headless UI) pasando al 100%.
+
+### Añadido
+- **Sincronización Thread-Safe en `GamingService`.** Integración de `threading.RLock()` reentrante (`self._lock`) para proteger las consultas (`get_last_closed_apps`), vaciados (`clear_last_closed_apps`), asignaciones en `execute_gaming_pack` y extracciones atómicas en `restore_gaming_session`.
+- **Extracción Atómica y Anti-Carrera en Restauración.** En `restore_gaming_session()`, la lista `apps_to_restore` se extrae y vacía atómicamente bajo el cerrojo antes de llamar a `start_pack_apps`, impidiendo que múltiples hilos concurrentes (ej. desde el System Tray y el Dashboard simultáneamente) dupliquen el arranque de aplicaciones.
+- **Preservación Defensiva ante Excepciones.** Si `start_pack_apps` sufre una excepción no controlada, las aplicaciones no arrancadas se re-insertan defensivamente en `_last_closed_apps` bajo el cerrojo antes de re-lanzar la excepción, protegiendo el historial contra pérdidas de datos.
+- **Aislamiento en `ProcessService.start_pack_apps`.** Captura defensiva ampliada a `(OSError, Exception)` por elemento, garantizando que un fallo en la resolución o lanzamiento de una app no cancele el procesamiento del resto del lote.
+- **`test_gaming_service_rlock_and_concurrency`.** Test discriminante en `run_tests.py` que valida la presencia y reentrancia del `RLock`, la exclusión mutua real mediante contención de cerrojo (liquidando M2), la sincronización concurrente entre 5 hilos, la preservación defensiva ante fallos y el aislamiento de excepciones no-OSError.
+
+### Corregido
+- **Eliminación del Superviviente M2.** Añadida prueba de contención de cerrojo con hilo bloqueante y timeouts en `run_tests.py`, asegurando que `restore_gaming_session()` no pueda extraer ni vaciar aplicaciones mientras el cerrojo `_lock` esté retenido.
+
+---
+
 ## CYCLE-036 - 2026-10-01
 
 **Testing & Calidad** — `TASK-046` (Pruebas de Contratos de Ciclo de Vida y Estados en Mixin Confirmable)
