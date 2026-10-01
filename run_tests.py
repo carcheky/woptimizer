@@ -10815,17 +10815,31 @@ def test_confirmable_mixin_lifecycle_and_widget_contracts():
     assert btn_c.cget("text") == "Accion C"
     assert view._boton_pendiente is None
 
-    # 6. Limpieza defensiva en cancel_on_destroy
-    view._require_double_tap("token_D", button=btn_c, label="Pulsaste D")
+    # 6. Limpieza defensiva en cancel_on_destroy con timers activos (throttling)
+    btn_t = DummyButton("Throttle")
+    view._require_double_tap("token_T", button=btn_t, label="Pulsaste T")
+    view._require_double_tap("token_T", button=btn_t)  # 2ª pulsación: confirmed, encola timer de rehabilitación
+    assert len(view._timers_ui) == 1, "Debe haber 1 timer de throttling encolado en _timers_ui"
+    vivos_antes = len(sched.vivos())
+    assert vivos_antes >= 1, "El scheduler debe tener al menos un timer activo"
     view.cancel_on_destroy()
     assert view._guard.is_pending() is False
     assert view._boton_pendiente is None
-    assert len(view._timers_ui) == 0
+    assert len(view._timers_ui) == 0, "cancel_on_destroy debe vaciar _timers_ui"
+    assert len(sched.vivos()) < vivos_antes, "cancel_on_destroy debe cancelar los timers pendientes en el scheduler"
 
     # 7. Resiliencia ante widgets destruidos (winfo_exists() == False)
     btn_dead = DummyButton("Muerto")
     btn_dead.alive = False
     assert view._configurar(btn_dead, text="Nuevo") is False, "Widget destruido debe rechazar configuración sin lanzar excepción"
+
+    # 8. Limpieza completa de reposo en recreación de botones (_forget_buttons)
+    btn_f = DummyButton("Accion F")
+    view._recordar_reposo("token_F", btn_f)
+    assert "token_F" in view._reposo, "_reposo debe contener token_F antes de _forget_buttons"
+    view._forget_buttons()
+    assert len(view._reposo) == 0, "_forget_buttons() debe limpiar _reposo completamente"
+    assert view._guard.is_pending() is False, "_forget_buttons() debe llamar a cancel_on_destroy()"
 
     print("test_confirmable_mixin_lifecycle_and_widget_contracts OK.")
 
