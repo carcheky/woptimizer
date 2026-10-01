@@ -10562,6 +10562,57 @@ def test_process_service_kill_defensive_zombie_and_oserror():
     print("test_process_service_kill_defensive_zombie_and_oserror OK.")
 
 
+def test_tray_session_restoration_integration():
+    """TASK-043 (Ciclo #33): Valida la integración de la opción '🔄 Reabrir aplicaciones cerradas'
+    en el menú contextual del system tray y la notificación nativa resultante.
+    """
+    print("Testing tray session restoration integration (TASK-043)...")
+    import time
+    from unittest.mock import MagicMock, patch
+    from woptimizer.ui.app import WOptimizerApp
+
+    mock_proc_svc = MagicMock()
+    mock_pack_svc = MagicMock()
+    mock_gaming_svc = MagicMock()
+
+    mock_gaming_svc.restore_gaming_session.return_value = (2, 0)
+
+    with patch("customtkinter.CTk"), patch("woptimizer.ui.main_window.MainWindow"):
+        app = WOptimizerApp(
+            process_service=mock_proc_svc,
+            pack_service=mock_pack_svc,
+            gaming_service=mock_gaming_svc,
+            autostart_tray=False
+        )
+
+        with patch("pystray.MenuItem") as mock_menu_item, patch("pystray.Icon") as mock_icon_cls:
+            mock_icon_instance = MagicMock()
+            mock_icon_cls.return_value = mock_icon_instance
+
+            app.show_tray()
+
+            item_titles = [call.args[0] for call in mock_menu_item.call_args_list if call.args]
+            assert "🔄 Reabrir aplicaciones cerradas" in item_titles, \
+                f"El menú del tray debe incluir '🔄 Reabrir aplicaciones cerradas', obtenidos: {item_titles}"
+
+            restore_cb = None
+            for call in mock_menu_item.call_args_list:
+                if call.args and call.args[0] == "🔄 Reabrir aplicaciones cerradas":
+                    restore_cb = call.args[1]
+                    break
+
+            assert restore_cb is not None, "Se debe asociar un callback a '🔄 Reabrir aplicaciones cerradas'"
+
+            with patch.object(app.notification_service, "notify_apps_launched") as mock_notify:
+                restore_cb(mock_icon_instance, None)
+                time.sleep(0.2)
+
+                mock_gaming_svc.restore_gaming_session.assert_called_once()
+                mock_notify.assert_called_once_with("Restauración Gaming", 2, 0)
+
+    print("test_tray_session_restoration_integration OK.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -10691,5 +10742,7 @@ if __name__ == "__main__":
     # Ciclo 26 iteracion 3: la TERCERA puerta de feedback (Gestor de Procesos), que
     # el fix de la iteracion 2 y la guarda AST no tocaban.
     test_el_gestor_de_procesos_tampoco_miente()
+    # TASK-043: Restauración de Sesión Gaming desde el tray
+    test_tray_session_restoration_integration()
     test_headless_ui()
     print("\nALL TESTS PASSED.")

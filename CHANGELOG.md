@@ -1,3 +1,17 @@
+## CYCLE-033 - 2026-10-01
+
+**Gaming & Telemetría UX** — `TASK-043` (Restauración de Sesión Gaming UX desde System Tray)
+
+> 🟢 **VERDICT FINAL: PASS** — Auditoría de UI/UX y notificaciones del tray completada con éxito. **88 tests** (82 backend + 6 headless UI) pasando al 100%.
+
+### Añadido
+- **Acción del System Tray `'🔄 Reabrir aplicaciones cerradas'`.** Integrada en el menú contextual de `pystray` en `WOptimizerApp` (`src/woptimizer/ui/app.py`).
+- **Restauración Asíncrona en Hilo Secundario.** La re-apertura de las aplicaciones de la sesión gaming se ejecuta de forma asíncrona mediante `gaming_service.restore_gaming_session()` en un hilo daemon `Thread(daemon=True)`.
+- **Notificación Nativa en Tray.** Notificación al usuario vía `notification_service.notify_apps_launched()` informando la cantidad de aplicaciones restauradas.
+- **`test_tray_session_restoration_integration`.** Test discriminante en `run_tests.py` que valida la adición de la opción al menú contextual, la llamada asíncrona a `restore_gaming_session()` y la emisión de notificaciones.
+
+---
+
 ## CYCLE-032 - 2026-10-01
 
 **Resiliencia & Robustez** — `TASK-042` (Robustez de Concurrencia y Captura Defensiva)

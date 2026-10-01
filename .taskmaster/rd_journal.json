@@ -498,5 +498,21 @@
       "after": "82 backend + 5 headless UI (87 totales, validados con ast por validate_docs.py)"
     },
     "impact": "Robustez de Concurrencia y Captura Defensiva en NotificationService y ProcessService (TASK-042): Reemplazo de Lock por RLock reentrante multihilo en NotificationService, captura defensiva de psutil.ZombieProcess y OSError en ProcessService.kill_processes y kill_pack_apps. +2 tests discriminantes en run_tests.py."
+  },
+  {
+    "cycle": 33,
+    "date": "2026-10-01T15:45:00",
+    "area": "Gaming & Telemetría UX",
+    "slug": "2026-10-01-tray-session-restoration-ux",
+    "task": "TASK-043",
+    "status": "COMPLETED",
+    "commits": [
+      "12b9c3bf"
+    ],
+    "tests": {
+      "before": "82 backend + 5 headless UI (87 totales)",
+      "after": "82 backend + 6 headless UI (88 totales, validados con ast por validate_docs.py)"
+    },
+    "impact": "Restauración de Sesión Gaming y Notificaciones desde el System Tray (TASK-043): Integración de la opción '🔄 Reabrir aplicaciones cerradas' en el menú contextual de pystray en WOptimizerApp. Ejecución asíncrona de restoration de sesión gaming en un hilo secundario daemon con notificación del resultado al usuario. +1 test discriminante (test_tray_session_restoration_integration) en run_tests.py."
   }
 ]

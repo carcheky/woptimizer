@@ -1,3 +1,20 @@
+## [CYCLE-033] 2026-10-01 15:45 — tray-session-restoration-ux
+**Área**: Gaming & Telemetría UX
+**Change**: openspec/changes/2026-10-01-tray-session-restoration-ux/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Área 2)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (+1 test discriminante validado)
+
+### Cambios Clave
+- `src/woptimizer/ui/app.py`: Opción `'🔄 Reabrir aplicaciones cerradas'` en el menú contextual de `pystray`. Ejecución asíncrona de restauración de sesión gaming y notificación nativa.
+- `run_tests.py`: +1 test discriminante (`test_tray_session_restoration_integration`). Suite elevada a 88 tests al 100% en verde.
+- `docs/ai/architecture.md`: Actualización de la documentación viva.
+
+---
+
 ## [CYCLE-032] 2026-10-01 15:30 — system-resilience-hardening
 **Área**: Resiliencia & Robustez
 **Change**: openspec/changes/2026-10-01-system-resilience-hardening/

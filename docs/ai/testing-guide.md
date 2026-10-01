@@ -25,8 +25,8 @@ app.run()
 ### 3. Pruebas Unitarias de Backend
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
-### Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **87 tests**: 82 de backend + 5 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
+#### Suite de Tests Actual (`run_tests.py`)
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **88 tests**: 82 de backend + 6 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
 
 > **Ese 81 no se escribe a mano, y por eso ya no puede caducar solo.** Fallo medido en el cierre
 > del ciclo 26: esta tabla decía 78, `STATUS.md` decía 75 y `AGENTS.md` y `README.md` decían 28 —
@@ -129,6 +129,7 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 84 | `test_freed_mb_calculation_precision` | **TASK-041 (Ciclo #31):** Precisión del cálculo de `freed_mb` (suma de RSS física de padre e hijos y redondeo exacto a 2 decimales en megabytes) |
 | 85 | `test_notification_service_rlock_and_concurrency` | **TASK-042 (Ciclo #32):** Thread-safety y reentrancia en `NotificationService` con `threading.RLock()` bajo concurrencia multihilo |
 | 86 | `test_process_service_kill_defensive_zombie_and_oserror` | **TASK-042 (Ciclo #32):** Captura defensiva de `psutil.ZombieProcess` y `OSError` en `kill_processes` y `kill_pack_apps` |
+| 87 | `test_tray_session_restoration_integration` | **TASK-043 (Ciclo #33):** Integración de '🔄 Reabrir aplicaciones cerradas' en el menú contextual de `pystray` y notificación nativa resultante |
 
 
 

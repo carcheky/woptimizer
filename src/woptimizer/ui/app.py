@@ -127,10 +127,33 @@ class WOptimizerApp:
                     threading.Thread(target=_run, daemon=True).start()
             except Exception as e:
                 logger.error(f"Tray gaming_action error: {e}")
-                
+
+        def restore_action(icon, item):
+            from woptimizer.config import logger
+            try:
+                import threading
+                def _run():
+                    try:
+                        started, failed = self.gaming_service.restore_gaming_session()
+                        logger.info(f"Tray restore session: {started} started, {failed} failed")
+                        if started == 0 and failed == 0:
+                            self.notification_service.notify(
+                                "woptimizer", "No hay aplicaciones pendientes de restauración."
+                            )
+                        else:
+                            self.notification_service.notify_apps_launched(
+                                "Restauración Gaming", started, failed
+                            )
+                    except Exception as e:
+                        logger.error(f"Tray restore_action error: {e}")
+                threading.Thread(target=_run, daemon=True).start()
+            except Exception as e:
+                logger.error(f"Tray restore_action outer error: {e}")
+
         menu = (
             pystray.MenuItem('Mostrar App', show_action, default=True),
             pystray.MenuItem('🚀 Preparar Gaming Mode', gaming_action),
+            pystray.MenuItem('🔄 Reabrir aplicaciones cerradas', restore_action),
             pystray.MenuItem('Salir', quit_action)
         )
         self.tray_icon = pystray.Icon("woptimizer", image, "woptimizer v3", menu)

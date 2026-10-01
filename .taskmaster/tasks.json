@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01T00:00:00Z",
-  "active_task_id": "TASK-042",
+  "active_task_id": "TASK-043",
   "tasks": [
     {
       "id": "TASK-001",
@@ -843,7 +843,7 @@
       "description": "Garantizar thread-safety en NotificationService con RLock para operaciones concurrentes en tray icon y reforzar captura defensiva de ZombieProcess y OSError en kill_processes de ProcessService. Ampliación de tests en run_tests.py.",
       "complexity": 3,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-041"
       ],
@@ -855,6 +855,25 @@
         "run_tests.py y validate_docs.py en verde 100%"
       ],
       "notes": "Ciclo #32 del motor autónomo de I+D (Área 1: Resiliencia & Robustez)."
+    },
+    {
+      "id": "TASK-043",
+      "title": "Restauración de Sesión Gaming y Notificaciones desde el System Tray",
+      "description": "Integrar opción contextual de 'Reabrir aplicaciones cerradas' en el menú pystray de System Tray invocando GamingService.restore_gaming_session y emitiendo notificaciones nativas.",
+      "complexity": 3,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [
+        "TASK-042"
+      ],
+      "module": "src/woptimizer/ui/app.py",
+      "acceptance_criteria": [
+        "Menú de System Tray incluye la acción de restaurar sesión gaming",
+        "Notificación nativa emitida tras la restauración desde el tray",
+        "Tests headless añadidos en run_tests.py",
+        "run_tests.py y validate_docs.py en verde 100%"
+      ],
+      "notes": "Ciclo #33 del motor autónomo de I+D (Área 2: Gaming & Telemetría UX)."
     }
   ]
 }

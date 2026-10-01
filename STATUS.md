@@ -6,19 +6,19 @@
 
 ### 🟢 Salud General del Sistema
 - **Sintaxis Estática UI:** 🟢 Pasa al 100% (`verify_ui_syntax.py`, 8 módulos)
-- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **87 tests**: 82 backend + 5 headless UI. El número lo deriva `validate_docs.py` con `ast` desde `run_tests.py` y lo compara con los tres ficheros que lo declaran, así que ya no puede volver a caducar solo)
+- **Suite de Tests Headless:** 🟢 Pasa al 100% (`run_tests.py`, **88 tests**: 82 backend + 6 headless UI. El número lo deriva `validate_docs.py` con `ast` desde `run_tests.py` y lo compara con los tres ficheros que lo declaran, así que ya no puede volver a caducar solo)
 - **Micro-Benchmark Base:** 182 ms (Init) | 4.97 ms (Escaneo 325 procs) | 0.003 ms (lectura cacheada) | 30 MB (RAM RSS)
 - **Compilación PyInstaller:** 🟡 El ejecutable es un artefacto de distribución y se regenera al publicar; su desfase (del 2026-09-29) no lo vigila ningún checkpoint — ver "Checkpoints Periódicos"
 - **Base de Datos de Procesos:** 89 entradas | 8 categorías | 0 categorías huérfanas | 🛡️ blindaje anti-brick activo (34 procesos de sistema, 0 cerrables)
-- **Versionado:** 🟢 Al día en git (`2bc869e` feat(tests): TASK-034).
+- **Versionado:** 🟢 Al día en git (`ece8778` feat(services): TASK-042).
 
 ---
 
 ### 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 32 (`rd_journal.json` actualizado).
-- **Ciclo Actual #32:** TASK-042 — Robustez de Concurrencia y Captura Defensiva. 🟢 **Completado.**
-- **Última Acción:** Ciclo #32 TASK-042 — Thread-safety en `NotificationService` (RLock) y captura defensiva de `ZombieProcess` / `OSError` en `ProcessService`. 🟢 +2 tests discriminantes, suite elevada a 87 tests al 100% en verde.
+- **Ciclos Completados:** 33 (`rd_journal.json` actualizado).
+- **Ciclo Actual #33:** TASK-043 — Restauración de Sesión Gaming UX desde System Tray. 🟢 **Completado.**
+- **Última Acción:** Ciclo #33 TASK-043 — Integración de re-apertura de aplicaciones y notificaciones desde el system tray en `WOptimizerApp`. 🟢 +1 test discriminante (`test_tray_session_restoration_integration`), suite elevada a 88 tests al 100% en verde.
 
 ---
 
