@@ -986,30 +986,102 @@ def test_pack_service_delete():
     print("PackService delete OK.")
 
 
-def test_pack_service_favorite_exclusive():
-    """TASK-021: set_favorite deja como maximo UN favorito; None los borra todos."""
-    print("Testing PackService set_favorite...")
+def test_pack_service_favorites_acumulan():
+    """TASK-048: set_favorite es acumulativo y no desmarca otros packs."""
+    print("Testing PackService favoritos acumulativos...")
     pack_s, tmp_path = _pack_service_temporal()
     try:
         for pack_id in ("a", "b", "c"):
             assert pack_s.create_user_pack(pack_id, pack_id.upper(), []) is True
 
         def favoritos():
-            return sorted(k for k, v in pack_s.get_all_packs().items() if v.is_favorite)
+            return sorted(k for k, v in pack_s.get_all_packs().items() if v.is_favorite and k in ("a", "b", "c"))
 
-        pack_s.set_favorite("a")
+        # Marcar 'a' como favorito
+        pack_s.set_favorite("a", True)
         assert favoritos() == ["a"], f"Esperaba solo 'a' como favorito, hay {favoritos()}"
 
-        # Reasignar el favorito no deja al anterior marcado
-        pack_s.set_favorite("c")
-        assert favoritos() == ["c"], f"Esperaba solo 'c' como favorito, hay {favoritos()}"
+        # Marcar 'c' como favorito: debe acumularse con 'a', NO desmarcarlo
+        pack_s.set_favorite("c", True)
+        assert favoritos() == ["a", "c"], f"Esperaba ['a', 'c'] acumulados, hay {favoritos()}"
 
-        # None limpia todos los favoritos
-        pack_s.set_favorite(None)
-        assert favoritos() == [], f"set_favorite(None) debe dejar 0 favoritos, hay {favoritos()}"
+        # Desmarcar 'a': 'c' sigue siendo favorito y 'b' permanece False
+        pack_s.set_favorite("a", False)
+        assert favoritos() == ["c"], f"Esperaba ['c'], hay {favoritos()}"
+        assert pack_s.get_all_packs()["b"].is_favorite is False
     finally:
         os.unlink(tmp_path)
-    print("PackService set_favorite OK.")
+    print("PackService favoritos acumulativos OK.")
+
+
+def test_pack_service_favorite_contracts_and_resilience():
+    """TASK-048: validación de None en set_favorite, toggle_favorite, blindaje gaming y guard ast."""
+    print("Testing PackService favorite contracts and resilience...")
+    import ast
+    from pathlib import Path
+    from woptimizer.services.pack_service import PackService
+
+    # 1. Guard AST: get_favorite_pack no debe aparecer en ningún fichero de src/woptimizer/**
+    src_dir = Path(__file__).resolve().parent / "src" / "woptimizer"
+    for py_file in src_dir.rglob("*.py"):
+        tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "get_favorite_pack":
+                raise AssertionError(f"Función obsoleta get_favorite_pack() encontrada en {py_file.name}:{node.lineno}")
+            if isinstance(node, ast.Attribute) and node.attr == "get_favorite_pack":
+                raise AssertionError(f"Llamada a get_favorite_pack encontrada en {py_file.name}:{node.lineno}")
+
+    pack_s, tmp_path = _pack_service_temporal()
+    try:
+        # 2. set_favorite(None, ...) y set_favorite("", ...) deben lanzar ValueError
+        try:
+            pack_s.set_favorite(None, True)
+            raise AssertionError("set_favorite(None, True) debió lanzar ValueError")
+        except ValueError:
+            pass
+
+        try:
+            pack_s.set_favorite("", True)
+            raise AssertionError("set_favorite('', True) debió lanzar ValueError")
+        except ValueError:
+            pass
+
+        # 3. toggle_favorite sobre PackService real: alterna True/False/True y persiste en disco
+        assert pack_s.create_user_pack("custom", "Custom Pack", []) is True
+        assert pack_s.get_all_packs()["custom"].is_favorite is False
+
+        # Toggle 1 -> True
+        nuevo_1 = pack_s.toggle_favorite("custom")
+        assert nuevo_1 is True, f"Esperaba True tras primer toggle, obtuvo {nuevo_1}"
+        assert pack_s.get_all_packs()["custom"].is_favorite is True
+        s_disco1 = PackService(tmp_path)
+        assert s_disco1.get_all_packs()["custom"].is_favorite is True
+
+        # Toggle 2 -> False
+        nuevo_2 = pack_s.toggle_favorite("custom")
+        assert nuevo_2 is False, f"Esperaba False tras segundo toggle, obtuvo {nuevo_2}"
+        assert pack_s.get_all_packs()["custom"].is_favorite is False
+        s_disco2 = PackService(tmp_path)
+        assert s_disco2.get_all_packs()["custom"].is_favorite is False
+
+        # Toggle 3 -> True
+        nuevo_3 = pack_s.toggle_favorite("custom")
+        assert nuevo_3 is True
+        assert pack_s.get_all_packs()["custom"].is_favorite is True
+
+        # 4. El pack gaming no puede quedarse sin favorito tras recargar (_ensure_gaming_pack)
+        pack_s.set_favorite("gaming", False)
+        assert pack_s.get_all_packs()["gaming"].is_favorite is False
+        pack_s.save()
+
+        # Al recargar, _ensure_gaming_pack restaura is_favorite=True en gaming
+        s_reloaded = PackService(tmp_path)
+        assert s_reloaded.get_all_packs()["gaming"].is_favorite is True, (
+            "_ensure_gaming_pack debe restaurar is_favorite=True en pack gaming existente"
+        )
+    finally:
+        os.unlink(tmp_path)
+    print("PackService favorite contracts and resilience OK.")
 
 
 def test_pack_service_reset_gaming():
@@ -3515,7 +3587,7 @@ def test_la_recuperacion_no_sobrescribe_el_bak():
 
         # Escritura REAL del usuario. El principal que hay en disco sigue siendo
         # el corrupto, asi que no hay version anterior sana que rotar.
-        servicio.set_favorite("salvado")
+        servicio.set_favorite("salvado", True)
 
         assert _bytes_de(ruta + ".bak") == bak_antes, (
             "el .bak cambio de bytes tras guardar: se refresco con el estado en "
@@ -3648,7 +3720,7 @@ def test_un_campo_desconocido_no_es_corrupcion_y_no_se_borra():
         assert _bytes_de(ruta + ".bak") == bak_antes, "el .bak sano fue tocado"
 
         # Un guardado REAL: el campo tiene que SEGUIR en el fichero.
-        servicio.set_favorite("mio")
+        servicio.set_favorite("mio", True)
         with open(ruta, encoding="utf-8") as fh:
             en_disco = json.load(fh)
         assert en_disco["packs"]["mio"].get("notas") == "comprar la caja", (
@@ -3714,7 +3786,7 @@ def test_packs_y_profiles_a_la_vez_es_corrupcion():
             "el .bak sano fue tocado al recuperar"
         )
 
-        servicio.set_favorite("salvado")
+        servicio.set_favorite("salvado", True)
         with open(ruta, encoding="utf-8") as fh:
             en_disco = json.load(fh)
         assert "otro" in en_disco["packs"] and "salvado" in en_disco["packs"], (
@@ -10998,7 +11070,8 @@ if __name__ == "__main__":
     test_gaming_service_session_restoration()
     test_pack_service_crud()
     test_pack_service_delete()
-    test_pack_service_favorite_exclusive()
+    test_pack_service_favorites_acumulan()
+    test_pack_service_favorite_contracts_and_resilience()
     test_pack_service_reset_gaming()
     test_gaming_pack_lists_isolated_from_global()
     test_cache_ttl_and_invalidation()

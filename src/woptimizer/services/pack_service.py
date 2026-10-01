@@ -588,6 +588,7 @@ class PackService:
             self._data.packs["gaming"] = DEFAULT_GAMING_PACK.model_copy(deep=True)
         else:
             self._data.packs["gaming"].is_gaming = True
+            self._data.packs["gaming"].is_favorite = True
 
     def get_all_packs(self) -> Dict[str, Pack]:
         """TASK-040: Retorna copia defensiva de packs usando caché inmutable de 2 capas (< 0.05 ms)."""
@@ -641,11 +642,9 @@ class PackService:
     def get_user_packs(self) -> Dict[str, Pack]:
         return {k: v for k, v in self._data.packs.items() if not v.is_gaming}
 
-    def get_favorite_pack(self) -> Optional[Pack]:
-        for pack in self._data.packs.values():
-            if pack.is_favorite:
-                return pack
-        return None
+    def get_favorite_packs(self) -> List[Pack]:
+        """TASK-048: Retorna lista de copias defensivas de packs marcados como favoritos."""
+        return [p.model_copy(deep=True) for p in self._data.packs.values() if p.is_favorite]
 
     def create_user_pack(self, pack_id: str, name: str, apps: List[str]) -> bool:
         if pack_id in self._data.packs or pack_id == "gaming":
@@ -665,8 +664,43 @@ class PackService:
         self.save()
         return True
 
-    def set_favorite(self, pack_id: Optional[str]) -> None:
-        """Marca un pack como favorito y desmarca el resto."""
-        for k, v in self._data.packs.items():
-            v.is_favorite = (k == pack_id)
+    def set_favorite(self, pack_id: str, value: bool) -> None:
+        """TASK-048: Marca o desmarca un pack específico sin alterar los demás.
+
+        Args:
+            pack_id: Identificador del pack. Si es None o vacío, lanza ValueError.
+            value: True para marcar como favorito, False para desmarcar.
+
+        Raises:
+            ValueError: Si pack_id es None o una cadena vacía.
+        """
+        if not pack_id:
+            raise ValueError("pack_id no puede ser None ni vacío.")
+        if pack_id not in self._data.packs:
+            return
+        self._data.packs[pack_id].is_favorite = bool(value)
         self.save()
+        self.invalidate_cache()
+
+    def toggle_favorite(self, pack_id: str) -> bool:
+        """TASK-048: Lee el estado VIVO de un pack, lo invierte, persiste y devuelve el nuevo valor.
+
+        Args:
+            pack_id: Identificador del pack a alternar.
+
+        Returns:
+            bool: Nuevo estado de is_favorite.
+
+        Raises:
+            ValueError: Si pack_id es None o una cadena vacía.
+            KeyError: Si pack_id no existe en los packs cargados.
+        """
+        if not pack_id:
+            raise ValueError("pack_id no puede ser None ni vacío.")
+        if pack_id not in self._data.packs:
+            raise KeyError(f"Pack '{pack_id}' no encontrado.")
+        new_val = not self._data.packs[pack_id].is_favorite
+        self._data.packs[pack_id].is_favorite = new_val
+        self.save()
+        self.invalidate_cache()
+        return new_val

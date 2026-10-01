@@ -395,7 +395,9 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
         if pack is None:
             self.refresh_packs()
             return
-        if pack.is_favorite:
+        if hasattr(self.pack_service, "toggle_favorite"):
+            self.pack_service.toggle_favorite(pack_id)
+        elif pack.is_favorite:
             self.pack_service.set_favorite(None)
         else:
             self.pack_service.set_favorite(pack_id)

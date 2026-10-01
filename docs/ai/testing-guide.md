@@ -26,7 +26,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 #### Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **91 tests**: 84 de backend + 7 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **92 tests**: 85 de backend + 7 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
 
 > **Ese 81 no se escribe a mano, y por eso ya no puede caducar solo.** Fallo medido en el cierre
 > del ciclo 26: esta tabla decía 78, `STATUS.md` decía 75 y `AGENTS.md` y `README.md` decían 28 —
@@ -59,7 +59,7 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 15 | `test_gaming_service_session_restoration` | **TASK-038:** restauración inteligente de apps tras Modo Gaming (`_last_closed_apps`, `get_last_closed_apps`, `clear_last_closed_apps`, `restore_gaming_session`) |
 | 16 | `test_pack_service_crud` | `create_user_pack` rechaza duplicados y el id reservado `gaming`; persiste en disco |
 | 16 | `test_pack_service_delete` | `delete_pack`: `ValueError` en gaming, `False` si no existe, `True` en pack propio |
-| 17 | `test_pack_service_favorite_exclusive` | `set_favorite` deja como máximo 1 favorito; `set_favorite(None)` deja 0 |
+| 17 | `test_pack_service_favorites_acumulan` | **TASK-048 (Ciclo #38):** Favoritos acumulativos en `PackService.set_favorite()`, persistiendo múltiples favoritos sin exclusividad global |
 | 18 | `test_pack_service_reset_gaming` | `reset_gaming_pack` restaura apps y `target_categories` de `DEFAULT_GAMING_PACK` |
 | 19 | `test_gaming_pack_lists_isolated_from_global` | Las listas del pack gaming **no** comparten objeto con `DEFAULT_GAMING_PACK` (regresión de `model_copy()` shallow) |
 | 20 | `test_cache_ttl_and_invalidation` | Dentro del TTL se devuelve el **mismo objeto**; `invalidate_cache()` y `force_refresh=True` re-escanean |
@@ -133,6 +133,7 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 89 | `test_tray_session_restoration_integration` | **TASK-043 (Ciclo #33):** Integración de '🔄 Reabrir aplicaciones cerradas' en el menú contextual de `pystray` y notificación nativa resultante |
 | 90 | `test_confirmable_mixin_lifecycle_and_widget_contracts` | **TASK-046 (Ciclo #36):** Contratos de ciclo de vida, widgets y estados en `Confirmable` mixin (mutación de estados en botón y label, throttling de 300 ms en 2ª pulsación, changed_text, auto-expiración a 3000 ms, `_cancel_confirm`, `cancel_on_destroy` y tolerancia a `winfo_exists() == False`) |
 | 91 | `test_gaming_service_rlock_and_concurrency` | **TASK-047 (Ciclo #37):** Resiliencia de concurrencia y recuperación en `GamingService` (`threading.RLock()` reentrante, concurrencia multihilo en `restore_gaming_session`, preservación defensiva ante excepciones y aislamiento no-OSError en `ProcessService.start_pack_apps`) |
+| 92 | `test_pack_service_favorite_contracts_and_resilience` | **TASK-048 (Ciclo #38):** Contratos de favoritos (validación `ValueError` en `set_favorite(None)`, `toggle_favorite()` lee estado vivo y persiste, `_ensure_gaming_pack()` restaura `is_favorite=True` en gaming, y guard AST de ausencia de `get_favorite_pack`) |
 
 
 

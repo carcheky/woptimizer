@@ -297,3 +297,10 @@
 estore_gaming_session() desde hilos asíncronos concurrentes (System Tray y Dashboard) extrae atómicamente la lista de aplicaciones bajo el cerrojo antes de llamar a ProcessService.start_pack_apps. La ejecución de arranque se realiza fuera del cerrojo para evitar bloqueos innecesarios en la interfaz.
     - **Preservación defensiva de estado:** Si start_pack_apps sufre una excepción no controlada, las aplicaciones no arrancadas se re-insertan atómicamente en _last_closed_apps (with self._lock:) antes de propagar la excepción, impidiendo la pérdida irreversible de la sesión del usuario.
     - **Aislamiento en ProcessService.start_pack_apps:** Toda resolución y lanzamiento de apps captura (OSError, Exception) por elemento, aislando errores individuales para garantizar que un fallo en una app no aborte el procesamiento del resto del lote.
+
+17. **Favoritos Acumulativos y Resiliencia en PackService (TASK-048 / Ciclo #38):**
+    - **Semántica Acumulativa:** `is_favorite` es un booleano por pack estrictamente acumulativo. Múltiples packs pueden marcarse simultáneamente como favoritos (`set_favorite(pack_id, value)`), erradicando la exclusividad global.
+    - **Invariante de Capas:** La UI no gestiona la inversión de estados ni decide política. `PackService.toggle_favorite(pack_id: str) -> bool` lee el estado vivo de `self._data.packs`, lo invierte, persiste a disco y retorna el nuevo valor atómicamente.
+    - **Validación Estricta:** `set_favorite(None, ...)` o strings vacíos lanzan `ValueError`. La semántica legacy de pasar `None` para "desmarcar todos" queda eliminada.
+    - **Blindaje del Pack Gaming:** `_ensure_gaming_pack()` garantiza `is_favorite = True` además de `is_gaming = True` para el pack gaming en memoria al iniciar o restaurar, evitando que desaparezca permanentemente de la portada.
+    - **Retirada de `get_favorite_pack()`:** El método de favorito singular se retira (sustituido por `get_favorite_packs() -> List[Pack]`), impidiendo resoluciones ambiguas.

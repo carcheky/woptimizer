@@ -1,7 +1,7 @@
 {
   "project": "woptimizer",
   "version": "3.0.1.dev0",
-  "updated_at": "2026-10-01T22:30:00Z",
+  "updated_at": "2026-10-01",
   "active_task_id": "TASK-048",
   "tasks": [
     {
@@ -1085,6 +1085,98 @@
       "notes": "Cierre del encargo. RIESGO OCULTO: las 3 semillas de :3518/:3651/:3717 estan en tests de .bak y recuperacion; sin el 2o argumento es un TypeError DENTRO de esos tests, que senala el archivo equivocado y no 'el test de favoritos'. No es un test rojo, es una suite muerta por una firma. Ademas el caso (4) de test_toggle_favorite_desmarca invierte su asercion: hoy espera {a:False,b:False} con dos favoritos, y con acumulativos debe dejar {a:True,b:False} porque desmarcar 'b' no toca 'a'. Las 3 propiedades que hoy matan mutaciones (lectura en vivo, id inexistente, no-favorito se marca) se conservan.",
       "origin": "reportado por el cliente",
       "orchestrator_note": "Encargo verbal del propietario. SOLO ARQUITECTURA: planificado y registrado, NO desarrollado por el orquestador. Hay otro agente desarrollando en paralelo en este repo. Contrato en openspec/changes/2026-10-01-multi-favorites-and-db-download/"
+    },
+    {
+      "id": "TASK-054",
+      "title": "Alinear docs/api.md y docs/index.md con la v3 real",
+      "description": "Deuda declarada en STATUS",
+      "complexity": 2,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [],
+      "module": "docs/api.md",
+      "acceptance_criteria": [
+        "docs/api.md reescrito contra la API real de v3 (psutil, no taskkill ni PowerShell)",
+        "Eliminada is_admin(): verificada con 0 referencias en src/woptimizer/**",
+        "Reescrita la tabla de comandos: no hay subprocess ni taskkill en el camino de kill",
+        "docs/index.md: fuera 'auto-eleva admin' y 'auto-elevacion UAC nativa'",
+        "Test de contrato documental: cada funcion y comando citado debe existir en src/ (ast)",
+        "mkdocs.yml nav sigue coherente con los ficheros presentes"
+      ],
+      "notes": "Deuda declarada en STATUS.md:86 y DESCARTADA ALLI como 'no son documentos de arranque'. HALLAZGO: eso es falso. mkdocs.yml:70-72 publica index.md como 'Inicio' (la PORTADA del sitio) y api.md como 'API reference'. La doc de la v2 es la puerta de entrada. VERIFICADO contra el codigo: grep de 'is_admin|taskkill|powershell|ctypes' en src/woptimizer/** no devuelve ninguna implementacion; las unicas coincidencias son 'powershell' como PATRON de bloatware en config.py:140 y un comentario en process_service.py:213. Documentos que afirman que existe algo que no existe son un hallazgo, no una opinion (mutation-auditor/agent.md:55). Ojo: verify_exe.py SI menciona elevacion, asi que el script de verificacion arrastra la misma afirmacion falsa y hay que revisarlo en el mismo paso."
+    },
+    {
+      "id": "TASK-055",
+      "title": "Los 10 test_*.py muertos y el script que LANZA notepad",
+      "description": "Deuda declarada en STATUS",
+      "complexity": 2,
+      "priority": "medium",
+      "status": "pending",
+      "dependencies": [],
+      "module": "raiz del repo",
+      "acceptance_criteria": [
+        "Los 10 ficheros que mueren en 'import process_manager' se archivan en docs/archive/legacy-root-tests/ CON README que explica por que",
+        "test_powershell_direct.py se trata aparte: NO muere en el import",
+        "Ningun fichero se borra: decision del propietario, solo se mueve",
+        "run_tests.py sigue siendo la UNICA cobertura viva y el unico entrypoint de tests",
+        "docs/ai/testing-guide.md refleja el numero real y la razon",
+        "Guard que impida que un test_*.py nuevo vuelva a la raiz sin estar archivado"
+      ],
+      "notes": "Deuda declarada en STATUS.md:75, pero su RECTO ES FALSO y por eso importa. Verificado fichero a fichero: 10 de los 11 mueren en 'import process_manager' (test_harness, test_profiles, test_kill_real, test_categorization, test_gaming_session, test_relaunch_grouping, test_kill_expansion, test_gaming_profile, test_debug_list, test_harness_v2). El UNICO, test_powershell_direct.py, NO importa ese modulo: es un script standalone que hace subprocess.Popen(['notepad.exe']) y ejecuta una consulta CIM de PowerShell cruda contra un proyecto que migro a psutil en el ciclo #1. No esta 'muerto por el import': esta VIVO y tiene efecto de lado. Un fichero de tests que arranca la calculadora de un usuario si alguien lo ejecuta es un riesgo distinto al que describe STATUS.md, y mas serio. Prohibido borrar: el propietario decidio que no se borran, asi que se archivan con README."
+    },
+    {
+      "id": "TASK-056",
+      "title": "Guard de codigo muerto: que el codigo este USADO, no solo testeado",
+      "description": "Deuda NO declarada en STATUS",
+      "complexity": 3,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [],
+      "module": "run_tests.py",
+      "acceptance_criteria": [
+        "Analizador con ast sobre src/woptimizer/** que detecta funciones y metodos sin ninguna referencia",
+        "Lista blanca explicita y justificada para lo que si puede no tener llamadores (dunder, entrypoints, hooks de Tk)",
+        "Los 3 muertos verificados se resuelven o seelistan: _get_priority (process_service.py:438), is_wcag_aa (theme.py:83) y get_favorite_pack (pack_service.py:644, ya cubierto en TASK-048)",
+        "_force_update_db deja de estar muerto por TASK-051 y el guard lo confirma",
+        "El guard deriva su alcance del ARBOL, no de una tupla literal de ficheros"
+      ],
+      "notes": "Deuda NO declarada en STATUS.md, hallada en esta revision. Barrido con ast sobre src/woptimizer**: 3 funciones con CERO referencias tanto en src/ como en run_tests.py: _get_priority (process_service.py:438), is_wcag_aa (theme.py:83) y _force_update_db (process_manager_view.py:166, ya cubierta por TASK-051). get_favorite_pack (pack_service.py:644) si esta referenciada, pero solo por el grabador de un test, no por el producto. mutation-auditor/agent.md:56 lo llama 'el fallo mas caro y mas silencioso que hay': una funcion puede pasar la suite entera y el producto no llamarla nunca, que es exactamente lo que paso con get_gaming_pack() en el ciclo 14 y con should_kill_for_gaming() en el 10. Sin un guard, esto reaparece en cada ciclo. La lista blanca debe derivarse con ast del arbol, NO de una tupla literal de ficheros: es el mismo error que se cometio en CYCLE-027 (b) y que se corrigio alli."
+    },
+    {
+      "id": "TASK-057",
+      "title": "Ancla de ciclos del validador que no dependa de quien escribe el registro",
+      "description": "Deuda ABIERTA en STATUS",
+      "complexity": 3,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [],
+      "module": "validate_docs.py",
+      "acceptance_criteria": [
+        "El requisito de registrar el ciclo N no puede deducirse de un artefacto que escribe la misma pipeline",
+        "Comprobacion negativa: suite verde, commit del ciclo hecho y rd_journal.json SIN entrada debe FALLAR, no dar 0 FAIL",
+        "Comprobacion negativa: rd_journal.json corrupto o sin ciclos debe fallar con mensaje explicito (hoy ya lo hace, validate_docs.py:340-379)",
+        "Ningun ciclo del changelog puede desaparecer por editar los dos ficheros que lo declaran",
+        "Documentar en docs/ai/sandbox-rules.md la nueva regla y su limitacion residual"
+      ],
+      "notes": "Deuda ABIERTA en STATUS.md:82 y SIGUE ABIERTA, pero la descripcion de ahi esta desfasada. El check 5b ya no se deduce de los mismos ficheros que valida: el ancla se movio a rd_journal.json (validate_docs.py:332-395) y ya exige una entrada POR ciclo, no solo la ultima. Eso esta bien hecho. El residuo que sigue vivo es otro: rd_journal.json lo escribe EL MISMO ORQUESTADOR que despues pide la validacion, asi que el ancla es un fichero distinto pero no una fuente independiente. Demostrable: si se comitea un ciclo con la suite en verde y el orquestador no escribe su entrada en rd_journal.json, el validador no exige nada y da 0 FAIL. Un 0 FAIL solo prueba que pasaron las comprobaciones que existen. La salida honesta es reconocer la limitacion en la documentacion Y anadir la comprobacion negativa que la haga visible, no pretender que el problema ya no existe."
+    },
+    {
+      "id": "TASK-058",
+      "title": "Sanear las filas FALSAS de la Deuda Tecnica Conocida de STATUS.md",
+      "description": "Tarea de saneamiento del panel, no de producto, pero es la que gobierna que trabajo hace el bucle",
+      "complexity": 1,
+      "priority": "medium",
+      "status": "pending",
+      "dependencies": [],
+      "module": "STATUS.md",
+      "acceptance_criteria": [
+        "Retirar la fila 'Sin commit desde el ciclo #14': es FALSA y verificada",
+        "Corregir la fila de los 11 test_*.py muertos: son 10 por import, y el 11o es otro caso (ver TASK-055)",
+        "Actualizar la fila de docs/api.md y docs/index.md con su severidad real: son la portada y la API reference de mkdocs",
+        "La seccion Deuda Tecnica Conocida no afirma nada sin evidencia: cada fila lleva su archivo:linea comprobable",
+        "validate_docs.py sigue en verde tras la reescritura"
+      ],
+      "notes": "Tarea de saneamiento del panel, no de producto, pero es la que gobierna que trabajo hace el bucle. HALLAZGO PRINCIPAL: STATUS.md:78 declara 'Sin commit desde el ciclo #14' como deuda abierta. ES FALSA y lo verifique con el repo desacoplado: git log --oneline -6 devuelve 05b283d, 148d6dc, 5ecccd1 (TASK-047), 855c906, 7aef890 y 838b51b, y 'python .taskmaster/git_safe_commit.py --verify' sale con WOPT_REPO_OK y codigo 0. La fila lleva desde el ciclo #14 mandando a hacer un trabajo que ya esta hecho: es la clase de fila que entrena al lector a ignorar el panel. Ademas se descarto en esta revision una posible cuarta fila falsa (recuento de ciclos atrasado): STATUS.md declara 37 y rd_journal.json llega a 37, estan sincronizados. Y queda un cierre sucio sin registrar: openspec/changes/2026-10-01-gaming-session-concurrency-resilience/tasks.md esta modificado y sin comitear, incumpliendo el 'Cierre Limpio' de AGENTS.md."
     }
   ]
 }
