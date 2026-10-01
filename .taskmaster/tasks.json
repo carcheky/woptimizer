@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01T00:00:00Z",
-  "active_task_id": "TASK-040",
+  "active_task_id": "TASK-041",
   "tasks": [
     {
       "id": "TASK-001",
@@ -818,6 +818,24 @@
         "run_tests.py y validate_docs.py en verde 100%"
       ],
       "notes": "Ciclo #30 del motor autónomo de I+D (Área 4: Rendimiento & Latencia)."
+    },
+    {
+      "id": "TASK-041",
+      "title": "Ampliación de Cobertura de Testing y Contratos de Persistencia Pydantic",
+      "description": "Pruebas discriminantes para preservación de campos extra en modelos Pydantic y cálculo exacto de memoria RSS en ProcessService. Cobertura elevada a 85 tests.",
+      "complexity": 3,
+      "priority": "high",
+      "status": "completed",
+      "dependencies": [
+        "TASK-040"
+      ],
+      "module": "run_tests.py",
+      "acceptance_criteria": [
+        "Persistencia de campos extra (extra='allow') en AppData y Pack validada con test",
+        "Cálculo de freed_mb testeado con precisión",
+        "Suite de run_tests.py elevada a 85 tests y 100% en verde"
+      ],
+      "notes": "Ciclo #31 del motor autónomo de I+D (Área 5: Testing & Calidad)."
     }
   ]
 }

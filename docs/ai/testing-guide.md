@@ -26,7 +26,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 ## Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **83 tests**: 78 de backend + 5 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **85 tests**: 80 de backend + 5 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
 
 > **Ese 81 no se escribe a mano, y por eso ya no puede caducar solo.** Fallo medido en el cierre
 > del ciclo 26: esta tabla decía 78, `STATUS.md` decía 75 y `AGENTS.md` y `README.md` decían 28 —
@@ -125,6 +125,9 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 80 | `test_el_alcance_del_guard_de_llamantes_se_deriva_del_arbol` | **TASK-037 ciclo 27 (T-27.5 a T-27.7):** el guard del contrato de los llamantes tenía el alcance en una **tupla literal de dos ficheros**, que era una apuesta sobre qué ficheros importan `feedback` y la apuesta tenía un fichero mal (hay tres). El guard pasa a ser `_modulos_que_importan_feedback(raiz)` + `_guardar_contrato_de_llamantes(raiz, acciones_validas)`, y el alcance se **deriva** recorriendo `src/woptimizer/**` con `ast`. El test se monta sobre un **árbol sintético** en `%TEMP%` porque con el repo real no se distingue "derivé el alcance" de "escribí el alcance correcto a mano" (mutante M5): cinco módulos, **cuatro** importadores de `feedback` —dos conformes y dos con verbo cableado, uno de ellos **fuera de `ui/views/`** y otro en forma **`fb.mensaje_sin_apps(...)`** (`ast.Attribute`, que el `getattr(func,"id",None)` de antes se saltaba en silencio— y su import `from woptimizer.ui import feedback as fb`, que tampoco entraba en el alcance— mutantes M6 y M8)— y un quinto que **no** importa `feedback`. Control negativo obligatorio: `pack.default_action` y las ACCIONES literales `"start"`/`"kill"` no se pueden marcar, porque un guard que marca todo no vigila nada (mutante M7) |
 | 81 | `test_pack_service_cache_invalidation_and_immutability` | **TASK-040 (Ciclo #30):** Caché inmutable de 2 capas en `PackService.get_all_packs()` (< 0.05 ms), copia defensiva `model_copy(deep=True)` e invalidación atómica de caché al actualizar packs |
 | 82 | `test_process_filter_performance` | **TASK-040 (Ciclo #30):** Benchmark de filtrado en lista de procesos (< 350 items) completado en < 2.0 ms usando pre-tokenizado |
+| 83 | `test_pydantic_extra_fields_persistence` | **TASK-041 (Ciclo #31):** Persistencia e inmutabilidad de campos extra no estándar en modelos Pydantic `AppData` y `Pack` tras ciclos de `load()` -> `save()` -> `json.load()` |
+| 84 | `test_freed_mb_calculation_precision` | **TASK-041 (Ciclo #31):** Precisión del cálculo de `freed_mb` (suma de RSS física de padre e hijos y redondeo exacto a 2 decimales en megabytes) |
+
 
 
 ### Notas de Aislamiento

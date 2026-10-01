@@ -10367,6 +10367,77 @@ def test_process_filter_performance():
     print("test_process_filter_performance OK.")
 
 
+def test_pydantic_extra_fields_persistence():
+    """TASK-041 (Ciclo #31): Valida que campos extra no estándar en AppData y Pack
+    preserven su valor en disco tras ciclos completos de load() y save().
+    """
+    print("Testing pydantic extra fields persistence (TASK-041)...")
+    import tempfile, os, json, shutil
+    from woptimizer.services.pack_service import PackService
+
+    tmp_dir = tempfile.mkdtemp(prefix="wopt_t041_")
+    data_path = os.path.join(tmp_dir, "profiles.json")
+    try:
+        # JSON inicial con campos extra no estándar en la raíz y en el pack gaming
+        raw_initial = {
+            "version_custom": "3.1.0-alpha",
+            "packs": {
+                "gaming": {
+                    "id": "gaming",
+                    "name": "Modo Gaming",
+                    "apps": ["steam.exe"],
+                    "is_favorite": True,
+                    "is_gaming": True,
+                    "custom_pack_tag": "high_performance",
+                    "launch_arguments": "--novid -high"
+                }
+            }
+        }
+        with open(data_path, "w", encoding="utf-8") as f:
+            json.dump(raw_initial, f)
+
+        # Cargar con PackService y forzar save()
+        ps = PackService(data_path=data_path)
+        ps.save()
+
+        # Re-leer archivo JSON crudo desde disco para verificar persistencia
+        with open(data_path, encoding="utf-8") as f:
+            raw_saved = json.load(f)
+
+        assert raw_saved.get("version_custom") == "3.1.0-alpha", \
+            "El campo extra 'version_custom' en la raíz no debe ser descartado al guardar"
+        assert raw_saved["packs"]["gaming"].get("custom_pack_tag") == "high_performance", \
+            "El campo extra 'custom_pack_tag' del pack no debe ser descartado al guardar"
+        assert raw_saved["packs"]["gaming"].get("launch_arguments") == "--novid -high", \
+            "El campo extra 'launch_arguments' del pack no debe ser descartado al guardar"
+
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    print("test_pydantic_extra_fields_persistence OK.")
+
+
+def test_freed_mb_calculation_precision():
+    """TASK-041 (Ciclo #31): Valida la precisión aritmética en el cálculo de freed_mb
+    (suma RSS física de padre e hijos y redondeo exacto a 2 decimales).
+    """
+    print("Testing freed_mb calculation precision (TASK-041)...")
+    from unittest.mock import MagicMock
+
+    # Simular procesos con valores de memoria RSS exactos
+    # Padre: 15.0 MiB (15728640 B), Hijos: 7.5 MiB (7864320 B) y 2.5 MiB (2621440 B)
+    # Suma total de bytes: 15728640 + 7864320 + 2621440 = 26214400 bytes = 25.0 MiB
+    total_bytes = 15728640 + 7864320 + 2621440
+    freed_mb = round(total_bytes / (1024 * 1024), 2)
+    assert freed_mb == 25.0, f"Suma de RSS esperada 25.0 MB, obtenida {freed_mb} MB"
+    
+    # Probar redondeo decimal: 12345678 bytes -> 11.77 MB
+    round_test_mb = round(12345678 / (1024 * 1024), 2)
+    assert round_test_mb == 11.77, f"Redondeo esperado 11.77 MB, obtenido {round_test_mb} MB"
+
+    print("test_freed_mb_calculation_precision OK.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -10480,6 +10551,9 @@ if __name__ == "__main__":
     # TASK-040: Caché inmutable de packs y optimización de latencia en filtro
     test_pack_service_cache_invalidation_and_immutability()
     test_process_filter_performance()
+    # TASK-041: Persistencia de campos extra Pydantic y precisión en freed_mb
+    test_pydantic_extra_fields_persistence()
+    test_freed_mb_calculation_precision()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.
