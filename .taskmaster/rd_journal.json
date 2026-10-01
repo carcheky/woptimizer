@@ -490,7 +490,9 @@
     "slug": "2026-10-01-system-resilience-hardening",
     "task": "TASK-042",
     "status": "COMPLETED",
-    "commits": [],
+    "commits": [
+      "ece8778"
+    ],
     "tests": {
       "before": "80 backend + 5 headless UI (85 totales)",
       "after": "82 backend + 5 headless UI (87 totales, validados con ast por validate_docs.py)"
