@@ -10419,21 +10419,39 @@ def test_pydantic_extra_fields_persistence():
 
 def test_freed_mb_calculation_precision():
     """TASK-041 (Ciclo #31): Valida la precisión aritmética en el cálculo de freed_mb
-    (suma RSS física de padre e hijos y redondeo exacto a 2 decimales).
+    en ProcessService.kill_processes (suma RSS de padre e hijos y redondeo a 2 decimales).
     """
     print("Testing freed_mb calculation precision (TASK-041)...")
-    from unittest.mock import MagicMock
+    from unittest.mock import patch, MagicMock
+    from woptimizer.services.process_service import ProcessService
+    from woptimizer.models import ProcessInfo
 
-    # Simular procesos con valores de memoria RSS exactos
-    # Padre: 15.0 MiB (15728640 B), Hijos: 7.5 MiB (7864320 B) y 2.5 MiB (2621440 B)
-    # Suma total de bytes: 15728640 + 7864320 + 2621440 = 26214400 bytes = 25.0 MiB
-    total_bytes = 15728640 + 7864320 + 2621440
-    freed_mb = round(total_bytes / (1024 * 1024), 2)
-    assert freed_mb == 25.0, f"Suma de RSS esperada 25.0 MB, obtenida {freed_mb} MB"
+    mock_parent = MagicMock()
+    mock_parent.memory_info.return_value = MagicMock(rss=15728640)  # 15.0 MiB
     
-    # Probar redondeo decimal: 12345678 bytes -> 11.77 MB
-    round_test_mb = round(12345678 / (1024 * 1024), 2)
-    assert round_test_mb == 11.77, f"Redondeo esperado 11.77 MB, obtenido {round_test_mb} MB"
+    mock_child1 = MagicMock()
+    mock_child1.memory_info.return_value = MagicMock(rss=7864320)   # 7.5 MiB
+    mock_child2 = MagicMock()
+    mock_child2.memory_info.return_value = MagicMock(rss=2621440)   # 2.5 MiB
+    
+    mock_parent.children.return_value = [mock_child1, mock_child2]
+
+    ps = ProcessService()
+    pinfo = ProcessInfo(
+        pid=9999,
+        name="test_target_proc.exe",
+        full_name="test_target_proc.exe",
+        category="🌐 Navegadores & Web",
+        cpu_percent=0.0,
+        memory_info={"rss": 15728640},
+        status="running"
+    )
+
+    with patch("psutil.Process", return_value=mock_parent):
+        killed, failed, skipped, freed_mb = ps.kill_processes([pinfo])
+
+    assert killed == 1, f"Se esperaba 1 proceso matado, obtenido {killed}"
+    assert freed_mb == 25.0, f"Se esperaba freed_mb == 25.0 devuelto por ProcessService.kill_processes, obtenido {freed_mb}"
 
     print("test_freed_mb_calculation_precision OK.")
 
