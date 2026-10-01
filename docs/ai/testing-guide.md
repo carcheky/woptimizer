@@ -26,7 +26,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 #### Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **93 tests**: 85 de backend + 8 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **94 tests**: 86 de backend + 8 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
 
 > **Ese 81 no se escribe a mano, y por eso ya no puede caducar solo.** Fallo medido en el cierre
 > del ciclo 26: esta tabla decía 78, `STATUS.md` decía 75 y `AGENTS.md` y `README.md` decían 28 —
@@ -135,6 +135,7 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 91 | `test_gaming_service_rlock_and_concurrency` | **TASK-047 (Ciclo #37):** Resiliencia de concurrencia y recuperación en `GamingService` (`threading.RLock()` reentrante, concurrencia multihilo en `restore_gaming_session`, preservación defensiva ante excepciones y aislamiento no-OSError en `ProcessService.start_pack_apps`) |
 | 92 | `test_pack_service_favorite_contracts_and_resilience` | **TASK-048 (Ciclo #38):** Contratos de favoritos (validación `ValueError` en `set_favorite(None)`, `toggle_favorite()` lee estado vivo y persiste, `_ensure_gaming_pack()` restaura `is_favorite=True` en gaming, y guard AST de ausencia de `get_favorite_pack`) |
 | 93 | `test_dashboard_favorite_grid_adaptive_contracts` | **TASK-049 (Ciclo #39):** Rejilla adaptativa al ancho de ventana en `DashboardView` (`ANCHO_MIN_CARD` = 280, cálculo de columnas `cols = min(n, max_cols)`, re-grid dinámico en `<Configure>`, liberación de pesos a 0 en columnas sobrantes y placeholder span) |
+| 94 | `test_process_service_db_download_contracts` | **TASK-050 (Ciclo #40):** Contratos de descarga remota de DB (`DB_REMOTE_URL` centralizada en GitHub, sin literales en el cuerpo de `load_db_async`, reporte observable a `on_error`, fallback a DB local offline y contrato anti-red) |
 
 
 

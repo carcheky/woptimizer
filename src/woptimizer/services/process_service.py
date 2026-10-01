@@ -2,7 +2,7 @@ import os
 import psutil
 import struct
 import time
-from typing import List, Tuple, Optional, Dict, Sequence
+from typing import List, Tuple, Optional, Dict, Sequence, Callable, Final
 from woptimizer.models import ProcessInfo
 from woptimizer.config import PROCESS_CATEGORIES, CATEGORY_ORDER, logger
 
@@ -57,6 +57,12 @@ _PROTECTED_META = (
 
 # TASK-033: Precomputación de orden de categorías para escaneo de alto throughput
 _CAT_ORDER_IDX = {c: i for i, c in enumerate(CATEGORY_ORDER)}
+
+# TASK-050: URL remota oficial para la descarga y actualización de process_db.json.
+# Si cambia la plataforma de alojamiento (ej. GitHub -> GitLab), actualizar únicamente esta constante.
+DB_REMOTE_URL: Final[str] = (
+    "https://raw.githubusercontent.com/carcheky/woptimizer/main/assets/process_db.json"
+)
 
 # ---------------------------------------------------------------------------
 # TASK-027 (FIX-003) - ARRANQUE DE APPS: HYGIENE CON CRITERIO
@@ -370,10 +376,15 @@ class ProcessService:
         except Exception as e:
             logger.warning(f"Error cargando DB local: {e}")
 
-    def load_db_async(self, callback=None):
+    def load_db_async(
+        self,
+        callback: Optional[Callable[[], None]] = None,
+        on_error: Optional[Callable[[str], None]] = None,
+    ):
+        """TASK-050: Descarga asíncrona de process_db.json con fallback local y notificación de error."""
         def _download():
             import json, urllib.request, os
-            url = "https://gitlab.com/carcheky/woptimizer/-/raw/main/assets/process_db.json"
+            url = DB_REMOTE_URL
             try:
                 from woptimizer.config import _data_dir
                 assets_dir = os.path.join(_data_dir(), "assets")
@@ -390,9 +401,15 @@ class ProcessService:
                     with open(local_path, "w", encoding="utf-8") as f:
                         f.write(data)
             except Exception as e:
-                logger.warning(f"Fallo descargando DB de GitLab: {e}")
+                err_msg = f"Fallo descargando DB remota: {e}"
+                logger.warning(err_msg)
+                if on_error:
+                    try:
+                        on_error(err_msg)
+                    except Exception as cb_err:
+                        logger.warning(f"Error ejecutando on_error en load_db_async: {cb_err}")
 
-            # Recargar en memoria
+            # Recargar en memoria (fallback local si falló la descarga)
             self._load_local_db()
 
             if callback:

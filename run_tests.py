@@ -11142,6 +11142,123 @@ def test_dashboard_favorite_grid_adaptive_contracts():
     print("test_dashboard_favorite_grid_adaptive_contracts OK.")
 
 
+def test_process_service_db_download_contracts():
+    """TASK-050: Contratos de sincronización remota de DB, URL centralizada y fallback observable."""
+    print("Testing ProcessService remote DB download contracts (TASK-050)...")
+    import ast
+    import inspect
+    import threading
+    import urllib.request
+    import urllib.error
+    from woptimizer.services import process_service
+    from woptimizer.services.process_service import (
+        ProcessService,
+        DB_REMOTE_URL,
+        SYSTEM_PROTECTED_PROCESSES,
+    )
+
+    # 1. Contrato de constante de módulo DB_REMOTE_URL
+    assert hasattr(process_service, "DB_REMOTE_URL"), "process_service debe exportar DB_REMOTE_URL"
+    assert DB_REMOTE_URL.startswith("https://raw.githubusercontent.com/"), (
+        f"DB_REMOTE_URL debe apuntar al endpoint oficial de GitHub, obtenido: {DB_REMOTE_URL}"
+    )
+
+    # 2. Guard AST: el literal de URL no debe estar hardcodeado en el cuerpo de load_db_async
+    import textwrap
+    fn_source = textwrap.dedent(inspect.getsource(ProcessService.load_db_async))
+    fn_tree = ast.parse(fn_source)
+    for node in ast.walk(fn_tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            assert "raw.githubusercontent.com" not in node.value, (
+                "El literal de URL de GitHub no debe estar hardcodeado en load_db_async; debe usar DB_REMOTE_URL"
+            )
+            assert "gitlab.com" not in node.value, (
+                "El literal obsoleto de GitLab no debe figurar en load_db_async"
+            )
+
+    # 3. Contrato de reporte observable en fallo de descarga (on_error)
+    ps = ProcessService()
+    error_received = []
+    callback_called = threading.Event()
+    error_event = threading.Event()
+
+    def _mock_urlopen_fail(req, timeout=None):
+        raise urllib.error.URLError("Simulated network timeout")
+
+    orig_urlopen = urllib.request.urlopen
+    urllib.request.urlopen = _mock_urlopen_fail
+    try:
+        def _on_err(msg: str):
+            error_received.append(msg)
+            error_event.set()
+
+        def _on_done():
+            callback_called.set()
+
+        ps.load_db_async(callback=_on_done, on_error=_on_err)
+
+        # Esperar a que el hilo secundario termine
+        assert error_event.wait(timeout=3.0), "load_db_async debió invocar on_error ante fallo de red"
+        assert callback_called.wait(timeout=3.0), "load_db_async debió invocar callback tras intentar descarga"
+
+        assert len(error_received) == 1, f"Se esperaba 1 reporte de error, recibidos {len(error_received)}"
+        assert "Fallo descargando DB remota" in error_received[0], (
+            f"El mensaje de error debe ser observable y honesto: {error_received[0]}"
+        )
+    finally:
+        urllib.request.urlopen = orig_urlopen
+
+    # 4. Resiliencia y fallback a base de datos local empaquetada
+    from woptimizer.config import get_safety_badge
+    assert ps.is_db_loaded is True, "La DB local debe quedar cargada tras fallo de red (fallback local)"
+    meta = ps._get_process_meta("explorer.exe")
+    assert "\U0001f534" in meta[0], f"explorer.exe debe resolverse con categoría de Sistema, obtenido: {meta[0]}"
+    badge = get_safety_badge(meta[0], meta[1])
+    assert badge["text"] == "🔴 NO CERRAR", f"explorer.exe debe tener badge NO CERRAR, obtenido: {badge['text']}"
+
+    # Blindaje anti-brick intacto: 0 procesos de sistema protegidos son cerrables
+    for sys_proc in SYSTEM_PROTECTED_PROCESSES:
+        meta = ps._get_process_meta(sys_proc)
+        assert meta[0] == "\U0001f534 Sistema de Windows", (
+            f"Proceso protegido {sys_proc} debe tener categoría de Sistema"
+        )
+
+    # 5. Contrato de descarga exitosa simulada (mock)
+    class _MockSuccessResponse:
+        def __init__(self, data: bytes):
+            self.data = data
+        def read(self):
+            return self.data
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    mock_db_json = b'{"test_app.exe": {"category": "\\ud83d\\udfe2 Productividad", "priority": "normal", "description": "App de prueba"}}'
+    success_callback_called = threading.Event()
+    success_error_called = threading.Event()
+
+    def _mock_urlopen_success(req, timeout=None):
+        return _MockSuccessResponse(mock_db_json)
+
+    urllib.request.urlopen = _mock_urlopen_success
+    try:
+        def _err_unexpected(msg: str):
+            success_error_called.set()
+
+        def _success_done():
+            success_callback_called.set()
+
+        ps.load_db_async(callback=_success_done, on_error=_err_unexpected)
+        assert success_callback_called.wait(timeout=3.0), "load_db_async debió invocar callback tras descarga exitosa"
+        assert not success_error_called.is_set(), "on_error NO debe invocarse cuando la descarga es exitosa"
+    finally:
+        urllib.request.urlopen = orig_urlopen
+
+    print("test_process_service_db_download_contracts OK.")
+
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -11266,6 +11383,8 @@ if __name__ == "__main__":
     test_process_categorization_latency_and_memoization()
     # TASK-047: Resiliencia de concurrencia y recuperación en GamingService
     test_gaming_service_rlock_and_concurrency()
+    # TASK-050: Contratos de descarga remota de DB y fallback observable
+    test_process_service_db_download_contracts()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.
