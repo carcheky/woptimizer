@@ -1,80 +1,93 @@
-# woptimizer — Process Manager con foco gamer
+# woptimizer — Process Manager Gaming para Windows (v3)
 
-> **Estado actual:** Producto Python funcional. Mini App en `miniapps/process_manager/` queda como referencia (no publicable por bloqueo del sandbox del Host MiniMax Code, ver [`known-issues.md`](known-issues.md)).
+> **Estado actual:** Suite moderna en Python 3.11+ con interfaz gráfica en CustomTkinter, persistencia con Pydantic v2 y control nativo de procesos mediante `psutil`.
 
-## Qué es
+---
 
-App Windows para matar procesos de fondo en categorías gaming (navegadores, sync, chat, productividad, media), guardarlos y relanzarlos después. Pensada para preparar el PC antes de jugar.
+## ¿Qué es?
 
-## Quick start
+`woptimizer` es un gestor de procesos optimizado para gaming en Windows. Permite suspender o cerrar en masa aplicaciones en segundo plano organizadas por categorías de seguridad (navegadores, herramientas de sincronización, chat, productividad, streaming), liberando memoria RAM y ciclos de CPU antes de jugar, y restaurando la sesión al finalizar la partida mediante perfiles configurables ("Packs") y persistencia JSON.
+
+---
+
+## Inicio Rápido
 
 ```bash
-# Ejecutable standalone (recomendado, auto-eleva admin)
+# Lanzar en modo desarrollo
+python run.py
+
+# O como módulo
+python -m woptimizer
+
+# Ejecutable compilado para distribución
 dist\woptimizer.exe
 
-# O en modo desarrollo con Python
-pythonw.exe process_manager.pyw
+# Ejecutar suite de pruebas headless (96 tests)
+python run_tests.py
 
-# O lanzador silencioso legacy
-ProcessManager.vbs
-
-# Validar estado
-python smoke_check.py
-python verify_app.py
+# Verificar sintaxis estática y validaciones documentales
+python verify_ui_syntax.py
+python validate_docs.py
 ```
 
-## Características
+---
 
-- 9 categorías gaming con prioridades (🔴 matar / 🟡 opcional / 🟢 mantener / ⚫ no tocar)
-- Modo Simple (solo categorías gaming) / Completo (todas)
-- Perfil de sistema Gaming (`🚀 Preparar para Gaming`) personalizable y reseteable a fábrica
-- Gestión de perfiles de usuario (`profiles.json`) con favoritos y relanzamiento
-- Búsqueda en nombre + commandline
-- Click toggle (sin Ctrl), click derecho = menú contextual
-- Atajos: Ctrl+A, Delete, F5, Escape
-- Kill robusto (`taskkill /F /T` con exit 128 = success y verificación post-kill)
-- Ejecutable Windows standalone `woptimizer.exe` con auto-elevación UAC nativa
-- Flujo Spec-Driven Development (SDD) con OpenSpec y `llms.txt`
+## Características Principales (v3)
 
-## Estructura del repo
+- **Control Nativo con `psutil`:** Escaneo de procesos ultra-rápido en memoria C (<5 ms) mediante llamadas directas a las APIs del sistema operativo.
+- **Blindaje Anti-Brick Indestructible:** 34 procesos críticos del sistema operativo protegidos a nivel de backend (`SYSTEM_PROTECTED_PROCESSES`). Imposibles de cerrar o finalizar accidentalmente.
+- **Kill Recursivo y Seguro:** Cierre en cascada que elimina los procesos hijos antes que el proceso padre (`parent.children(recursive=True)`).
+- **Arranque Seguro sin Shell:** Lanzamiento de aplicaciones con `shell=False`, contención de rutas absolutas y verificación binaria de cabecera PE (`_es_imagen_pe`).
+- **Arquitectura de Packs y Favoritos:** Perfiles personalizables con acciones automáticas (`kill` / `start`), favoritos acumulativos y pack Gaming protegido contra eliminación.
+- **Sesión Gaming y Reanudación Inteligente:** Detección de procesos cerrados y reapertura segura en un solo clic desde el Dashboard o desde la bandeja del sistema (`pystray`).
+- **Interfaz Moderna en CustomTkinter:** Tres vistas principales (Portada, Gestor de Packs y Gestor de Procesos) cumpliendo con accesibilidad WCAG AA y tokens centralizados.
+- **Base de Datos y Sincronización Observable:** Clasificación de más de 200 procesos con descarga asíncrona desde GitHub y fallback local transparente.
 
+---
+
+## Estructura del Código
+
+```text
+src/woptimizer/
+├── __init__.py
+├── __main__.py          # Entry Point de la aplicación
+├── config.py            # Categorías, semáforos, constantes globales
+├── models.py            # Modelos Pydantic v2: ProcessInfo, Pack, AppData
+├── services/            # Capa de lógica de negocio (Backend desacoplado)
+│   ├── process_service.py      # psutil: escaneo, kill recursivo, arranque seguro
+│   ├── pack_service.py         # CRUD de packs, persistencia atómica y .bak
+│   ├── gaming_service.py       # Sesiones de juego, telemetría y concurrencia
+│   └── notification_service.py # Notificaciones nativas con pystray
+└── ui/                  # Capa gráfica CustomTkinter (Cero llamadas directas a OS)
+    ├── app.py                  # Ventana raíz y ciclo de vida de la aplicación
+    ├── main_window.py          # Navegación y transiciones de vistas
+    ├── theme.py                # Tokens de diseño, colores semánticos y fuentes
+    ├── confirmation.py         # Mixin Confirmable y DoubleTapGuard (anti-accidental)
+    ├── feedback.py             # Formateo honesto de telemetría y cierre
+    └── views/                  # Vistas modulares
+        ├── dashboard_view.py       # Portada con grid adaptativo de favoritos
+        ├── pack_manager_view.py    # Gestor de packs y edición de perfiles
+        └── process_manager_view.py # Gestor y explorador de procesos activos
 ```
-woptimizer/
-├── process_manager.py          # Script principal (source)
-├── process_manager.pyw         # Mismo, para pythonw.exe (sin consola)
-├── dist/woptimizer.exe         # Ejecutable standalone compilado (PyInstaller)
-├── build.bat                   # Script de compilacion del .exe
-├── ProcessManager.vbs          # Lanzador silencioso legacy (doble clic)
-├── profiles.json               # Perfiles de usuario y sistema Gaming (auto-creado)
-├── saved_processes.json        # Estado persistente legacy (auto-creado)
-│
-├── smoke_check.py              # Smoke test de sintaxis AST y Trampa #17
-├── verify_app.py               # Test que lanza app y verifica que arranca
-├── verify_pyw.py               # Igual pero con pythonw.exe
-├── verify_exe.py               # Verificacion del .exe, PE magic y auto-elevacion
-├── test_gaming_profile.py      # Tests unitarios del perfil de sistema Gaming
-├── test_kill_real.py           # Test que mata proceso real y verifica muerte
-├── test_profiles.py            # Tests de CRUD y favoritos de perfiles
-├── validate_docs.py            # Validador de formato llms.txt y SDD OpenSpec
-│
-├── openspec/                   # Especificaciones y propuestas SDD
-├── docs/                       # Documentacion tecnica en Markdown
-├── mkdocs.yml                  # Configuracion del portal web de documentacion
-└── miniapps/process_manager/   # Version Mini App (de referencia, bloqueada)
-```
 
-## Documentación web (MkDocs)
+---
+
+## Documentación Web (MkDocs)
 
 Para previsualizar o compilar la documentación localmente:
 
 ```bash
-# Servir en local (http://127.0.0.1:8000)
+# Servidor de previsualización local (http://127.0.0.1:8000)
 mkdocs serve
 
-# Compilar HTML estático en site/
+# Compilar sitio HTML estático en site/
 mkdocs build
 ```
 
-## Siguiente paso
+---
 
-Lee [`architecture.md`](architecture.md) para entender el flujo de datos, o [`known-issues.md`](known-issues.md) si vas a modificar el script PowerShell (importante).
+## Siguientes Pasos
+
+- Consulta [`architecture.md`](architecture.md) para comprender la separación estricta de capas entre UI y Services.
+- Revisa [`api.md`](api.md) para conocer las firmas y contratos de la capa de servicios.
+- Lee [`ui-design-system.md`](ui-design-system.md) para conocer los tokens de CustomTkinter y las pautas de accesibilidad.

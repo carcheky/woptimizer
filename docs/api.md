@@ -1,159 +1,134 @@
-# API Reference
+# Referencia de API (v3)
 
-Funciones principales que un agente IA podría necesitar llamar o extender.
+Referencia arquitectónica y de servicios del core de `woptimizer` (v3).
 
-## Funciones de `process_manager.py` (módulo)
+La versión 3 de `woptimizer` desacopla completamente la interfaz de usuario de las llamadas a sistema operativo mediante la capa de servicios (`src/woptimizer/services/`), tipado estricto con Pydantic v2 (`models.py`) e invocaciones nativas con `psutil`.
 
-### `get_running_processes() -> list[dict]`
+---
 
-Retorna lista de procesos en ejecución.
+## 1. Servicios del Backend (`src/woptimizer/services/`)
 
-**Returns:** Lista de dicts con esta estructura:
+### `ProcessService` (`process_service.py`)
 
-```python
-{
-    'name': 'chrome',           # nombre sin extensión
-    'full_name': 'chrome.exe',  # nombre con extensión
-    'pid': '1234',              # string (de PowerShell)
-    'commandline': 'C:\\...\\chrome.exe --type=renderer'
-}
-```
+Servicio central para inspección, categorización, arranque seguro y cierre de procesos.
 
-**Side effects:** Muestra messagebox de error si PowerShell falla.
+#### Métodos Principales
+- **`get_running_processes() -> List[ProcessInfo]`**
+  - Escanea los procesos activos del sistema utilizando `psutil.process_iter(['pid', 'name', 'memory_info'])`.
+  - Optimizado para baja latencia (<5 ms en frío, <0.01 ms en lecturas cacheadas con TTL de 2s).
+  - Resolución perezosa (*lazy*) de rutas de ejecutables con `get_process_exe_path(pid)`.
+- **`kill_processes(pids: List[int]) -> Tuple[int, int, int, float]`**
+  - Cierra una lista de PIDs mediante `psutil`.
+  - **Kill Recursivo:** Elimina siempre primero los procesos hijos (`parent.children(recursive=True)`) antes de terminar al padre.
+  - **Blindaje Anti-Brick:** Filtra y protege de forma indestructible los 34 procesos esenciales del sistema definidos en `SYSTEM_PROTECTED_PROCESSES`.
+  - **Retorno:** Tupla `(killed, failed, skipped, freed_mb)`.
+- **`kill_pack_apps(apps: List[str]) -> Tuple[int, int, int, float]`**
+  - Identifica los procesos activos coincidentes con la lista de nombres o rutas absolutas de `apps` y los cierra de forma segura.
+- **`start_pack_apps(apps: List[str]) -> Tuple[int, int]`**
+  - Inicia las aplicaciones declaradas en el pack.
+  - **Sin `shell=True`:** Toda ruta es normalizada y contenida con `_resolver_app()`. Rechaza traversals, rutas relativas vulnerables a CWD, y junctions no autorizados.
+  - **Verificación PE:** Valida la cabecera binaria `MZ` / `PE` (`_es_imagen_pe`), rechazando scripts camuflados como `.exe`.
+  - **Retorno:** Tupla `(started, failed)`.
+- **`load_db_async(callback=None, on_error=None)`**
+  - Descarga asíncrona no bloqueante de la base de datos de procesos desde `DB_REMOTE_URL` (GitHub).
+  - Reporta fallos de conectividad u HTTP de forma observable al callback `on_error(err_msg)`.
+  - Mantiene fallback local síncrono indestructible (`assets/process_db.json`) preservando la operatividad offline.
+- **`invalidate_cache()`**
+  - Invalida de forma atómica la caché de procesos activos y metadatos de categorización.
 
-**Performance:** 1-3 segundos (PowerShell Get-CimInstance).
+---
 
-### `kill_processes(processes_seleccionados, kill_tree=True) -> tuple[list, list]`
+### `PackService` (`pack_service.py`)
 
-Mata procesos via `taskkill /F`.
+Gestor de persistencia, CRUD de packs y perfiles de usuario.
 
-**Args:**
-- `processes_seleccionados`: list of dicts (mismo formato que `get_running_processes`)
-- `kill_tree`: si True, añade `/T` para matar hijos también
+#### Métodos Principales
+- **`get_all_packs() -> Dict[str, Pack]`**
+  - Retorna diccionario de packs activos indexados por ID.
+- **`create_user_pack(pack_id: str, name: str, apps: List[str], default_action: str = "kill") -> bool`**
+  - Crea un nuevo pack de usuario y persiste a disco.
+- **`update_pack(pack: Pack) -> bool`**
+  - Actualiza la configuración de un pack existente.
+- **`delete_pack(pack_id: str) -> bool`**
+  - Elimina un pack propio de usuario. Lanza `ValueError` si se intenta eliminar el pack Gaming (`is_gaming=True`).
+- **`set_favorite(pack_id: str, value: bool) -> None`**
+  - Modifica el estado de favorito de un pack de forma acumulativa (multi-favoritos).
+- **`toggle_favorite(pack_id: str) -> bool`**
+  - Lee el estado vivo en memoria, invierte `is_favorite`, persiste atómicamente y retorna el nuevo booleano.
+- **`get_favorite_packs() -> List[Pack]`**
+  - Retorna la lista de packs marcados como favoritos.
+- **`reset_gaming_pack() -> bool`**
+  - Restablece el pack Gaming a sus valores predeterminados de fábrica usando una copia profunda (`model_copy(deep=True)`).
+- **`save()` / `load()`**
+  - Persistencia segura en `profiles.json` con volcado atómico (`.tmp`), rotación preventiva a copia de respaldo (`profiles.json.bak`) y tolerancia a campos extra.
 
-**Returns:** `(killed, failed)`:
-- `killed`: list of dicts con `{name, pid, commandline, killed_at, already_gone}`
-- `failed`: list of strings con mensaje de error por proceso
+---
 
-**Exit codes de taskkill:**
-- 0 = success
-- 128 = proceso ya no existe (tratado como success)
-- 1 = acceso denegado u otro error
+### `GamingService` (`gaming_service.py`)
 
-### `categorize_process(proc_name) -> str`
+Coordinador de sesiones de juego y telemetría de optimización.
 
-Matchea nombre contra `PROCESS_CATEGORIES`, retorna nombre de categoría o `'⚪ Otros'`.
+#### Métodos Principales
+- **`execute_gaming_pack(pack: Pack) -> Tuple[int, int, int, float]`**
+  - Única puerta autorizada para la ejecución de Gaming Mode.
+  - Aplica barreras estrictas de seguridad: exclusión de procesos en `keepers`, evaluación por categoría y bloqueo de procesos de sistema.
+  - Guarda en memoria (`_last_closed_apps`) los ejecutables cerrados para su posterior reapertura.
+- **`restore_gaming_session() -> Tuple[int, int]`**
+  - Sincronizado concurrentemente mediante `threading.RLock()`.
+  - Reabre las aplicaciones cerradas durante la sesión de juego y vacía el historial de forma atómica.
+- **`should_kill_for_gaming(process_name: str, gaming_pack: Pack) -> bool`**
+  - Evalúa si un proceso debe cerrarse según la política de exclusión de keepers, apps explícitas y categorías objetivo.
+- **`get_last_closed_apps() -> List[str]`**
+  - Retorna una copia defensiva de los ejecutables pendientes de reapertura.
 
-**Args:** `proc_name` (str) — nombre del proceso (sin .exe o con .exe)
+---
 
-**Returns:** String con el nombre de categoría.
+### `NotificationService` (`notification_service.py`)
 
-### `save_processes_to_relaunch(processes) -> bool`
+Notificaciones de sistema en segundo plano integradas con la bandeja de Windows (`pystray`).
 
-Añade procesos al JSON con dedup por `(name, pid)`.
+#### Métodos Principales
+- **`attach_tray(icon: Any)`** / **`detach_tray()`**
+  - Vincula o desvincula la referencia al icono de bandeja del sistema (`pystray.Icon`).
+- **`notify(title: str, message: str) -> bool`**
+  - Emite una notificación nativa. Degrada de forma segura a logging si no hay bandeja disponible o el backend del SO no soporta toasts.
+- **`notify_pack_activated(pack_name: str, killed: int, freed_mb: float)`**
+- **`notify_apps_launched(pack_name: str, launched: int, failed: int)`**
+- **`notify_kill_result(killed: int, failed: int, freed_mb: float)`**
 
-**Args:** `processes`: list of dicts con al menos `name`, `pid`, `commandline`
+---
 
-**Returns:** True si escribió OK.
+## 2. Modelos de Datos Pydantic (`src/woptimizer/models.py`)
 
-### `load_saved_processes() -> list`
+- **`ProcessInfo`:**
+  - `pid: int`
+  - `name: str`
+  - `full_name: str`
+  - `exe_path: str`
+  - `memory_mb: float`
+  - `category: str`
+  - `status: str`
+  - `is_system_protected: bool`
+- **`Pack`:**
+  - `id: str`
+  - `name: str`
+  - `apps: List[str]`
+  - `target_categories: List[str]`
+  - `keepers: List[str]`
+  - `is_gaming: bool`
+  - `is_favorite: bool`
+  - `default_action: Literal["kill", "start"]`
+- **`AppData`:**
+  - `packs: Dict[str, Pack]`
+  - Soporta persistencia de campos adicionales mediante `model_config = ConfigDict(extra="allow")`.
 
-Lee `saved_processes.json`, retorna lista (vacía si no existe o corrupto).
+---
 
-### `clear_saved_processes() -> bool`
+## 3. Resumen de Ejecución y Sistema Operativo
 
-Borra el archivo JSON.
-
-### `relaunch_processes(processes) -> tuple[list, list]**
-
-Relanza procesos via `subprocess.Popen` con `shlex.split` o fallback shell.
-
-**Returns:** `(launched, failed)`
-
-### `is_admin() -> bool`
-
-Detecta si el proceso actual corre con permisos admin via `ctypes`.
-
-## Constantes
-
-### `PROCESS_CATEGORIES` (dict)
-
-```python
-{
-    '🔴 Navegadores': {
-        'priority': 'high',     # 'high' | 'medium' | 'low' | 'none'
-        'patterns': ['chrome', 'firefox', ...],
-        'description': '...',
-    },
-    ...
-}
-```
-
-### `CATEGORY_ORDER` (list)
-
-Orden de visualización de categorías en el treeview.
-
-### `SIMPLE_CATEGORIES` (list)
-
-Categorías que se muestran en modo Simple (gamer-friendly).
-
-### `PROCESS_LIST_FILE` (str)
-
-Path absoluto a `saved_processes.json` (mismo dir que el script).
-
-### `MAX_CMDLINE_LEN` (int)
-
-4000 — commandlines más largos se truncan.
-
-### `CREATE_NO_WINDOW` (int)
-
-0x08000000 — flag de Windows para subprocess sin ventana de consola.
-
-## Clase `ProcessManagerApp`
-
-Métodos principales (sin self):
-
-| Método | Propósito |
-|--------|-----------|
-| `__init__(root)` | Configura ventana, llama `create_widgets` y `load_processes` |
-| `create_widgets()` | Construye toda la UI (botones, treeview, etc.) |
-| `load_processes()` | Async, lanza thread que llama `get_running_processes` |
-| `_on_processes_loaded(processes)` | Callback UI: actualiza treeview |
-| `populate_tree()` | Llena treeview con categorías |
-| `filter_processes()` / `_schedule_filter()` / `_do_filter()` | Búsqueda con debounce |
-| `toggle_select_all()` | Selecciona/deselecciona todas las hojas |
-| `kill_selected()` | Mata procesos seleccionados (con confirmación) |
-| `save_selected()` | Guarda seleccionados para relaunch |
-| `relaunch_saved()` | Relanza procesos guardados |
-| `prepare_for_gaming()` | Mata high+medium priority (botón Gaming) |
-| `clear_saved()` | Limpia lista guardada |
-| `update_count()` | Actualiza contador en status bar |
-| `_on_click(event)` | Handler click izquierdo (toggle) |
-| `_on_double_click(event)` | Handler doble click (expand/collapse categoría) |
-| `_show_context_menu(event)` | Muestra menú click derecho |
-| `_ctx_kill()`, `_ctx_save()`, `_ctx_copy_pids()`, `_ctx_copy_cmdlines()` | Acciones del menú |
-
-## Atajos de teclado
-
-| Atajo | Acción |
-|-------|--------|
-| `Ctrl+A` | Seleccionar todas las hojas |
-| `Delete` | Matar seleccionados |
-| `F5` / `Ctrl+R` | Refrescar lista |
-| `Escape` | Limpiar búsqueda |
-
-## Subprocess calls (resumen)
-
-| Operación | Comando | Flags |
-|-----------|---------|-------|
-| Listar procesos | `powershell -NoProfile -NonInteractive -Command <script>` | `CREATE_NO_WINDOW` |
-| Matar proceso | `taskkill /F [/T] /PID X` | `CREATE_NO_WINDOW` |
-| Relanzar proceso | `subprocess.Popen(args, detached=True, windowsHide=True)` | (windowsHide) |
-
-## Estados de la app
-
-- `self.processes`: list of dicts (procesos actuales)
-- `self.saved_processes`: list of dicts (cargado de JSON al inicio)
-- `self.simple_mode_var`: BooleanVar — toggle Simple/Completo
-- `self.kill_tree_var`: BooleanVar — checkbox `/T`
-- `self._loading`: bool — evita cargas concurrentes
+| Operación | Mecanismo v3 | Garantías de Seguridad |
+|---|---|---|
+| **Listar procesos** | `psutil.process_iter` | Cero subprocesos; lectura directa de memoria del SO en C. |
+| **Cierre de procesos** | `psutil.Process.kill()` | Kill recursivo (árbol de hijos); filtrado indestructible de `SYSTEM_PROTECTED_PROCESSES`. |
+| **Arranque de apps** | `os.startfile` / `subprocess.Popen(shell=False)` | Sin intérprete de comandos (`shell=False`); validación de contención y verificación de cabecera PE. |
+| **Actualización DB** | `urllib.request.urlopen` (asíncrono) | Timeout de 5s, notificación observable a `on_error` y fallback local empaquetado. |

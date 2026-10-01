@@ -11462,7 +11462,116 @@ def test_process_manager_pack_dropdown_single_arrow_and_placeholder():
     print("test_process_manager_pack_dropdown_single_arrow_and_placeholder OK.")
 
 
+def test_docs_api_and_index_v3_contracts():
+    """TASK-054 (ciclo 44): Contratos de veracidad y actualidad en docs/api.md y docs/index.md.
 
+    Verifica:
+    1. docs/api.md no contiene residuos v2 eliminados (is_admin, taskkill, powershell, saved_processes.json, ProcessManagerApp).
+    2. docs/api.md documenta metodos que existen realmente en los servicios y modelos de src/woptimizer/.
+    3. docs/index.md no contiene afirmaciones falsas de auto-elevacion UAC ni scripts legacy (.vbs, .pyw, taskkill).
+    4. Todos los ficheros listados en el nav de mkdocs.yml existen en docs/.
+    """
+    from pathlib import Path
+    from woptimizer.services.process_service import ProcessService
+    from woptimizer.services.pack_service import PackService
+    from woptimizer.services.gaming_service import GamingService
+    from woptimizer.services.notification_service import NotificationService
+    from woptimizer.models import ProcessInfo, Pack, AppData
+
+    repo_root = Path(__file__).resolve().parent
+
+    api_path = repo_root / "docs" / "api.md"
+    assert api_path.exists(), f"docs/api.md no existe en {api_path}"
+    api_text = api_path.read_text(encoding="utf-8")
+
+    # 1. Prohibiciones en docs/api.md
+    prohibidos_api = [
+        "is_admin",
+        "taskkill",
+        "powershell",
+        "saved_processes.json",
+        "ProcessManagerApp",
+    ]
+    for p in prohibidos_api:
+        assert p.lower() not in api_text.lower(), f"Residuo v2 prohibido '{p}' encontrado en docs/api.md"
+
+    # 2. Comprobacion de que los metodos y clases de src/ citados en api.md existen
+    servicios_metodos = {
+        ProcessService: [
+            "get_running_processes",
+            "kill_processes",
+            "kill_pack_apps",
+            "start_pack_apps",
+            "load_db_async",
+            "invalidate_cache",
+            "get_process_exe_path",
+        ],
+        PackService: [
+            "get_all_packs",
+            "create_user_pack",
+            "update_pack",
+            "delete_pack",
+            "set_favorite",
+            "toggle_favorite",
+            "get_favorite_packs",
+            "reset_gaming_pack",
+            "save",
+            "load",
+        ],
+        GamingService: [
+            "execute_gaming_pack",
+            "restore_gaming_session",
+            "should_kill_for_gaming",
+            "get_last_closed_apps",
+        ],
+        NotificationService: [
+            "notify",
+            "attach_tray",
+            "detach_tray",
+            "notify_pack_activated",
+            "notify_apps_launched",
+            "notify_kill_result",
+        ],
+    }
+
+    for cls, metodos in servicios_metodos.items():
+        assert cls.__name__ in api_text, f"{cls.__name__} no esta citado en docs/api.md"
+        for m in metodos:
+            assert hasattr(cls, m) and callable(getattr(cls, m)), f"Metodo {cls.__name__}.{m} no existe o no es invocable"
+            assert m in api_text, f"Metodo {cls.__name__}.{m} no esta documentado en docs/api.md"
+
+    # Verificar modelos en api.md
+    for model_cls in (ProcessInfo, Pack, AppData):
+        assert model_cls.__name__ in api_text, f"Modelo {model_cls.__name__} no citado en docs/api.md"
+
+    # 3. Prohibiciones en docs/index.md
+    index_path = repo_root / "docs" / "index.md"
+    assert index_path.exists(), f"docs/index.md no existe en {index_path}"
+    index_text = index_path.read_text(encoding="utf-8")
+
+    prohibidos_index = [
+        "auto-eleva admin",
+        "auto-elevacion uac nativa",
+        "process_manager.pyw",
+        "ProcessManager.vbs",
+        "taskkill",
+    ]
+    for p in prohibidos_index:
+        assert p.lower() not in index_text.lower(), f"Residuo v2 prohibido '{p}' encontrado en docs/index.md"
+
+    # 4. Integridad de navegacion en mkdocs.yml
+    mkdocs_path = repo_root / "mkdocs.yml"
+    assert mkdocs_path.exists(), f"mkdocs.yml no existe en {mkdocs_path}"
+    mkdocs_text = mkdocs_path.read_text(encoding="utf-8")
+
+    for line in mkdocs_text.splitlines():
+        line_clean = line.strip()
+        if line_clean.endswith(".md"):
+            doc_rel = line_clean.split(":")[-1].strip()
+            target_doc = repo_root / "docs" / doc_rel
+            assert target_doc.exists(), f"Fichero nav '{doc_rel}' referenciado en mkdocs.yml no existe en disco: {target_doc}"
+
+    print("test_docs_api_and_index_v3_contracts OK.")
 
 
 if __name__ == "__main__":
@@ -11591,6 +11700,8 @@ if __name__ == "__main__":
     test_gaming_service_rlock_and_concurrency()
     # TASK-050: Contratos de descarga remota de DB y fallback observable
     test_process_service_db_download_contracts()
+    # TASK-054: Contratos de veracidad y actualidad en docs/api.md y docs/index.md (v3)
+    test_docs_api_and_index_v3_contracts()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.
