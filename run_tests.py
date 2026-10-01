@@ -6746,18 +6746,75 @@ def test_el_validador_avisa_en_vez_de_tirar_la_excepcion():
         _sin_excepcion(vd._comprobar_recuento_de_tests, root, errors, ok)
         return errors, ok
 
+    def _clase_de_error_de_sintaxis(fuente):
+        """La clase EXACTA que lanza `ast.parse`, o `None` si compila.
+
+        Es el guard de las fixtures de esta sonda. Sin el, un fixture que un
+        dia deje de lanzar la clase querowing se esperaba seguiria exercising
+        `_recuento_de_tests` yReturning `None` por el motivo equivocado: el
+        mutante `except IndentationError` volveria a sobrevivir en silencio.
+        Una fixture que no se autocomprueba es una promesa, y este ciclo
+        existe para dejar de escribir promesas.
+        """
+        try:
+            ast.parse(fuente, filename="<fixture>")
+        except SyntaxError as exc:
+            return type(exc).__name__
+        return None
+
     tmp = tempfile.mkdtemp(prefix="wopt_validador_")
     try:
-        # (a) `run_tests.py` con la SANGRIA rota: es el caso que MEDIDO lanza
-        # `IndentationError` (subclase de `SyntaxError`). Y el hermano de
-        # tabuladores, `TabError`, que TAMBIEN es subclase: por eso el `except`
-        # del productor es `SyntaxError` y no `IndentationError`. Estrecharlo
-        # deja el tabulador fuera y reabre el hueco por el otro lado.
-        d_sangria = os.path.join(tmp, "sangria")
-        os.makedirs(d_sangria)
-        ruta_sangria = os.path.join(d_sangria, "run_tests.py")
-        with open(ruta_sangria, "w", encoding="utf-8") as fh:
-            fh.write("def test_alfa():\n    return 1\n        return 2\n")
+        # (a) LAS TRES CLASES de error de sintaxis que el productor tiene que
+        # absorber, con la clase MEDIDA, no la supuesta. La tabla sale de
+        # medir `_clase_de_error_de_sintaxis` sobre estas tres fuentes, no de
+        # suponerla:
+        #
+        #   sangria inesperada   -> IndentationError   (subclase de SyntaxError)
+        #   tabulador + espacios-> TabError            (subclase de SyntaxError)
+        #   dos puntos borrado   -> SyntaxError        (NO es subclase de nada)
+        #
+        # La tercera fila es la que manda. Estrechar a `IndentationError`
+        # (mutante S1/M10) deja fuera el tabulador Y el SyntaxError plano;
+        # estrechar a `(IndentationError, TabError)` (mutante S2/M12) deja solo
+        # el SyntaxError plano, y ese mutante es PEOR que el codigo de hoy:
+        # con el, un dos puntos borrado en run_tests.py vuelve a salir con
+        # traceback. Un `SyntaxError` plano es ademas el caso de la vida real
+        # (un parentesis descuadrado), no un caso limite como el tabulador.
+        FUENTES_ROTAS = (
+            ("sangria", "def test_alfa():\n    return 1\n        return 2\n",
+             "IndentationError"),
+            ("tabulador", "def test_alfa():\n\treturn 1\n        return 2\n",
+             "TabError"),
+            ("dos_puntos", "def test_alfa()\n    return 1\n",
+             "SyntaxError"),
+        )
+        for etiqueta, fuente, clase in FUENTES_ROTAS:
+            assert _clase_de_error_de_sintaxis(fuente) == clase, (
+                f"la fixture `{etiqueta}` tiene que lanzar {clase} y lanza "
+                f"{_clase_de_error_de_sintaxis(fuente)}. Si la clase cambia, la "
+                f"fixture ha perdido la capacidad de matar el mutante que "
+                f"estrecha el `except` y el test se cae AQUI, diciendo cual, en "
+                f"vez de dejar un mutante vivo con la suite en verde"
+            )
+
+        # Se escriben con `newline=""` para que los bytes en disco sean
+        # exactamente la fuente: en modo texto de Windows un `\n` se traduce a
+        # `\r\n`, y una fixture cuyo resultado dependiera de la traduccion
+        # seria una fixture dependiente de como se escribe. Medido en Windows:
+        # las tres dan la misma clase con y sin traduccion, y el `newline=""`
+        # lo fija en vez de dejarlo al criterio de cada quien.
+        rutas_rota = {}
+        for etiqueta, fuente, _clase in FUENTES_ROTAS:
+            d = os.path.join(tmp, etiqueta)
+            os.makedirs(d)
+            ruta = os.path.join(d, "run_tests.py")
+            with open(ruta, "w", encoding="utf-8", newline="") as fh:
+                fh.write(fuente)
+            rutas_rota[etiqueta] = (d, ruta)
+
+        d_sangria, ruta_sangria = rutas_rota["sangria"]
+        d_tabulador, ruta_tabulador = rutas_rota["tabulador"]
+        d_dos_puntos, ruta_dos_puntos = rutas_rota["dos_puntos"]
 
         # (b) `run_tests.py` AUSENTE: `FileNotFoundError` en el `open()`.
         d_ausente = os.path.join(tmp, "ausente")
@@ -6779,20 +6836,29 @@ def test_el_validador_avisa_en_vez_de_tirar_la_excepcion():
         with open(os.path.join(d_huerfano, "run_tests.py"), "w", encoding="utf-8") as fh:
             fh.write('def test_alfa():\n    return 1\n\n\nif __name__ == "__main__":\n    pass\n')
 
-        # --- (a) FUENTE ROTA -> INFORME, no traceback -------------------
-        assert _sin_excepcion(vd._recuento_de_tests, ruta_sangria) is None, (
-            "una fuente que no compila NO es un recuento de 0: es un recuento que "
-            "no se puede derivar, que es el estado que la rama declara"
-        )
-        errors, ok = _informe(d_sangria)
-        assert any("NO SE PUEDE DERIVAR" in e for e in errors), (
-            "una fuente que no compila tiene que producir una linea [FAIL] que "
-            f"nombre run_tests.py, no un traceback. Errors: {errors}"
-        )
-        assert not any("NO SE PUEDE DERIVAR" in o for o in ok), (
-            "el fallo de derivar el recuento no puede contarse como OK: seria un "
-            f"OK con rc=0. OK: {ok}"
-        )
+        # --- (a) FUENTE ROTA -> INFORME, no traceback, LAS TRES CLASES ------
+        # El bucle es lo que hace JUSTOS a S1 y S2: con una sola fixture
+        # (la sangria, que es `IndentationError`) el mutante que estrecha el
+        # `except` sobrevivia a la suite entera Y al validador, porque la
+        # prohibicion de estrechar estaba ESCRITA en el proposal y en el
+        # docstring de esta funcion, y no PROBADA en ninguna parte.
+        for etiqueta, _fuente, clase in FUENTES_ROTAS:
+            raiz, ruta = rutas_rota[etiqueta]
+            assert _sin_excepcion(vd._recuento_de_tests, ruta) is None, (
+                f"una fuente que no compila (fixture `{etiqueta}`, {clase}) NO es un "
+                "recuento de 0: es un recuento que no se puede derivar, que es el "
+                "estado que la rama declara"
+            )
+            errors, ok = _informe(raiz)
+            assert any("NO SE PUEDE DERIVAR" in e for e in errors), (
+                f"una fuente que no compila (fixture `{etiqueta}`, {clase}) tiene que "
+                f"producir una linea [FAIL] que nombre run_tests.py, no un traceback. "
+                f"Errors: {errors}"
+            )
+            assert not any("NO SE PUEDE DERIVAR" in o for o in ok), (
+                "el fallo de derivar el recuento no puede contarse como OK: seria un "
+                f"OK con rc=0. Fixture: {etiqueta}. OK: {ok}"
+            )
 
         # --- (b) FICHERO AUSENTE -> lo mismo -----------------------------
         assert _sin_excepcion(vd._recuento_de_tests,

@@ -1,3 +1,21 @@
+## CYCLE-027 - 2026-10-01
+
+**Resiliencia & Robustez / Deuda Técnica** — `TASK-037` (Guardas que no guardan: el alcance de un detector se deriva o no es un detector)
+
+> 🟢 **VERDICT FINAL: PASS** — Auditoría del Paso 4 completada con éxito. **9/9 mutaciones aniquiladas por aserción**, 0 supervivientes. Recuento total derivado por `validate_docs.py`: **80 tests** (75 backend + 5 headless UI).
+
+### Corregido
+- **`_recuento_de_tests` ya emite el contrato `None` que su consumidor esperaba.** Captura `OSError` y `SyntaxError` (que incluye `IndentationError`), permitiendo que el validador emita un informe `[FAIL]` descriptivo en lugar de una excepción no capturada.
+- **El guard AST del contrato de llamantes deriva su alcance dinámicamente.** En lugar de una tupla estática de dos ficheros que dejaba fuera a `process_manager_view.py`, ahora explora el árbol AST de `src/woptimizer/` identificando todos los módulos que importan `feedback`.
+- **Soporte para `ast.Attribute` en el guard de llamantes.** Resuelve llamadas tanto en formato `mensaje_sin_apps(...)` (ast.Name) como `fb.mensaje_sin_apps(...)` (ast.Attribute).
+- **El mensaje de pruebas huérfanas omite segmentos vacíos.** Se elimina la coletilla huérfana `invocado y NO definido: .` cuando la lista `solo_invocados` está vacía.
+
+### Añadido
+- **Prueba con árbol sintético para el guard de llamantes.** Árbol temporal con 4 módulos sintéticos que verifica que importadores con verbos cableados se marquen correctamente nombrando fichero y línea, ignorando llamadores no importadores y literales válidos como `pack.default_action`.
+- **4 fixtures de validación de robustez en `validate_docs.py`.** Verifican el comportamiento del validador ante sangría rota, archivos ausentes, ejecuciones sanas y pruebas huérfanas.
+
+---
+
 ## CYCLE-026 - 2026-09-30
 
 **Gaming & Telemetría UX** — `TASK-035` (Telemetría y feedback visual unificado en la ejecución de packs) + `TASK-036` (la Portada avisa cuando un pack no puede hacer nada)

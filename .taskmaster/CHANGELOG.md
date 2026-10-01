@@ -1,3 +1,43 @@
+## [CYCLE-027] 2026-10-01 08:15 — guardas-que-no-guardan
+**Área**: Resiliencia & Robustez / Deuda Técnica
+**Change**: openspec/changes/2026-09-30-guardas-que-no-guardan/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (backlog TASK-037)
+- Paso 2 (Planear): architect-review → VISTO BUENO CON DIRECTRICES OBLIGATORIAS
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (9/9 mutaciones aniquiladas por aserción)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| _recuento_de_tests | M1 except sin SyntaxError | killed | IndentationError no capturado |
+| _recuento_de_tests | M2 except sin OSError | killed | FileNotFoundError no capturado |
+| _comprobar_recuento | M3 rama muerta | killed | Faltan mensajes [FAIL] |
+| _comprobar_recuento | M4 ok.append en vez de error | killed | Falso OK en resumen |
+| guard_llamantes | M5 tupla literal fija 3 ficheros | killed | Modulo sintetico 4 no se marca |
+| guard_llamantes | M6 descarta ast.Attribute | killed | fb.mensaje_sin_apps no se marca |
+| guard_llamantes | M7 marca todo | killed | Marca literales validos 'start'/'kill' |
+| guard_llamantes | M8 limita a ui/views/ | killed | Modulo sintetico fuera de views/ no se marca |
+| huerfanos | M9 concatena segmento vacio | killed | Se emite 'invocado y NO definido: .' |
+
+### What
+- _recuento_de_tests en validate_docs.py emite None ante OSError y SyntaxError de run_tests.py.
+- Extraida la funcion _comprobar_recuento_de_tests para hacer testeable el check 7.
+- El guard de contrato de llamantes de ui.feedback deriva su alcance con AST en vez de una tupla estatica.
+- Soporte para ast.Attribute y ast.Name en las llamadas a feedback.
+- Test con arbol sintetico de 4 modulos en run_tests.py.
+
+### Outcome
+- Commits: `pending`
+- Tests: 80/80 PASS (75 backend + 5 UI headless)
+- Docs: STATUS.md, AGENTS.md, README.md, testing-guide.md actualizados
+
+### Impact
+Se eliminan tres puntos ciegos de diagnostico y verificacion en el tooling que vigila la calidad del producto. El recuento total de tests asciende a 80 y queda protegido por deriva automatica mediante AST.
+
+---
+
 ## [CYCLE-026] 2026-09-30 23:05 — pack-telemetry-feedback
 **Área**: Gaming & Telemetría UX
 **Change**: openspec/changes/2026-09-30-pack-telemetry-feedback/

@@ -34,9 +34,17 @@ def _recuento_de_tests(ruta_run_tests):
     try:
         arbol = ast.parse(fuente, filename=ruta_run_tests)
     except SyntaxError:
-        # `SyntaxError` y NO `IndentationError`: medido, la sonda lanza
-        # `IndentationError`, que es subclase, pero estrechar aqui dejaria
-        # fuera `TabError` y reabiria el mismo agujero por el otro lado.
+        # `SyntaxError` y NO `IndentationError`. Medido, no es una cuestion de
+        # gusto: la sangria inesperada lanza `IndentationError` y el tabulador
+        # contra espacios `TabError`, las DOS subclases, y estrechar aqui
+        # deja `TabError` fuera. Pero lo que de verdad se pierde al estrechar es
+        # el `SyntaxError` PLANO -- un dos puntos borrado o un parentesis
+        # descuadrado en `run_tests.py`, que es como se rompe un fichero de
+        # verdad; los tabuladores son un caso limite. Las TRES fixtures estan
+        # en `test_el_validador_avisa_en_vez_de_tirar_la_excepcion`, y el test
+        # comprueba la clase que lanza CADA una antes de escribirla en disco,
+        # para que un cambio de comportamiento de `ast.parse` se note en el
+        # sitio donde se le puede atribuir en vez de dejar un mutante vivo.
         return None
     defined = {
         nodo.name for nodo in arbol.body

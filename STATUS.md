@@ -16,9 +16,9 @@
 
 ### 🔄 Estado de la Ejecución Perpetua
 - **Modo:** 🟢 ACTIVO — Bucle Infinito de I+D en marcha.
-- **Ciclos Completados:** 26 (`rd_journal.json` actualizado).
-- **Ciclo Actual #27:** Paso 1 — Selección de nueva tarea en el backlog (backlog vacío → rotación por áreas).
-- **Última Acción:** Ciclo #26 TASK-035 + TASK-036 — Telemetría y feedback de packs. 🔴 **Cerrado tras 7 rondas de auditoría de mutación (FAIL, FAIL, FAIL, PARTIAL, FAIL, FAIL, PASS): 43/43 mutaciones de `src/` aniquiladas por aserción, 0 supervivientes.** Nació de un bug real: la UI pintaba "OK, N procesos cerrados" en verde aunque no se hubiera cerrado nada. Ahora las tres puertas de cierre (Portada, Gestor de Packs, Gestor de Procesos) alimentan un único clasificador de desenlaces, y un pack sin apps avisa en vez de callarse. Se encontraron por el camino dos bugs vivos más: la puerta de **Apagar** decía "iniciar" a un pack recién creado, y el segundo punto de su doble guarda no tenía ni un test.
+- **Ciclos Completados:** 27 (`rd_journal.json` actualizado).
+- **Ciclo Actual #28:** Paso 1 — Selección de nueva tarea en la rotación por áreas (Área 2: Gaming & Telemetría UX).
+- **Última Acción:** Ciclo #27 TASK-037 — Guardas que no guardan: el alcance de un detector se deriva o no es un detector. 🟢 **Cerrado tras auditoría del Paso 4 (PASS): 9/9 mutaciones aniquiladas por aserción, 0 supervivientes.** Eliminados tres puntos ciegos en validate_docs.py y contrato de llamantes AST. Recuento total derivado por AST: 80 tests.
 
 ---
 
@@ -51,13 +51,13 @@
 ## 🗂️ Rotación de Áreas (Matriz ID)
 | # | Área | Último ciclo | Subagente |
 |---|------|:---:|---|
-| 1 | Resiliencia & Robustez | #21 | `openspec-dev` |
-| 2 | Gaming & Telemetría UX | #20 | `openspec-dev` |
+| 1 | Resiliencia & Robustez | **#27** | `openspec-dev` |
+| 2 | Gaming & Telemetría UX | #26 | `openspec-dev` |
 | 3 | Base de Datos & Procesos | #23 | `process-db-updater` |
 | 4 | Rendimiento & Latencia | #24 | `openspec-dev` |
-| 5 | Testing & Calidad | **#25** | `openspec-dev` |
+| 5 | Testing & Calidad | #25 | `openspec-dev` |
 
-> **Próxima área en rotación: Área 2 (Gaming & Telemetría UX).** Último ciclo abordado: #20 (`TASK-027` y banner dinámico de RAM).
+> **Próxima área en rotación: Área 2 (Gaming & Telemetría UX).** Último ciclo abordado: #26 (`TASK-035`/`TASK-036` y feedback honesto).
 
 ---
 
