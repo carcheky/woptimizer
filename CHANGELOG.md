@@ -1,3 +1,15 @@
+## CYCLE-031 - 2026-10-01
+
+**Testing & Calidad** — `TASK-041` (Ampliación de Cobertura de Testing y Contratos de Persistencia Pydantic)
+
+> 🟢 **VERDICT FINAL: PASS** — Auditoría del Paso 4 completada con éxito. **85 tests** (80 backend + 5 headless UI) pasando al 100%.
+
+### Añadido
+- **`test_pydantic_extra_fields_persistence`.** Verifica la inmutabilidad y conservación de metadatos/campos extra no estándar (`extra="allow"`) en `AppData` y `Pack` tras ciclos completos de `load()` -> `save()` -> `json.load()`.
+- **`test_freed_mb_calculation_precision`.** Valida la precisión aritmética del cálculo RSS (megabytes liberados) en `ProcessService.kill_processes` con mockeo de árbol de subprocesos padres/hijos.
+
+---
+
 ## CYCLE-030 - 2026-10-01
 
 **Rendimiento & Latencia** — `TASK-040` (Optimización de Latencia en Filtro de Búsqueda y Lectura de Packs)

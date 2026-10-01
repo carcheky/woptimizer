@@ -1,3 +1,19 @@
+## [CYCLE-031] 2026-10-01 10:10 — testing-quality-expansion-c31
+**Área**: Testing & Calidad
+**Change**: openspec/changes/2026-10-01-testing-quality-expansion-c31/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Área 5)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (100% mutaciones eliminadas)
+
+### Cambios Clave
+- `run_tests.py`: +2 tests discriminantes (`test_pydantic_extra_fields_persistence`, `test_freed_mb_calculation_precision`). Suite elevada a 85 tests.
+- Re-auditoría con `patch("psutil.Process")` en `test_freed_mb_calculation_precision`: mutaciones en `process_service.py:586` aniquiladas exitosamente.
+
+---
+
 ## [CYCLE-030] 2026-10-01 09:50 — ui-filter-and-pack-latency-opt
 **Área**: Rendimiento & Latencia
 **Change**: openspec/changes/2026-10-01-ui-filter-and-pack-latency-opt/

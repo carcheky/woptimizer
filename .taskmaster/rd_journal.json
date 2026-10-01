@@ -464,5 +464,23 @@
       "after": "78 backend + 5 headless UI (83 totales, validados con ast por validate_docs.py)"
     },
     "impact": "Optimización de Latencia en Filtro de Búsqueda y Lectura de Packs (TASK-040): Caché inmutable de lectura de 2 capas en PackService (< 0.05 ms) con invalidación atómica en save(), update_pack(), load(); pre-tokenizado y filtrado ultrarrápido (< 2 ms) en ProcessManagerView. Pruebas de discriminación y benchmarks agregadas en run_tests.py. Auditoría Paso 4 = PASS."
+  },
+  {
+    "cycle": 31,
+    "date": "2026-10-01T10:10:00",
+    "area": "Testing & Calidad",
+    "slug": "2026-10-01-testing-quality-expansion-c31",
+    "task": "TASK-041",
+    "status": "COMPLETED",
+    "commits": [
+      "ee4b753",
+      "043ee82",
+      "c87e1ab"
+    ],
+    "tests": {
+      "before": "78 backend + 5 headless UI (83 totales)",
+      "after": "80 backend + 5 headless UI (85 totales, validados con ast por validate_docs.py)"
+    },
+    "impact": "Ampliación de Cobertura de Testing y Contratos de Persistencia Pydantic (TASK-041): +2 nuevos tests discriminantes en run_tests.py (test_pydantic_extra_fields_persistence y test_freed_mb_calculation_precision). Garantizada la inmutabilidad y persistencia de campos extra no estándar en AppData y Pack tras ciclos load()->save(), y precisión en el cálculo RSS de ProcessService.kill_processes. Auditoría Paso 4 = PASS."
   }
 ]
