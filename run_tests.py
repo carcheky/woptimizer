@@ -10697,6 +10697,139 @@ def test_process_categorization_latency_and_memoization():
     print("test_process_categorization_latency_and_memoization OK.")
 
 
+def test_confirmable_mixin_lifecycle_and_widget_contracts():
+    """TASK-046 (Ciclo #36): Contratos de ciclo de vida, widgets y estados en Confirmable mixin.
+
+    Valida:
+      1. Inicialización y 1ª pulsación: muta a PENDIENTE_TEXT, PENDIENTE_FG, PENDIENTE_HOVER,
+         status_label en AMBAR, retorna False.
+      2. 2ª pulsación: retorna True (confirmado), botón restaurado y deshabilitado temporalmente
+         (REHABILITAR_MS = 300 ms en _timers_ui). Al avanzar reloj a 300 ms, vuelve a 'normal'.
+      3. Sustitución de token (changed_text): nuevo token sin confirmar el anterior actualiza
+         status_label con changed_text y rearma la ventana.
+      4. Auto-expiración: a los window_ms (3000 ms), dispara _on_expirado, restaura botón
+         a reposo y status_label muestra MSG_EXPIRADO.
+      5. Cancelación explícita (_cancel_confirm): restaura botón a reposo sin ejecutar.
+      6. Limpieza en destrucción (cancel_on_destroy): cancela timers del guard y _timers_ui.
+      7. Tolerancia a widgets destruidos: winfo_exists() == False no lanza excepciones.
+    """
+    print("Testing Confirmable mixin lifecycle and widget contracts (TASK-046)...")
+    from woptimizer.ui.confirmation import (
+        Confirmable,
+        PENDIENTE_TEXT,
+        PENDIENTE_FG,
+        PENDIENTE_HOVER,
+        AMBAR,
+        MSG_EXPIRADO,
+        REHABILITAR_MS,
+    )
+
+    class DummyButton:
+        def __init__(self, text="Matar", fg_color="#c22d2d", hover_color="#8a1e1e", state="normal"):
+            self.props = {"text": text, "fg_color": fg_color, "hover_color": hover_color, "state": state}
+            self.alive = True
+
+        def cget(self, key):
+            return self.props[key]
+
+        def configure(self, **kwargs):
+            self.props.update(kwargs)
+
+        def winfo_exists(self):
+            return self.alive
+
+    class DummyLabel:
+        def __init__(self, text="", text_color="gray"):
+            self.props = {"text": text, "text_color": text_color}
+            self.alive = True
+
+        def cget(self, key):
+            return self.props[key]
+
+        def configure(self, **kwargs):
+            self.props.update(kwargs)
+
+        def winfo_exists(self):
+            return self.alive
+
+    class DummyView(Confirmable):
+        def __init__(self, label, sched):
+            self._init_confirmable(status_label=label, scheduler=sched, window_ms=3000)
+
+    sched = _FakeScheduler()
+    lbl = DummyLabel()
+    view = DummyView(lbl, sched)
+    btn = DummyButton(text="Eliminar Pack", fg_color="#c22d2d", hover_color="#8a1e1e")
+
+    # 1. Primera pulsación: arma pendiente, no ejecuta (False)
+    confirmed = view._require_double_tap("pack:1", button=btn, label="¿Seguro que deseas eliminar?")
+    assert confirmed is False, "La primera pulsación debe retornar False (solo armar)"
+    assert btn.cget("text") == PENDIENTE_TEXT, f"Botón debe mutar a PENDIENTE_TEXT, got {btn.cget('text')}"
+    assert btn.cget("fg_color") == PENDIENTE_FG, f"Botón debe mutar a PENDIENTE_FG, got {btn.cget('fg_color')}"
+    assert btn.cget("hover_color") == PENDIENTE_HOVER
+    assert lbl.cget("text") == "¿Seguro que deseas eliminar?"
+    assert lbl.cget("text_color") == AMBAR
+    assert view._guard.is_pending("pack:1") is True
+
+    # 2. Segunda pulsación: confirma (True), restaura propiedades originales y aplica throttling 300ms
+    confirmed_2 = view._require_double_tap("pack:1", button=btn)
+    assert confirmed_2 is True, "La segunda pulsación debe retornar True (ejecutar acción)"
+    assert btn.cget("text") == "Eliminar Pack", "Botón debe restaurar su texto original de reposo"
+    assert btn.cget("fg_color") == "#c22d2d", "Botón debe restaurar su fg_color original"
+    assert btn.cget("hover_color") == "#8a1e1e"
+    assert btn.cget("state") == "disabled", "Botón debe quedar deshabilitado temporalmente (throttling)"
+    assert len(view._timers_ui) == 1, "Debe haber 1 timer encolado en _timers_ui para re-habilitar el botón"
+
+    # Avanzar reloj 300 ms para completar rehabilitación
+    sched.fire_due(REHABILITAR_MS)
+    assert btn.cget("state") == "normal", "Tras REHABILITAR_MS, el botón debe volver a state='normal'"
+    assert len(view._timers_ui) == 0, "_timers_ui debe quedar limpio tras expirar el timer de rehabilitación"
+
+    # 3. Sustitución de token con changed_text
+    btn_a = DummyButton("Accion A")
+    btn_b = DummyButton("Accion B")
+    view._require_double_tap("token_A", button=btn_a, label="Pulsaste A")
+    assert lbl.cget("text") == "Pulsaste A"
+    assert btn_a.cget("text") == PENDIENTE_TEXT
+
+    # Pulsar token_B sin confirmar A
+    view._require_double_tap("token_B", button=btn_b, label="Pulsaste B", changed_text="⚠️ Selección cambiada.")
+    assert lbl.cget("text") == "⚠️ Selección cambiada.", "Al cambiar token debe presentarse changed_text"
+    assert btn_b.cget("text") == PENDIENTE_TEXT
+    assert view._guard.is_pending("token_B") is True
+    assert view._guard.is_pending("token_A") is False
+
+    # 4. Auto-expiración a los 3000 ms
+    sched.fire_due(3000)
+    assert view._guard.is_pending() is False, "El guard debe expirar a los 3000 ms"
+    assert btn_b.cget("text") == "Accion B", "El botón debe volver a reposo al expirar"
+    assert lbl.cget("text") == MSG_EXPIRADO, f"Al expirar debe mostrar MSG_EXPIRADO, got {lbl.cget('text')}"
+    assert view._boton_pendiente is None
+
+    # 5. Cancelación explícita (_cancel_confirm)
+    btn_c = DummyButton("Accion C")
+    view._require_double_tap("token_C", button=btn_c, label="Pulsaste C")
+    assert view._guard.is_pending("token_C") is True
+    view._cancel_confirm()
+    assert view._guard.is_pending() is False
+    assert btn_c.cget("text") == "Accion C"
+    assert view._boton_pendiente is None
+
+    # 6. Limpieza defensiva en cancel_on_destroy
+    view._require_double_tap("token_D", button=btn_c, label="Pulsaste D")
+    view.cancel_on_destroy()
+    assert view._guard.is_pending() is False
+    assert view._boton_pendiente is None
+    assert len(view._timers_ui) == 0
+
+    # 7. Resiliencia ante widgets destruidos (winfo_exists() == False)
+    btn_dead = DummyButton("Muerto")
+    btn_dead.alive = False
+    assert view._configurar(btn_dead, text="Nuevo") is False, "Widget destruido debe rechazar configuración sin lanzar excepción"
+
+    print("test_confirmable_mixin_lifecycle_and_widget_contracts OK.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -10831,4 +10964,6 @@ if __name__ == "__main__":
     # TASK-043: Restauración de Sesión Gaming desde el tray
     test_tray_session_restoration_integration()
     test_headless_ui()
+    # TASK-046: Contratos de ciclo de vida y widgets en Confirmable mixin
+    test_confirmable_mixin_lifecycle_and_widget_contracts()
     print("\nALL TESTS PASSED.")

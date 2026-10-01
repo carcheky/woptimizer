@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-01T00:00:00Z",
-  "active_task_id": "TASK-045",
+  "active_task_id": "TASK-046",
   "tasks": [
     {
       "id": "TASK-001",
@@ -911,6 +911,25 @@
         "run_tests.py y validate_docs.py en verde 100%"
       ],
       "notes": "Ciclo #35 del motor autónomo de I+D (Área 4: Rendimiento & Latencia)."
+    },
+    {
+      "id": "TASK-046",
+      "title": "Pruebas de Contratos de Ciclo de Vida y Estados en Mixin Confirmable",
+      "description": "Implementar test unitario headless para el mixin Confirmable en run_tests.py con scheduler simulado, validando transiciones de botón, textos de aviso, cambio de token, expiración automática y limpieza en destrucción.",
+      "complexity": 2,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [
+        "TASK-045"
+      ],
+      "module": "run_tests.py",
+      "acceptance_criteria": [
+        "test_confirmable_mixin_lifecycle_and_widget_contracts añadido a run_tests.py",
+        "Validación exhaustiva de estados de botón y label en 1a y 2a pulsación",
+        "Validación de expiración y cambio de selección",
+        "Suite de run_tests.py elevada a 90 tests y 100% en verde"
+      ],
+      "notes": "Ciclo #36 del motor autónomo de I+D (Área 5: Testing & Calidad)."
     }
   ]
 }

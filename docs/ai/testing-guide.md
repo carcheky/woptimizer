@@ -26,7 +26,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 #### Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **89 tests**: 83 de backend + 6 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **90 tests**: 83 de backend + 7 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
 
 > **Ese 81 no se escribe a mano, y por eso ya no puede caducar solo.** Fallo medido en el cierre
 > del ciclo 26: esta tabla decía 78, `STATUS.md` decía 75 y `AGENTS.md` y `README.md` decían 28 —
@@ -131,6 +131,7 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 | 87 | `test_process_service_kill_defensive_zombie_and_oserror` | **TASK-042 (Ciclo #32):** Captura defensiva de `psutil.ZombieProcess` y `OSError` en `kill_processes` y `kill_pack_apps` |
 | 88 | `test_process_categorization_latency_and_memoization` | **TASK-045 (Ciclo #35):** Memoización de metadatos de categorización en `_meta_cache` O(1) e invalidación atómica de `_proc_cache` al recargar la DB |
 | 89 | `test_tray_session_restoration_integration` | **TASK-043 (Ciclo #33):** Integración de '🔄 Reabrir aplicaciones cerradas' en el menú contextual de `pystray` y notificación nativa resultante |
+| 90 | `test_confirmable_mixin_lifecycle_and_widget_contracts` | **TASK-046 (Ciclo #36):** Contratos de ciclo de vida, widgets y estados en `Confirmable` mixin (mutación de estados en botón y label, throttling de 300 ms en 2ª pulsación, changed_text, auto-expiración a 3000 ms, `_cancel_confirm`, `cancel_on_destroy` y tolerancia a `winfo_exists() == False`) |
 
 
 
