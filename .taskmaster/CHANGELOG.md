@@ -1,3 +1,20 @@
+## [CYCLE-030] 2026-10-01 09:50 — ui-filter-and-pack-latency-opt
+**Área**: Rendimiento & Latencia
+**Change**: openspec/changes/2026-10-01-ui-filter-and-pack-latency-opt/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Área 4)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (3/3 mutantes supervivientes de la 1ª iteración eliminados)
+
+### Cambios Clave
+- `src/woptimizer/services/pack_service.py`: Caché de lectura defensiva en 2 capas (< 0.05 ms) e invalidación atómica.
+- `src/woptimizer/ui/views/process_manager_view.py`: Pre-tokenizado y filtrado rápido (< 2.0 ms) para 350+ procesos.
+- `run_tests.py`: +2 tests discriminantes (`test_pack_service_cache_invalidation_and_immutability`, `test_process_filter_performance`). Total suite elevando a 83 tests.
+
+---
+
 ## [CYCLE-029] 2026-10-01 09:10 — process-db-expansion-c29
 **Área**: Base de Datos & Procesos
 **Change**: openspec/changes/2026-10-01-process-db-expansion-c29/

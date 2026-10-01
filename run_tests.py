@@ -10293,6 +10293,10 @@ def test_pack_service_cache_invalidation_and_immutability():
         t1 = time.perf_counter()
         assert ps._cached_all_packs is not None, "La caché interna debe poblarse tras get_all_packs()"
         
+        # 1b) Identidad de 1ª capa: _cached_all_packs debe contener copias independientes de _data.packs
+        assert ps._data.packs["gaming"] is not ps._cached_all_packs["gaming"], \
+            "Los objetos en _cached_all_packs deben ser copias independientes de _data.packs (1ª capa inmutable)"
+        
         # 2) Segunda lectura usa la caché (defensiva) y debe ser ultra rápida (< 1.0 ms)
         t2 = time.perf_counter()
         packs2 = ps.get_all_packs()
@@ -10307,10 +10311,20 @@ def test_pack_service_cache_invalidation_and_immutability():
         assert "malicious_app.exe" not in ps._data.packs["gaming"].apps, \
             "Mutar la lista devuelta no debe contaminar el modelo interno en _data"
 
-        # 4) Invalidación de caché al actualizar pack
-        ps.update_pack(Pack(id="custom", name="Custom Pack", apps=["notepad.exe"]))
-        assert ps._cached_all_packs is None or "custom" in ps.get_all_packs(), \
-            "update_pack() debe invalidar la caché o refrescarla"
+        # 4) Inmutabilidad del argumento en update_pack() y su invalidación
+        custom_pack = Pack(id="custom", name="Custom Pack", apps=["notepad.exe"])
+        ps.update_pack(custom_pack)
+        assert ps._cached_all_packs is None, "update_pack() debe invalidar la caché (fijar _cached_all_packs a None)"
+        
+        custom_pack.apps.append("unwanted.exe")
+        assert "unwanted.exe" not in ps.get_all_packs()["custom"].apps, \
+            "Mutar la instancia enviada a update_pack() no debe contaminar el modelo interno ni la caché"
+            
+        # 5) load() debe invalidar la caché existente
+        ps.get_all_packs()
+        assert ps._cached_all_packs is not None
+        ps.load()
+        assert ps._cached_all_packs is None, "load() debe invalidar la caché existente"
             
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)

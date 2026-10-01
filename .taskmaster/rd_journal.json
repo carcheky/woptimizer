@@ -431,5 +431,38 @@
       "after": "76 backend + 5 headless UI (81 totales, validados con ast por validate_docs.py)"
     },
     "impact": "Restauración Inteligente de Apps tras Modo Gaming (TASK-038): registro pre-kill de rutas absolutas de ejecutables cerrados (_last_closed_apps), metodos get_last_closed_apps, clear_last_closed_apps y restore_gaming_session en GamingService, y banner dinámico con botón 'Reabrir Apps' thread-safe en DashboardView. 81 tests en verde y auditoría Paso 4 = PASS."
+  },
+  {
+    "cycle": 29,
+    "date": "2026-10-01T09:20:00",
+    "area": "Base de Datos & Procesos",
+    "slug": "2026-10-01-process-db-expansion-c29",
+    "task": "TASK-039",
+    "status": "COMPLETED",
+    "commits": [
+      "775e016"
+    ],
+    "tests": {
+      "before": "76 backend + 5 headless UI (81 totales)",
+      "after": "76 backend + 5 headless UI (81 totales, validados con ast por validate_docs.py)"
+    },
+    "impact": "Expansión de la Base de Procesos (TASK-039): +8 nuevos procesos reales añadidos a assets/process_db.json (89 total), 0 solapamientos con procesos de sistema. Auditoría de esquema e integridad al 100%."
+  },
+  {
+    "cycle": 30,
+    "date": "2026-10-01T09:50:00",
+    "area": "Rendimiento & Latencia",
+    "slug": "2026-10-01-ui-filter-and-pack-latency-opt",
+    "task": "TASK-040",
+    "status": "COMPLETED",
+    "commits": [
+      "5623629",
+      "ed5cb30"
+    ],
+    "tests": {
+      "before": "76 backend + 5 headless UI (81 totales)",
+      "after": "78 backend + 5 headless UI (83 totales, validados con ast por validate_docs.py)"
+    },
+    "impact": "Optimización de Latencia en Filtro de Búsqueda y Lectura de Packs (TASK-040): Caché inmutable de lectura de 2 capas en PackService (< 0.05 ms) con invalidación atómica en save(), update_pack(), load(); pre-tokenizado y filtrado ultrarrápido (< 2 ms) en ProcessManagerView. Pruebas de discriminación y benchmarks agregadas en run_tests.py. Auditoría Paso 4 = PASS."
   }
 ]
