@@ -1,3 +1,25 @@
+## CYCLE-036 - 2026-10-01
+
+**Testing & Calidad** — `TASK-046` (Pruebas de Contratos de Ciclo de Vida y Estados en Mixin Confirmable)
+
+> 🟢 **VERDICT FINAL: PASS** — Validación completa y auditoría de contratos en mixin `Confirmable` por `mutation-auditor` (5 mutantes liquidados, 0 supervivientes). **90 tests** (83 backend + 7 headless UI) pasando al 100%.
+
+### Añadido
+- **`test_confirmable_mixin_lifecycle_and_widget_contracts`.** Prueba unitaria headless discriminante en `run_tests.py` que comprueba de forma exhaustiva:
+  - 1ª pulsación: arma confirmación pendiente, muta texto a `CONFIRMAR`, estilos visuales en ámbar y retorna `False`.
+  - 2ª pulsación: confirma acción (`True`), restaura texto original, aplica throttling de 300 ms (`state='disabled'` en `_timers_ui`) y restablece a `'normal'`.
+  - Sustitución de token con selección cambiada (`changed_text`) actualizando el banner informativo.
+  - Auto-expiración a los 3000 ms retornando a estado de reposo e informando expiración.
+  - Cancelación explícita vía `_cancel_confirm()` restaurando el botón sin ejecutar.
+  - Cancelación defensiva en destrucción (`cancel_on_destroy()`) cancelando handles activos de throttling en el planificador.
+  - Resiliencia ante widgets destruidos (`winfo_exists() == False`) evitando errores `tk.TclError`.
+  - Limpieza de reposo y timers al recrear botones vía `_forget_buttons()`.
+
+### Corregido
+- **Blindaje ante supervivientes M2b y M4.** Reforzadas las aserciones en `run_tests.py` para ejercitar la destrucción con temporizadores de throttling activos y la limpieza obligatoria del mapa de reposo (`_reposo.clear()`), eliminando el 100% de los mutantes detectados por `mutation-auditor`.
+
+---
+
 ## CYCLE-035 - 2026-10-01
 
 **Rendimiento & Latencia** — `TASK-045` (Optimización de Latencia en Categorización de Procesos y Memoización)

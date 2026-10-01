@@ -918,7 +918,7 @@
       "description": "Implementar test unitario headless para el mixin Confirmable en run_tests.py con scheduler simulado, validando transiciones de botón, textos de aviso, cambio de token, expiración automática y limpieza en destrucción.",
       "complexity": 2,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-045"
       ],

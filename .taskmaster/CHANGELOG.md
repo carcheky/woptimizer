@@ -1,3 +1,29 @@
+## [CYCLE-036] 2026-10-01 18:50 — confirmable-mixin-contracts
+**Área**: Testing & Calidad
+**Change**: openspec/changes/2026-10-01-confirmable-mixin-contracts/
+**Estado**: COMPLETED — **VERDICT FINAL: PASS**
+**Models**:
+- Paso 1 (Buscar): flash (Área 5)
+- Paso 2 (Planear): architect-review → VISTO BUENO Y APROBADO
+- Paso 3 (Ejecutar): openspec-dev → IMPLEMENTADO Y DOCUMENTADO
+- Paso 4 (Auditar tests): mutation-auditor → **PASS** (5/5 mutaciones eliminadas: M1, M2a, M2b, M3, M4)
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Throttling 300 ms (`disabled` temporal) | En `Confirmable._restaurar_boton()`, omitir `self._configurar(button, state="disabled")` | killed | `AssertionError: Botón debe quedar deshabilitado temporalmente (throttling)` en `run_tests.py:10780` |
+| Cancelación del guard en destrucción | En `Confirmable.cancel_on_destroy()`, omitir `self._guard.cancel_on_destroy()` | killed | `AssertionError` en `run_tests.py:10826` |
+| Cancelación y vaciado de `_timers_ui` | En `Confirmable.cancel_on_destroy()`, omitir la cancelación y vaciado de `_timers_ui` | killed | `AssertionError: cancel_on_destroy debe vaciar _timers_ui` en `run_tests.py:10828` y `AssertionError: cancel_on_destroy debe cancelar los timers pendientes en el scheduler` en `run_tests.py:10829` |
+| Captura de texto original en reposo | En `Confirmable._recordar_reposo()`, no almacenar en `self._reposo[token]` | killed | `AssertionError: Botón debe restaurar su texto original de reposo` en `run_tests.py:10777` |
+| Limpieza total de `_reposo` al recrear botones | En `Confirmable._forget_buttons()`, omitir `self._reposo.clear()` | killed | `AssertionError: _forget_buttons() debe limpiar _reposo completamente` en `run_tests.py:10841` |
+
+### Cambios Clave
+- `run_tests.py`: +1 test estrictamente discriminante (`test_confirmable_mixin_lifecycle_and_widget_contracts`) que evalúa la máquina de estados de `Confirmable` en `src/woptimizer/ui/confirmation.py` sin requerir Tkinter ni ventanas vivas. Aserciones reforzadas para liquidar mutantes M2b y M4. Suite elevada a 90 tests headless al 100% en verde.
+- `docs/ai/testing-guide.md`: Actualizada fila 90 de tests y documentación viva.
+- `README.md`, `STATUS.md`, `AGENTS.md`: Actualizados a 90 tests.
+
+---
+
 ## [CYCLE-035] 2026-10-01 18:35 — categorization-latency-optimization
 **Área**: Rendimiento & Latencia
 **Change**: openspec/changes/2026-10-01-categorization-latency-optimization/
