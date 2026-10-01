@@ -125,6 +125,19 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
             text_color=theme.TEXT_PRIMARY
         )
         self.btn_add_pack.pack(side="left", padx=10, pady=12)
+
+        # TASK-051: Botón para actualizar DB de procesos desde el repositorio oficial
+        self.btn_update_db = ctk.CTkButton(
+            self.footer,
+            text="🔄 Actualizar DB",
+            command=self._force_update_db,
+            height=28,
+            font=("Segoe UI", theme.FONT_SIZE_SMALL),
+            fg_color=theme.SURFACE_ALT,
+            hover_color=theme.SURFACE_HOVER,
+            text_color=theme.TEXT_PRIMARY
+        )
+        self.btn_update_db.pack(side="left", padx=(0, 10), pady=12)
         
         self.btn_kill = ctk.CTkButton(
             self.footer,
@@ -155,6 +168,7 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
 
     def refresh_processes(self):
         self._cancel_confirm()
+        self._db_update_status = None
         self.status_label.configure(text="⏳ Cargando...")
         self.update_idletasks()
         
@@ -164,9 +178,27 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
             self._do_load()
 
     def _force_update_db(self):
-        self.status_label.configure(text="⏳ Descargando DB JSON desde GitLab...")
+        """TASK-051: Descarga manual de process_db.json con reporte observable de estado."""
+        self._cancel_confirm()
+        self._db_update_status = None
+        self.status_label.configure(text="⏳ Descargando base de datos de procesos...")
         self.update_idletasks()
-        self.process_service.load_db_async(callback=lambda: self.after(0, self._do_load))
+
+        def _on_error(err_msg: str):
+            def _handle_err():
+                self._db_update_status = "⚠️ DB no actualizada (sin red o repo no publicado). Se usa la local."
+                self.status_label.configure(text=self._db_update_status)
+            self.after(0, _handle_err)
+
+        def _on_success():
+            def _handle_ok():
+                if not self._db_update_status:
+                    self._db_update_status = "✅ Base de datos actualizada con éxito."
+                self.status_label.configure(text=self._db_update_status)
+                self._do_load()
+            self.after(0, _handle_ok)
+
+        self.process_service.load_db_async(callback=_on_success, on_error=_on_error)
 
     def _do_load(self):
         def _load():
@@ -224,8 +256,10 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
             is_expanded = True
             self._create_category_section(cat, items, is_expanded, previously_selected)
                 
-        # UI-011: Estado vacio neutro y sin check verde
-        if not grouped:
+        # UI-011 / TASK-051: Estado de actualización honesto o estado vacío neutro
+        if getattr(self, "_db_update_status", None):
+            self.status_label.configure(text=self._db_update_status)
+        elif not grouped:
             self.status_label.configure(text="Sin procesos activos detectados.")
         else:
             self.status_label.configure(text=f"{len(grouped)} apps distintas en ejecución.")

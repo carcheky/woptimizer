@@ -11223,7 +11223,15 @@ def test_process_service_db_download_contracts():
             f"Proceso protegido {sys_proc} debe tener categoría de Sistema"
         )
 
-    # 5. Contrato de descarga exitosa simulada (mock)
+    # 5. Contrato de descarga exitosa simulada (mock con directorio aislado)
+    import tempfile
+    import shutil
+    from woptimizer import config as wopt_config
+
+    temp_data_dir = tempfile.mkdtemp(prefix="wopt_test_download_")
+    orig_data_dir = wopt_config._data_dir
+    wopt_config._data_dir = lambda: temp_data_dir
+
     class _MockSuccessResponse:
         def __init__(self, data: bytes):
             self.data = data
@@ -11234,7 +11242,7 @@ def test_process_service_db_download_contracts():
         def __exit__(self, exc_type, exc_val, exc_tb):
             pass
 
-    mock_db_json = b'{"test_app.exe": {"category": "\\ud83d\\udfe2 Productividad", "priority": "normal", "description": "App de prueba"}}'
+    mock_db_json = b'{"test_app": {"category": "\\ud83d\\udfe2 Productividad", "priority": "normal", "description": "App de prueba"}}'
     success_callback_called = threading.Event()
     success_error_called = threading.Event()
 
@@ -11254,8 +11262,102 @@ def test_process_service_db_download_contracts():
         assert not success_error_called.is_set(), "on_error NO debe invocarse cuando la descarga es exitosa"
     finally:
         urllib.request.urlopen = orig_urlopen
+        wopt_config._data_dir = orig_data_dir
+        shutil.rmtree(temp_data_dir, ignore_errors=True)
 
     print("test_process_service_db_download_contracts OK.")
+
+
+def test_process_manager_db_update_button_and_feedback():
+    """TASK-051: Botón de actualización de DB en ProcessManagerView, reporte honesto y no-congelamiento."""
+    print("Testing ProcessManagerView DB update button and feedback contracts (TASK-051)...")
+    import ast
+    import inspect
+    import textwrap
+    import customtkinter as ctk
+    from unittest.mock import MagicMock
+    from woptimizer.ui.views.process_manager_view import ProcessManagerView
+    from woptimizer.models import ProcessInfo
+
+    # 1. Guard AST: existe un CTkButton cuyo command apunta a _force_update_db
+    view_source = textwrap.dedent(inspect.getsource(ProcessManagerView._build_ui))
+    view_tree = ast.parse(view_source)
+    found_command = False
+    for node in ast.walk(view_tree):
+        if isinstance(node, ast.Call):
+            for kw in node.keywords:
+                if kw.arg == "command":
+                    if isinstance(kw.value, ast.Attribute) and kw.value.attr == "_force_update_db":
+                        found_command = True
+                        break
+    assert found_command, "ProcessManagerView._build_ui debe contener un botón cuyo command apunte a self._force_update_db"
+
+    # 2. Desacoplamiento de plataforma: ninguna cadena de process_manager_view.py dice 'GitLab'
+    pmv_path = inspect.getfile(ProcessManagerView)
+    with open(pmv_path, "r", encoding="utf-8") as f:
+        src_text = f.read()
+    assert "gitlab" not in src_text.lower(), "process_manager_view.py no debe contener menciones congeladas a 'GitLab'"
+
+    # 3. Contratos en runtime headless
+    root = ctk.CTk()
+    root.withdraw()
+    try:
+        mock_ps = MagicMock()
+        mock_ps.is_db_loaded = True
+        mock_ps.get_running_processes.return_value = [
+            ProcessInfo.model_construct(pid=100, name="notepad.exe", exe_path="", memory_mb=25.0, category="🟢 Seguro", status="running", is_system_protected=False)
+        ]
+        mock_pack_s = MagicMock()
+        mock_pack_s.get_all_packs.return_value = {}
+
+        view = ProcessManagerView(root, mock_ps, mock_pack_s)
+
+        # Verificar existencia y texto del botón
+        assert hasattr(view, "btn_update_db"), "ProcessManagerView debe instanciar self.btn_update_db"
+        assert view.btn_update_db.cget("text") == "🔄 Actualizar DB"
+
+        # Simular fallo de descarga en _force_update_db
+        def _mock_load_fail(callback=None, on_error=None):
+            if on_error:
+                on_error("Error de conexión simulado")
+            if callback:
+                callback()
+
+        mock_ps.load_db_async = _mock_load_fail
+        view._force_update_db()
+
+        # Procesar los eventos after programados
+        root.update()
+
+        fail_text = view.status_label.cget("text")
+        assert "⚠️ DB no actualizada (sin red o repo no publicado). Se usa la local." in fail_text, (
+            f"El fallo de red debe notificarse honestamente en status_label, recibido: {fail_text}"
+        )
+        assert "Descargando" not in fail_text, "El mensaje no debe quedarse colgado en Descargando"
+
+        # Simular éxito de descarga en _force_update_db
+        def _mock_load_success(callback=None, on_error=None):
+            if callback:
+                callback()
+
+        mock_ps.load_db_async = _mock_load_success
+        view._force_update_db()
+
+        root.update()
+
+        success_text = view.status_label.cget("text")
+        assert "✅ Base de datos actualizada con éxito." in success_text, (
+            f"El éxito debe notificarse claramente en status_label, recibido: {success_text}"
+        )
+
+        # Distinción estricta de textos
+        assert fail_text != success_text, "Las rutas de éxito y de fallo deben emitir textos completamente distintos"
+
+    finally:
+        root.destroy()
+
+    print("test_process_manager_db_update_button_and_feedback OK.")
+
 
 
 
@@ -11402,4 +11504,6 @@ if __name__ == "__main__":
     test_confirmable_mixin_lifecycle_and_widget_contracts()
     # TASK-049: Rejilla adaptativa al ancho de ventana para favoritos en DashboardView
     test_dashboard_favorite_grid_adaptive_contracts()
+    # TASK-051: Botón de actualización de DB en ProcessManagerView y reporte honesto
+    test_process_manager_db_update_button_and_feedback()
     print("\nALL TESTS PASSED.")
