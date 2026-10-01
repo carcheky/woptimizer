@@ -10874,6 +10874,33 @@ def test_gaming_service_rlock_and_concurrency():
         with gs._lock:
             pass
 
+    # 1b. Exclusión mutua real en restore_gaming_session (mata M2)
+    gs._last_closed_apps = ["C:\\app_lock.exe"]
+    lock_held = threading.Event()
+    release_lock = threading.Event()
+
+    def hold_lock():
+        with gs._lock:
+            lock_held.set()
+            release_lock.wait()
+
+    t_holder = threading.Thread(target=hold_lock)
+    t_holder.start()
+    lock_held.wait()
+
+    t_restore = threading.Thread(target=gs.restore_gaming_session)
+    t_restore.start()
+    time.sleep(0.02)
+
+    # Si restore_gaming_session no usa with self._lock:, vaciaría _last_closed_apps de inmediato sin esperar
+    assert gs._last_closed_apps == ["C:\\app_lock.exe"], (
+        "restore_gaming_session debe respetar self._lock y no vaciar apps mientras el cerrojo está tomado"
+    )
+    release_lock.set()
+    t_holder.join()
+    t_restore.join()
+    assert gs.get_last_closed_apps() == [], "Tras liberarse el cerrojo, restore_gaming_session debe vaciar apps"
+
     # 2. Concurrencia de 5 hilos en restore_gaming_session
     gs._last_closed_apps = ["C:\\app1.exe", "C:\\app2.exe"]
     call_count = 0

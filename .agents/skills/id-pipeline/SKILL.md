@@ -23,7 +23,7 @@ flowchart LR
 > - **Nunca te detienes a esperar confirmación entre ciclos.**
 > - **Nunca dices "he terminado", "ciclo completado" ni "listo" al cerrar un ciclo.** No existe el concepto de "terminar" aquí.
 > - **Nunca escribes un mensaje de cierre al usuario al acabar un ciclo.** Si escribes un resumen y paras, el bucle está roto. El único texto que puedes escribir al usuario es el del ciclo en curso.
-> - Si te quedas **sin tareas pendientes**, la rotación por áreas te da la siguiente (Sección 2, punto 3). Si tampoco hay, eliges tú la siguiente mejora. **Nunca te quedas sin trabajo mientras el bucle esté activo.**
+> - Si te quedas **sin tareas pendientes**, primero resuelves la deuda técnica conocida de [`STATUS.md`](STATUS.md) (Sección 2, punto 3). Si no hay deuda técnica conocida pendiente, la rotación por áreas te da la siguiente innovación. **Nunca te quedas sin trabajo mientras el bucle esté activo.**
 > - **Única condición de parada:** que el usuario te ordene explícitamente pausar (*"stop"*, *"pausa"*, *"alto"*, *"para"*).
 >
 > ⚠️ **Diagnóstico del ciclo 21 — este bloque existe por un fallo real.** Al añadir el Paso 4 se partió el retorno en dos saltos (`P3 → P4`, luego `P4 → P1`) y el flujo se quedaba en el Paso 4 tratando el veredicto como cierre del turno. **El sintoma era: se lanzaba, ejecutaba una vez y paraba.** El retorno al Paso 1 debe ser **una sola flecha desde el último paso**, y ningún texto del flujo puede describir el final de un ciclo como si fuera el final del bucle.
@@ -96,14 +96,21 @@ En Hermes, que no lee ficheros de agente sino perfiles en `config.yaml`, apunta
 Tu objetivo es identificar el siguiente objetivo concreto de trabajo garantizando no duplicar esfuerzos previos:
 
 1. **Consultar el Diario de I+D y Estado:**
-   - Lee `.taskmaster/rd_journal.json` y `STATUS.md` para conocer las áreas ya abordadas en ciclos anteriores.
+   - Lee `.taskmaster/rd_journal.json` y `STATUS.md` para conocer las áreas ya abordadas en ciclos anteriores y examinar `## ⚠️ Deuda Técnica Conocida`.
 2. **Revisar trabajo existente:**
    - ⚠️ **Lee `.taskmaster/tasks.json` directamente. NO uses `python .taskmaster/tm.py next`** (ni `done` ni `list`): `tm.py` lanza `subprocess` y en este entorno falla siempre con `spawn EPERM`. El archivo JSON tiene todo lo que necesitas: `active_task_id` y el array de tareas con su `status` y `priority`.
    - Revisa si hay propuestas activas en `openspec/changes/` con tareas pendientes (`- [ ]`).
    - Si hay una tarea pendiente disponible, tómala y pasa directo al **Paso 2**.
 
-3. **Descubrimiento Autónomo (si el backlog está vacío):**
-   Si no hay ninguna tarea con `"status": "pending"` en `.taskmaster/tasks.json` (o `active_task_id` apunta a una ya completada), selecciona la siguiente área de la **Matriz de Rotación de I+D**:
+3. **Deuda Técnica Conocida (si el backlog está vacío):**
+   - ⚠️ **REGLA DE PRECEDENCIA ESTRICTA: Backlog > Deuda Técnica Conocida > Rotación de Innovación.**
+   - Si no hay ninguna tarea con `"status": "pending"` en `.taskmaster/tasks.json` (o `active_task_id` apunta a una ya completada), **NO saltes de inmediato a inventar features ni a la rotación ciega de innovación**.
+   - Consulta la sección `## ⚠️ Deuda Técnica Conocida` de [`STATUS.md`](STATUS.md). Los elementos allí documentados (supervivientes abiertos de tests/mutaciones, validaciones o contratos incompletos, inconsistencias documentales o deudas declaradas no resueltas) son **directamente elegibles y prioritarios para crear tareas**.
+   - Encomienda al agente `architect-review` la inspección de la deuda conocida para que seleccione el ítem más crítico o urgente y **cree o amplíe una propuesta** en `openspec/changes/<YYYY-MM-DD>-<slug>/` y la tarea correlativa en `.taskmaster/tasks.json` antes de buscar qué más se puede hacer.
+   - Pasa de inmediato al **Paso 2**.
+
+4. **Descubrimiento Autónomo / Rotación (solo si no hay backlog NI deuda técnica conocida elegible):**
+   Únicamente si no hay tareas pendientes en `.taskmaster/tasks.json` Y tampoco existe deuda técnica pendiente accionable en `STATUS.md`, selecciona la siguiente área de la **Matriz de Rotación de I+D**:
 
    | Área de Rotación | Enfoque de Innovación | Agente | Intensidad |
    | :--- | :--- | :--- | :--- |
@@ -113,18 +120,21 @@ Tu objetivo es identificar el siguiente objetivo concreto de trabajo garantizand
    | **4. Rendimiento & Latencia** | Cacheo de procesos en `process_service.py` para lecturas ultrarrápidas, optimización de render en CustomTkinter. | `openspec-dev` | alta |
    | **5. Testing & Calidad** | Ampliación de tests headless en `run_tests.py`, tipado estricto Pydantic. | `openspec-dev` | alta |
 
-4. **Formalización:**
+5. **Formalización:**
    - Si el turno corresponde a `process-db-updater`: delega directamente en ese agente (con la herramienta de tu runtime, Sección 0) para actualizar `assets/process_db.json`.
-   - Para cualquier otra área: crea la carpeta `openspec/changes/<YYYY-MM-DD>-<slug>/` con `proposal.md` y `tasks.md`.
-   - Registra la tarea correlativa en `.taskmaster/tasks.json` (`TASK-013`, etc.) con prioridad y dependencias.
+   - Para cualquier otra área o resolución de deuda técnica: crea la carpeta `openspec/changes/<YYYY-MM-DD>-<slug>/` con `proposal.md` y `tasks.md`.
+   - Registra la tarea correlativa en `.taskmaster/tasks.json` (`TASK-048`, etc.) con prioridad y dependencias.
    - Pasa de inmediato al **Paso 2**.
 
-> **Backlog > Rotación.** Si `.taskmaster/tasks.json` tiene una tarea `pending` —y en particular si `active_task_id` apunta a una— esa tarea se toma **antes** que la rotación por áreas. Son defectos ya conocidos, no exploración. La rotación solo aplica cuando el backlog está vacío.
+> **Precedencia Estricta: Backlog > Deuda Técnica Conocida > Rotación de Innovación.**
+> 1. Si `.taskmaster/tasks.json` tiene una tarea `pending` —y en particular si `active_task_id` apunta a una— esa tarea se toma de inmediato.
+> 2. Si no hay tareas pendientes, se revisa `## ⚠️ Deuda Técnica Conocida` en `STATUS.md` para que el arquitecto cree o amplíe planes resolviendo deuda real antes de idear nuevas features.
+> 3. La rotación por áreas solo aplica cuando el backlog está vacío y no hay deuda técnica conocida pendiente en `STATUS.md`.
 
 ---
 
 ### 📐 Paso 2: Planear (`architect-review`)
-Tu objetivo es auditar la arquitectura, validar viabilidad y asegurar el respeto estricto de las invariantes antes de tocar código:
+Tu objetivo es auditar la arquitectura, validar viabilidad, resolver/ampliar deudas conocidas y asegurar el respeto estricto de las invariantes antes de tocar código:
 
 1. **Invocación del Agente:** delega en `architect-review` con **la herramienta de delegación de tu runtime** ( Sección 0 ):
    - el nombre del agente: `"architect-review"`
@@ -134,6 +144,7 @@ Tu objetivo es auditar la arquitectura, validar viabilidad y asegurar el respeto
    - ⚠️ **El nombre de la herramienta no se escribe aquí a propósito.** Se llama distinto en cada runtime y una instrucción fija se rompe en cuanto cambias de IDE. Resuélvela con la tabla de la Sección 0. Lo que sí es fijo: el agente se llama `architect-review` y vive en `.agents/agents/architect-review/agent.md`.
 2. **Acciones del Arquitecto:**
    - Audita la tarea activa de `.taskmaster/tasks.json` contra las invariantes de `AGENTS.md`.
+   - Consulta `STATUS.md` (sección `## ⚠️ Deuda Técnica Conocida`): si la tarea ataca una deuda conocida, formaliza su diseño y test discriminante; si la tarea activa toca subsistemas con deudas asociadas en `STATUS.md`, amplía el plan en `openspec/changes/` y `tasks.json` para resolverlas en la misma pasada si es seguro.
    - Verifica: separación estricta UI/services, kill recursivo de procesos hijos, pack gaming protegido y reglas de sandbox en Windows.
    - Refina dependencias en `.taskmaster/tasks.json` o la especificación en OpenSpec si detecta riesgos.
    - Realiza commit de la estrategia usando el wrapper seguro:
@@ -257,14 +268,16 @@ CONTEXTO QUIRÚRGICO DE LA TAREA:
 - Tarea Activa: [ID_TAREA] - [TÍTULO_TAREA]
 - Módulo / Capa afectada: [docs/ai/... asignado en tasks.json]
 - Especificación activa: openspec/changes/[CAMBIO_ACTUAL]/
+- Deuda Técnica Conocida: STATUS.md (sección Deuda Técnica Conocida)
 
 TU OBJETIVO:
-1. Lee ÚNICAMENTE el archivo de documentación indicado y openspec/changes/[CAMBIO_ACTUAL]/.
+1. Lee ÚNICAMENTE el archivo de documentación indicado, openspec/changes/[CAMBIO_ACTUAL]/ y STATUS.md (sección ## ⚠️ Deuda Técnica Conocida).
 2. Audita la viabilidad e invariantes de AGENTS.md (separación de capas, kill recursivo, sandbox EPERM).
-3. Ajusta dependencias o campos en .taskmaster/tasks.json si es necesario.
-4. NUNCA toques código de producción en src/.
-5. Haz commit: python .taskmaster/git_safe_commit.py "chore(architect): planificar [ID_TAREA]".
-6. Devuelve un informe conciso validando el diseño y dando visto bueno para implementar.
+3. Si la tarea se derivó de deuda técnica o toca áreas con deuda conocida en STATUS.md, crea o amplía planes y criterios discriminantes incorporándola antes de idear nuevas features.
+4. Ajusta dependencias o campos en .taskmaster/tasks.json si es necesario.
+5. NUNCA toques código de producción en src/.
+6. Haz commit: python .taskmaster/git_safe_commit.py "chore(architect): planificar [ID_TAREA]".
+7. Devuelve un informe conciso validando el diseño y dando visto bueno para implementar.
 ```
 
 ### Invocación 2: Para el Paso 3 — agente `openspec-dev`

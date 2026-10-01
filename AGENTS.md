@@ -16,6 +16,7 @@ Process manager gaming para Windows. Cierra apps en masa (gaming mode) y las rea
    - ⚠️ **`tm.py` NO es ejecutable en este entorno** (lanza `subprocess` y falla con `spawn EPERM`).
    - Consulta la tarea activa leyendo `.taskmaster/tasks.json`: usa el campo `active_task_id`, o la primera entrada con `"status": "pending"`.
    - Al completar la tarea, pon `"status": "completed"` en su entrada del mismo fichero.
+   - **Prioridad de Deuda Técnica Conocida (`STATUS.md`):** Si no hay tareas pendientes en `.taskmaster/tasks.json`, la sección `## ⚠️ Deuda Técnica Conocida` de `STATUS.md` es **elegible y prioritaria** para crear tareas. El `architect-review` debe crear o ampliar planes (`openspec/changes/`, `.taskmaster/tasks.json`) con lo que encuentre en `Deuda Técnica Conocida` antes de buscar qué más se puede hacer (rotación de innovación o nuevas features).
 2. **Especificaciones y Cambios (OpenSpec):**
    - Todo cambio arquitectónico o de interfaz debe estar documentado en `openspec/changes/<change-id>/`.
    - Consulta activa: `openspec/changes/2026-09-28-v3-ui-redesign/`.
@@ -95,6 +96,8 @@ Los agentes son **sesiones independientes** con sus propias directrices en `agen
 ### El bucle tiene 4 pasos, no 3
 
 `1. Buscar → 2. Planear → 3. Ejecutar → 4. Auditar los tests → (1)`
+
+> **Precedencia en el Paso 1:** `Backlog activo (tasks.json / openspec) > Deuda Técnica Conocida (STATUS.md) > Rotación / Descubrimiento`. Si no hay tareas pendientes en el backlog, la Deuda Técnica Conocida de `STATUS.md` es elegible y prioritaria para que el arquitecto cree o amplíe planes antes de explorar qué más hacer.
 
 El **Paso 4** es obligatorio: `run_tests.py` en verde dice que el código hace lo que el test comprueba, **no** que el test compruebe algo. El `mutation-auditor` rompe cada fix a proposito y confirma que el test lo detecta; un ciclo no se cierra sin su `PASS`. Un superviviente en seguridad o datos se arregla, no se documenta.
 

@@ -407,12 +407,12 @@
     "gamingservices": {
         "category": "🟡 Launchers Gaming",
         "priority": "low",
-        "description": "Servicios centrales de la tienda Xbox y juegos en Windows."
+        "description": "Servicios centrales de la tienda Xbox y de los juegos en Windows. Cerrarlos no rompe el juego: deja sin respuesta la Game Bar y la Store hasta que los servicios vuelvan a arrancar."
     },
     "gamingservicesnet": {
         "category": "🟡 Launchers Gaming",
         "priority": "low",
-        "description": "Servicio de red auxiliar para juegos y tienda Xbox."
+        "description": "Servicio de red auxiliar para juegos y tienda Xbox. Cierra junto con gamingservices: la tienda y la Game Bar se quedan sin respuesta hasta que reinicie el servicio."
     },
     "adobecollabsync": {
         "category": "🟢 Productividad",
@@ -478,5 +478,70 @@
         "category": "🟢 Productividad",
         "priority": "high",
         "description": "Postman API Client. Entorno de desarrollo y pruebas de APIs HTTP; consume 200-500 MB de RAM en segundo plano."
+    },
+    "apcent": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "GIGABYTE App Center: panel de control de las utilidades de la placa (bandeja de icono y lanzador). Windows no lo necesita; solo mantiene la interfaz y el aviso de actualizaciones."
+    },
+    "adjustservice": {
+        "category": "🟢 Productividad",
+        "priority": "high",
+        "description": "Servicio de Windows de GIGABYTE App Center (GIGABYTE Adjust). Mantiene el App Center en segundo plano para sus ajustes y actualizaciones; no es necesario para el sistema."
+    },
+    "gamesdk": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "ASUS GameSDK Service (Aura Ready Game SDK). Lo usa Armoury Crate para controlar la iluminacion RGB de placa y perifericos; mantener con el resto de la pila Aura."
+    },
+    "asuscertservice": {
+        "category": "🔴 Overlays e Info",
+        "priority": "none",
+        "description": "ASUS Certificate Service, servicio de certificados de Armoury Crate. Verifica los componentes de ASUS antes de aplicarlos; sin el, Armoury Crate puede dejar de funcionar."
+    },
+    "msmpeng": {
+        "category": "🔴 Antivirus y Seguridad",
+        "priority": "none",
+        "description": "Microsoft Defender: motor antimalware (Antimalware Service Executable). Nunca se cierra."
+    },
+    "nissrv": {
+        "category": "🔴 Antivirus y Seguridad",
+        "priority": "none",
+        "description": "Microsoft Defender: servicio de inspeccion de trafico de red en tiempo real (WdNisSvc). Vigila los protocolos de red; nunca se cierra."
+    },
+    "defendersessionhelper": {
+        "category": "🔴 Antivirus y Seguridad",
+        "priority": "none",
+        "description": "Microsoft Defender: proceso auxiliar de sesion del motor antimalware (lo lanza MsMpEng). No cerrable por prudencia."
+    },
+    "defenderaiplatformhost": {
+        "category": "🔴 Antivirus y Seguridad",
+        "priority": "none",
+        "description": "Proceso de la plataforma Microsoft Defender, en la carpeta versionada Platform de C:\\ProgramData. Microsoft no documenta una funcion publica para este binario: se clasifica como no cerrable por prudencia, igual que el resto de la plataforma."
+    },
+    "onedrive.sync.service": {
+        "category": "🟢 Sincronización",
+        "priority": "high",
+        "description": "Servicio auxiliar de sincronizacion de OneDrive. Sincroniza archivos en segundo plano; seguro de cerrar durante la partida, igual que el resto de OneDrive."
+    },
+    "hass.agent.satellite.service": {
+        "category": "🟢 Productividad",
+        "priority": "low",
+        "description": "Servicio satellite de HASS.Agent (cliente de Home Assistant). Ejecuta sensores y comandos sin sesion de usuario; mismo criterio que hass.agent."
+    },
+    "steamservice": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Steam Client Service de Valve. Sostiene el cliente de Steam; no hace falta durante la partida y se relanza al abrir Steam."
+    },
+    "steamwebhelper": {
+        "category": "🟡 Launchers Gaming",
+        "priority": "none",
+        "description": "Ayudante CEF de Steam (tienda, Big Picture y overlay). Son varias instancias y consumen bastante RAM; se relanzan al abrir Steam."
+    },
+    "msedgewebview2": {
+        "category": "🔴 Sistema de Windows",
+        "priority": "none",
+        "description": "Motor WebView2 de Microsoft, incrustado dentro de otras apps (Widgets, Outlook, Office, utilidades de ASUS). No es un navegador abierto por el usuario: lo necesita cualquier app que dibuje su interfaz dentro. Se cataloga en rojo para que el modo juego no lo cierre; antes lo heredaba de 'msedge' por subcadena y acababa siendo cerrable."
     }
 }

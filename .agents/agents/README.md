@@ -5,7 +5,7 @@ reconoce: Markdown con frontmatter YAML de `name` + `description`.
 
 | Agente | Papel en el bucle | Responde a |
 |---|---|---|
-| `architect-review` | Paso 2, planear. Audita premisas antes de tocar código. | ¿Es esto viable y seguro? |
+| `architect-review` | Paso 2, planear. Audita premisas y crea/amplía planes desde la Deuda Técnica Conocida de STATUS.md antes de buscar nuevas tareas. | ¿Es esto viable, seguro y atiende la deuda conocida? |
 | `openspec-dev` | Paso 3, ejecutar. Escribe código, tests y docs. | ¿Funciona y está probado? |
 | `mutation-auditor` | Paso 4, auditar. Rompe el código a propósito. | ¿El test se enteraría si el código estuviera mal? |
 | `process-db-updater` | Área 3, datos. Escanea procesos y alimenta `process_db.json`. | ¿Qué procesos hay y cuáles son seguros de cerrar? |

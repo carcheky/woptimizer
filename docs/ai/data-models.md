@@ -478,7 +478,7 @@ centinela `999` del sort, y rompe el filtro que lo excluye de `target_categories
 
 ## Base de Datos de Procesos (`assets/process_db.json`)
 
-Contiene actualmente **81** procesos catalogados (expandido en TASK-032 desde 73) con su semáforo de seguridad, categoría canónica y descripción contextual.
+Contiene actualmente **109** procesos catalogados (expandido en TASK-032 desde 73) con su semáforo de seguridad, categoría canónica y descripción contextual.
 
 ### Esquema
 `dict[str, dict]`. La clave es el **nombre del proceso en minúsculas y sin extensión**
@@ -570,8 +570,41 @@ sustituir una por otra abre un vector de brick o deja procesos de sistema cerrab
   (`high`) o `🟡 Media y Streaming` (`medium`) cuando tocan la ruta de audio.
 - **No**: el entorno de trabajo del usuario (`pwsh`, `python`, `wsl`, terminales) — cerrarlos
   rompería su propia sesión; y las pilas de control de hardware (`armsvc`, `asus_framework`,
-  `rogliveservice`) van a `🔴 Overlays e Info` / `none`, igual que `icue`, `razer` o `lghub`,
-  porque cerrarlas deja el equipo sin perfil de ventilación o RGB.
+  `rogliveservice`, `gamesdk`, `asuscertservice`) van a `🔴 Overlays e Info` / `none`, igual que
+  `icue`, `razer` o `lghub`, porque cerrarlas deja el equipo sin perfil de ventilación o RGB.
+
+#### Infraestructura y hardware: una sola regla (ciclo 15)
+
+`agent.md` prohíbe registrar infraestructura, drivers y hardware, pero el ciclo 13 metió
+procesos de hardware en `🔴 Overlays e Info` / `none`. **La contradicción se resuelve así, y
+solo así: la prohibición es sobre la CAPACIDAD DE CIERRE, no sobre lacatalogación.**
+
+1. Un proceso de infraestructura/hardware/driver **nunca** entra en `🟢` ni en `🟡`: esas son
+   precisamente las categorías que `DEFAULT_GAMING_PACK.target_categories` marca como
+   objetivo, así que en ellas es cerrable por definición.
+2. Si además **no aporta nada** —hoy cae en `⚪ Otros`, que no es objetivo de ninguna
+   categoría, y ningún fuzzy lo alcanza— **se descarta**: registrarlo solo suma riesgo al
+   matcher por subcadenas. Así se descartan los HAL de ASUS (`aac3572dramhal_x86`,
+   `aackingstondramhal_x86`, `extensioncardhal_x86`, que son `ASUS AURA COMPONENT — DRAM HAL`),
+   WSL, Hyper-V, Widgets, TabTip, SystemApps y los helpers de driver de DriverStore.
+3. Si aparece **cerrable hoy por un fuzzy accidental**, se registra en `🔴` con `none` como
+   mitigación puntual, porque la base es la única palanca de este agente. El caso medido es
+   `msedgewebview2`: heredaba `🟢 Navegadores` de la clave `msedge` por subcadena y el modo
+   juego mataba sus 19 instancias. Con entrada exacta en `🔴 Sistema de Windows` / `none` el
+   tier pasa a `danger` y la barrera G-5 lo deja inalcanzable.
+
+⚠️ **La mitigación del punto 3 no es una cura, es un parche en el sitio equivocado.** La causa
+sigue viva en `process_service.py:429-433` (substring bidireccional `pattern in name or name in
+pattern`), que además es la razón de que `steam` arrastre a `steamservice`/`steamwebhelper` y
+`onedrive` a `onedrive.sync.service`. La cura es hacer el matching por límites de palabra/token
+en `process_service.py` (cambio de `openspec-dev`, fuera del alcance de este agente).
+
+⚠️ **`priority` NO es un mecanismo de protección.** La puerta de matado es
+`get_safety_badge(categoria)["tier"]` (`gaming_service.py:122-143`); `priority` solo se usa como
+desempate cuando la categoría no lleva emoji. Medido: `riotclientservices` está en
+`🟡 Launchers Gaming` con `priority: "none"` y **el Gaming Mode lo mata igual** (solo sobrevive
+`steam.exe`, que está en `keepers`). Para volver algo no cerrable hay que moverlo de categoría
+(o quitar su categoría del pack), no tocar su `priority`.
 
 ### 7. Version del paquete: UN valor en UN sitio (TASK-028 / FIX-018)
 
