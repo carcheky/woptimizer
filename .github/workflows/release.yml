@@ -1,0 +1,166 @@
+name: Release
+
+# Rama de release estable -> version sin sufijo (1.0.0, 1.0.1, 2.0.0...).
+# Rama `beta` -> prerelease (1.1.0-beta.1...). Al fusionarla en `main`, semantic-release
+# graduationa el prerelease y publica la version estable correspondiente.
+on:
+  push:
+    branches:
+      - main
+      - beta
+      - '+([0-9])?(.{+([0-9]),x}).x'
+  workflow_dispatch:
+
+# Menor privilegio por defecto. Cada job amplia solo lo que necesita.
+permissions:
+  contents: read
+
+# Nunca se cancela una publicacion a medias: `cancel-in-progress: false` deja que
+# un segundo push espere en cola en vez de matar un release a medio publicar.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  commits:
+    name: Commits convencionales
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # Rango real del push. `github.event.before` es todo-ceros en el primer push
+      # de una rama nueva y en `workflow_dispatch`, y en ese caso se cae al commit
+      # anterior (o a la raiz) en vez de romper el rango.
+      - name: Resolver el rango de commits del push
+        id: rango
+        run: |
+          ANTES="${{ github.event.before }}"
+          if [ -z "$ANTES" ] || [ "$ANTES" = "0000000000000000000000000000000000000000" ]; then
+            ANTES="$(git rev-parse HEAD~1 2>/dev/null || git rev-list --max-parents=0 HEAD)"
+          fi
+          echo "desde=$ANTES" >> "$GITHUB_OUTPUT"
+
+      # Sin esto, un mensaje mal escrito NO da error: semantic-release lo ignora y
+      # simplemente no publica nada. El fallo silencioso de "no hay release" es
+      # justo el que hace poco fiable un pipeline de releases.
+      - name: Comprobar los mensajes con commitlint
+        run: npx --yes @commitlint/cli@latest --from "${{ steps.rango.outputs.desde }}" --to HEAD --verbose
+
+  verify:
+    name: Verificar en Windows
+    needs: commits
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Instalar dependencias
+        run: pip install -e ".[dev]"
+
+      - name: Sintaxis estatica de la UI
+        run: python verify_ui_syntax.py
+
+      # `validate_docs.py` NO se ejecuta aqui, y es deliberado: su ancla de
+      # commits deriva GIT_DIR de %LOCALAPPDATA%\woptimizer_git\.git, que solo
+      # existe en el host del dueno. En el runner no esta, `git log` falla y el
+      # validador reporta FAIL aunque el repo este impecable. Verificarlo aqui
+      # seria un rojo que no significa nada.
+      - name: Suite headless
+        run: python run_tests.py
+
+  release:
+    name: semantic-release
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # Foto de los tags ya publicados ANTES de la corrida. El diff posterior es
+      # lo que dice si esta corrida publico algo; `git describe` no sirve,
+      # porque en un push sin commits publicables devolveria el tag viejo y
+      # reconstruiria encima una release anterior.
+      - name: Congelar los tags ya publicados
+        run: git tag --list 'v*' | sort > "$RUNNER_TEMP/tags_before.txt"
+
+      - name: Calcular version y publicar la release
+        run: npx --yes semantic-release@25
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolver el tag recien publicado
+        id: resolve
+        run: |
+          git fetch --tags --force --quiet
+          git tag --list 'v*' | sort > "$RUNNER_TEMP/tags_after.txt"
+          NUEVO="$(comm -13 "$RUNNER_TEMP/tags_before.txt" "$RUNNER_TEMP/tags_after.txt" | head -n1)"
+          if [ -z "$NUEVO" ]; then
+            echo "No hay commits publicables en este push: no se crea release."
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release publicada: $NUEVO"
+            echo "tag=$NUEVO" >> "$GITHUB_OUTPUT"
+            echo "version=${NUEVO#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Compilar el .exe y adjuntarlo
+    needs: release
+    if: needs.release.outputs.tag != ''
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      # Se compila EXACTAMENTE el commit etiquetado, no el HEAD de la rama: si
+      # alguien empuja otra cosa mientras se compila, la release sigue siendo
+      # reproducible respecto al tag que la nombra.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Instalar dependencias
+        run: pip install -e ".[dev]"
+
+      # Mismos flags que force_build.py: si divergen, el .exe publicado y el
+      # .exe local dejan de ser el mismo producto.
+      - name: Compilar con PyInstaller
+        run: python -m PyInstaller --onefile --noconsole --uac-admin --name woptimizer --clean --add-data "assets;assets" src/woptimizer/__main__.py
+
+      - name: Adjuntar el ejecutable a la release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.release.outputs.tag }}
+          files: dist/woptimizer.exe

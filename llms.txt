@@ -15,6 +15,7 @@ Para evitar saturar la ventana de contexto y prevenir alucinaciones:
 - [Sistema de Diseño UI](docs/ai/ui-design-system.md): Especificación de las 3 ventanas (Portada, Packs, Procesos) y reglas CustomTkinter.
 - [Reglas de Sandbox y Windows](docs/ai/sandbox-rules.md): Permisos EPERM, bypass de scripts puente y compilación con PyInstaller.
 - [Guía de Pruebas](docs/ai/testing-guide.md): Validación estática e inicialización headless sin monitor.
+- [Pipeline de Releases](docs/ai/release-pipeline.md): semantic-release, conventional commits, ramas `main`/`beta` y publicación del `.exe`.
 
 ## 🎯 Orquestación de Tareas (Taskmaster)
 - [Tablero Taskmaster Markdown](.taskmaster/tasks.md): Tabla de tareas pendientes, complejidades y dependencias.

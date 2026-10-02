@@ -1,0 +1,10 @@
+{
+  "name": "woptimizer-release",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tooling de release de woptimizer (semantic-release + commitlint). El paquete de producto es Python y vive en pyproject.toml; esto NO se publica en npm ni se instala como dependencia.",
+  "license": "MIT",
+  "scripts": {
+    "release:dry": "npx --yes semantic-release@25 --dry-run"
+  }
+}

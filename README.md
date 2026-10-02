@@ -43,7 +43,7 @@ Esto es tan importante como lo que sí:
    *(El `.exe` se compila con `--uac-admin`, por eso pide elevación. Al ejecutarla desde
    código con `python run.py` no la pide.)*
 
-> El ejecutable se reconstruye periódicamente. La versión publicada puede ir por detrás del código fuente: mira la fecha del último cambio en el changelog.
+> Cada versión publicada se compila **desde el commit al que apunta su etiqueta**, así que el `.exe` que descargas y el código de esa versión son lo mismo. Las versiones que hasn't usado salen marcadas como *pre-release*: no te bajes la beta por error.
 
 ### Opción 2 — Desde el código
 Necesitas **Python 3.11+**.
@@ -98,6 +98,7 @@ src/woptimizer/
 | [`docs/known-issues.md`](docs/known-issues.md) | Las trampas del proyecto y por qué existen. |
 | [`AGENTS.md`](AGENTS.md) | Cómo trabaja un agente de IA en este repo. |
 | [`docs/ai/`](docs/ai/INDEX.md) | Referencia técnica por capa. |
+| [`docs/ai/release-pipeline.md`](docs/ai/release-pipeline.md) | Cómo se decide la versión y se publica el `.exe`. |
 
 ---
 

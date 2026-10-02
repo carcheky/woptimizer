@@ -28,6 +28,7 @@ Process manager gaming para Windows. Cierra apps en masa (gaming mode) y las rea
      - `docs/ai/ui-design-system.md` (CustomTkinter y las 3 ventanas)
      - `docs/ai/sandbox-rules.md` (EPERM y builds)
      - `docs/ai/testing-guide.md` (pruebas headless)
+     - `docs/ai/release-pipeline.md` (semantic-release, ramas `main`/`beta`, publicación del `.exe`)
 
 ## Estructura del Código
 ```text
@@ -71,6 +72,20 @@ python validate_docs.py         # Validar documentación y changelogs
 python .taskmaster/git_safe_commit.py "msg"   # ÚNICA vía de versionado
 ```
 > ❌ `python .taskmaster/tm.py next|done|list` **no funciona aquí** (hace `subprocess`). Lee `.taskmaster/tasks.json`.
+
+## 📦 Releases (GitHub Actions + semantic-release)
+
+La versión **la decide el mensaje de commit**, no nadie a mano: `fix:` → patch, `feat:` → minor, `BREAKING CHANGE:` → major; `docs:`/`chore:`/`ci:` no publican nada. Todo ocurre en `.github/workflows/release.yml`:
+
+`commits` (commitlint) → `verify` (tests en Windows) → `release` (semantic-release) → `build` (PyInstaller + adjunto `woptimizer.exe`)
+
+```bash
+git push origin beta     # -> Release v1.1.0-beta.N, marcada como pre-release
+git switch main && git merge --ff-only beta && git push origin main   # -> Release v1.1.0
+```
+> ⚠️ **Nunca crees tags a mano** ni edites el número de versión: `semantic-release` los pone, y un tag manual lo duplica.
+> ⚠️ **`validate_docs.py` NO corre en CI** (deriva un `GIT_DIR` de `%LOCALAPPDATA%` que solo existe en este host). Se ejecuta aquí, antes de empujar.
+> Detalle de diagnóstico y tabla de fallos: `docs/ai/release-pipeline.md`.
 
 ## 🛠️ Roles del Pipeline (Agentes + Skill)
 

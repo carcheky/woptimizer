@@ -1,0 +1,38 @@
+name: Commitlint (PRs)
+
+# Solo en PRs. En este repo los agentes comitean directamente a `main` con
+# `git_safe_commit.py`, y pasar el historial entero por commitlint lo haria
+# fallar por commits de antes de que la regla existiera. El equivalente para el
+# push directo vive en `release.yml`, job `commits`, que solo mira el rango del
+# push actual.
+on:
+  pull_request:
+    branches:
+      - main
+      - beta
+      - '+([0-9])?(.{+([0-9]),x}).x'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Mensajes convencionales
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Comprobar los mensajes de la PR
+        run: >-
+          npx --yes @commitlint/cli@latest
+          --from "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || 'HEAD~1' }}"
+          --to "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'HEAD' }}"
+          --verbose
