@@ -108,8 +108,22 @@ jobs:
       - name: Congelar los tags ya publicados
         run: git tag --list 'v*' | sort > "$RUNNER_TEMP/tags_before.txt"
 
+      # OJO con el segundo `-p` y con la MAYOR del preset, y no es cosmetico:
+      #
+      # 1. `conventional-changelog-conventionalcommits` NO viene con semantic-release.
+      #    `load-parser-config.js` (commit-analyzer) lo resuelve con
+      #    `importFrom(cwd, 'conventional-changelog-conventionalcommits')`, y sin el
+      #    paquete a mano el job muere con "Cannot find module". Ademas el preset por
+      #    defecto de commit-analyzer es `angular`, NO `conventionalcommits`: sin el,
+      #    los mensajes se parsean con otro criterio y la version sale mal.
+      # 2. La mayor va FIJADA a la 9, y por evidencia de dependencias, no por
+      #    costumbre: `@semantic-release/commit-analyzer@13.0.1` depende de
+      #    `conventional-changelog-writer` (API clasica), mientras que el preset v10
+      #    ya reescrito usa `@conventional-changelog/template`. La v9 es la ultima
+      #    mayor con la API que espera el writer. Subirla sin mirar las deps es como
+      #    se rompe esto.
       - name: Calcular version y publicar la release
-        run: npx --yes semantic-release@25
+        run: npx --yes -p semantic-release@25 -p conventional-changelog-conventionalcommits@9 semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
