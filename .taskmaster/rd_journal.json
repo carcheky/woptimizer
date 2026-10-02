@@ -789,5 +789,28 @@
       "seguridad_o_datos": "NO. src/ y validate_docs.py intactos; suite estable en 103."
     },
     "deuda_nueva": "TASK-060: check 8 de validate_docs.py que exige que toda fila VIVA de la Deuda Tecnica Conocida lleve un ancla resoluble cuya verdad se derive de fuera del panel (arbol, recuento ast, git log), con las filas cerradas exentas."
+  },
+  {
+    "cycle": 49,
+    "date": "2026-10-02T06:40:00",
+    "area": "Arquitectura & Calidad",
+    "slug": "2026-10-02-check-deuda-con-anclas",
+    "task": "TASK-060",
+    "status": "COMPLETED",
+    "commits": [
+      "c65b2e1",
+      "795a1ed",
+      "d6f9a9e"
+    ],
+    "tests": {
+      "before": "103 totales",
+      "after": "104 totales (94 backend + 10 headless, derivado con ast; validados con ast por validate_docs.py)"
+    },
+    "impact": "Check 8 de validate_docs.py: el arreglo de fondo del PARTIAL del ciclo #48. Hasta aqui la seccion Deuda Tecnica Conocida de STATUS.md -que gobierna que trabajo hace el bucle cuando el backlog esta vacio- no la miraba NINGUN check (0 coincidencias de 'Deuda' en el validador). Ahora toda fila no marcada cerrada debe llevar un ancla resoluble cuya verdad se derive de FUERA del panel, con las filas cerradas exentas. 8 filas vivas vigiladas, 15 en total, 7 exentas. El marcador de cierre ignora el codigo en linea (re.sub de las comillas invertidas) porque si no el panel se autoexime: la fila que escribe el criterio no puede estar exenta por el criterio. Nacio en verde tocando UNA sola fila (la 91, que no tenia ancla). Reparto 93+10 derivado con ast en el check 7, no en el 8. Suite 103 -> 104 con 13 escenarios; 12 mutantes de codigo mueren por su asercion y quitar un argumento del cableado da TypeError, nunca un falso verde.",
+    "audit": {
+      "verdict": "PENDIENTE",
+      "note": "Paso 4 en curso."
+    },
+    "deuda_nueva": "TASK-061: el invariante del codigo de salida de git_safe_commit.py (WOPT_NOOP y WOPT_COMMIT_OK comparten el 0; el mutante CODE_FAIL->CODE_OK sobrevive a la suite y al validador). Tambien TASK-059: commits sin marcador de ciclo, de modo que la union de fuentes se apoya en su mayoria solo en el journal."
   }
 ]
