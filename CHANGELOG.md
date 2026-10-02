@@ -1,3 +1,25 @@
+## CYCLE-050 - 2026-10-03
+
+**Infraestructura & Distribución** - `TASK-062` (Publicar las releases del `.exe` con semantic-release)
+
+### Añadido
+
+- 🆕 **Ya hay ejecutables descargables en la pestaña Releases de GitHub, y el número de versión lo decide el código, no una persona.** A partir de ahora la versión sale del propio mensaje del commit: un `fix:` sube el último número, un `feat:` sube el medio, y un `BREAKING CHANGE:` sube el mayor. No hace falta crear ninguna etiqueta a mano ni acordarse de qué número va.
+- 🆕 **Rama `beta` para probar sin arriesgar la versión buena.** Cada merge a `beta` publica una versión de prueba marcada como *pre-release* en GitHub, con su `.exe` incluido. Cuando la cosa está fuma, se fusiona `beta` en `main` y se publica la versión estable.
+- 🆕 **Cada `.exe` se compila desde el commit al que apunta su versión.** Antes el ejecutable publicado se compilaba a mano y nada garantizaba que correspondiera al código de esa versión: era un desfase que nadie vigilaba. Ahora no puede ocurrir.
+- 🆕 **Los commits se revisan antes de publicar nada.** Si alguien escribe un mensaje mal formado, el proceso se detiene y avisa. Antes eso no pasaba: el mensaje se ignoraba en silencio y simplemente no se publicaba versión, sin explicar por qué.
+
+### Corregido
+
+- 🛡️ **Retirado el workflow que publicaba en la etiqueta del push.** Con el sistema nuevo, cada versión creada disparaba además el workflow antiguo, y los dos intentaban escribir la misma versión a la vez. Dos procesos peleándose por lo mismo no es una automatización: es una carrera.
+- 🛡️ **El ejecutable ya no puede ir por detrás del código fuente** en la pestaña de instalación. Se ha quitado el aviso que lo advertía porque la causa ya no existe.
+
+### Lo que no cambia
+
+- Sigues instalando igual: descargas `woptimizer.exe` de **Releases**, doble clic, aceptas permisos de administrador. Solo cambia quién decide el número y cuándo se reconstruye.
+
+---
+
 ## CYCLE-048 - 2026-10-02
 
 **Documentación & Arquitectura** — `TASK-058` (Sanear las filas FALSAS de la Deuda Técnica Conocida de `STATUS.md`)

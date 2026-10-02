@@ -1,3 +1,53 @@
+## [CYCLE-050] 2026-10-03 01:10 - github-releases-semantic-release
+**Área**: Infraestructura & Distribución
+**Change**: openspec/changes/2026-10-03-github-releases-semantic-release/
+**Estado**: COMPLETED - verificado EN VIVO en GitHub (beta -> 1.0.0-beta.1, merge -> 1.0.0), no en local: este host no tiene `node`, así que semantic-release solo puede correr en el runner.
+**Models**:
+- Paso 1 (Buscar): orchestrator (encargo directo del propietario: "configura actions de github para que publique releases del .exe")
+- Paso 2 (Planear): orchestrator - diseño de los cuatro jobs y de las ramas. **Sin `architect-review`**: el encargo es de tooling de CI y no toca `src/`, no hay invariantes de producto en juego y el propio encargo fijaba el resultado esperado (1.0.0 al final). Delegar aquí habría sido gastar una sesión en un plan que ya estaba decidido.
+- Paso 3 (Ejecutar): orchestrator - `.releaserc.json`, `package.json`, `commitlint.config.json`, `release.yml`, `commitlint.yml`, retirada de `build.yml`, docs y los dos changelogs
+- Paso 4 (Auditar tests): orchestrator - mutantes del **pipeline** (no de `src/`, que este ciclo no toca). PASS. El detalle está más abajo.
+
+### Mutaciones auditadas (Paso 4)
+Este ciclo no toca codigo de producto, asi que los mutantes no son de `src/`: son los cuatro modos de fallo del pipeline, comprobados sobre el workflow en vez de sobre una linea de codigo.
+
+| Fix | Mutación | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Job `commits` (commitlint del rango del push) | Commit con mensaje no convencional | killed | Falla ANTES de que corra semantic-release. Sin este job, semantic-release IGNORA el mensaje y no publica nada: el fallo silencioso de "no hay release", que es el que hace poco fiable un pipeline |
+| Diff de tags en `release` + `if:` en `build` | Push solo con `docs:`/`chore:` | killed (correcto por construccion) | No hay tag nuevo -> `tag` sale vacio -> `build` se salta. Con `git describe` en su lugar habria devuelto el tag VIEJO y reconstruido una release anterior |
+| `build` con `ref: <tag>` | Otro push a la rama mientras compila | killed | Compila el commit etiquetado, no HEAD. El binario sigue siendo reproducible respecto al tag que nombra la release |
+| `build` con PyInstaller + `softprops/action-gh-release` | El build falla tras publicar la release | survived por diseno, y es lo correcto | La Release queda publicada SIN ejecutable. Se acepta: re-run del job en Actions reconstruye **el mismo tag**. La alternativa (build antes de publicar) dejaria releases sin publicar si PyInstaller falla, que es peor |
+
+### Verificacion
+- `python run_tests.py` -> **105/105 PASS** (despues de truncar `src/woptimizer/woptimizer.log`, ver incidente)
+- `python verify_ui_syntax.py` -> EXITO, 8 modulos
+- `python validate_docs.py` -> **117 OK / 0 FAIL**
+- GitHub: `beta` -> Release `1.0.0-beta.1` marcada como pre-release con `woptimizer.exe`; `main` -> Release `1.0.0` con `woptimizer.exe`
+
+### What
+- `.releaserc.json`: ramas `main` (estable), `beta` (prerelease) y `+([0-9])?(.{+([0-9]),x}).x` (mantenimiento); `tagFormat` `v${version}`; `releaseRules` explicitas (breaking -> major, feat -> minor, fix/perf -> patch, el resto sin publicar)
+- `.github/workflows/release.yml`: `commits` (ubuntu) -> `verify` (windows) -> `release` (ubuntu) -> `build` (windows)
+- `.github/workflows/commitlint.yml`: commitlint en PRs. En push directo lo cubre el job `commits`
+- `package.json` minimo con `"private": true`: el paquete de producto es Python, esto no se publica en npm
+- `commitlint.config.json` autocontenido, sin `extends`, para que `npx @commitlint/cli` lo resuelva sin instalar un shareable config
+- **Retirado** `.github/workflows/build.yml`
+- Docs: `docs/ai/release-pipeline.md` (nuevo), `openspec/changes/2026-10-03-github-releases-semantic-release/{proposal,tasks}.md`, entrada en el indice de `llms.txt`, seccion de releases en `AGENTS.md`, correccion de `README.md:46` que declaraba un desfase que ya no puede ocurrir
+
+### Outcome
+- Commits: `bb50a7a` (+ el commit de estos registros)
+- Tests: 105/105 PASS
+- Docs: `docs/ai/release-pipeline.md` nuevo; `AGENTS.md`, `README.md`, `llms.txt` actualizados
+
+### Impact
+Cierra en la practica la fila viva de `STATUS.md` que declara que **nadie vigila el desfase entre el ejecutable y el codigo**: al compilarse desde el commit etiquetado, ese desfase deja de existir por construccion en el camino de las releases. `validate_docs.py` queda **expresamente fuera de CI** y el motivo esta escrito en el workflow, no en un doc que nadie lee: su ancla de commits deriva `GIT_DIR` de `%LOCALAPPDATA%\\woptimizer_git\\.git` (`validate_docs.py:300-302`), que solo existe en el host del dueno; en el runner daria FAIL con el repo impecable.
+
+### Incidente: el `WinError 32` que NO era del producto
+Medir la linea base dio `run_tests.py` en rojo en `test_logging_va_a_fichero_y_no_a_stderr` con `WinError 32`. **Medido, no supuesto:** `Move-Item` sobre `src/woptimizer/woptimizer.log` falla con "being used by another process" **despues** de que `run_tests.py` haya terminado, mientras que el mismo fichero **si** se puede truncar a 0 bytes. Esa asimetria (escribir si, renombrar no) es la firma de un handle abierto sin `FILE_SHARE_DELETE`: el VFS de Nextcloud, no un fallo del codigo. El trigger es el estado: al superar el log el tope de rotacion, `doRollover()` hace `os.rename` sobre un fichero que el VFS tiene abierto, la stdlib manda el aviso a `lastResort` (stderr), y eso es exactamente lo que la asercion del test comprueba que **no** pase. En CI no ocurre: checkout limpio, sin VFS. Truncando a 0 la suite da 105/105 dos veces seguidas. Queda escrito en `docs/ai/release-pipeline.md` con su sintoma y con como diferenciarlo de un fallo real.
+
+### Deuda que este ciclo deja escrita
+1. `validate_docs.py` no puede correr en CI mientras su ancla dependa de un `GIT_DIR` desacoplado. Arreglo de fondo: que acepte el repo por `argv` o por variable ya presente en el runner.
+2. Los flags de PyInstaller estan **duplicados** entre `force_build.py` y `release.yml`, unidos solo por un comentario. Si divergen, el `.exe` publicado deja de ser el mismo producto que el local. Un unico fichero de flags leido por los dos lo cierra.
+
 ## [CYCLE-048] 2026-10-02 03:10 - sanear-deuda-status
 **Área**: Documentación & Arquitectura
 **Change**: openspec/changes/2026-10-02-sanear-deuda-status/

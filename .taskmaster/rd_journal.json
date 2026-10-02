@@ -815,5 +815,31 @@
     },
     "incidente": "BLOQUEO DE ENTORNO. A mitad de la ronda 6 el shell dejo de poder crear subprocesos: node:internal/child_process spawn EPERM, que falla incluso con Write-Output. Le afecta tambien al orquestador, no es un fallo del subagente; es la limitacion de sandbox que el propio repo documenta. CONSECUENCIA: el trabajo de la ronda 6 esta EN DISCO y verificado por el dev (run_tests.py 104 verdes, validate_docs.py 115 OK / 0 FAIL, verify_ui_syntax.py OK, 17 mutantes de codigo: 15 mueren y 2 sobreviven con dueno), pero SIN COMMIT y sin las cuatro verificaciones finales repetidas tras las ultimas ediciones de solo texto. HEAD sigue en 49083d3 y hay cambios sin versionar en run_tests.py, validate_docs.py, docs/ai/sandbox-rules.md, STATUS.md y mutation-report.md. AL RECUPERAR EL SHELL: python .taskmaster/git_safe_commit.py 'fix(validate): ciclo #49 ronda 6 - la mitad positiva del fix con test, y las tres muertes corregidas' y re-ejecutar las cuatro verificaciones. NO se declara cerrado: el Paso 4 final sigue sin hacerse.",
     "deuda_nueva": "TASK-061: el invariante del codigo de salida de git_safe_commit.py (WOPT_NOOP y WOPT_COMMIT_OK comparten el 0; el mutante CODE_FAIL->CODE_OK sobrevive a la suite y al validador). Tambien TASK-059: commits sin marcador de ciclo, de modo que la union de fuentes se apoya en su mayoria solo en el journal."
+  },
+  {
+    "cycle": 50,
+    "date": "2026-10-03T01:10:00",
+    "area": "Infraestructura & Distribucion",
+    "slug": "2026-10-03-github-releases-semantic-release",
+    "task": "TASK-062",
+    "status": "COMPLETED",
+    "commits": [
+      "bb50a7a"
+    ],
+    "tests": {
+      "before": "105 totales (95 backend + 10 headless)",
+      "after": "105 totales, sin cambios. Este ciclo NO toca run_tests.py, y por eso no obliga a resincronizar los cuatro ficheros que declara el check 7 (STATUS.md, AGENTS.md, README.md y la tabla de docs/ai/testing-guide.md), que deriva el total con ast desde run_tests.py"
+    },
+    "impact": "GitHub Actions publica el .exe con semantic-release sobre conventional commits. Cuatro jobs encadenados: commits (commitlint del rango del push) -> verify (verify_ui_syntax.py + run_tests.py en windows-latest) -> release (semantic-release@25 en ubuntu-latest) -> build (PyInstaller DESDE EL TAG y softprops/action-gh-release adjunta dist/woptimizer.exe). Ramas: main estable, beta prerelease (marcada pre-release en GitHub) y N.x / N.N.x de mantenimiento. Retirado build.yml, que disparaba en cada push de tag y habria competir por la misma release que crea semantic-release. Cierra en la practica la fila viva de STATUS.md (el ejecutable es un artefacto de distribucion y NADIE vigila su desfase con el codigo): al compilarse desde el commit etiquetado, ese desfase deja de existir por construccion en el camino de las releases. validate_docs.py queda EXPRESAMENTE fuera de CI: su ancla de commits deriva GIT_DIR de %LOCALAPPDATA%\\woptimizer_git\\.git (validate_docs.py:300-302), ruta que solo existe en el host del dueno; en el runner daria FAIL con el repo impecable.",
+    "audit": {
+      "verdict": "PASS del contrato del pipeline, verificado en GitHub y no en local",
+      "rondas": "Este ciclo no muta codigo de producto, sino el pipeline, asi que los mutantes son los cuatro modos de fallo que importan, comprobados sobre lo que hace el workflow: (M1) mensaje de commit no convencional -> el job `commits` falla ANTES de publicar, en vez de que semantic-release lo ignore en silencio; (M2) push solo con docs:/chore: -> ningun tag nuevo y el job `build` se salta por if: needs.release.outputs.tag != '', en vez de reconstruir la release anterior; (M3) build fallando tras publicar -> la Release queda sin ejecutable y el re-run del job reconstruye EL MISMO tag, sin crear una segunda release; (M4) otro push mientras compila -> irrelevante, porque `build` hace checkout de ref: <tag> y no de HEAD.",
+      "supervivientes_que_quedan": "Ninguno en codigo de producto, porque el ciclo no toca src/. Lo que no se puede medir desde este host es la carrera entre dos pushes simultaneos a la misma rama: la cubre concurrency: release-${{ github.ref }} con cancel-in-progress: false, para que el segundo espere en cola en lugar de matar una release a medias."
+    },
+    "incidente": "Al medir la linea base, run_tests.py fallo en test_logging_va_a_fichero_y_no_a_stderr con WinError 32. MEDIDO, no supuesto: Move-Item sobre src/woptimizer/woptimizer.log falla con 'being used by another process' DESPUES de que run_tests.py haya terminado, mientras que el mismo fichero SI se puede truncar a 0 bytes. Esa asimetria (escribir si, renombrar no) es la firma de un handle abierto sin FILE_SHARE_DELETE, es decir el VFS de Nextcloud, y no un fallo del producto: en CI el checkout esta limpio y no hay VFS. El trigger es el estado, no el codigo: al superar el log el tope de rotacion, doRollover() hace os.rename sobre un fichero que el VFS tiene abierto, la stdlib manda el aviso a lastResort (stderr) y eso es justamente lo que la asercion del test comprueba que NO pase. Truncando el log a 0 la suite da 105/105 dos veces seguidas. Queda escrito en docs/ai/release-pipeline.md con su sintoma y con como diferenciarlo.",
+    "deuda_nueva": [
+      "validate_docs.py sigue sin poder correr en CI porque su ancla de commits depende de un GIT_DIR desacoplado que solo existe en el host del dueno. Arreglo de fondo: que acepte el repositorio por argv o por una variable de entorno ya presente en el runner.",
+      "Los flags de PyInstaller estan DUPLICADOS entre force_build.py y release.yml, unidos hoy solo por un comentario. Si divergen, el .exe publicado deja de ser el mismo producto que el local. Un unico fichero de flags leido por los dos lo cierra."
+    ]
   }
 ]

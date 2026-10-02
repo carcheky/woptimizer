@@ -1285,6 +1285,24 @@
         "Sin PASS del mutation-auditor sobre el mutante CODE_FAIL -> CODE_OK la tarea no se cierra"
       ],
       "notes": "Origen: cierre del ciclo #48 (TASK-058), superviviente S48-2 de openspec/changes/2026-10-02-sanear-deuda-status/mutation-report.md. Prioridad ALTA y sin implementar en el ciclo #48 a proposito: el paso previo es diseno, no un test, y meter el fix sin decidir seria hacer la misma cosa que esta fila denuncia. CERO cambios en src/ y en el wrapper hasta que la decision este escrita. La fila del panel que la gobierna es STATUS.md:88 (deuda VIVA, severidad 🔴, con su medicion). No confundir con TASK-059 (marcador de ciclo y hashes del journal) ni con TASK-060 (check de anclas del panel): las tres son de la misma ronda y se cruzan sin pisarse."
+    },
+    {
+      "id": "TASK-062",
+      "title": "Publicar las releases del .exe con semantic-release y conventional commits",
+      "description": "Sustituir el workflow tag-a-mano por un pipeline de cuatro jobs (commitlint -> verify -> release -> build) sobre conventional commits, con rama main estable y rama beta de prerelease, compilando el ejecutable desde el commit etiquetado.",
+      "complexity": "medium",
+      "priority": "high",
+      "status": "completed",
+      "dependencies": [],
+      "module": "docs/ai/release-pipeline.md",
+      "acceptance_criteria": [
+        "Push a beta produce una Release marcada como pre-release con woptimizer.exe adjunto",
+        "git merge --ff-only beta + push a main produce la Release estable 1.0.0 con el .exe",
+        "Un commit docs:/chore: no publica nada y el job build se salta",
+        "Un mensaje no convencional falla el pipeline en vez de publicar en silencio",
+        "El workflow build.yml ya no existe"
+      ],
+      "notes": "Verificacion en vivo en GitHub, no en local: este host no tiene node, asi que semantic-release solo puede correr en el runner. validate_docs.py excluido de CI de forma deliberada, ver proposal.md seccion 3.1."
     }
   ]
 }
