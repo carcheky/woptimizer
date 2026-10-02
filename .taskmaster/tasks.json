@@ -1148,7 +1148,7 @@
       "description": "Deuda ABIERTA en STATUS",
       "complexity": 3,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "validate_docs.py",
       "acceptance_criteria": [

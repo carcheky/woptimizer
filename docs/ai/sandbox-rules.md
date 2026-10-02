@@ -138,7 +138,7 @@ Opciones **descartadas con medición**, no con opinión (detalle en
 | Opción | Por qué se descartó |
 |---|---|
 | Anclar por fecha (commits más nuevos que la fecha del último ciclo) | **Decorativo.** El journal tiene resolución de minuto y 5 ciclos comparten `2026-10-01T23:4x`; casi todos los commits son del mismo día. Un ciclo 47 huérfano del mismo día no se ve. |
-| Verificar que cada hash del campo `commits` del journal exista | **Era `41 de 46 hashes no resuelven`, y era FALSO.** Remedido el 2026-10-02 extrayendo el hash (`\b[0-9a-f]{7,40}\b`) y no el string del campo: **11 de las 46 entradas no declaran hash alguno** (ciclos 1, 2, 14-20, 27, 28: `commits` a `null` o `[]`), y de las 35 que sí lo declaran solo **3 hashes no resuelven** (`5623629` del ciclo 30, `ee4b753` del 31 y `12b9c3bf` del 33) —los ciclos 30 y 31 resuelven por su segundo y tercer hash—, así que solo el **ciclo 33** queda sin ninguno resoluble: el check daría **1 FAIL, no 41**. El error de origen era medir el STRING (`617eef8 (architect)`) en vez del hash, la misma clase de bug que este ciclo existe para matar. Sigue yendo a `TASK-059`, pero por el residuo real (11 entradas que no declaran nada y 3 hashes perdidos con el `.git` corrupto del VFS), no por una cifra que nunca fue cierta. |
+| Verificar que cada hash del campo `commits` del journal exista | **Era `41 de 46 hashes no resuelven`, y era FALSO.** Remedido el 2026-10-02 extrayendo el hash (`\b[0-9a-f]{7,40}\b`) y no el string del campo: **11 de las 47 entradas no declaran hash alguno** (ciclos 1, 2, 14-20, 27, 28: `commits` a `null` o `[]`), y de las 36 que sí lo declaran solo **3 hashes no resuelven** (`5623629` del ciclo 30, `ee4b753` del 31 y `12b9c3bf` del 33) —los ciclos 30 y 31 resuelven por su segundo y tercer hash—, así que solo el **ciclo 33** queda sin ninguno resoluble: el check daría **1 FAIL, no 41**. El error de origen era medir el STRING (`617eef8 (architect)`) en vez del hash, la misma clase de bug que este ciclo existe para matar. Sigue yendo a `TASK-059`, pero por el residuo real (11 entradas que no declaran nada y 3 hashes perdidos con el `.git` corrupto del VFS), no por una cifra que nunca fue cierta. **Denominador medido el 2026-10-02 (cierre del ciclo #47): 47 entradas, no 46; el numerador 11 y la lista de ciclos no cambian.** Una cifra caducada escrita junto a la cifra viva es peor que no escribirla: por eso el resto del apartado sí remite al informe del validador, que reimprime los números en cada pasada. |
 | Encadenado criptográfico de entradas del journal | Detecta la **reescritura** retroactiva, no la **omisión**: truncar la cadena por el final es trivial. No toca este residuo. |
 | Auto-referencia (tabla resumen del changelog, campo `commits`) | Ya demostrado como falso verde en el ciclo #15. |
 | Puerta humana (aprobación del propietario por ciclo) | Es la única independencia real, pero incompatible con la autonomía de coste 0 y no automatizable. |
@@ -240,12 +240,43 @@ por hallazgo no convergía; la iteración 3 converge por construcción:
 | Decisión | Qué hace | Por qué converge donde 1 y 2 no |
 |---|---|---|
 | **D1** — un solo camino | `validar(root) -> (errors, ok)` con los checks 1-7; `main()` solo llama, imprime y hace `sys.exit` | Producto y tests ejecutan la **misma** función, así que "el cableado que nadie prueba" deja de ser una categoría de bug: no hay dos rutas que puedan divergir |
-| **D2** — el default se borra | `journal_cycles` pasa a **posicional obligatorio** | Mutarlo deja de ser un cambio de comportamiento y pasa a ser un `TypeError` en la llamada: el validador muere con traceback y muere el test de subproceso que ya existía, **sin escribir una línea de test nueva** |
-| **D3** — un solo camino también para los tests | Todo test contractual se asienta por `validar(root)` o por el subproceso; las privadas quedan **unitarias-no-contractuales** | Una función privada a la que se le pasan los argumentos a mano no prueba nada del producto mientras su cableado no se pruebe, y esa era la falsa cobertura |
-| **D4** — los escenarios son FILAS | `test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios`: cinco escenarios sobre el esqueleto real copiado **una vez** | Medido: 1,7 MB y una copia por test, así que un hallazgo futuro cuesta **una fila**, no un test de 40 líneas con su propia copia |
+| **D2** — el default se borra | `journal_cycles` pasa a **posicional obligatorio** | Borrar el cuarto argumento deja de ser un cambio de comportamiento y pasa a ser un `TypeError` en la llamada: el validador muere con traceback y muere el test de subproceso que ya existía, **sin escribir una línea de test nueva**. Matiz medido al cerrar el ciclo: **restaurar el default en solitario, con la llamada intacta, es una mutación inerte** y ningún test puede matarla, porque no cambia ningún veredicto. Lo que el default decide es si borrar el argumento es un `TypeError` o un silencio |
+| **D3** — un solo camino también para los tests | Todo test contractual se asienta por `validar(root)` o por el subproceso; las privadas dejan de ser **objetivo de tests nuevos** | Una función privada a la que se le pasan los argumentos a mano no prueba nada del producto *mientras su cableado no se pruebe*, y esa era la falsa cobertura. **Matiz medido en el cierre del ciclo #47 (la redacción anterior decía "unitarias-no-contractuales" y era falsa):** `test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal` sí asienta por las privadas y **es contractual de todos modos**, porque es el único guardián de **U1** (unión ≠ sustitución), **P1** (ciclo ≠ tarea: con el parser leyendo `TASK-046` el repo real da `107 OK / 2 FAIL`) y **E1** (ancla ilegible nunca en verde). La regla es *prefiera `validar(root)`*, no *las privadas no importan* |
+| **D4** — los escenarios son FILAS | `test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios`: **siete** escenarios sobre el esqueleto real copiado **una vez** | Medido: 1,7 MB y una copia por test, así que un hallazgo futuro cuesta **una fila**, no un test de 40 líneas con su propia copia. Límite conocido: las filas comparten esqueleto, luego comparten punto ciego — cada fila mide la forma de árbol que construye |
 
 La suite **bajó** de 104 a 103: `test_el_ancla_de_commits_cae_al_git_dir_por_defecto` (S3) y
 `test_un_parser_de_marcadores_roto_no_pasa_en_verde` (S4) se fusionaron en la tabla de
 escenarios, y sus mutantes mueren ahora por `validar(root)`. El informe de mutación de esta
 iteración vive en `openspec/changes/2026-10-01-validator-independent-anchor/mutation-report.md`.
+
+### Cierre del ciclo #47 (el `PASS` del auditor llegó con cinco holes)
+
+Los nueve mutantes del contrato T-7 mueren, uno a uno, y el auditor lo confirmó por atribución.
+Lo que vino después no era un fallo del ancla sino **el falso verde del ciclo #15 por otra
+puerta**: `missing_entries` y `has_jentry` buscaban el encabezado completo —correcto—, pero
+**ninguna sonda construía el árbol donde eso importa**, así que la versión laxo de esas dos
+líneas pasaba en verde. Demostrado contra el producto, no por teoría: con `## CYCLE-015` borrado
+y la prosa `TASK-015` viva, el código intacto da `[FAIL]` y la versión laxo da **cero fallos**.
+
+Lo grave no era el hueco: era que **el propio código lo advertía a 200 líneas de distancia**.
+`validate_docs.py` dice, textual, que buscar el número como subcadena daría falso verde porque
+`"015"` sobrevive dentro de `"TASK-015"` (el bug que cerró el ciclo #15), y acto seguido el
+mismo fichero no tenía ninguna comprobación de que esa advertencia se cumpliera. Una nota
+correcta en el sitio donde se cometió el error no es una defensa.
+
+- **A1 está erradicado donde se produjo y desplazado donde no se buscó.** En `_comprobar_ancla_de_commits`
+  el parser roto se acusa (`108 OK / 1 FAIL`, la fila (a) lo mata). En `missing_entries`/`has_jentry`
+  el mismo patrón semántico —buscar en vez de exigir— seguía vivo sin sonda. **El ciclo no se
+  declara cerrado por esto**: se declara cerrado *donde se midió*.
+- **Cerrado con dos filas, no con dos tests:** (f) encabezado borrado con el número solo en la
+  prosa → mata P2, P3 y H2; (g) `git` que falla una vez con `TimeoutExpired` → mata E2 y E3.
+  La suite sigue en **103 tests**: un hallazgo nuevo cuesta una fila.
+- **Limitación asumida:** las siete filas comparten esqueleto y helper, luego comparten punto
+  ciego. Una fila mide la forma de árbol que construye, y por eso cada una se documenta con el
+  mutante que mata en lugar de solo con su nombre.
+- **Dos documentaciones eran falsas y se han corregido:** `sandbox-rules.md` decía "11 de las **46** entradas" del journal
+  —el numerador y la lista eran correctos, el denominador había caducado: son **47**— y el informe de mutación fijaba "112 de
+  **156** subjects" justo después de declarar que no fija esa cifra, y daba por muerta una fila
+  cuya muerte no había medido. Un informe de mutación que afirma algo falso es peor que no
+  tenerlo: es la materia prima de la siguiente auditoría.
 

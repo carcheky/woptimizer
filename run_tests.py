@@ -12331,21 +12331,39 @@ def test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador():
 
 
 def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
-    """TASK-057 iter 3 (D1, D3, D4): cinco escenarios del ancla, cinco FILAS.
+    """TASK-057 iter 3 (D1, D3, D4) y cierre del ciclo #47: siete escenarios
+    del ancla, siete FILAS.
 
     D1 extrajo `validar(root)` de `main()`, asi que el producto y este test
     ejecutan la MISMA ruta: si una linea de cableado desaparece, este test deja
     de ver el residuo por la misma razon que el validador deja de acusarlo. Eso
     es lo que D3 convierte en regla --todo test contractual del validador se
-    asienta por `validar(root)` o por el subproceso-- y lo que deja las
-    funciones privadas como unitarias-no-contractuales.
+    asienta por `validar(root)` o por el subproceso--.
+
+    CORRECCION de D3 (cierre del ciclo #47; no es diseno nuevo, es un texto
+    que mentia). Declarar las privadas "unitarias-no-contractuales" era
+    INCORRECTO y creaba una trampa, porque
+    `test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal` asienta
+    por las privadas pasandoles los argumentos a mano y aun asi es
+    CONTRACTUAL: es el UNICO guardian de tres invariantes que esta tabla NO
+    nota (medido por el mutation-auditor, no por opinion):
+      U1 la UNION no sustituye al journal: el arbol espejo con journal
+         {46,47} e historial {46} tiene que exigir 0 errores, y esa
+         construccion no cabe en una tabla que cambia de historial por fila;
+      P1 ciclo != tarea: el parser tiene que IGNORAR `TASK-046`, y con ese
+         mutante el repo real da `107 OK / 2 FAIL` en vez de `108 OK / 0 FAIL`;
+      E1 un ancla ilegible NUNCA da verde: tiene que informar el motivo.
+    La regla de D3 es "preferir `validar(root)`", no "las privadas no
+    importan": un invariante que solo asienta llamando a la privada con
+    argumentos inventados por el test se queda sin guardian si se borra ese
+    test, y no lo nota nada mas.
 
     D4 hace el resto: el esqueleto real (1,7 MB) se copia UNA vez y cada
     escenario es una fila que solo reescribe el journal, el changelog y el
     `GIT_DIR`. Anadir un hallazgo futuro cuesta una fila de esta tabla, no un
     test nuevo de 40 lineas con su propia copia del arbol.
 
-    LAS CINCO FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla es el contrato):
+    LAS SIETE FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla es el contrato):
 
     - (a) historial SIN marcadores + journal con ciclos -> `"NO aporta ningun
       ciclo"`. Mata A1: desactivar la rama `if not ciclos and journal_cycles:`.
@@ -12362,15 +12380,53 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
     - (e) sin `GIT_DIR` en el entorno, el anclaje cae al repo de
       `%LOCALAPPDATA%` y lee su ciclo. Mata S3: borrar el fallback, que deja
       `None` en el entorno de `subprocess` y un `TypeError`.
+    - (f) el encabezado `## CYCLE-015` BORRADO y el numero vivo solo en PROSA
+      (`TASK-015` y `CYCLE-015` citados en un parrafo, sin seccion propia) ->
+      dos `[FAIL]`: el de `has_jentry` y el de `missing_entries`. Mata P2 (buscar
+      el numero pelado en vez del encabezado completo), P3 (lo mismo en la rama
+      de arriba) y H2 (`if not has_jentry:` -> `if False:`). Cierre del ciclo #47.
+    - (g) `git` falla UNA vez con `TimeoutExpired` y el ancla se lee igual en el
+      segundo intento. Mata E2 (estrechar el `except Exception` a `OSError`, que
+      deja el timeout saliendo con traceback y sin comprobar ni el check 6 ni el
+      7) y E3 (quitar el reintento del `spawn EPERM`). Cierre del ciclo #47.
+
+    LIMITACION CONOCIDA, y hay que decirla en voz alta (cierre del ciclo #47):
+    las siete filas comparten ESQUELETO y comparten helper, luego comparten
+    punto ciego. Una fila solo mide la forma de arbol que construye: la (f)
+    tapona P2/P3/H2 porque su changelog tiene prosa con el numero y sin el
+    `## CYCLE-`; un arbol SIN esa prosa daria el MISMO veredicto a las dos
+    versiones del codigo y la fila pasaria sin medir nada. La prosa de la (f)
+    esta a proposito, y por eso la fila se documenta con su mutante.
 
     NINGUN test toca el historial real: cada fila apunta su `GIT_DIR` a un repo
     de `tempfile`, y `GIT_DIR`/`GIT_WORK_TREE`/`LOCALAPPDATA` se restauran en el
     `finally`. Sin ese `finally` un `GIT_DIR` a un temporal ya borrado
     envenenaria a la fila siguiente y el fallo apareceria dos filas mas tarde.
+    La fila (g) sustituye `subprocess.run` de la stdlib (no una copia) porque es
+    justo la funcion que el modulo del producto llama, y lo restaura en un
+    `finally` MAS INTERNO que el del arbol: si una asercion revienta a media
+    fila, el doble no puede quedar puesto para las filas siguientes ni para el
+    resto de la suite.
     """
     import json
     import shutil
+    import subprocess as _sp_mod
     import tempfile
+
+    # Se captura la `run` DE VERDAD antes de tocar nada, para poder devolverla
+    # aunque una fila muera entre instalar y restaurar su doble.
+    _SP_RUN_DE_ORIGEN = _sp_mod.run
+
+    # El arbol de la fila (f), con la forma EXACTA que demostro el auditor: el
+    # encabezado `## CYCLE-015` borrado y el numero sobreviviendo en la prosa.
+    # Cita el numero de DOS maneras a proposito, `TASK-015` y `CYCLE-015`, para
+    # que la fila mate tanto el mutante que busca el numero pelado como el que
+    # busca la palabra sin su `## ` delante: con un solo genero de cita el otro
+    # genero de busqueda laxo pasaria en verde.
+    PROSA_SOLO_EN_FILA_F = (
+        "Nota de cierre, sin seccion propia: el paquete TASK-015 (CYCLE-015) se "
+        "aprobo en su dia y su entrada de seccion se borro por error."
+    )
 
     assert os.name == "nt", (
         "la fila (e) mide el fallback `%LOCALAPPDATA%`, que es la convencion de "
@@ -12434,6 +12490,13 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
 
         sin_marcadores = _historial("hist_sin_marcadores",
                                     "feat(calidad): arreglo sin marcador de ciclo")
+        # Historiales de UN ciclo cada uno, para las filas (f) y (g). Con un solo
+        # ciclo y el journal que lo registra, la union no anade residuo y la
+        # fila mide lo que dice medir y no el ruido de al lado.
+        hist_ciclo_15 = _historial("hist_ciclo_15",
+                                   "chore(release): cerrar ciclo #15 (TASK-015)")
+        hist_ciclo_46 = _historial("hist_ciclo_46",
+                                   "chore(release): cerrar ciclo #46 (TASK-056)")
         del_fallback = os.path.join(os.environ["LOCALAPPDATA"], "woptimizer_git")
         _repo_temporal_de_un_commit(del_fallback,
                                     "chore(release): cerrar ciclo #46 (TASK-056)")
@@ -12448,8 +12511,14 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
             "S3 pasaria sin ser probado"
         )
 
-        def _registro(entradas_journal, entradas_changelog):
-            """Reescribe SOLO el journal y el changelog del esqueleto."""
+        def _registro(entradas_journal, entradas_changelog, prosa=""):
+            """Reescribe SOLO el journal y el changelog del esqueleto.
+
+            `prosa` se escribe DESPUES de las entradas, sin encabezado: es lo que
+            permite construir el arbol de la fila (f), donde el numero del ciclo
+            sigue presente en el fichero pero su seccion `## CYCLE-` ya no
+            existe. Sin ese parametro esa forma de arbol no se puede montar.
+            """
             with open(os.path.join(esqueleto, ".taskmaster", "rd_journal.json"),
                       "w", encoding="utf-8") as fh:
                 fh.write(json.dumps(entradas_journal))
@@ -12458,22 +12527,59 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
                 fh.write("# Changelog\n\n### Corregido\n\n")
                 for c in entradas_changelog:
                     fh.write(f"\n## CYCLE-{c:03d}\n\nEntrada del ciclo {c}.\n")
+                if prosa:
+                    fh.write("\n" + prosa.strip() + "\n")
 
-        # --- LAS CINCO FILAS --------------------------------------------------
+        def _git_que_no_arranca_una_vez():
+            """Doble de `subprocess.run` que falla UNA vez. -> `restaurar()`.
+
+            Falla con `subprocess.TimeoutExpired`, que NO es `OSError`: es
+            exactamente la excepcion que el `except Exception` del ancla alcanza
+            y `except OSError` no. El docstring de `_comprobar_ancla_de_commits`
+            lo afirma; esta fila lo comprueba. El segundo intento se resuelve
+            con la `run` DE VERDAD, para que la fila mida el reintento y no un
+            doble inventado.
+
+            Se sustituye el atributo del MODULO de la stdlib porque es la misma
+            funcion que el producto llama: un doble sobre una copia mediria el
+            doble, no el validador.
+            """
+            import subprocess as _sp
+            import validate_docs as _vd
+
+            real = _sp.run
+            estado = {"n": 0}
+
+            def _falso(*args, **kwargs):
+                estado["n"] += 1
+                if estado["n"] == 1:
+                    cmd = args[0] if args else "git"
+                    raise _sp.TimeoutExpired(cmd=cmd, timeout=120)
+                return real(*args, **kwargs)
+
+            _sp.run = _falso
+            return lambda: setattr(_sp, "run", real)
+
+        # --- LAS SIETE FILAS -------------------------------------------------
         # Cada fila: (nombre, GIT_DIR o None, journal, entradas del changelog,
-        #             funcion que juzga `errors`).
+        #             doble a instalar antes de asentar (o None), funcion que
+        #             juzga `errors` y `ok`).
+        # `ok` se juzga tambien porque hay un fallo que NO es un error: un ancla
+        # ilegible que en silencio devuelve `set()` deja `errors == []`. Judgar
+        # solo `errors` daria verde a ese falso verde, que es la misma clase de
+        # bug que la fila (g) existe para tapar.
         FILAS = (
             ("a: historial sin marcadores con journal que si registra",
-             sin_marcadores, [{"cycle": 46}], [46],
-             lambda e: (
+             sin_marcadores, [{"cycle": 46}], [46], None,
+             lambda e, _ok: (
                  len(e) == 1 and "NO aporta ningun ciclo" in e[0],
                  "un historial legible con 0 ciclos con marcador mientras el journal "
                  "registra 46 es un PARSER ROTO y tiene que salir como [FAIL]. Sin esta "
                  "linea el validador da verde con el parser muerto, que es el falso "
                  "verde que toda la union viene a cerrar")),
             ("b: el MISMO historial con el journal vacio",
-             sin_marcadores, [], [],
-             lambda e: (
+             sin_marcadores, [], [], None,
+             lambda e, _ok: (
                  not any("NO aporta ningun ciclo" in x for x in e),
                  "SIN ciclos en el journal no se puede acusar al parser de roto: el "
                  "fallo que importa ahi es el del journal, y acusar dos veces por la "
@@ -12481,8 +12587,8 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
                  "`and journal_cycles` a la rama sobrevive sin esta fila y solo se "
                  "delata en la (a). Errores: " + repr(e))),
             ("c: un ciclo cerrado en una rama lateral se acusa",
-             git_lateral, [{"cycle": 46}], [46],
-             lambda e: (
+             git_lateral, [{"cycle": 46}], [46], None,
+             lambda e, _ok: (
                  len(e) == 2
                  and any("ciclo/s 077" in x for x in e)
                  and any("077" in x for x in e if "sin entrada" in x),
@@ -12492,36 +12598,77 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
                  "entrada `## CYCLE-077` del changelog. Con `--all` borrado, o con la "
                  "diferencia de conjuntos invertida, este arbol da 0 o 1 errores")),
             ("d: journal que se lee pero no aporta ningun ciclo entero",
-             sin_marcadores, [{"nota": "sin campo cycle"}], [],
-             lambda e: (
+             sin_marcadores, [{"nota": "sin campo cycle"}], [], None,
+             lambda e, _ok: (
                  len(e) == 1 and "no contiene ningun ciclo valido" in e[0],
                  "un journal que se LEE pero no tiene ninguna entrada con 'cycle' "
                  "entero es el mismo fallo funcional que no tenerlo, y no debe pasar "
                  "en verde: desactivar la rama entera sobrevive sin esta fila")),
             ("e: sin GIT_DIR en el entorno, el anclaje cae a %LOCALAPPDATA%",
-             None, [{"cycle": 1}], [1, 46],
-             lambda e: (
+             None, [{"cycle": 1}], [1, 46], None,
+             lambda e, _ok: (
                  len(e) == 1 and "ciclo/s 046" in e[0],
                  "sin `GIT_DIR` en el entorno el anclaje tiene que caer al repo de "
                  "%LOCALAPPDATA% y leer su ciclo 46, que el journal (que solo sabe "
                  "del 1) no registra. Con el fallback borrado queda `None` en el "
                  "entorno de `subprocess` y el validador revienta con TypeError "
                  "ANTES de comprobar nada")),
+            ("f: encabezado del ciclo borrado y el numero solo en prosa",
+             hist_ciclo_15, [{"cycle": 15}], [],
+             None,
+             lambda e, _ok: (
+                 len(e) == 2
+                 and any("registra el ciclo 015 pero" in x for x in e)
+                 and any("sin entrada para el/los ciclo/s 015" in x for x in e),
+                 "este arbol tiene el journal Y el historial de acuerdo en el ciclo 15 "
+                 "y el changelog SIN su seccion `## CYCLE-015`: el numero solo "
+                 "sobrevive en la prosa. Tapan dos guardas distintas y las dos tienen "
+                 "que hablar: `has_jentry` (el ultimo ciclo del journal no tiene "
+                 "entrada propia) y `missing_entries` (el conjunto exigido no esta "
+                 "cubierto). Si el codigo buscara el numero como subcadena -- '015' "
+                 "dentro de 'TASK-015' -- las dos darían el ciclo por cubierto y "
+                 "este arbol saldria en 0 errores: es el falso verde del ciclo #15 "
+                 "reabierto por otra puerta. Con `if not has_jentry:` desactivado "
+                 "cae uno de los dos y el recuento tambien. Errores: "
+                 + repr(e))),
+            ("g: git no arranca una vez y el ancla se lee en el reintento",
+             hist_ciclo_46, [{"cycle": 46}], [46],
+             _git_que_no_arranca_una_vez,
+             lambda e, _ok: (
+                 e == []
+                 and any("1 ciclo(s) corroborables" in x for x in _ok),
+                 "git fallo una vez con TimeoutExpired -- que NO es OSError, es la "
+                 "unica excepcion que el `except Exception` del ancla alcanza y "
+                 "`except OSError` no -- y en el segundo intento el ancla tiene que "
+                 "LEERSE: cero errores y su linea de informe con los ciclos "
+                 "corroborables. Sin el reintento el validador declara el historial "
+                 "ilegible y no comprueba ni el check 6 ni el 7; estrechando el "
+                 "except, el timeout sale con traceback y no llega a ningun check. "
+                 "Errores: " + repr(e))),
         )
 
-        for nombre, git_dir, journal, changelog, juzgar in FILAS:
+        for nombre, git_dir, journal, changelog, antes, juzgar in FILAS:
             # El entorno se prepara POR FILA: una fila que deja `GIT_DIR` puesto
             # envenena a la siguiente, y el fallo aparece una fila mas tarde.
             os.environ.pop("GIT_DIR", None)
             os.environ.pop("GIT_WORK_TREE", None)
             if git_dir is not None:
                 os.environ["GIT_DIR"] = git_dir
-            _registro(journal, changelog)
+            _registro(journal, changelog, PROSA_SOLO_EN_FILA_F
+                      if nombre.startswith("f:") else "")
 
-            errors, _ok = _informe_del_validador_real(esqueleto)
-            bueno, porque = juzgar(errors)
-            assert bueno, (
-                f"fila ({nombre}) del ancla: {porque}. Errores: {errors}")
+            # El doble se instala justo antes de asentar y se restaura en un
+            # `finally` PROPIO: si la asercion de la fila revienta, el doble no
+            # puede quedar puesto para la fila siguiente ni para el resto de la
+            # suite, que corre en el mismo proceso.
+            restaurar = antes() if antes is not None else (lambda: None)
+            try:
+                errors, ok = _informe_del_validador_real(esqueleto)
+                bueno, porque = juzgar(errors, ok)
+                assert bueno, (
+                    f"fila ({nombre}) del ancla: {porque}. Errores: {errors}")
+            finally:
+                restaurar()
 
     finally:
         for clave, valor in previos.items():
@@ -12529,11 +12676,18 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
                 os.environ.pop(clave, None)
             else:
                 os.environ[clave] = valor
+        # Cinturon y tirantes: si una fila se murio entre instalar y restaurar el
+        # doble, la suite entera seguiria con `subprocess.run` de mentira.
+        _sp_real = getattr(_sp_mod, "run", None)
+        if _sp_real is not None and _sp_real is not _SP_RUN_DE_ORIGEN:
+            _sp_mod.run = _SP_RUN_DE_ORIGEN
         shutil.rmtree(tmp, ignore_errors=True)
 
-    print("Ancla sobre arbol sintetico, 5 filas por validar(root): parser roto con journal "
-          "que si registra, silencio con journal vacio, ciclo de rama lateral acusado, "
-          "journal sin ciclo entero, y fallback a %LOCALAPPDATA% sin GIT_DIR.")
+    print("Ancla sobre arbol sintetico, 7 filas por validar(root): parser roto con "
+          "journal que si registra, silencio con journal vacio, ciclo de rama lateral "
+          "acusado, journal sin ciclo entero, fallback a %LOCALAPPDATA% sin GIT_DIR, "
+          "encabezado de ciclo borrado con el numero solo en prosa, y git que no "
+          "arranca una vez pero cuyo ancla se lee en el reintento.")
 
 
 
@@ -12683,9 +12837,14 @@ if __name__ == "__main__":
     #   S3 el fallback a %LOCALAPPDATA% cuando el entorno no trae GIT_DIR,
     #   S4 el parser de marcadores roto: [FAIL] solo si el journal aporta ciclos.
     # TASK-057 iteracion 3 (Circuit Breaker: dos intentos con FAIL seguidos).
-    # S3 y S4 se FUSIONAN en una tabla de cinco escenarios sobre el esqueleto
-    # real, y los tres asientan por `validar(root)` (D1) en vez de llamar a las
-    # privadas pasandoles los argumentos a mano (D3). Suite: 104 -> 103.
+    # S3 y S4 se FUSIONAN en una tabla de escenarios sobre el esqueleto real, y
+    # los tres asientan por `validar(root)` (D1) en vez de llamar a las privadas
+    # pasandoles los argumentos a mano (D3). Suite: 104 -> 103.
+    #
+    # Cierre del ciclo #47: la tabla paso de cinco a SIETE filas (P2/P3/H2 y
+    # E2/E3) y la suite NO crecio: un hallazgo se paga con una fila. Ademas se
+    # corrige la lectura de D3 de arriba: las privadas no son "unitarias no
+    # contractuales", y por eso la fila (f) va aqui y no en el test que las usa.
     test_el_ancla_se_cablea_en_el_camino_real_del_validador()
     test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador()
     test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios()
