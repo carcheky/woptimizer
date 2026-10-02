@@ -713,6 +713,23 @@ _RE_ID_TRAZABLE = re.compile(r"(?:TASK|CYCLE)-\d+")
 # 7 exentas pasan a 6, y la 87 tendria que exigir ancla siendo un registro
 # historico cerrado. La prosa -- la fila menos sus veredictos -- mas el veredicto
 # del marcador es lo que separa los dos asertos.
+#
+# `re.IGNORECASE` se APLICO y se QUITO, y el motivo medido es el que decide:
+# en castellano `no` y `nunca` son palabras ordinarias, no una forma. MEDIDO el
+# 2026-10-02 con el predicado insensible a caja: las SIETE exentas pasan a CERO
+# y el repo se pone en rojo con 1 FAIL. Los falsos positivos no son ruido, son
+# denegaciones de cierre escritas de verdad -- la 93 dice "**CERRADA en la
+# cola, no en el cuerpo**" y la 96 "**CERRADA en CYCLE-027 (TASK-037) - guardas
+# que no guardaban**" -- donde la negacion contrasta dos cosas y NO niega que
+# la fila este cerrada. No hay ninguna forma que separe "no en el cuerpo" de
+# "nunca se resolvio": las dos son negacion en minuscula sobre el mismo
+# marcador. La caja es la FORMA, y por el mismo argumento que ya fija el
+# limite 18 para `CERRADA`/`cerrada`. MEDIDO que el ataque que el auditor
+# midio -- ` - **CERRADA en TASK-059, nunca se resolvio**` en la fila 88 -- muere
+# IGUAL con la quinta condicion de `_esta_cerrada`, porque `TASK-059` esta
+# `pending`: son el mismo ataque por la misma puerta. Queda declarado el
+# residuo que si sobrevive, que es el unico que importa y se declara junto a
+# el limite 19.
 _RE_NEGACION_DEL_CIERRE = re.compile(r"\b(?:NO|NUNCA|JAMAS)\b")
 # El panel se cita a si mismo y el contrato dice, textual, que la verdad de una
 # fila se deriva FUERA de el. MEDIDO el 2026-10-02: 5 de las 15 filas reales (87,
@@ -724,18 +741,32 @@ _RE_NEGACION_DEL_CIERRE = re.compile(r"\b(?:NO|NUNCA|JAMAS)\b")
 # `docs/../` y `.\`) colaban con `0 FAIL` y 36 anclas porque solo se comparaba el
 # texto. La quinta grafia (`STATUS.MD`) no colaba nunca, y no por esta regla sino
 # porque `_RE_RUTA` exige la extension en minusculas.
+#
+# Y la identidad tiene una SEGUNDA forma, porque un enlace DURO evade la
+# primera. MEDIDO el 2026-10-02: un hard link a `STATUS.md` en `docs/` es el
+# MISMO fichero (`st_dev` y `st_ino` iguales, `st_nlink` 2) con un `realpath`
+# DISTINTO, luego pasaba el filtro como ancla legitima: `36` anclas, `3` por
+# contenido y `0 FAIL` de Deuda, cuelando S1 y S2 a la vez. Un enlace simbolico
+# y una junction si los cierra `realpath`; el duro no cambia de nombre, luego
+# no hay ruta que canonicalizar. Ver `_es_el_mismo_fichero`.
 EL_PANEL_NO_ES_ANCLA = "STATUS.md"
 # Fin de frase para decidir si una cifra `N tests` esta ATRIBUIDA a otro documento
 # (S5). El punto cuenta solo seguido de espacio: los nombres de fichero lo llevan
 # pegado ("`docs/index.md:25`") y un corte por `.` a secas partiria la frase
 # justo donde esta la atribucion.
 _RE_FIN_DE_FRASE = re.compile(r"\.\s")
-# La gravedad del panel esta en EMOJI, no en palabra: MEDIDO el 2026-10-02, 14 de
-# las 15 filas no contienen ni una palabra ROJO/AMARILLO/VERDE, y la unica que la
-# tiene es la 98, donde "ROJO" es el COLOR de un diagnostico de UI y no una
-# severidad. El suelo se leia por palabra, luego no se ejecutaba nunca -- lo que el
-# mutation-auditor midio como G2 y G3a. Se mapea el glifo a la palabra AL LEER, y
-# el informe sigue siendo ASCII puro (trampa #16: la consola es cp1252).
+# La gravedad del panel esta en EMOJI, no en palabra: MEDIDO el 2026-10-02 con
+# `_gravedad_declarada` fila a fila, de las 15 filas reales **cinco** no
+# declaran ninguna (88, 91, 92, 95 y 97) y las otras diez si: **ocho** declaran
+# `ROJO` (87, 89, 90, 93, 94, 96, 98 y 99) y **dos** `AMARILLO` (100 y 101). La
+# version anterior de este comentario decia "14 de las 15 no tienen ni una
+# palabra" y se apoyaba en que la unica con palabra era la 98: es falso, y lo
+# era porque se habia mirado el TEXTO sin mapear los glifos que se estaba
+# contando. La 98 usa `ROJO` como el COLOR de un diagnostico de UI y no como
+# severidad, lo cual no la invalida para este proposito. El suelo se leia por
+# palabra, luego no se ejecutaba nunca -- lo que el mutation-auditor midio como
+# G2 y G3a. Se mapea el glifo a la palabra AL LEER, y el informe sigue siendo
+# ASCII puro (trampa #16: la consola es cp1252).
 GLIFOS_DE_GRAVEDAD = {
     "\U0001f534": "ROJO",
     "\U0001f7e1": "AMARILLO",
@@ -817,6 +848,42 @@ def _filas_de_deuda(cuerpo):
             if linea.startswith("- **")]
 
 
+def _porta_el_marcador_de_cierre(fila):
+    """`True` si la fila PORTA el marcador de cierre, sin mirar el ESTADO de sus ids.
+
+    Son las condiciones 1, 2 y 4 de `_esta_cerrada`: la palabra `CERRADA`/
+    `CERRADO` en mayusculas y fuera de codigo inline, DENTRO de un veredicto en
+    negrita, y sin negacion en ese veredicto ni en la prosa de la fila.
+
+    Va SEPARADA de `_esta_cerrada` por una razon medida, no por estilo: la
+    AUTOEXENCION de la fila del criterio tiene que evaluarse ANTES del requisito
+    de estado. MEDIDO el 2026-10-02: con el orden contrario, la fila del criterio
+    que se marca `**CERRADA en TASK-002**` -- y `TASK-002` esta `pending` -- deja
+    de estar cerrada, el veredicto pasa de "la fila del criterio se ha
+    autoeximido" a "VIVA sin ancla resoluble" y el escenario (f2) de la suite se
+    rompe. Eso es el guard que vigila al vigilante apagandose a si mismo, y es
+    justo la clase de fallo que este check existe para cerrar: la
+    autoexencion se juzga por la FORMA de la fila, no por si su id|worko ya
+    estaba hecho.
+    """
+    texto = fila or ""
+    # La negacion se evalua en la PROSA -- la fila menos sus veredictos -- y en
+    # el veredicto del marcador. No en la fila entera: la 87 lleva dos `NO` en
+    # un veredicto que habla del fichero archivado, y con la fila entera pasaria
+    # a VIVA siendo un registro historico cerrado.
+    prosa = _RE_NEGRITA.sub(" ", texto)
+    for veredicto in _RE_NEGRITA.findall(texto):
+        limpio = _RE_CODIGO_INLINE.sub(" ", veredicto)
+        if not _RE_CERRADA.search(limpio):
+            continue
+        if _RE_NEGACION_DEL_CIERRE.search(limpio):
+            continue
+        if _RE_NEGACION_DEL_CIERRE.search(prosa):
+            continue
+        return True
+    return False
+
+
 def _esta_cerrada(root, fila):
     """`True` si la fila esta CERRADA de verdad: cuatro condiciones a la vez.
 
@@ -837,43 +904,88 @@ def _esta_cerrada(root, fila):
        `.taskmaster/tasks.json` o en un changelog o en el journal.
     4. Ni el veredicto ni la prosa de la fila NIEGAN el cierre.
 
-    Las cuatro fallan ABIERTO: lo que no demuestra su cierre queda VIVA y tiene
+    Las cuatro son `_porta_el_marcador_de_cierre` y se preguntan sin mirar el
+    estado de los ids, porque la AUTOEXENCION de la fila del criterio las usa
+    sola (ver ahi por que el orden importa).
+
+    Y hay una **quinta**, que es la que cierra el agujero G2f': el id que cierra
+    la fila tiene que estar **CERRADO**, no pendiente. La razon esta medida, no
+    supuesta: los ids de las 7 exentas estan todos DENTRO del veredicto -- 87
+    `TASK-055`/`CYCLE-045`, 99 `TASK-054`/`CYCLE-044`, 96 y 97
+    `TASK-037`/`CYCLE-027` -- luego "el id tiene que estar fuera del veredicto"
+    NO los separa del ataque. Lo que los separa del ataque es que las 7 nombran
+    solo trabajo TERMINADO: MEDIDO que los dos unicos ids `pending` del tablero
+    son `TASK-059` y `TASK-061`, que son exactamente los que usaba el ataque al
+    anadir ` - **CERRADA en TASK-059**` a la fila 88 (`8 exenta(s) / 7 viva(s)`,
+    `33` anclas, `0 FAIL`). Con la quinta puesta y el panel intacto el repo
+    sigue en `7 exenta(s) / 8 viva(s) / 35` anclas y `0 FAIL` sin tocar una fila.
+
+    La quinta **subsume** la tercera --un id cerrado es por definicion
+    trazable--, y por eso `_ids_trazables` se borro en vez de quedarse como una
+    funcion sin un solo llamante.
+
+    Las cinco fallan ABIERTO: lo que no demuestra su cierre queda VIVA y tiene
     que demostrar su ancla, que es la direccion en la que un validador puede
     equivocarse sin dejar de vigilar nada.
     """
-    texto = fila or ""
-    # La negacion se evalua en la PROSA -- la fila menos sus veredictos -- y en
-    # el veredicto del marcador. No en la fila entera: la 87 lleva dos `NO` en
-    # un veredicto que habla del fichero archivado, y con la fila entera pasaria
-    # a VIVA siendo un registro historico cerrado.
-    prosa = _RE_NEGRITA.sub(" ", texto)
-    ids = None
-    for veredicto in _RE_NEGRITA.findall(texto):
-        limpio = _RE_CODIGO_INLINE.sub(" ", veredicto)
-        if not _RE_CERRADA.search(limpio):
-            continue
-        if _RE_NEGACION_DEL_CIERRE.search(limpio):
-            continue
-        if _RE_NEGACION_DEL_CIERRE.search(prosa):
-            continue
-        if ids is None:
-            ids = _ids_trazables(root, texto)
-        if ids:
-            return True
-    return False
+    if not _porta_el_marcador_de_cierre(fila):
+        return False
+    return bool(_ids_cerrados(root, fila))
 
 
-def _ids_trazables(root, fila):
-    """Los `TASK-NNN`/`CYCLE-NNN` que la fila nombra Y que existen en el repo.
+def _ids_cerrados(root, fila):
+    """Los ids de la fila que ademas estan CERRADOS: trabajo ya terminado.
 
-    Un id que no resuelve no es una referencia: es decoracion. Y sin esta
-    exigencia, "CERRADA" sola -- o "CERRADA en CYCLE-999" -- alcanza para
-    eximirse de todo.
+    Que un id RESUELVA no basta para cerrar una fila: basta con nombrar el
+    trabajo que sigue PENDIENTE, que es exactamente lo que hacia el ataque
+    G2f'. MEDIDO el 2026-10-02: anadir ` - **CERRADA en TASK-059**` al final de
+    la fila 88 la dejaba muda con `8 exenta(s) / 7 viva(s)`, `33` anclas y
+    `0 FAIL` de Deuda, y `TASK-059` esta `pending` en el tablero.
+
+    Aqui vivia antes una condicion mas debil, «la fila nombra un id que EXISTE»
+    (`_ids_trazables`), y se **borra** en vez de quedarse como codigo muerto:
+    exigir que exista es implicito en exigir que este cerrado -- un id cerrado
+    es por definicion trazable -- luego la condicion no perderia nada y
+    `_ids_trazables` se queda sin un solo llamante. Sin ella, `CERRADA` sola o
+    `CERRADA en CYCLE-999` siguen sin alcanzar para eximirse de nada, que era
+    justo lo que hacia falta.
+
+    - Una `TASK` esta cerrada si su `status` es `completed`. MEDIDO: los dos
+      unicos ids `pending` del tablero son `TASK-059` y `TASK-061`, y los dos
+      son los que usaba el ataque.
+    - Un `CYCLE` esta cerrado si tiene entrada en uno de los DOS changelogs,
+      que es donde un ciclo terminado deja su recuento. Un `CYCLE` que solo
+      aparece en `rd_journal.json` esta EN VUELO: el journal se escribe
+      mientras el ciclo pasa, luego no es un cierre.
+
+    BASTA UNO cerrado y no todos, y es una decision medida: las 7 exentas
+    reales citan mas de un id (la 87, `TASK-055` y `CYCLE-045`; la 94,
+    `TASK-057`, `CYCLE-026` y `CYCLE-047`) y MEDIDO que con "al menos uno
+    cerrado" las 7 siguen exentas, con el panel intacto y sin tocar una fila.
+    Exigir que TODOS estuvieran cerrados es un criterio MAS fuerte que este
+    check no ha medido, y se declara como lo que es: una unexplored.
     """
     estados = _estados_de_tareas(root)
-    tareas = [t for t in dict.fromkeys(_RE_TAREAS.findall(fila or ""))
-              if t in estados]
-    return tareas + _ciclos_de_la_fila(root, fila)
+    cerradas = [t for t in dict.fromkeys(_RE_TAREAS.findall(fila or ""))
+                if estados.get(t) == "completed"]
+    return cerradas + _ciclos_cerrados(root, fila)
+
+
+def _ciclos_cerrados(root, fila):
+    """Los `CYCLE-NNN` de la fila con entrada en uno de los DOS changelogs.
+
+    Deliberadamente NO mira `rd_journal.json`, que `_ciclos_de_la_fila` si mira
+    para exigir que el id exista. Un ciclo se "traza" en cuanto se nombra, y se
+    "cierra" cuando su entrada esta publicada en un changelog: son dos hechos
+    distintos, y exigir solo el primero es lo que dejaba pasar al ataque.
+    """
+    registros = []
+    for relativa in ("CHANGELOG.md", ".taskmaster/CHANGELOG.md"):
+        texto = _leer_texto(root, relativa)
+        if texto:
+            registros.append(texto)
+    return [c for c in dict.fromkeys(_RE_CICLOS.findall(fila or ""))
+            if any(c in registro for registro in registros)]
 
 
 def _ruta_de_ancla(root, nombre):
@@ -901,26 +1013,63 @@ def _ruta_de_ancla(root, nombre):
 
 
 def _es_el_propio_panel(root, relativa):
-    """`True` si la ruta `relativa` del arbol RESUELVE al propio `STATUS.md`.
+    """`True` si la ruta `relativa` del arbol ES el propio `STATUS.md`.
 
-    `os.path.realpath` es lo que cierra las cuatro puertas, MEDIDO: en Windows
-    llama a `_getfinalpathname`, que devuelve el nombre REAL del fichero, luego
-    las cinco grafias (`STATUS.md`, `status.md`, `./STATUS.md`, `docs/../STATUS.md`
-    y `.\\STATUS.md`) colapsan al MISMO camino Y con la MISMA caja. `os.path.normcase`
-    se queda como segunda garantia -- normaliza a minusculas y los separadores --
-    para los sistemas donde `realpath` no canonicaliza la caja; MEDIDO que quitarlo
-    NO lo detecta ninguna fila de la suite, porque en Windows es redundante.
+    DOS formas, y hacen falta las dos porque cada una cierra una puerta
+    distinta.
 
-    Con la igualdad de cadena del nombre escrito, en cambio, cuatro de las cinco
-    colaban (ver `_ruta_de_ancla`).
+    1. IDENTIDAD DE RUTA RESUELTA. MEDIDO: en Windows `os.path.realpath` llama
+       a `_getfinalpathname`, que devuelve el nombre REAL del fichero, luego
+       las cinco grafias (`STATUS.md`, `status.md`, `./STATUS.md`,
+       `docs/../STATUS.md` y `.\\STATUS.md`) colapsan al mismo camino CON LA
+       MISMA CAJA. En POSIX `realpath` devuelve el nombre tal cual y un
+       `status.md` en un arbol donde el fichero se llama `STATUS.md` no existe,
+       luego `_ruta_existente` ni lo encuentra: la misma regla sirve en las dos
+       plataformas sin normalizar nada a mano.
+    2. IDENTIDAD DE FICHERO, para el ENLACE DURO. MEDIDO el 2026-10-02: un hard
+       link a `STATUS.md` creado en `docs/` comparte `st_dev` y `st_ino` con el
+       panel y tiene `st_nlink == 2`, pero su `realpath` es OTRO, luego la
+       forma 1 lo aceptaba como ancla legitima -- `36` anclas, `3` por
+       contenido y `0 FAIL` de Deuda, cuelando S1 y S2 a la vez. Un enlace
+       simbolico y una junction SI los cierra la forma 1; el duro no cambia de
+       nombre, luego no hay nada que canonicalizar. Ver `_es_el_mismo_fichero`.
+
+    `os.path.normcase` se ha QUITADO y no es una perdida. MEDIDO contra la
+    stdlib: `posixpath.normcase` es literalmente `return os.fspath(s)` con
+    docstring "Has no effect under Posix", luego en POSIX no hace NADA y no
+    puede ser una segunda garantia ahi; y en Windows `realpath` ya devuelve el
+    nombre real, luego la forma 1 no necesita mas. La version anterior de este
+    docstring lo llamaba "segunda garantia para los sistemas donde `realpath` no
+    canonicaliza la caja", y esa frase era FALSA en las dos plataformas: lo que
+    queda inerte no es una garantia, es una llamada.
     """
     if not relativa:
         return False
-    aqui = os.path.normcase(
-        os.path.realpath(os.path.join(root, EL_PANEL_NO_ES_ANCLA)))
-    alla = os.path.normcase(
-        os.path.realpath(os.path.join(root, *relativa.split("/"))))
-    return alla == aqui
+    panel = os.path.join(root, EL_PANEL_NO_ES_ANCLA)
+    otra = os.path.join(root, *relativa.split("/"))
+    if os.path.realpath(panel) == os.path.realpath(otra):
+        return True
+    return _es_el_mismo_fichero(panel, otra)
+
+
+def _es_el_mismo_fichero(uno, otro):
+    """`True` si las dos rutas son el MISMO fichero y no dos nombres de uno.
+
+    `os.stat` y la pareja `(st_dev, st_ino)`, que es la identidad de fichero en
+    cualquier plataforma con `stat`. El guardia del `st_ino` NO es cosmetico: en
+    un sistema de ficheros que no da indice, `st_ino` vale `0` para todo, y sin
+    el guardia `0 == 0` declararia el panel IDENTICO a cualquier fichero del
+    arbol -- que es peor que el agujero que cierra. MEDIDO en Windows:
+    `st_ino` vale `6755399442173827` para el panel y para su hard link, y
+    `6755399442173791` para `run_tests.py`, luego la identidad separa los tres.
+    """
+    try:
+        a, b = os.stat(uno), os.stat(otro)
+    except OSError:
+        return False
+    if not a.st_ino or not b.st_ino:
+        return False
+    return a.st_dev == b.st_dev and a.st_ino == b.st_ino
 
 
 def _ruta_existente(root, nombre):
@@ -1203,7 +1352,20 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
     for numero, fila in filas:
         anclas = _anclas_resolubles(root, fila)
 
-        if _esta_cerrada(root, fila):
+        # La AUTOEXENCION se juzga ANTES y POR SEPARADO del estado de los ids,
+        # y no por orden de lectura sino porque son dos preguntas distintas.
+        # MEDIDO el 2026-10-02: si se preguntara solo a `_esta_cerrada`, la fila
+        # del criterio que se marca `**CERRADA en TASK-002**` (pending) dejaria
+        # de estar cerrada, el veredicto pasaria de "la fila del criterio se ha
+        # autoeximido" a "VIVA sin ancla resoluble" y el escenario (f2) se
+        # romperia. La pregunta es "esta fila se ha eximido a si misma?", y eso
+        # lo decide la FORMA -- que nombre este check -- no si el trabajo que
+        # cita ya estaba hecho. Medirla despues de exigir el estado es dejar el
+        # guard que vigila al vigilante condicionado a que el vigilante pase.
+        autoeximida = (NOMBRE_DE_LA_FILLA_DEL_CRITERIO in fila
+                       and _porta_el_marcador_de_cierre(fila))
+
+        if _esta_cerrada(root, fila) or autoeximida:
             exentas += 1
             # Una fila que ESCRIBE el criterio no puede declararse CERRADA: se
             # vigila a si misma y el check nace verde sobre lo que tiene que
@@ -1214,8 +1376,11 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
             # (TASK-060)" y se refiere a trabajo FUTURO, que es un puntero
             # legitimo y no una autoexencion. Sin esta clausula, poner `CERRADA`
             # en la fila del criterio la deja muda y en verde, que es el fallo
-            # que el criterio describe.
-            if NOMBRE_DE_LA_FILLA_DEL_CRITERIO in fila:
+            # que el criterio describe. Y la mira `autoeximida`, que ya se
+            # resolvio ARRIBA y sin mirar el estado: repetir aqui el
+            # `NOMBRE_DE_LA_FILLA_DEL_CRITERIO in fila` solo seria otra forma
+            # de preguntar lo mismo.
+            if autoeximida:
                 pendientes = sorted(t for t, s in anclas["tareas"].items()
                                      if s != "completed")
                 errors.append(

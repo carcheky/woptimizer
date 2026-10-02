@@ -360,7 +360,7 @@ aparece, se acusa el motivo literal: **nunca `0 + 0` en verde**.
 Una fila viva necesita **≥1** fuente resoluble **y ≥1** que no sea una `TASK`
 `completed`. Una fila marcada cerrada queda exenta.
 
-**`STATUS.md` no es fuente, y se rechaza por IDENTIDAD de la ruta resuelta.**
+**`STATUS.md` no es fuente, y se rechaza por IDENTIDAD: de ruta y de fichero.**
 El panel no puede certificarse a sí mismo y el contrato de `TASK-060` lo dice
 textual. MEDIDO el 2026-10-02: **cinco** de las quince filas reales (87, 89, 97,
 100 y 101) citan `STATUS.md`, y ninguna se queda sin fuente al rechazarlo — las
@@ -370,16 +370,33 @@ vez. Lo que NO vale es comparar el **nombre escrito** con el string
 (`status.md`, `./STATUS.md`, `docs/../STATUS.md` y `.\STATUS.md`) y las cuatro
 con `0 FAIL` y 36 anclas. Se compara `os.path.realpath`, que en Windows llama a
 `_getfinalpathname` y devuelve el **nombre real** del fichero: las cinco grafías
-(colocando también `STATUS.MD`) colapsan al mismo camino y con la misma caja.
-`os.path.normcase` se conserva como **segunda** garantía para sistemas donde
-`realpath` no canonicaliza la caja; MEDIDO que **quitarlo no lo detecta ninguna
-fila** de la suite (mutante C30 sobrevive), porque en Windows es redundante. La
+(colocando también `STATUS.MD`) colapsan al mismo camino y con la misma caja. La
 quinta grafía (`STATUS.MD`) ya no colaba ni antes, y no por esta regla: `_RE_RUTA`
 exige la extensión en minúsculas, luego no llega a ser una cita.
 
+**Y la identidad de RUTA no basta: hace falta también la de FICHERO.** Un **enlace
+duro** al panel comparte `st_dev` y `st_ino` con él y tiene `st_nlink == 2`, pero
+su `realpath` es **otro** —un enlace duro no cambia de nombre, luego no hay nada
+que canonicalizar—, y con el filtro de ruta pasaba como ancla legítima con
+`36` anclas, `3` por contenido y `0 FAIL`, colando S1 y S2 a la vez. Se añade
+`_es_el_mismo_fichero`, que compara `(st_dev, st_ino)` **con guardia de
+`st_ino != 0`**: sin el guardia, un sistema de ficheros que no dé índice
+declararía el panel idéntico a cualquier fichero del árbol, que es peor que el
+agujero que cierra. Detalle y alcance en el límite 22.
+
+**`os.path.normcase` se ha QUITADO, y su justificación anterior era falsa en las
+dos plataformas.** Decía ser «segunda garantía para sistemas donde `realpath` no
+canonicaliza la caja». MEDIDO contra la stdlib: `posixpath.normcase` es
+literalmente `return os.fspath(s)`, con docstring *«Has no effect under Posix»*,
+luego en POSIX **no hace nada**. Y en Windows `os.path.realpath("status.md")`
+devuelve ya `…\STATUS.md`, luego la comparación por ruta resuelta no necesita más.
+El mutante C30 sobrevivía porque **medía la irrealidad de la llamada, no una
+garantía**: era una segunda garantía que no existía en ninguna plataforma. El
+límite 23 recoge la decisión.
+
 ### El marcador de cierre: un VEREDICTO, no una palabra
 
-Una fila está **CERRADA** si se cumplen **cuatro** cosas a la vez. Las cuatro se miden
+Una fila está **CERRADA** si se cumplen **cinco** cosas a la vez. Las cinco se miden
 sobre las 7 exentas reales del panel, que las cumplen **sin tocar una sola fila**:
 
 1. La **palabra** `CERRADA`/`CERRADO` en mayúsculas **fuera de código inline** (el
@@ -397,12 +414,30 @@ sobre las 7 exentas reales del panel, que las cumplen **sin tocar una sola fila*
 3. La fila nombra un **id trazable** (`TASK-NNN` o `CYCLE-NNN`) que **existe** en
    `.taskmaster/tasks.json`, en un `CHANGELOG.md` o en el journal.
 4. Ni el **veredicto** ni la **prosa** de la fila **niegan** el cierre.
+5. Y el id que cierra la fila está **CERRADO**, no pendiente: una `TASK` con
+   `status == completed` o un `CYCLE` con entrada en uno de los **dos changelogs**.
+   MEDIDO que las 7 exentas la cumplen sin tocar una fila — 87 `TASK-055`/
+   `CYCLE-045`, 90 `TASK-057`, 93 `TASK-031`/`TASK-060`, 94 `TASK-057`/`CYCLE-026`/
+   `CYCLE-047`, 96 y 97 `TASK-037`/`CYCLE-027`, 99 `TASK-054`/`CYCLE-044` — y que
+   con ella puesta el panel intacto sigue en `7 exenta(s) / 8 viva(s) / 35` anclas y
+   `0 FAIL`. Un ciclo se **traza** en cuanto se nombra y se **cierra** cuando publica
+   su entrada: exigir solo lo primero es lo que dejaba pasar el ataque (límite 19).
 
-**Por qué cuatro y no una.** Medido el 2026-10-02 con el marcador de una sola palabra:
+**Por qué cinco y no una.** Medido el 2026-10-02 con el marcador de una sola palabra:
 la fila 89 —la 🔴 del `spawn EPERM`— se **eximía a sí misma** con cualquier frase
 normal que hablara de cierre («y esta fila NO está CERRADA todavía», «(marcada
 \*CERRAD\*)» al final), y el validador respondía `115 OK / 0 FAIL`. Una palabra suelta
 no es un veredicto.
+
+**La quinta se pregunta DESPUÉS de la autoexención, y eso es una decisión, no un
+detalle.** La fila que escribe el criterio no puede declararse cerrada, y con
+`CYCLE`/`TASK` **pendiente** en su veredicto la quinta la declararía VIVA: el
+mensaje pasaría de «se ha autoeximido» a «VIVA sin ancla resoluble» y el guard que
+vigila al vigilante se apagaría a sí mismo. Por eso `_porta_el_marcador_de_cierre`
+(las condiciones 1, 2 y 4) se evalúa **por separado** y la autoexención se pregunta
+**antes**: «¿esta fila se ha eximido a sí misma?» lo decide la FORMA —que nombre
+este check—, no si el trabajo que cita ya estaba hecho. MEDIDO: con el orden
+invertido, el escenario (f2) de la suite muere.
 
 **La negación se evalúa sin ventana cortable por puntuación, y en la prosa.**
 La regla vieja era `\b(?:NO|NUNCA|JAMAS)\b[^.;:!?]{0,40}CERRAD`: una ventana de
@@ -423,9 +458,31 @@ buscada en toda la fila, las 7 exentas pasan a **6** y la 87 tendría que exigir
 ancla siendo un registro histórico cerrado. La fila del panel es un **catálogo
 de asertos**, y la negación de un aserto no niega el otro: prosa + veredicto del
 marcador es lo que separa los dos. Lo que queda es un residuo declarado (límite
-15): una negación escondida en *otro* veredicto no cuenta.
+20): una negación escondida en *otro* veredicto no cuenta.
 
-Las cuatro fallan **abierto**: lo que no demuestra su cierre queda **VIVA** y tiene que
+**Y lo que esa elección cuesta, medido, que antes no estaba escrito en ninguna
+parte.** La regla mira la **prosa de la fila entera**, y en castellano `NO` en
+prosa es una conjunción corriente. MEDIDO: añadir ` NO es un aserto de cierre.`
+a la fila 87 la deja de estar exenta y el panel pasa a `6 exenta(s) /
+9 viva(s)` y `39` anclas. Sigue en `0 FAIL` —la 87 demuestra su ancla—, luego no es
+un rojo: es una **pérdida de exención**, y una fila de verdad cerrada tiene que
+volver a probar su ancla porque escribió «NO» en otra frase. Es el precio de haber
+matado V2, y por eso el límite 21.
+
+**Y lo que la caja cuesta, que es la otra mitad del mismo aserto.** El predicado
+es **sensible a caja** a propósito: se aplicó `re.IGNORECASE` para medirlo y se
+**quitó**, porque lleva las **siete** exentas reales a **cero** y pone el repo en
+`1 FAIL`. No es un descuido de la regla: en castellano `no` y `nunca` son prosa
+ordinaria, y hay negaciones de cierre **de verdad** que no niegan el cierre — la 93
+dice «**CERRADA en la cola, no en el cuerpo**» y la 96 «**CERRADA en
+CYCLE-027 (TASK-037) — guardas que no guardaban**». No hay forma que separe
+`no en el cuerpo` de `nunca se resolvio`. La caja es la **forma**, por el mismo
+argumento que ya fija el punto 1 para `CERRADA`/`cerrada` y el límite 18. Lo que
+de esa puerta **sí** muere, por la quinta condición, es el ataque que nombra
+trabajo **pendiente**; lo que queda vivo es el caso «id ya cerrado», y va
+declarado con el límite 19. Detalle en el límite 21.
+
+Las cinco fallan **abierto**: lo que no demuestra su cierre queda **VIVA** y tiene que
 demostrar su ancla, que es la única dirección en la que un validador puede equivocarse
 sin dejar de vigilar nada. Medido al nacer y después del arreglo: **15 filas, 7 exentas
 y 8 vivas**, las mismas de antes; de las 8 vivas solo `STATUS.md:91` se quedaba sin
@@ -474,31 +531,42 @@ Se escriben, no se omiten. Todas medidas el 2026-10-02.
    sobrevive: derivarla exigiría escribir a mano la política de gravedad, que es la
    misma mentira un nivel más arriba.
 4. **El suelo no tiene fila víctima hoy, y eso es un agujero medido.** El suelo se
-   dispara cuando una fila declara **por debajo** de su suelo. Medido el 2026-10-02:
-   de las quince filas, **la 89 es la única que declara 🔴**, y su suelo es `ROJO`;
-   rebajarla a 🟡 sale en rojo (P7). Y la **88 no declara ninguna gravedad** —
-   `_gravedad_declarada` devuelve `None` porque no tiene glifo —, así que su P6 no
-   «rebaja» nada: **añade** una gravedad por debajo de un suelo que ya era `ROJO`, y
-   por eso también muere. (La versión anterior de este límite decía «las filas 88 y
-   89 declaran 🔴»: es falso para la 88. La conclusión —el suelo muere— era correcta,
-   la descripción no.) Pero **neutralizar el suelo entero deja el panel en verde**,
-   porque ninguna fila viva declara una gravedad por debajo de la suya. No es un
-   agujero teórico: es la razón por la que este límite se escribe y no se omite. Y lo
-   que agrava el agujero es **doble**, no uno: **tampoco hay fila víctima con un
-   glifo fuera del mapa de tres** (límite 16) **ni con una gravedad histórica antes
-   de la de hoy** (límite 15). El suelo tiene hoy **cero** filas que puedan delatarlo.
-5. **Un cierre falsificado en la forma del panel sigue eximiendo.** El id trazable se
-   busca **en la fila**, no en el veredicto. Consecuencia medida: añadir
-   `**🔴 CERRADA en CYCLE-999**` a una fila que **ya cita ids resolubles** la exime
-   (`8 exenta(s) / 7 viva(s)`, `22` anclas, `0 FAIL`).
-   **Y el alcance real es más ancho que el motivo con el que se justificó aquí la
-   ronda anterior.** Ese motivo era la fila 90, que escribe su `TASK-057` fuera de su
-   veredicto. MEDIDO que no es el único caso: las filas **87, 96 y 97 no escriben
-   ningún id fuera del veredicto** y siguen exentas, luego atar el id al veredicto no
-   pondría hoy el repo en rojo: cambiaría *qué* filas lo harían. Lo que de verdad
-   puede eximir a una fila es **mencionar cualquier id resoluble en cualquier parte
-   de ella**, y la fila 89 tiene tres. Agotado ese alcance, la forma del veredicto ya
-   no puede separar la fila real del ataque: ver límite 19.
+   dispara cuando una fila declara **por debajo** de su suelo. MEDIDO el 2026-10-02
+   con `_gravedad_declarada` fila a fila: de las quince filas, **cinco no declaran
+   ninguna** (88, 91, 92, 95 y 97) y las otras diez sí — **ocho declaran 🔴**
+   (87, 89, 90, 93, 94, 96, 98 y 99) y **dos 🟡** (100 y 101). De las **vivas**,
+   las que declaran 🔴 son la **89 y la 98**, y como el suelo de ambas es `ROJO`,
+   ninguna está por debajo: rebajar la 89 a 🟡 sale en rojo (P7), rebajar la 98
+   también. La **88 no declara ninguna gravedad** —`_gravedad_declarada` devuelve
+   `None` porque no tiene glifo—, así que su P6 no «rebaja» nada: **añade** una
+   gravedad por debajo de un suelo que ya era `ROJO`, y por eso también muere.
+   *(La versión anterior de este límite decía «de las quince filas, la 89 es la
+   única que declara 🔴». La conclusión —el suelo no tiene víctima— era correcta;
+   la medición que la sostenía era falsa, y la misma frase falsa estaba copiada
+   en el comentario de `_RE_GRAVEDAD` y en el §0 del informe de mutación. Se
+   corrigen los tres sitios.)* Pero **neutralizar el suelo entero deja el panel en
+   verde**, porque ninguna fila viva declara una gravedad por debajo de la suya.
+   No es un agujero teórico: es la razón por la que este límite se escribe y no se
+   omite. Y lo que agrava el agujero es **doble**, no uno: **tampoco hay fila
+   víctima con un glifo fuera del mapa de tres** (límite 16) **ni con una gravedad
+   histórica antes de la de hoy** (límite 15). El suelo tiene hoy **cero** filas
+   que puedan delatarlo.
+5. **Un cierre falsificado en la forma del panel sigue eximiendo — y es el MISMO
+   residuo del límite 19, no uno aparte.** El id trazable se busca **en la fila**,
+   no en el veredicto. Consecuencia medida: añadir `**🔴 CERRADA en CYCLE-999**` a
+   una fila que **ya cita ids resolubles** la exime (`8 exenta(s) / 7 viva(s)`,
+   `22` anclas, `0 FAIL`), y la quinta condición del límite 19 **no lo cierra**:
+   MEDIDO que la fila 89 nombra `TASK-061` y `TASK-059` (los dos `pending`) **y
+   `TASK-060` (`completed`)**, luego el `CYCLE-999` —que no existe en ningún
+   registro— hereda el cierre de un id que sí estaba cerrado. No es una puerta
+   nueva: es el residuo del límite 19 escrito con otro disfraz, porque el
+   veredicto `CYCLE-999` no aporta nada y la fila se cerraba igual. Lo que se
+   midió y se descartó como regla es **«el id tiene que estar FUERA del
+   veredicto»**, que es lo que este apartado defendía antes. MEDIDO que atar el
+   id al veredicto **cambia qué** filas se cerrarían y no las separa del ataque:
+   las filas **87, 96 y 97 no escriben ningún id fuera de su veredicto** y están
+   CERRADAS de verdad, luego exigírselo las reabre sin motivo mientras el ataque
+   sigue entrando. La condición que sí separa es la del **estado** (límite 19).
 6. **Las filas cerradas quedan mudas por construcción.** Una fila exenta puede quedar
    enteramente falsa y el check no dice nada.
 7. **El corte de la sección es por línea.** Una fila escrita como sub-vineta (`  - `)
@@ -569,28 +637,114 @@ Se escriben, no se omiten. Todas medidas el 2026-10-02.
     mentira para que el guard no la vea. Es límite 12 aplicado a una fila nueva, no
     a la 100, y por eso se declara aparte.
 18. **El marcador es un token EN MAYÚSCULAS, y la MAYÚSULA es forma, no estilo.**
-    Decidido y escrito: `CERRADA:` → `cerrada:` en la fila 90 pone las **siete**
-    exentas en rojo, y ese rojo es el precio de que la palabra suelta en prosa no
-    cierre nada (es el mismo argumento que declara el código de salida por la línea
-    que empieza por `0`). MEDIDO y **aceptado**: el escenario (s) de la suite fija
-    esta decisión. Consecuencia: un descuido de caja en el veredicto de una fila
-    cerrada la reabre de golpe, y no es un rojo que un guard pueda contener.
-19. **El id trazable puede proceder del propio veredicto de cierre, y eso ya no
-    distingue la fila real del ataque.** MEDIDO el 2026-10-02: añadir
-    ` — **CERRADA en TASK-059**` al final de la fila 88 la deja muda
-    (`8 exenta(s) / 7 viva(s)`, `33` anclas, `0 FAIL`) y sobrevive también al
-    arreglo de las cinco variantes de autoexención. La regla que lo frenaría —
-    «el id tiene que estar FUERA del veredicto» — **rompe la fila 87**, que es
-    CERRADA de verdad y no tiene ningún id fuera del suyo (medido: 87, 96 y 97
-    tienen todos sus ids dentro del veredicto). Fila 87 y fila 88+ataque tienen la
-    **misma forma**, luego no hay regla que las separe sin poner el repo en rojo.
-    Y el daño que el auditor atribuía al suelo **no ocurre en la 88**: esa fila no
-    declara ninguna gravedad (`_gravedad_declarada` → `None`), luego su suelo no
-    podía dispararse ni antes ni después. Lo que sí se apaga es la fila entera.
+    Decidido y escrito: `CERRADA:` → `cerrada:` en la fila 90 deja el panel en
+    `6 exenta(s) / 9 viva(s)` y salta **un** `FAIL`, el de esa misma fila 90 por
+    «su UNICA fuente es una TAREA YA CERRADA». *(La versión anterior decía «pone
+    las **siete** exentas en rojo»: es falso. MEDIDO el 2026-10-02 — el rojo es
+    real y el número no; lo que cambia no es que las otras seis cambien de estado,
+    es que la 90 se reabre y su `TASK-057` cerrado se queda como única fuente.)* Ese rojo
+    es el precio de que la palabra suelta en prosa no cierre nada (es el mismo
+    argumento que declara el código de salida por la línea que empieza por `0`).
+    MEDIDO y **aceptado**: el escenario (s) de la suite fija esta decisión.
+    Consecuencia: un descuido de caja en el veredicto de una fila cerrada la
+    reabre de golpe, y no es un rojo que un guard pueda contener.
+    **La misma regla se extiende a la NEGACIÓN, y es lo que hace que un ataque en
+    minúscula no se vea**: ver el límite 21.
+19. **~~El id trazable puede proceder del propio veredicto de cierre, y eso ya no
+    distingue la fila real del ataque.~~ CERRADO en la ronda de cierre del ciclo
+    #49. La frase de arriba era el límite **más ancho que el agujero real**, y su
+    propia tesis —«no hay regla que separe la fila 87 del ataque sin poner el repo
+    en rojo»— era **falsa**: el eje que separa una de otra no es *dentro/fuera del
+    veredicto* sino **cerrado/pendiente**. MEDIDO que los ids de las 7 exentas
+    están **todos dentro** del veredicto (87 → `TASK-055`/`CYCLE-045`,
+    99 → `TASK-054`/`CYCLE-044`, 96 y 97 → `TASK-037`/`CYCLE-027`), luego atar el
+    id al veredicto no las separa de nada; y MEDIDO que los **dos únicos ids
+    `pending` del tablero** son `TASK-059` y `TASK-061`, que son exactamente los
+    que usaba el ataque. `_esta_cerrada` tiene ahora una **quinta condición**: el
+    id que cierra la fila tiene que estar **cerrado** —una `TASK` con
+    `status == completed`, un `CYCLE` con entrada en uno de los **dos changelogs**—,
+    no solo existir. MEDIDO con la condición puesta y el **panel intacto**:
+    `7 exenta(s) / 8 viva(s) / 35` anclas y `0 FAIL`, **sin tocar ni una fila**;
+    el ataque declarado (`**CERRADA en TASK-059**` y con `TASK-061`) pasa de
+    `8/7/33, 0 FAIL` a `7/8/35, 0 FAIL`, y el mismo ataque con su negación en
+    minúscula («nunca se resolvio») también.
+    **El residuo que sí es real, y es más estrecho que el que se declaraba**:
+    nombrar un id **ya cerrado** sobrevive, y sobrevive por la misma puerta
+    (`**CERRADA en TASK-055**` o `**CERRADA en CYCLE-045**` en la fila 88 dan
+    `8/7/33, 0 FAIL`). Eso **no es cerrable con una regla de forma** y se declara
+    como tal: una fila que nombra trabajo de verdad terminado es indistinguible de
+    una fila real cerrada. El escenario (y) de la suite lo archiva como control
+    negativo para que el próximo no lo lea como un bug sin explicar. Y el daño que
+    el auditor atribuía al suelo **no ocurre en la 88**: esa fila no declara
+    ninguna gravedad (`_gravedad_declarada` → `None`), luego su suelo no podía
+    dispararse ni antes ni después. Lo que se apaga es la fila entera.
+    **Lo que sí costó el arreglo, y va en su propia línea (límite 21):** la
+    condición 5 no se puede preguntar antes que la autoexención sin romper el
+    escenario (f2), y se resuelve midiendo la autoexención **por la forma** de la
+    fila, no por el estado de su id.
 20. **Una negación escondida en OTRO veredicto no cuenta.** La regla de negación
     mira el veredicto del marcador y la prosa de la fila, no los demás veredictos
     (límite del apartado anterior, y la razón medida es la fila 87). MEDIDO: una
     fila cuyo veredicto de cierre es `**CERRADA en TASK-059**` y que dice
     `**NO lo esta**` en otro veredicto se exime. Se declara porque la regla que se
     eligió para no romper la 87 abre esta puerta a cambio.
+21. **Un `NO` AJENO en la prosa reabre una fila realmente cerrada, y es el precio
+    de matar V2.** La regla de negación mira la **prosa** de la fila entera, y en
+    castellano `NO` en prosa es una conjunción corriente. MEDIDO el 2026-10-02:
+    añadir ` NO es un aserto de cierre.` a la fila 87 la deja de estar exenta y el
+    panel pasa a `6 exenta(s) / 9 viva(s)` y `39` anclas. Sigue en `0 FAIL` —la 87
+    tiene rutas y tareas propias y las demuestra—, luego **no es un rojo**, es una
+    **pérdida de exención**: una fila de verdad cerrada tiene que volver a probar
+    su ancla porque escribió «NO» en otra frase. Ese es el precio, y su forma
+    correcta es la del límite 18: en la prosa, la MAYÚSULA es la **forma** del
+    aserto deliberado y la minúscula no cuenta; una fila real no lleva `NO` en
+    mayúsculas por casualidad.
+    **Y el hermano pequeño de este residuo, que NO se arregla y se declara con
+    él:** una negación en **minúscula** dentro del veredicto de cierre tampoco se
+    ve (`**CERRADA en TASK-055, nunca se resolvio**` se exime). Se aplicó
+    `re.IGNORECASE` a propósito para medirlo y se **quitó**: lleva las **siete**
+    exentas reales a **cero** y pone el repo en `1 FAIL`, porque hay negaciones de
+    cierre escritas de verdad que no lo son — la 93 dice «**CERRADA en la cola, no
+    en el cuerpo**» y la 96 «**CERRADA en CYCLE-027 (TASK-037) — guardas que no
+    guardaban**», y ahí la negación contrasta dos cosas en vez de negar el cierre.
+    No hay forma que separe `no en el cuerpo` de `nunca se resolvio`: las dos son
+    negación en minúscula sobre el mismo marcador. El escenario (n2) de la suite
+    archiva el residuo como control negativo y **falla en rojo** a cualquiera que
+    vuelva a aplicar `re.IGNORECASE`: ese intento tiene que encarar las siete
+    filas reales antes de poder pasar, que es justo lo que se le pedia.
+    MEDIDO que el ataque que el auditor midió con esta puerta —`— **CERRADA en
+    TASK-059, nunca se resolvio**`, que nombra trabajo **pendiente**— muere igual
+    con la quinta condición del límite 19: son **el mismo ataque por la misma
+    puerta**, y lo que queda vivo es solo el caso «id ya cerrado» del límite 19.
+22. **El enlace DURO al panel era una puerta real, y está CERRADA.** El filtro por
+    ruta resuelta daba el filtro del panel por cerrado, y un **enlace duro** lo
+    esquivaba entero: `docs/panel_hard.md` creado con `os.link` sobre
+    `STATUS.md` comparte `st_dev` y `st_ino` con el panel y tiene `st_nlink == 2`,
+    pero su `realpath` es **otro**, luego pasaba el filtro como ancla legítima con
+    `36` anclas, `3` por contenido y `0 FAIL` de Deuda — **colando S1 y S2 a la
+    vez**. MEDIDO también que un enlace **simbólico** y una **junction** sí los
+    cierra `realpath`, y que `STATUS.md.` muere por `_RE_RUTA`, no por la
+    identidad. La causa es que un enlace duro **no cambia de nombre**, luego no hay
+    ruta que canonicalizar: el filtro se ha ampliado con `_es_el_mismo_fichero`,
+    que compara `(st_dev, st_ino)` con guardia de `st_ino != 0` — sin el guardia,
+    un `st_ino` de `0` declararía el panel idéntico a cualquier fichero del árbol,
+    que es peor que el agujero que cierra. MEDIDO que con el arreglo el ataque
+    pasa de `0 FAIL` y `36` anclas a **2 FAIL** y `35`. El escenario (h2) de la
+    suite lo cubre. Lo que **no** se ha hecho es defenderse de quien ya tiene
+    permiso de escritura en el árbol: eso es otro problema, con otra respuesta, y
+    se declara aquí solo para que conste el **alcance** de lo cerrado —una acción
+    deliberada en el árbol, no un fichero que aparezca solo—.
+23. **`os.path.normcase` se ha quitado de la comparación del panel, y su
+    justificación anterior era FALSA en las dos plataformas.** Decía ser «segunda
+    garantía para los sistemas donde `realpath` no canonicaliza la caja». MEDIDO
+    contra la stdlib: `posixpath.normcase` es literalmente `return os.fspath(s)` y
+    su docstring dice literalmente *«Has no effect under Posix»*, luego en POSIX
+    **no hace nada** y no puede ser una garantía ahí. Y MEDIDO en Windows que
+    `os.path.realpath("status.md")` devuelve ya `…\STATUS.md`, luego devuelve el
+    nombre REAL y con la caja real: la comparación por ruta resuelta no necesita
+    nada más. No era «redundante en Windows»: era **inerte en todas partes**, y lo
+    que se ha quitado no era una garantía, era una llamada que anunciaba una.
+    Mutante C30: deja de existir como tal, porque el código al que mutaba ya no
+    está. En su lugar la identidad se ha ampliado por `(st_dev, st_ino)` (límite
+    22), que es donde estaba de verdad el agujero.
 

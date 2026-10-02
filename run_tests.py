@@ -12793,13 +12793,13 @@ def _run_tests_sintetico(n_tests, n_headless, con_marcador=True):
 
 
 def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
-    """TASK-060 (ciclo #49): el CHECK 8 de `validate_docs.py`, veintidos escenarios.
+    """TASK-060 (ciclo #49): el CHECK 8 de `validate_docs.py`, treinta escenarios.
 
     El ciclo #48 sano 13 filas de la seccion `## Deuda Tecnica Conocida` y su
     auditoria cerro PARTIAL por una razon MEDIDA: 8 de 9 mutaciones sobrevivieron
     porque NADA en este repo vigilaba esa seccion (`validate_docs.py` tenia 0
     coincidencias de la palabra `Deuda`). Este test es el guardian de las
-    veintidos filas de la tabla de abajo, y todas asientan por `validar(root)`
+    treinta filas de la tabla de abajo, y todas asientan por `validar(root)`
     (D3): la MISMA funcion que `main()` llama, sobre el esqueleto REAL copiado
     una vez en un `tempfile.mkdtemp()`. Nada de esto toca el repo real.
 
@@ -12808,9 +12808,11 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
     `ast`" de "lei el numero correcto a mano", que es justo el mutante que esa
     fila existe para matar.
 
-    LAS VEINTIDOS FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla es el
-    contrato, y `len(FILAS) == 22` la cuenta para que borrar una fila no salga
-    gratis):
+    LAS TREINTA FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla es el
+    contrato, y `len(FILAS) == 30` la cuenta para que borrar una fila no salga
+    gratis). DOS de ellas -- (y) y (n2) -- NO matan nada: ARCHIVAN residuos
+    declarados como controles negativos, y estan marcadas como tales para que
+    nadie las lea como cobertura:
 
     - (a) fila viva cuya unica cita no existe -> "VIVA sin ancla resoluble" (0 de
       5) y "ancla NO RESOLUBLE". Mata: no exigir ninguna fuente.
@@ -12909,10 +12911,46 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
       IDENTIDAD de la ruta resuelta. MEDIDO: con la igualdad de cadena, las
       cuatro grafias (`status.md`, `./STATUS.md`, `docs/../STATUS.md` y
       `.\\STATUS.md`) certificaban al panel con `0 FAIL` y 36 anclas. El
-      escenario es especifico de Windows por construccion (`normcase` no
+      escenario es especifico de Windows por construccion (`realpath` no
       normaliza a minusculas en Linux), y el producto es Windows: en un sistema
       de ficheros sensible a mayusculas `status.md` NO existiria y el motivo
       seria "no existe en el arbol", que tambien es un FAIL.
+    - (x) el veredicto de cierre apunta a una TAREA PENDIENTE -> la fila sigue
+      VIVA. Mata: la quinta condicion de `_esta_cerrada` entera (borrar
+      `_ids_cerrados`), que es el agujero G2f' del mutation-auditor: MEDIDO
+      que anadir ` - **CERRADA en TASK-059**` al final de la fila 88 la dejaba
+      muda con `8 exenta(s) / 7 viva(s)`, `33` anclas y `0 FAIL`, y `TASK-059`
+      esta `pending`. Lo que mide es el RECUENTO, no un error, porque la fila
+      tiene `run_tests.py` como ancla y queda VIVA y en verde, que es
+      exactamente el estado que se quiere.
+    - (c3) el veredicto de cierre apunta a un CYCLE que solo esta en el JOURNAL
+      -> la fila sigue VIVA. Mata: exigir que el ciclo exista (`_ciclos_de_la_
+      fila`, que mira tambien el journal) en vez de que este CERRADO
+      (`_ciclos_cerrados`, que mira solo los dos changelogs). Un ciclo se
+      "traza" en cuanto se nombra y se "cierra" cuando publica su entrada: son
+      dos hechos distintos, y medir solo el primero es lo que dejaba pasar al
+      ataque.
+    - (h2) la MISMA autocertificacion que (n) pero por un ENLACE DURO al panel
+      -> los DOS errores de (n). Mata: borrar `_es_el_mismo_fichero`. MEDIDO
+      que un hard link a `STATUS.md` comparte `st_dev` y `st_ino` con el panel y
+      tiene `st_nlink == 2`, pero su `realpath` es OTRO, luego el filtro por
+      ruta resuelta lo aceptaba como ancla legitima con `0 FAIL` de Deuda y
+      colaba S1 y S2 a la vez. Un enlace simbolico y una junction SI los cierra
+      `realpath`; el duro no cambia de nombre.
+    - (y) CONTROL NEGATIVO: el mismo veredicto que (x) pero con una TAREA ya
+      `completed` -> la fila SI queda exenta. No mide un fix: ARCHIVA el
+      residuo declarado del limite 19 para que el proximo que lo encuentre no
+      lo lea como un bug sin explicar. Sin esta fila, "arreglar" el residuo
+      (cerrar tambien la fila que nombra un id ya cerrado) seria cambiar la
+      semantica del panel sin que nada se quejara.
+    - (n2) CONTROL NEGATIVO: el veredicto de (y) con una negacion en MINUSCULA
+      ("nunca se resolvio") -> la fila SI queda exenta. Tambien es un residuo
+      declarado, y es la fila que hace FALLO a cualquier intento de arreglarlo
+      con `re.IGNORECASE`: MEDIDO que el predicado insensible a caja lleva las
+      SIETE exentas REALES a CERO y pone el repo en rojo, porque en castellano
+      `no` y `nunca` son prosa ordinaria y no una forma ("**CERRADA en la cola,
+      no en el cuerpo**", "**guardas que no guardaban**"). La caja es la forma,
+      por el mismo argumento que ya fija el limite 18 para `CERRADA`.
 
     LIMITACION CONOCIDA, y hay que decirla: las veinticinco filas comparten
     esqueleto y comparten helper, luego comparten punto ciego -- una fila solo
@@ -13101,13 +13139,45 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
              ["VIVA sin ancla resoluble",
               "ancla NO RESOLUBLE: status.md EXISTE pero es el propio panel"], [],
              "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("x: el id que cierra la fila tiene que estar CERRADO",
+             _panel(["- **Fila que se exime nombrando trabajo PENDIENTE:** ancla "
+                     "`run_tests.py` y anade al final \u2014 **CERRADA en "
+                     "TASK-002** \u2014, que sigue `pending` en el tablero."]),
+             [], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("c3: un CYCLE que solo esta en el journal esta EN VUELO",
+             _panel(["- **Fila que se exime con un ciclo sin cerrar:** ancla "
+                     "`run_tests.py` y anade al final \u2014 **CERRADA en "
+                     "CYCLE-901** \u2014, que esta en el journal pero en ningun "
+                     "changelog."]),
+             [], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("h2: un ENLACE DURO al panel tampoco es un ancla",
+             _panel(["- **Fila que se ancla en un enlace duro:** su unica verdad "
+                     "es `panel_duro.md:1 Deuda`, que existe y se resuelve."]),
+             ["VIVA sin ancla resoluble",
+              "ancla NO RESOLUBLE: panel_duro.md EXISTE pero es el propio panel"],
+             [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("y: CONTROL NEGATIVO, un id YA CERRADO si cierra la fila",
+             _panel(["- **Fila cerrada de verdad:** ancla `run_tests.py` y anade "
+                     "al final \u2014 **CERRADA en TASK-001** \u2014, que esta "
+                     "`completed`."]),
+             [], [],
+             "1 exenta(s) CERRADA(s), 0 viva(s)"),
+            ("n2: CONTROL NEGATIVO, la negacion en minuscula NO se ve",
+             _panel(["- **Fila que se exime y se niega en minuscula:** ancla "
+                     "`run_tests.py` y anade al final \u2014 **CERRADA en "
+                     "TASK-001, nunca se resolvio** \u2014."]),
+             [], [],
+             "1 exenta(s) CERRADA(s), 0 viva(s)"),
         )
         # El numero de filas es un CONTRATO, no una consecuencia: sin esta
         # cuenta, borrar tres escenarios deja la suite verde con el mismo
         # recuento de tests (S1 del mutation-auditor, ciclo #49, MEDIDO).
-        assert len(FILAS) == 25, (
+        assert len(FILAS) == 30, (
             "la tabla de escenarios del check 8 tiene "
-            f"{len(FILAS)} filas y su contrato son 25. Una fila que se borra sin "
+            f"{len(FILAS)} filas y su contrato son 30. Una fila que se borra sin "
             "su cuenta deja el test en verde midiendo menos de lo que dice medir"
         )
 
@@ -13121,11 +13191,71 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
                 _run_tests_sintetico(7, 0, con_marcador=False),
         }
 
+        # Dos escenarios necesitan tocar el ARBOL, no solo el texto del panel, y
+        # por eso no caben en `OVERRIDES`: (h2) tiene que CREAR un enlace duro
+        # a `STATUS.md` y (c3) tiene que escribir un journal. Se aplican
+        # DESPUES de escribir el panel, que es cuando el enlace duro puede
+        # existir, y el estado que meten se RESTAURA en cada iteracion por el
+        # mismo motivo por el que se reescribe `run_tests.py`: una fila que
+        # heredase el arbol de la anterior mediria otra cosa.
+        raiz_repo = os.path.dirname(os.path.abspath(__file__))
+
+        def _journal_con_un_ciclo_en_vuelo(destino):
+            # La raiz del journal es una LISTA de ciclos, no un dict.
+            #
+            # Y el literal `CYCLE-NNN` hay que escribirlo A MANO: MEDIDO que el
+            # journal REAL guarda el ciclo como numero (`"cycle": 45`) y no
+            # contiene ni una sola vez la forma `CYCLE-045` que buscan
+            # `_RE_CICLOS` y `_ciclos_de_la_fila`. O sea que la rama del journal
+            # de ese registro esta INERTE en este repo, y esta fila es la
+            # unica que la ejecuta de verdad: sin el literal en el `summary`,
+            # `CYCLE-901` no resolveria por ningun registro, la fila quedaria
+            # VIVA por el motivo de (r) y el mutante de `_ciclos_cerrados`
+            # SOBREVIVIRIA sin que nada lo delatara.
+            with open(os.path.join(raiz_repo, ".taskmaster", "rd_journal.json"),
+                      encoding="utf-8") as fh:
+                journal = json.load(fh)
+            assert isinstance(journal, list), (
+                "el journal cambio de forma y esta fila mediria otra cosa: se "
+                f"ha leido {type(journal).__name__} donde se esperaba una lista")
+            journal.append({"cycle": 901, "state": "running",
+                            "summary": "CYCLE-901 en vuelo, sin changelog"})
+            _escribir(".taskmaster/rd_journal.json", json.dumps(journal))
+
+        def _enlace_duro_al_panel(destino):
+            # Un enlace DURO y no uno simbolico: `realpath` resuelve el
+            # simbolico al panel y lo cerraba, mientras que el duro comparte
+            # `st_ino` y NO cambia de nombre, luego es el caso que
+            # `_es_el_mismo_fichero` existe para cerrar. MEDIDO: con el solo
+            # `realpath` la fila (h2) pasaba con `0 FAIL` y colaba S1 y S2.
+            os.link(os.path.join(destino, "STATUS.md"),
+                    os.path.join(destino, "panel_duro.md"))
+
+        def _borrar_si_existe(ruta):
+            try:
+                os.remove(ruta)
+            except OSError:
+                pass
+
+        PREPARA = {
+            "c3: un CYCLE que solo esta en el journal esta EN VUELO":
+                _journal_con_un_ciclo_en_vuelo,
+            "h2: un ENLACE DURO al panel tampoco es un ancla": _enlace_duro_al_panel,
+        }
+
         for nombre, panel, esperados, prohibidos, recuento_esperado in FILAS:
             _escribir("STATUS.md", panel)
             _escribir("run_tests.py", _run_tests_sintetico(7, 1))
             if nombre in OVERRIDES:
                 _escribir("run_tests.py", OVERRIDES[nombre])
+            # El estado que meten las filas anteriores se deshace SIEMPRE, no
+            # solo cuando la siguiente fila lo necesita: si no, (c3) y (h2)
+            # contaminarian a las que vienen despues.
+            shutil.copy2(os.path.join(raiz_repo, ".taskmaster", "rd_journal.json"),
+                         os.path.join(tmp, ".taskmaster", "rd_journal.json"))
+            _borrar_si_existe(os.path.join(tmp, "panel_duro.md"))
+            if nombre in PREPARA:
+                PREPARA[nombre](tmp)
             errors, ok = _informe_del_validador_real(tmp)
             faltan = [e for e in esperados if not any(e in x for x in errors)]
             assert not faltan, (
@@ -13154,7 +13284,7 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    print("Check 8 de la Deuda Tecnica Conocida, 25 filas por validar(root): ancla "
+    print("Check 8 de la Deuda Tecnica Conocida, 30 filas por validar(root): ancla "
           "viva rota, la misma cerrada, la cifra autoderivada y la del total "
           "cambiado, panel solo de cerradas, seccion ausente, CERRADA dentro de "
           "codigo inline, la fila del criterio autoeximida, la unica fuente en una "
@@ -13166,7 +13296,10 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
           "menciona el contrato, el veredicto con un id que no resuelve, el "
           "marcador en minusculas, la frase que apaga la fila y el suelo a la "
           "vez, el marcador que tiene que estar en negrita, la negacion que "
-          "esta en la prosa, y el panel que se cita a si mismo con otra grafia.")
+          "esta en la prosa, el panel que se cita a si mismo con otra grafia, el "
+          "cierre que apunta a una TAREA pendiente, el CYCLE que solo esta en "
+          "el journal, el enlace DURO al panel, y los dos controles negativos "
+          "que archivan el residuo declarado.")
 
 
 
