@@ -766,7 +766,14 @@
     "commits": [
       "96c349f",
       "84588f1",
-      "0af4fd4"
+      "0af4fd4",
+      "eb332a2",
+      "eaf20d5",
+      "68f83e3",
+      "efeae85",
+      "3140605",
+      "9a8e952",
+      "0776a9c"
     ],
     "tests": {
       "before": "103 totales",
@@ -774,11 +781,12 @@
     },
     "impact": "Saneamiento de la seccion Deuda Tecnica Conocida de STATUS.md, que gobierna que trabajo hace el bucle: una fila falsa manda hacer un trabajo ya hecho. 13 filas auditadas una a una con evidencia; 3 falsas, 2 caducadas, 1 imprecisa, y NINGUNA se borro: conservan su redaccion original, que es la evidencia de lo que se creia, y ganan el cierre con su comprobable. Corregidos dos fallos vivos que el panel afirmaba y que nadie vigila: 'Sin commit desde el ciclo #14' (falso: el repo desacoplado esta sano) y los test_*.py 'en la raiz' (falso por partida doble: no estan en la raiz y solo 10 de 11 mueren por el import). El fallo real debajo era otro: docs/index.md declaraba 96 tests cuando hay 103, y el check del recuento no vigila ese fichero. Dos de las premisas de la propia TASK-058 resultaron falsas y no se ejecutaron literalmente.",
     "audit": {
-      "verdict": "FAIL",
-      "confirmado": "El auditor resolvio y confirmo las filas 85, 88 y 92, incluidas las tres anclas verificables que el dev autodetecto.",
-      "supervivientes": "S1 (una fila de gravedad rebajada para que el panel quede mas limpio = documentacion fail-open) y S2 (ningun check de validate_docs.py verifica estas filas; la propia fila 98 lo admite). Menores: el bloque markdown de docstrings del parser.",
-      "nota_de_proceso": "El auditor dejo su sonda en el repo real: creo el commit basura 43e25f5 y muto .taskmaster/git_safe_commit.py. El orquestador lo revirtio (git reset --mixed 0af4fd4 + git checkout del fichero), verifico WOPT_REPO_OK y dist/woptimizer.exe intacto. Una conclusion del auditor resulto falsa y se descarto tras medirla: dijo que test_profiles_task1.json era un artefacto no versionado de este ciclo, pero entró en 8efc0ae hace tiempo; su borrado se revirtio.",
-      "artefacto": "SIN mutation-report.md: el auditor no dejo registro de esta ronda, lo que impide reauditar sus supervivientes por nombre."
+      "verdict": "PARTIAL",
+      "rondas": "4: FAIL, FAIL, FAIL, PARTIAL",
+      "cerrado": "Los tres hallazgos de la auditoria (A enumeracion, B seis anclas, C el 7) verificados CERRADOS por contenido. La deuda roja del exit code tiene dueno: TASK-061.",
+      "supervivientes": "8 de 9 mutaciones sobreviven, y NO porque las correcciones sean falsas: porque nada en este repo vigila la seccion Deuda Tecnica Conocida. validate_docs.py tiene 0 coincidencias de 'Deuda'. Es la clase que TASK-060/check 8 arregla.",
+      "unico_fix_con_guardia": "El cableado del boton Actualizar DB: mutante command=None -> muere con su asercion exacta.",
+      "seguridad_o_datos": "NO. src/ y validate_docs.py intactos; suite estable en 103."
     },
     "deuda_nueva": "TASK-060: check 8 de validate_docs.py que exige que toda fila VIVA de la Deuda Tecnica Conocida lleve un ancla resoluble cuya verdad se derive de fuera del panel (arbol, recuento ast, git log), con las filas cerradas exentas."
   }

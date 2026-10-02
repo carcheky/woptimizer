@@ -1,7 +1,7 @@
 ## [CYCLE-048] 2026-10-02 03:10 - sanear-deuda-status
 **Área**: Documentación & Arquitectura
 **Change**: openspec/changes/2026-10-02-sanear-deuda-status/
-**Estado**: PRIMERA RONDA — **VERDICT de la auditoría: FAIL**, corregido en la «ronda de cierre» de esta misma entrada (más abajo). La primera ronda escribió aquí `PASS` y era falso. 0 cambios de producto; recuento estable en 103. El `110 OK / 1 FAIL` que se registra más abajo era el residuo (a) de la fila 93 ante el journal sin el ciclo 48, y **ya está resuelto**: el journal lo registró y el validador vuelve a **110 OK / 0 FAIL** (medido el 2026-10-02).
+**Estado**: COMPLETED — **VERDICT FINAL: PARTIAL** (4 rondas de auditoría: FAIL, FAIL, FAIL, PARTIAL). Contenido cerrado y verificado por contenido; la supervisión de ese contenido pendiente de TASK-060. La primera ronda escribió aquí `PASS` y era falso: corregido y conservado como registro. La primera ronda escribió aquí `PASS` y era falso. 0 cambios de producto; recuento estable en 103. El `110 OK / 1 FAIL` que se registra más abajo era el residuo (a) de la fila 93 ante el journal sin el ciclo 48, y **ya está resuelto**: el journal lo registró y el validador vuelve a **110 OK / 0 FAIL** (medido el 2026-10-02).
 **Models**:
 - Paso 1 (Buscar): orchestrator (backlog: `active_task_id` TASK-058)
 - Paso 2 (Planear): architect-review — Auditoría fila por fila de las 13 filas de Deuda Conocida; **3 falsas, 2 caducadas, 1 imprecisa** detectadas con evidencia, y 2 premisas del encargo refutadas
