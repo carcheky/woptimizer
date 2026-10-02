@@ -62,3 +62,25 @@
 - [ ] T7.1 Las diez mutaciones de la tabla de `proposal.md` seccion 4 se aplican **una a una** sobre una copia del panel y cada una sale en rojo.
 - [ ] T7.2 Mutantes de codigo que deben morir tambien: borrar la excepcion de las cerradas (mata B), sustituir la derivacion con `ast` por una lectura del panel (mata C), borrar el `re.sub` de codigo inline (mata F), borrar la regla de la tarea cerrada (mata G), borrar el suelo de gravedad (mata H), y **quitar el cuarto argumento del cableado** (mata el `TypeError` de la firma, como en el ciclo 47).
 - [ ] T7.3 El ciclo no se cierra con `PARTIAL`: o todos mueren, o el superviviente se arregla.
+
+---
+
+## T8 — Ronda de cierre, tras el FAIL del `mutation-auditor`
+
+El auditor dio **FAIL** con 30 mutantes (15 muertas, 14 supervivientes). Tres criterios que
+este contrato daba por muertos **no lo estaban**, y el hallazgo central es que el validador
+**no producia ni un FAIL** con cuatro de ellos. Todo lo de abajo esta **medido**, con la
+linea `ok` antes y despues de cada mutante, en `mutation-report.md` (misma carpeta).
+
+- [x] T8.1 **El marcador de cierre pasa de una palabra a un veredicto** (E1/E2, CRITICA). La fila 89 se eximia a si misma con cualquier frase normal. Ahora son cuatro condiciones: `CERRAD` en mayusculas fuera de codigo inline, **dentro de un veredicto en negrita**, con un **id trazable que exista** en la fila, y **sin negar** el cierre. Las 7 exentas reales las cumplen sin tocar una fila. Muerte medida: P1/P2/P3 dejan la linea `ok` **identica** (antes la movian a `8 exenta(s)/7 viva(s)`).
+- [x] T8.2 **`STATUS.md` deja de ser un ancla** (A1, ALTA). Cuatro filas reales (87, 89, 100, 101) se citaban a si mismas y el check lo contaba como ruta valida. Al rechazarlo **ningun veredicto cambia**: las cuatro tienen otras fuentes. Muerte medida: P5 -> `0 FAIL` pasa a `2 FAIL`.
+- [x] T8.3 **La gravedad se lee del emoji** y **«declarar» pasa a ser una forma, no una mencion** (G2/G3, ALTA). El emoji se mapea a `ROJO`/`AMARILLO`/`VERDE` al leer (ASCII en el informe, trampa #16) y el predicado exige la linea que empieza por `0 CODIGO`, no cualquier linea que mencione los codigos. **Las dos cosas son obligatorias**: con el mapa y el predicado viejo, las filas 100 y 101 (🟡) salen en rojo hoy. Muerte medida: P6 y P7 (bajar la 🔴 de la 88 o de la 89) salen en `1 FAIL`; M5 del contrato, que antes era inalcanzable, **muere**.
+- [x] T8.4 **El `IndexError` de los tramos de codigo inline vacios**, que tumbaba el validador entero sin imprimir informe (la misma clase que `_recuento_de_tests` en el ciclo 27 y el journal en el 47). Se arregla el PRODUCTOR. Muerte medida: el mutante de codigo revienta con `IndexError`.
+- [x] T8.5 **S5 acredita la cifra que la fila DECLARA, no la que menciona** (C9, rama positiva sin cobertura; C8, constante escrita a mano). Un escenario nuevo donde la fila declara la cifra derivada y no cita a nadie mas mata las dos.
+- [x] T8.6 **La tabla de escenarios cuenta sus filas** (`len(FILAS) == 19`, S1) y **cada escenario asienta el recuento de la linea `ok`** (C1: amputar el check 8 entero daba `114 OK / 0 FAIL`, verde y sin un solo FAIL).
+- [x] T8.7 **`mutation-report.md` escrito** con id estable por mutante, edicion a nivel de bytes, linea `ok` antes/despues, expectativa literal, atribucion en aislamiento y la lista de lo que no cubre ningun limite.
+- [x] T8.8 **Decisiones tomadas y escritas**, no parchadas en silencio:
+  - **N1**: una cifra que la fila **cita** (`docs/index.md` declara «96 tests») no es una afirmacion sobre el recuento, y verificarla contra el contenido actual de ese documento haria **imposible de redactar la fila 100**, que existe para documentar que ese documento declaraba una cifra desfasada. Queda como limite 12 de `docs/ai/sandbox-rules.md`.
+  - **El suelo se recorre por `anclas["rutas"]`, no por los asuntos del titulo.** Atado a los asuntos lo dejaria muerto para siempre (ni una fila nombra en su titulo un fichero que declare el contrato) y con el se iria M5. La causa del falso rojo era el **predicado**, no el recorrido.
+  - **El limite 4 del contrato estaba mal escrito** y se corrige: no es "el emoji evade el suelo", es "**la palabra de gravedad no existe en el panel**".
+- [ ] T8.9 **Pendiente para el `mutation-auditor`:** re-auditar el FAIL con este informe. Los controles negativos **E4, A2, G3b, N2 y M4b** no son re-audibles desde el repo: sus ediciones byte a byte no estaban en ningun fichero, porque el `mutation-report.md` que los contiene es precisamente el que faltaba.

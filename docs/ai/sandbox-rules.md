@@ -360,14 +360,32 @@ aparece, se acusa el motivo literal: **nunca `0 + 0` en verde**.
 Una fila viva necesita **≥1** fuente resoluble **y ≥1** que no sea una `TASK`
 `completed`. Una fila marcada cerrada queda exenta.
 
-### El marcador de cierre, y por qué lleva un `sub`
+### El marcador de cierre: un VEREDICTO, no una palabra
 
-Una fila está **CERRADA** si, **tras eliminar los tramos de código inline** (`` `...` ``),
-contiene el literal `CERRAD` en mayúsculas. El `sub` **es el fix**: la fila que escribe
-el criterio lleva el token dentro de comillas invertidas *porque está escribiendo el
-criterio*, y sin la limpieza el panel se declararía cerrado a sí mismo. Medido al
-nacer: **15 filas, 7 exentas y 8 vivas**; de las 8 vivas solo `STATUS.md:91` se quedaba
-sin fuente, y por eso el nacimiento tocó **una** fila (ganó el ancla de
+Una fila está **CERRADA** si se cumplen **cuatro** cosas a la vez. Las cuatro se miden
+sobre las 7 exentas reales del panel, que las cumplen **sin tocar una sola fila**:
+
+1. El literal `CERRAD` en mayúsculas **fuera de código inline** (el `sub` que ya estaba:
+   la fila que escribe el criterio lleva el token dentro de comillas invertidas *porque
+   está escribiendo el criterio*, y sin la limpieza el panel se declararía cerrado a sí mismo).
+2. El marcador está dentro de un **veredicto en negrita** (`**...**`), que es como el
+   panel escribe todos sus veredictos.
+3. La fila nombra un **id trazable** (`TASK-NNN` o `CYCLE-NNN`) que **existe** en
+   `.taskmaster/tasks.json`, en un `CHANGELOG.md` o en el journal.
+4. El veredicto **no niega** el cierre (`NO`, `NUNCA` o `JAMAS` en los 40 caracteres
+   anteriores al marcador, dentro del mismo veredicto).
+
+**Por qué cuatro y no una.** Medido el 2026-10-02 con el marcador de una sola palabra:
+la fila 89 —la 🔴 del `spawn EPERM`— se **eximía a sí misma** con cualquier frase
+normal que hablara de cierre («y esta fila NO está CERRADA todavía», «(marcada
+\*CERRAD\*)» al final), y el validador respondía `115 OK / 0 FAIL`. Una palabra suelta
+no es un veredicto.
+
+Las cuatro fallan **abierto**: lo que no demuestra su cierre queda **VIVA** y tiene que
+demostrar su ancla, que es la única dirección en la que un validador puede equivocarse
+sin dejar de vigilar nada. Medido al nacer y después del arreglo: **15 filas, 7 exentas
+y 8 vivas**, las mismas de antes; de las 8 vivas solo `STATUS.md:91` se quedaba sin
+fuente, y por eso el nacimiento tocó **una** fila (ganó el ancla de
 `src/woptimizer/services/pack_service.py`, donde vive `CORRUPTION_ERRORS`).
 
 **Opt-out, no opt-in.** Exigir anclas a las filas cerradas las declararía inválidas
@@ -377,12 +395,25 @@ vigilar y en verde*.
 
 ### El suelo de gravedad: UNO, y derivado
 
-Si un fichero de S1 sigue declarando `0` para `WOPT_COMMIT_OK` **y** para
+Si un fichero de S1 sigue **declarando** `0` para `WOPT_COMMIT_OK` **y** para
 `WOPT_NOOP`, el suelo es `ROJO` y una fila viva que se declare `AMARILLO` sale en
 rojo. Bajar la gravedad sin cerrar el problema es documentación *fail-open*, que es lo
-que la fila del `spawn EPERM` sufrió en el ciclo #48. La gravedad se lee con
-**palabras** (`ROJO`/`AMARILLO`/`VERDE`) porque la consola es cp1252 (trampa #16) y un
-símbolo en el `print()` tumba el validador entero.
+que la fila del `spawn EPERM` sufrió en el ciclo #48.
+
+**«Declarar» es una forma, no una mención.** La línea que **empieza** por el token `0`
+seguido del nombre es la que declara; así la escribe `.taskmaster/git_safe_commit.py:13-14`.
+Medido el 2026-10-02 con el predicado viejo («un `0` antes del nombre en cualquier
+línea»): casaba en `validate_docs.py` (su propio docstring), en `run_tests.py` (una
+cadena de fixture), en `.taskmaster/tasks.json` y en el propio `STATUS.md`. Una tabla
+de markdown que **tabula** el contrato (`docs/ai/sandbox-rules.md:55-56`) lo documenta,
+no lo declara.
+
+**La gravedad se lee del emoji, no de la palabra.** El panel se expresa en 🔴🟡🟢 y el
+validador leía `ROJO`/`AMARILLO`/`VERDE`: medido el 2026-10-02, **14 de las 15 filas
+no tienen ni una palabra** de gravedad, y la única que la tiene (la 98) la usa para el
+*color* de un diagnóstico de UI. El suelo **no se ejecutaba nunca**. El emoji se mapea
+a la palabra **al leer**, y el informe sigue siendo ASCII puro porque la consola es
+cp1252 (trampa #16).
 
 ### LIMITACIONES RESIDUALES — lo que este check NO cubre
 
@@ -398,25 +429,57 @@ Se escriben, no se omiten. Todas medidas el 2026-10-02.
    `git_safe_commit.py` deriva gravedad. Una 🔴 rebajada sobre cualquier otro ancla
    sobrevive: derivarla exigiría escribir a mano la política de gravedad, que es la
    misma mentira un nivel más arriba.
-4. **La severidad se lee por palabra, no por emoji.** Un panel que bajase la
-   severidad cambiando el 🔴 por 🟡 **evade el suelo**. Es un agujero medido, no
-   teórico: la mutación M5 sobre la fila del `spawn EPERM` sobrevive.
-5. **Las filas cerradas quedan mudas por construcción.** Una fila exenta puede quedar
+4. **El suelo no tiene fila víctima hoy, y eso es un agujero medido.** El suelo se
+   dispara cuando una fila declara **por debajo** de su suelo. Medido el 2026-10-02:
+   las filas 88 y 89 declaran 🔴 y su suelo es `ROJO`, así que rebajarlas **sí** sale
+   en rojo (M5 muere, y antes no moría: el emoji no se leía). Pero **neutralizar el
+   suelo entero deja el panel en verde**, porque ninguna fila viva declara una
+   gravedad por debajo del suyo. No es un agujero teórico: es la razón por la que
+   este límite se escribe y no se omite.
+5. **Un cierre falsificado en la forma del panel sigue eximiendo.** El id trazable se
+   busca **en la fila**, no en el veredicto, porque la fila 90 (CERRADA de verdad)
+   escribe `TASK-057` fuera de su veredicto: atar el id al veredicto la volvería viva
+   y pondría el repo en rojo sin motivo. Consecuencia medida: añadir
+   `**🔴 CERRADA en CYCLE-999**` a una fila **que ya cita ids resolubles** la exime
+   (`8 exenta(s) / 7 viva(s)`, `0 FAIL`). La autoexención por palabra suelta sí está
+   cerrada; la falsificación con la forma completa del veredicto, no.
+6. **Las filas cerradas quedan mudas por construcción.** Una fila exenta puede quedar
    enteramente falsa y el check no dice nada.
-6. **El corte de la sección es por línea.** Una fila escrita como sub-vineta (`  - `)
+7. **El corte de la sección es por línea.** Una fila escrita como sub-vineta (`  - `)
    no cuenta como fila, y una sección partida en dos encabezados solo se lee la
    primera.
-7. **`docs/index.md` lo vigila el check 7, no el 8**, y de hecho no lo vigila ninguno:
+8. **`docs/index.md` lo vigila el check 7, no el 8**, y de hecho no lo vigila ninguno:
    sigue fuera de la lista de `validate_docs.py`. El 8 certifica que la fila *cita*
    ese fichero, no que ese documento no vuelva a mentir. Queda escrito en la fila
    100 de `STATUS.md` con la misma figura vigente.
-8. **Una cita rota solo se acusa cuando es decisiva.** Si la fila tiene otra fuente
+9. **Una cita rota solo se acusa cuando es decisiva.** Si la fila tiene otra fuente
    viva, la cita que no resuelve no se denuncia (medido: `profiles.json` es dato de
    usuario y no está en el árbol; acusarlo siempre sería un rojo sin motivo).
-9. **La regla de la `TASK` cerrada solo muerde cuando la tarea es la única clase de
-   fuente.** Reabrir la fila 94 borrando su `CERRADA` la deja en verde, porque esa
-   fila tiene además dos rutas resolubles y su `CYCLE-047`. Para que la regla saltara   haría falta escribir a mano qué citas son "de la historia" y cuáles son "de hoy".
-10. **La marca de la fila del criterio es el nombre de la función.** Si se renombra
+10. **La regla de la `TASK` cerrada solo muerde cuando la tarea es la única clase de
+    fuente.** Reabrir la fila 94 borrando su `CERRADA` la deja en verde, porque esa
+    fila tiene además dos rutas resolubles y su `CYCLE-047`. Para que la regla saltara
+    haría falta escribir a mano qué citas son "de la historia" y cuáles son "de hoy".
+11. **La marca de la fila del criterio es el nombre de la función.** Si se renombra
     `_comprobar_deuda_con_anclas`, la cláusula de autoexención deja de reconocer a la
     fila del criterio hasta que se actualice el literal.
+12. **S5 comprueba la cifra que la fila DECLARA, no la que cita.** Una cifra
+    `N tests` que la fila atribuye a otro documento (`docs/index.md` declara
+    «96 tests») es una **cita**, no una afirmación, y no se acusa: verificarla contra
+    el contenido actual de ese documento haría imposible de redactar la fila 100, que
+    existe para documentar que ese documento declaraba una cifra desfasada. Medido el
+    2026-10-02: mutar «96 tests» → «42 tests» en la fila 100 conservando el `104` de
+    otra frase deja el validador en `0 FAIL`. Es residual y está declarado.
+13. **El panel se certifica a sí mismo por la cifra, si la cifra es la única fuente.**
+    Con el rechazo de `STATUS.md` como ancla, una fila cuya única verdad es el propio
+    panel sale en rojo. Lo que **no** se comprueba es que la cifra que el panel
+    declara como verdad la diga también el código: el check deriva `ast` y compara,
+    pero no puede saber qué cifra *quiso* escribir el panel.
+14. **Acoplamiento inverso del esqueleto de tests.** `_copiar_el_esqueleto_del_validador`
+    copia `src/` y `.taskmaster/tasks.json` para que las filas del panel resuelvan. Es
+    **portante** (sin `src/` los tests que cuentan `len(errors)` mueren), y crea el
+    acoplamiento de que un panel roto hace morir
+    `test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador`, cuyo sujeto es
+    el journal: **falla ruido, no verde**, pero un `len(errors) == 1` es un conteo
+    exacto atado al panel. Queda declarado para que el próximo que lo lea no lo tome
+    por un fallo del journal.
 

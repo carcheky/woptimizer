@@ -678,12 +678,58 @@ _RE_RUTA = re.compile(
 _RE_TAREAS = re.compile(r"TASK-\d+")
 _RE_CICLOS = re.compile(r"CYCLE-\d+")
 _RE_CIFRA_DE_TESTS = re.compile(r"(?<!\d)(\d{1,4})\s+tests\b")
-# La gravedad se lee como PALABRA y no como simbolo: la consola es cp1252 (trampa
-# #16) y un emoji en el `print()` tumba el validador entero. El limite que esto
-# compra -- bajar la severidad cambiando el emoji en vez de la palabra evade el
-# suelo -- esta declarado en `docs/ai/sandbox-rules.md`, no escondido.
+# Un VEREDICTO de este panel es su tramo en negrita, y MEDIDO el 2026-10-02 las
+# SIETE filas exentas escriben el marcador de cierre dentro de uno. Por eso el
+# cierre se busca en los veredictos y no en la fila entera: una palabra suelta en
+# prosa -- "y esta fila NO esta CERRADA todavia", o un `(marcada *CERRAD*)` al
+# final -- deja de eximir a nadie, y esas dos son exactamente las formas que el
+# mutation-auditor midio VIVAS contra este marcador.
+_RE_NEGRITA = re.compile(r"\*\*(.+?)\*\*")
+# El cierre tiene que ser TRAZABLE: un id que existe en el tablero o en un
+# registro de este repo. MEDIDO: las 7 exentas tienen al menos uno (87 CYCLE-045 y
+# TASK-055, 90 TASK-057, 93 TASK-031, 94 CYCLE-026/047 y TASK-057, 96 y 97
+# TASK-037, 99 CYCLE-044 y TASK-054), luego exigirlo NO obliga a tocar ninguna fila.
+_RE_ID_TRAZABLE = re.compile(r"(?:TASK|CYCLE)-\d+")
+# Un veredicto que NIEGA el cierre no cierra. MEDIDO: en las 7 exentas no hay un
+# solo `NO`, `NUNCA` ni `JAMAS` en los 40 caracteres ANTERIORES al marcador, y el
+# "no en el cuerpo" de la 93 va DESPUES ("CERRADA en la cola, no en el cuerpo"), de
+# modo que la regla mira solo atras y no confunde esa fila con un cierre negado.
+_RE_NEGACION_DEL_CIERRE = re.compile(r"\b(?:NO|NUNCA|JAMAS)\b[^.;:!?]{0,40}CERRAD")
+# El panel se cita a si mismo y el contrato dice, textual, que la verdad de una
+# fila se deriva FUERA de el. MEDIDO el 2026-10-02: 4 de las 15 filas reales (87,
+# 89, 100 y 101) citan `STATUS.md` y el check lo contaba como ruta valida, luego
+# el panel ya se autocertificaba. NINGUNA de las cuatro se queda sin fuente al
+# rechazar esta: las cuatro tienen ademas rutas y tareas propias.
+EL_PANEL_NO_ES_ANCLA = "STATUS.md"
+# Fin de frase para decidir si una cifra `N tests` esta ATRIBUIDA a otro documento
+# (S5). El punto cuenta solo seguido de espacio: los nombres de fichero lo llevan
+# pegado ("`docs/index.md:25`") y un corte por `.` a secas partiria la frase
+# justo donde esta la atribucion.
+_RE_FIN_DE_FRASE = re.compile(r"\.\s")
+# La gravedad del panel esta en EMOJI, no en palabra: MEDIDO el 2026-10-02, 14 de
+# las 15 filas no contienen ni una palabra ROJO/AMARILLO/VERDE, y la unica que la
+# tiene es la 98, donde "ROJO" es el COLOR de un diagnostico de UI y no una
+# severidad. El suelo se leia por palabra, luego no se ejecutaba nunca -- lo que el
+# mutation-auditor midio como G2 y G3a. Se mapea el glifo a la palabra AL LEER, y
+# el informe sigue siendo ASCII puro (trampa #16: la consola es cp1252).
+GLIFOS_DE_GRAVEDAD = {
+    "\U0001f534": "ROJO",
+    "\U0001f7e1": "AMARILLO",
+    "\U0001f7e2": "VERDE",
+}
+# La gravedad se lee como PALABRA y no como simbolo en el INFORME: la consola es
+# cp1252 (trampa #16) y un emoji en el `print()` tumba el validador entero.
 _RE_GRAVEDAD = re.compile(r"\b(ROJO|AMARILLO|VERDE)\b")
 CODIGOS_DE_SALIDA_SOBRECARGADOS = ("WOPT_COMMIT_OK", "WOPT_NOOP")
+# Que un fichero DECLARE el codigo de salida sobrecargado es una FORMA, no una
+# mencion. MEDIDO el 2026-10-02 con el predicado viejo ("un 0 antes del nombre en
+# cualquier linea"): casaba en `validate_docs.py`, en `run_tests.py`, en
+# `tasks.json` y en el propio `STATUS.md`, y por eso el suelo ataba a filas cuya
+# materia prima es otra y bajar el emoji de la 100 habria puesto el repo en rojo.
+# La DECLARACION es la linea que EMPIEZA por el token `0` seguido del nombre, que
+# es como lo escribe `.taskmaster/git_safe_commit.py:13-14`; una tabla que TABULA
+# el contrato (`docs/ai/sandbox-rules.md:55-56`) lo documenta, no lo declara.
+_RE_DECLARACION_DE_CODIGO = re.compile(r"^[ \t]*0[ \t]+")
 # Marca de la fila que ESCRIBE el criterio. MEDIDO: solo la nombra esa fila, y
 # ninguna de las 7 exentas. Se usa el nombre de la funcion y no la palabra
 # "criterio" porque la fila 93, que esta CERRADA de verdad, habla de "el check de
@@ -747,18 +793,78 @@ def _filas_de_deuda(cuerpo):
             if linea.startswith("- **")]
 
 
-def _esta_cerrada(fila):
-    """`True` si la fila esta CERRADA: `CERRAD` en mayusculas FUERA de codigo.
+def _esta_cerrada(root, fila):
+    """`True` si la fila esta CERRADA de verdad: cuatro condiciones a la vez.
 
-    Ver el `sub` en la nota de `_RE_CODIGO_INLINE`: quitarlo hace que el panel se
-    exima a si mismo, y ese mutante es el que la fila (f1) del test de este
-    check mata.
+    El marcador de cierre solo se aceptaba como palabra suelta, y MEDIDO el
+    2026-10-02 eso no hacia nada: la fila 89 (la 🔴 del `spawn EPERM`) se
+    eximia a si misma con CUALQUIER frase normal que hablara de cierre --
+    "y esta fila NO esta CERRADA todavia" la volvia EXENTA y el validador
+    respondia 115 OK / 0 FAIL. Cuatro condiciones, todas medidas sobre las 7
+    filas exentas reales, que las cumplen sin tocar una sola:
+
+    1. `CERRAD` en mayusculas FUERA de codigo inline (el `sub` que ya estaba:
+       sin el, el panel se exime escribiendo el criterio entre comillas).
+    2. El marcador esta dentro de un VEREDICTO en negrita. Una mencion en
+       prosa o en cursiva no cierra nada.
+    3. La fila nombra un id TRAZABLE (`TASK-NNN` o `CYCLE-NNN`) que existe en
+       `.taskmaster/tasks.json` o en un changelog o en el journal.
+    4. El veredicto no NIEGA el cierre.
+
+    Las cuatro fallan ABIERTO: lo que no demuestra su cierre queda VIVA y tiene
+    que demostrar su ancla, que es la direccion en la que un validador puede
+    equivocarse sin dejar de vigilar nada.
     """
-    return bool(_RE_CERRADA.search(_RE_CODIGO_INLINE.sub(" ", fila or "")))
+    texto = fila or ""
+    ids = None
+    for veredicto in _RE_NEGRITA.findall(texto):
+        limpio = _RE_CODIGO_INLINE.sub(" ", veredicto)
+        if not _RE_CERRADA.search(limpio):
+            continue
+        if _RE_NEGACION_DEL_CIERRE.search(limpio):
+            continue
+        if ids is None:
+            ids = _ids_trazables(root, texto)
+        if ids:
+            return True
+    return False
+
+
+def _ids_trazables(root, fila):
+    """Los `TASK-NNN`/`CYCLE-NNN` que la fila nombra Y que existen en el repo.
+
+    Un id que no resuelve no es una referencia: es decoracion. Y sin esta
+    exigencia, "CERRADA" sola -- o "CERRADA en CYCLE-999" -- alcanza para
+    eximirse de todo.
+    """
+    estados = _estados_de_tareas(root)
+    tareas = [t for t in dict.fromkeys(_RE_TAREAS.findall(fila or ""))
+              if t in estados]
+    return tareas + _ciclos_de_la_fila(root, fila)
 
 
 def _ruta_de_ancla(root, nombre):
-    """La ruta REAL del arbol a la que apunta `nombre`, o `None` si no existe."""
+    """La ruta REAL del arbol a la que apunta `nombre`, o `None` si no ancla.
+
+    `STATUS.md` NO es una fuente: el panel no puede certificarse a si mismo, y
+    el contrato de `TASK-060` lo dice textual ("la verdad debe derivarse de
+    FUERA del panel") sin que ninguna parte del codigo lo aplicara. MEDIDO el
+    2026-10-02: cuatro de las quince filas reales (87, 89, 100 y 101) citan
+    `STATUS.md` y el check lo contaba como ruta resuelta. MEDIDO tambien que
+    rechazarlo no deja a ninguna de las cuatro sin fuente: todas tienen ademas
+    rutas y tareas propias, luego el veredicto no cambia ni una vez.
+    """
+    real = _ruta_existente(root, nombre)
+    return None if real == EL_PANEL_NO_ES_ANCLA else real
+
+
+def _ruta_existente(root, nombre):
+    """La ruta del arbol a la que apunta `nombre`, o `None` si no existe.
+
+    La EXISTENCIA sola, sin el filtro del panel: el mensaje de "ancla no
+    resoluble" tiene que distinguir "no existe en el arbol" de "existe pero no
+    es fuente de verdad", y son dos hechos distintos.
+    """
     for prefijo in PREFIJOS_DE_ANCLA:
         relativa = prefijo + nombre
         if os.path.isfile(os.path.join(root, *relativa.split("/"))):
@@ -776,10 +882,19 @@ def _citas_de_la_fila(fila):
     (`fichero:linea identificador`) es la unica forma que el panel usa de verdad
     -- `run_tests.py:1352 test_git_safe_commit_fail_safe` -- y es la que permite
     distinguir S1 de S2 sin inventar emparejamientos que el panel no escribe.
+
+    Un tramo VACIO (`` `` `` o `` ` ` ``) se salta. MEDIDO el 2026-10-02:
+    `palabras[0]` sobre un token vacio reventaba con `IndexError` y el validador
+    entero moria con traceback SIN IMPRIMIR INFORME -- la misma clase que
+    `_recuento_de_tests` en el ciclo 27 y el journal en el 47, aqui como
+    regresion en codigo nuevo. Se arregla el PRODUCTOR y no el consumidor, que es
+    la unica forma de no dejar la expectativa escrita a mano.
     """
     citas = []
     for token in _RE_CITAS.findall(fila or ""):
         palabras = token.split(None, 1)
+        if not palabras:
+            continue
         nombre = _RE_NUMERO_DE_LINEA.sub("", palabras[0].strip().rstrip(",.;:)"))
         if not _RE_RUTA.match(nombre):
             continue
@@ -857,28 +972,66 @@ def _anclas_resolubles(root, fila):
 
 
 def _declara_el_codigo_sobrecargado(root, relativa):
-    """`True` si el fichero sigue declarando `0` para los DOS codigos de salida `0`.
+    """`True` si el fichero DECLARA `0` para los DOS codigos de salida `0`.
 
     El suelo de gravedad (el S1 del ciclo #48) se apoya en UN comprobable, y este
     es el unico que existe en el repo de forma estable: `git_safe_commit.py`
-    declara `0` para `WOPT_COMMIT_OK` y para `WOPT_NOOP`, y la tabla de
-    `docs/ai/sandbox-rules.md` lo tabula. Se exigen los DOS en el MISMO fichero
-    porque un `0` suelto en un fichero cualquiera no demuestra nada.
+    declara `0` para `WOPT_COMMIT_OK` y para `WOPT_NOOP`. Se exigen los DOS en el
+    MISMO fichero porque un `0` suelto en un fichero cualquiera no demuestra
+    nada.
+
+    DECLARAR es una FORMA y no una mencion, y el cambio no es cosmetico. MEDIDO
+    el 2026-10-02: buscando "un 0 antes del nombre en cualquier linea" el
+    predicado casaba en `validate_docs.py` (su propio docstring), en `run_tests.py`
+    (la cadena de una fixture), en `.taskmaster/tasks.json` (la descripcion de
+    una tarea) y en el propio `STATUS.md`. Con esa lectura, mapear el emoji
+    habria puesto el repo en rojo HOY: las filas 100 y 101 declaran 🟡 y citan
+    ficheros que solo MENCIONAN el contrato. Se exige la linea que empieza por el
+    token `0` seguido del nombre, que es como lo escribe
+    `.taskmaster/git_safe_commit.py:13-14`; la tabla de
+    `docs/ai/sandbox-rules.md:55-56` lo TABULA y no lo DECLARA.
     """
     cuerpo = _leer_texto(root, relativa) or ""
     for codigo in CODIGOS_DE_SALIDA_SOBRECARGADOS:
-        if not re.search(r"(?<!\d)0\b[^\n]*" + codigo, cuerpo):
+        forma = re.compile(r"^[ \t]*0[ \t]+" + codigo + r"\b", re.MULTILINE)
+        if not forma.search(cuerpo):
             return False
     return True
 
 
+def _gravedad_declarada(fila):
+    """La severidad que la fila DECLARA, como palabra ASCII, o `None`.
+
+    El panel se expresa en emoji y el validador leia en palabras, luego el suelo
+    no se ejecutaba nunca: MEDIDO el 2026-10-02, 14 de las 15 filas no tienen ni
+    una palabra `ROJO`/`AMARILLO`/`VERDE`, y la unica que la tiene (la 98) la usa
+    para el color de un diagnostico de UI. El mapeo va al LEER, no al imprimir:
+    el informe sigue siendo ASCII puro porque la consola es cp1252 (trampa #16).
+    """
+    texto = _RE_CODIGO_INLINE.sub(" ", fila or "")
+    for glifo, palabra in GLIFOS_DE_GRAVEDAD.items():
+        texto = texto.replace(glifo, " " + palabra + " ")
+    encontrado = _RE_GRAVEDAD.search(texto)
+    return encontrado.group(1) if encontrado else None
+
+
 def _severidad_minima(root, anclas):
-    """`"ROJO"` si algun ancla de ruta tiene su comprobable VIVO; `""` si no.
+    """`"ROJO"` si algun ancla de ruta DECLARA el codigo sobrecargado; `""` si no.
 
     UN solo suelo, y es una DECISION: la gravedad de una fila es un TEXTO, y
     derivarla exigiria escribir a mano la politica de gravedad, que es la misma
     mentira un nivel mas arriba. Lo unico que se deriva de verdad es si el
     PROBLEMA sigue vivo.
+
+    Se recorre la lista de ANCLAS y no la de asuntos del titulo, y es una
+    decision medida. El auditor propuso atar el suelo a los asuntos porque al
+    mapear el emoji las filas 100 y 101 salen en rojo; medido, esas dos filas NO
+    citan `git_safe_commit.py` y lo que las hacia tropezar era el predicado, que
+    caseba en `validate_docs.py`, `run_tests.py`, `tasks.json` y el propio panel.
+    Arreglado el PREDICADO (que era la causa), atar el suelo al titulo lo dejaria
+    muerto para siempre -- ni una sola fila nombra en su titulo un fichero que
+    declare el contrato -- y con el se iria el unico criterio del contrato que
+    este suelo tiene que matar (M5: bajar la 🔴 de la 88 o de la 89).
 
     `root` va de primero y no es mio: el contrato de la tarea lo decia con un
     solo argumento, pero un auxiliar que LEE el arbol no puede derivar `root` de
@@ -889,6 +1042,51 @@ def _severidad_minima(root, anclas):
         if _declara_el_codigo_sobrecargado(root, relativa):
             return "ROJO"
     return ""
+
+
+def _cita_un_fichero(frase):
+    """`True` si `frase` cita un fichero del arbol entre acentos graves."""
+    for token in _RE_CITAS.findall(frase or ""):
+        palabras = token.split(None, 1)
+        if not palabras:
+            continue
+        nombre = _RE_NUMERO_DE_LINEA.sub("", palabras[0].strip().rstrip(",.;:)"))
+        if _RE_RUTA.match(nombre):
+            return True
+    return False
+
+
+def _cifras_declaradas_sin_atribuir(fila):
+    """`[int]`: las cifras `N tests` que la fila DECLARA sin atribuirlas.
+
+    Una cifra ATRIBUIDA es la que la fila le endosa a otro documento -- dentro
+    de codigo inline, o en la misma frase que cita un fichero. Una cifra SUELTA
+    es una AFIRMACION de la fila sobre el recuento, y solo esa se comprueba
+    contra el derivado con `ast`.
+
+    MEDIDO el 2026-10-02 sobre el panel real: las TRES cifras que declaran las
+    filas vivas (100 declara «96 tests» dos veces y 101 declara «103 tests») son
+    atribuciones a `docs/index.md`, y sin esta distincion el arreglo de N1 --
+comparar las declaradas contra el derivado -- pondria el repo en rojo hoy por
+    una fila que cita un numero A PROPOSITO para explicar una correccion. Y al
+    reves: verificarlas contra el fichero al que se atribuyen es peor, porque la
+    fila 100 existe para documentar que un documento declaraba una cifra
+    desfasada, y comprobarla contra el contenido actual de ese documento haria
+    su sujeto imposible de redactar.
+    """
+    texto = fila or ""
+    tramos = [(m.start(), m.end()) for m in _RE_CITAS.finditer(texto)]
+    sueltas = []
+    for m in _RE_CIFRA_DE_TESTS.finditer(texto):
+        if any(inicio <= m.start() < fin for inicio, fin in tramos):
+            continue
+        antes = _RE_FIN_DE_FRASE.split(texto[:m.start()])[-1]
+        despues = _RE_FIN_DE_FRASE.split(texto[m.end():])[0]
+        frase = antes + texto[m.start():m.end()] + despues
+        if _cita_un_fichero(frase):
+            continue
+        sueltas.append(int(m.group(1)))
+    return sueltas
 
 
 def _comprobar_deuda_con_anclas(root, errors, ok):
@@ -940,7 +1138,7 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
     for numero, fila in filas:
         anclas = _anclas_resolubles(root, fila)
 
-        if _esta_cerrada(fila):
+        if _esta_cerrada(root, fila):
             exentas += 1
             # Una fila que ESCRIBE el criterio no puede declararse CERRADA: se
             # vigila a si misma y el check nace verde sobre lo que tiene que
@@ -957,8 +1155,8 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
                                      if s != "completed")
                 errors.append(
                     f"STATUS.md Deuda fila {numero}: la fila del criterio se ha "
-                    "autoeximido: lleva el marcador de cierre fuera de codigo "
-                    f"inline y es la fila que escribe este check"
+                    "autoeximido: lleva el marcador de cierre en un veredicto y es "
+                    f"la fila que escribe este check"
                     + (f", declarando ademas {', '.join(pendientes)} sin cerrar"
                        if pendientes else "")
                     + ". Una fila que exige anclas no puede quedarse sin vigilar"
@@ -1009,14 +1207,27 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
                     "run_tests.py, asi que la cifra que declara esta fila no se "
                     "puede comprobar. Nunca verde por omision"
                 )
-            elif re.search(r"(?<!\d)" + str(derivado) + r"(?!\d)", fila):
+            elif derivado in anclas["numeros"]:
+                # S5 acredita la cifra que la fila DECLARA, no la que la fila
+                # menciona de pasada. MEDIDO: el predicado viejo era
+                # `re.search(derivado, fila)`, asi que basta con que el derivado
+                # apareciera en CUALQUIER frase de la fila -- y mutar la cifra
+                # que la fila declara ("96 tests" -> "42 tests" en la 100)
+                # conservando el 104 en otra frase salia en verde.
                 fuentes.append("numero")
-            else:
+            elif _cifras_declaradas_sin_atribuir(fila):
+                # Si TODAS las cifras de la fila son CITAS de otro documento
+                # (`docs/index.md` declara «96 tests», «(103 tests)») no se acusa
+                # nada: una cita es informacion, no una afirmacion de la fila, y
+                # comprobarla contra el contenido actual de ese documento haria
+                # imposible de redactar la fila 100, que existe para documentar
+                # precisamente que ese documento declaraba una cifra desfasada.
+                # Queda declarado como limite residual, no escondido.
                 errors.append(
                     f"STATUS.md Deuda fila {numero}: declara el numero "
-                    f"{anclas['numeros']} que NO es el derivado con ast de "
-                    f"run_tests.py ({derivado}). El panel no es fuente de verdad "
-                    "de si mismo"
+                    f"{_cifras_declaradas_sin_atribuir(fila)} que NO es el "
+                    f"derivado con ast de run_tests.py ({derivado}). El panel no "
+                    "es fuente de verdad de si mismo"
                 )
 
         if not fuentes:
@@ -1027,7 +1238,15 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
                 "hecho"
             )
             for nombre, _ in _citas_de_la_fila(fila):
-                if _ruta_de_ancla(root, nombre) is None:
+                if nombre == EL_PANEL_NO_ES_ANCLA and _ruta_existente(root, nombre):
+                    errors.append(
+                        f"STATUS.md Deuda fila {numero}: ancla NO RESOLUBLE: "
+                        f"{nombre} EXISTE pero es el propio panel. La verdad de "
+                        "una fila se deriva de fuera del panel; el panel "
+                        "certificandose a si mismo no es un ancla, es la "
+                        "ausencia de ancla"
+                    )
+                elif _ruta_de_ancla(root, nombre) is None:
                     errors.append(
                         f"STATUS.md Deuda fila {numero}: ancla NO RESOLUBLE: "
                         f"{nombre} no existe en el arbol (probado en la raiz, "
@@ -1054,13 +1273,13 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
                 "criterio describe"
             )
 
-        gravedad = _RE_GRAVEDAD.search(_RE_CODIGO_INLINE.sub(" ", fila))
+        gravedad = _gravedad_declarada(fila)
         suelo = _severidad_minima(root, anclas)
-        if suelo and gravedad and gravedad.group(1) != "ROJO":
+        if suelo and gravedad and gravedad != "ROJO":
             vivos = [r for r in anclas["rutas"]
                      if _declara_el_codigo_sobrecargado(root, r)]
             errors.append(
-                f"STATUS.md Deuda fila {numero}: declara {gravedad.group(1)} pero "
+                f"STATUS.md Deuda fila {numero}: declara {gravedad} pero "
                 f"su comprobable SIGUE VIVO: {vivos[0] if vivos else suelo} declara "
                 "0 para WOPT_COMMIT_OK y para WOPT_NOOP. La gravedad solo baja si "
                 "el problema se cierra"

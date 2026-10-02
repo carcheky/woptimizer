@@ -43,13 +43,15 @@ Las tres premisas caidas en el mismo sitio: **el panel se cita a si mismo por nu
 - `_anclas_resolubles(root, fila) -> dict` — `{"rutas": [...], "contenido": [...], "tareas": {id: status}, "ciclos": [...], "numeros": [...]}`.
 - `_severidad_minima(anclas) -> str` — `""` o `"ROJO"`.
 
-### 3.1 El marcador de cierre (P1 corregida)
+### 3.1 El marcador de cierre (P1 corregida, y endurecida tras el FAIL)
 
 Una fila esta **CERRADA** si, **tras eliminar los tramos de codigo inline** (`` `...` ``), contiene el literal `CERRAD` en **mayusculas**.
 
 Medido: **7 exentas** (87, 90, 93, 94, 96, 97, 99) y **8 vivas** (88, 89, 91, 92, 95, 98, 100, 101).
 
 **Lo que resuelve el bucle de autorreferencia** es precisamente quitar el codigo inline antes de buscar: la fila 101 lleva `CERRAD` **solo dentro de comillas invertidas**, porque esta *escribiendo* el criterio. Sin esa limpieza el panel se declararia cerrado a si mismo. Con ella, la fila del criterio se declara **VIVA**, que es lo correcto: declara `TASK-060`.
+
+**ENDURECIDO en el cierre del ciclo #49, y el motivo es un FAIL medido.** Con el marcador de una sola palabra, la fila 89 se **eximia a si misma** con cualquier frase normal que hablara de cierre -- "y esta fila NO esta CERRADA todavia", o un `(marcada *CERRAD*)` al final -- y el validador respondia `115 OK / 0 FAIL`. Una palabra suelta no es un veredicto. Ahora son **cuatro** condiciones a la vez, y las cuatro se cumplen en las 7 exentas reales **sin tocar ninguna fila**: (1) `CERRAD` en mayusculas **fuera de codigo inline**; (2) dentro de un **veredicto en negrita**; (3) la fila nombra un id **trazable** (`TASK-NNN` o `CYCLE-NNN`) que existe; (4) el veredicto **no niega** el cierre. Las cuatro fallan ABIERTO: lo que no demuestra su cierre queda VIVA y tiene que demostrar su ancla. El residuo que queda, medido y escrito, es el **5 de `docs/ai/sandbox-rules.md`**: un cierre falsificado con la forma completa del veredicto sigue eximiendo si la fila ya cita ids resolubles.
 
 **Descartado, con numero:**
 
@@ -77,7 +79,9 @@ Ademas del marcador: **ninguna fila viva puede apoyarse solo en una tarea cerrad
 
 ### 3.4 El suelo de gravedad (S1 del ciclo #48)
 
-`_severidad_minima(anclas)` deriva **un** suelo, y solo uno, porque es el unico comprobable de gravedad que existe en el repo de forma estable: si un ancla de la fila resuelve a un fichero que **sigue declarando `0` para `WOPT_COMMIT_OK` y para `WOPT_NOOP`**, el suelo es `ROJO`. Medido: `.taskmaster/git_safe_commit.py:13-14` los declara, y `docs/ai/sandbox-rules.md:55-56` los tabula. Una fila viva que se declare `AMARILLO` con ese comprobable presente sale en rojo: **bajar la gravedad sin cerrar el problema es documentacion fail-open**, que es exactamente lo que la fila 89 dejo escrito tras sufrirlo una vez.
+`_severidad_minima(anclas)` deriva **un** suelo, y solo uno, porque es el unico comprobable de gravedad que existe en el repo de forma estable: si un ancla de la fila resuelve a un fichero que **sigue declarando `0` para `WOPT_COMMIT_OK` y para `WOPT_NOOP`**, el suelo es `ROJO`. Una fila viva que se declare `AMARILLO` con ese comprobable presente sale en rojo: **bajar la gravedad sin cerrar el problema es documentacion fail-open**, que es exactamente lo que la fila 89 dejo escrito tras sufrirlo una vez.
+
+**CORREGIDO en el cierre del ciclo #49 tras medir el FAIL, y las dos correcciones son obligatorias.** (i) **La gravedad se lee del EMOJI**: el panel se expresa en 🔴🟡🟢 y el validador leia palabras, luego la condicion no se cumplia ni una vez (medido: `gravedad-palabra: NINGUNA` en 14 de 15 filas). Se mapea el glifo a la palabra **al leer**, y el informe sigue siendo ASCII puro (trampa #16). (ii) **"Declarar" es una FORMA y no una mencion**: la linea que **empieza** por el token `0` seguido del nombre. Con el predicado viejo ("un `0` antes del nombre en cualquier linea") casaba en `validate_docs.py`, en `run_tests.py`, en `tasks.json` y en el propio panel, y mapear el emoji sin arreglarlo **ponia el repo en rojo hoy** con las filas 100 y 101. Sin el predicado, el suelo esta atado a las citas y no a los asuntos: se recorre `anclas["rutas"]` y se declara la decision en el codigo y en el limite 4 de `docs/ai/sandbox-rules.md`.
 
 ---
 
@@ -93,7 +97,7 @@ Cada fila dice **por que** el test discriminaria, no solo que falla. Los mensaje
 | **M4** | **Reabrir una fila cerrada sin decirlo** (borrar `CERRADA` de la 94) | la fila pasa a viva y su unica fuente es una tarea cerrada | `...VIVA y su UNICA fuente es una TAREA YA CERRADA: TASK-057.status == completed. Una fila cerrada reabierta sin decirlo es el fallo que el criterio describe` |
 | **M5** | **Rebajar la 🔴 de la 89 a 🟡 sin cerrarla** (fue el S1 del ciclo #48) | suelo de gravedad | `...declara AMARILLO pero su comprobable SIGUE VIVO: .taskmaster/git_safe_commit.py declara 0 para WOPT_COMMIT_OK y para WOPT_NOOP. La gravedad solo baja si el problema se cierra` |
 | **M6** | Que el panel se autoderive (cambiar el `103` de la 100 por `96`) | S5 | `...numero 96 que NO es el derivado con ast de run_tests.py (103). El panel no es fuente de verdad de si mismo` |
-| **M7** | Autoeximirse (poner `CERRADA` en mayusculas **fuera** de comillas invertidas en la 101) | clasificacion | `...la fila del criterio se ha autoeximido: lleva el marcador de cierre fuera de codigo inline` |
+| **M7** | Autoeximirse (poner `CERRADA` en mayusculas **fuera** de comillas invertidas en la 101) | clasificacion | `...la fila del criterio se ha autoeximido: lleva el marcador de cierre en un veredicto y es la fila que escribe este check` |
 | **M8** | Borrar o renombrar el encabezado de la seccion | seccion ausente | `STATUS.md: no existe la seccion de Deuda Tecnica Conocida. Sin seccion no hay bucle que priorizar, y un validador que no encuentra lo que valida no es un validador` |
 | **M9** | Vaciar la seccion (dejar el encabezado y cero filas) | inventario | `...0 fila(s). La seccion que gobierna el Paso 1 vaciada es indistinguible de la que aun no existe` |
 | **M10** | *(check 7, no el 8)* Mover una llamada `test_*()` al otro lado del marcador de `run_tests.py` | reparto | `run_tests.py: declara 93 backend + 10 headless; el marcador de run_tests.py:12919 separa 94/9. El total puede seguir dando 103 mientras el reparto miente` |
@@ -155,7 +159,7 @@ La regla del repo es que lo que el check no cubre se escribe, no se omite. Esto 
 4. **El corte de la seccion es por linea.** Una fila de deuda escrita como sub-vinetas (`  - `) no se cuenta como fila, y una seccion partida en dos encabezados solo se lee la primera.
 5. **El check no juzga la semantica del ancla.** Que un fichero exista y contenga el identificador no demuestra que la fila diga la verdad sobre el.
 6. **`docs/index.md` lo vigila el check 7, no el 8.** Si el Paso 3 no extiende la lista de `validate_docs.py:116-118` con ese fichero y su forma real (`(103 tests)`, no `run_tests.py` + `\d+ tests`), la 🟡 de la fila 100 queda **sin ancla de verdad** aunque este check la de por buena: el 8 certifica que la fila cita `docs/index.md`, no que ese documento no vuelva a mentir.
-7. **Los emoji se comprueban como palabras.** El check lee `ROJO`/`AMARILLO`/`VERDE` porque la consola es cp1252 (trampa #16) y un simbolo en el `print()` tumba el validador entero. Un panel que bajase la severidad cambiando el emoji en vez de la palabra evadiria el suelo.
+7. **Lo que queda del emoji, escrito con la verdad (CORREGIDO en el ciclo #49 tras el FAIL del auditor).** Este punto decia que "los emoji se comprueban como palabras" y que un panel que bajase la severidad cambiando el emoji **evadiria el suelo**. **Medido, esa afirmacion era falsa en sus dos partes**, y no hacia falta inventar un agujero nuevo para encontrarla: el emoji **se mapea** a `ROJO`/`AMARILLO`/`VERDE` al leer, porque el problema **no era el emoji: era que la palabra no existia en el panel**. Medido el 2026-10-02, 14 de las 15 filas no tienen ni una palabra de gravedad y la unica que la tiene (la 98) la usa para el *color* de un diagnostico de UI. El limite REAL que queda escrito es el **4 de `docs/ai/sandbox-rules.md`**: el suelo no tiene fila victima hoy, porque ninguna fila viva declara una gravedad por debajo de su suelo, asi que neutralizarlo entero deja el panel verde aunque M5 (bajar la 🔴 de la 88 o de la 89) si muera.
 
 ---
 

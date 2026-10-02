@@ -12793,7 +12793,7 @@ def _run_tests_sintetico(n_tests, n_headless, con_marcador=True):
 
 
 def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
-    """TASK-060 (ciclo #49): el CHECK 8 de `validate_docs.py`, trece escenarios.
+    """TASK-060 (ciclo #49): el CHECK 8 de `validate_docs.py`, diecinueve escenarios.
 
     El ciclo #48 sano 13 filas de la seccion `## Deuda Tecnica Conocida` y su
     auditoria cerro PARTIAL por una razon MEDIDA: 8 de 9 mutaciones sobrevivieron
@@ -12808,7 +12808,9 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
     `ast`" de "lei el numero correcto a mano", que es justo el mutante que esa
     fila existe para matar.
 
-    LAS TRECE FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla es el contrato):
+    LAS DIECINUEVE FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla es el
+    contrato, y `len(FILAS) == 19` la cuenta para que borrar una fila no salga
+    gratis):
 
     - (a) fila viva cuya unica cita no existe -> "VIVA sin ancla resoluble" (0 de
       5) y "ancla NO RESOLUBLE". Mata: no exigir ninguna fuente.
@@ -12848,6 +12850,25 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
       no derivar el reparto, que hoy nadie vigila.
     - (k) el marcador headless NO aparece -> "NO SE ENCUENTRA el marcador". Mata:
       devolver `0 + 0` en verde cuando el reparto no se puede derivar.
+    - (l) la palabra `CERRAD` en PROSA, sin veredicto y sin id trazable -> "VIVA
+      sin ancla resoluble". Mata: el marcador de una sola palabra, con el que la
+      fila 89 del panel se eximia a si misma con cualquier frase normal (E1).
+    - (m) veredicto en NEGRITA que NIEGA el cierre ("**NO CERRADA todavia**") con un
+      id que resuelve -> la fila sigue VIVA. Mata: la regla de negacion, que sin
+      la regla caeria en (l) pero no en este caso: aqui hay negrita y hay id.
+    - (n) fila cuya unica verdad es el propio `STATUS.md` -> "ancla NO RESOLUBLE:
+      STATUS.md EXISTE pero es el propio panel". Mata: la autocertificacion del
+      panel (A1), que hoy ya se da en cuatro filas reales.
+    - (o) la fila DECLARA la cifra que el `ast` deriva y no cita a nadie mas -> CERO
+      errores. Mata: `elif False` en S5 (la rama positiva no estaba cubierta) y la
+      constante escrita a mano (C8), porque el derivado de este arbol es 7 y no 104.
+    - (p) un tramo de codigo inline VACIO (`` y ` `) -> el validador devuelve INFORME
+      y la fila se cuenta. Mata: el `IndexError` que tumbaba el validador entero
+      sin imprimir informe.
+    - (q) un fichero que SOLO MENCIONA el contrato en su documentacion, citado por
+      una fila que declara AMARILLO -> NINGUN error. Mata: el predicado viejo del
+      suelo, que ataba la gravedad a cualquier fichero que hablara de los codigos
+      (incluido el propio `validate_docs.py`).
 
     LIMITACION CONOCIDA, y hay que decirla: las trece filas comparten esqueleto y
     comparten helper, luego comparten punto ciego -- una fila solo mide la forma de
@@ -12886,6 +12907,14 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
                   "0  WOPT_COMMIT_OK <hash> <mensaje>  commit creado de verdad\n"
                   "0  WOPT_NOOP <motivo>  no hay nada que comitear\n"
                   "1  WOPT_FAIL <operacion> <detalle>  fallo de git\n")
+        # Y un fichero que SOLO MENCIONA el contrato en su documentacion. Es el
+        # que separa "DECLARA" de "habla de": con el predicado viejo (un 0 antes
+        # del nombre en cualquier linea) este fichero ataba el suelo a filas
+        # cuya materia prima era otra, y con el de ahora no ata nada.
+        _escribir("otro_wrapper.py",
+                  '"""Un envoltorio que solo HABLA del contrato, no lo declara."""\n'
+                  "# Devuelve 0 para WOPT_COMMIT_OK y para WOPT_NOOP, segun su\n"
+                  "# documentacion. No es el contrato de salida de nada.\n")
 
         def _panel(filas, con_seccion=True, reparto="6 backend + 1 headless",
                    cifra="7"):
@@ -12904,56 +12933,103 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
             ("a: fila viva cuya unica cita no existe",
              _panel([SIN_ANCLA]),
              ["VIVA sin ancla resoluble (0 fuentes de 5)",
-              "ancla NO RESOLUBLE: run_testz.py no existe en el arbol"], []),
+              "ancla NO RESOLUBLE: run_testz.py no existe en el arbol"], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
             ("b: la MISMA fila marcada CERRADA",
-             _panel([SIN_ANCLA + " **CERRADA** en el ciclo #1."]),
-             [], ["VIVA sin ancla resoluble", "ancla NO RESOLUBLE"]),
+             _panel([SIN_ANCLA + " **\U0001f534 CERRADA en TASK-001.**"]),
+             [], ["VIVA sin ancla resoluble", "ancla NO RESOLUBLE"],
+             "1 exenta(s) CERRADA(s), 0 viva(s)"),
             ("c: la cifra que el panel se deriva a si mismo",
              _panel([CON_ANCLA + " Y repite como si fuera verdad la cifra que "
                      "declara el propio panel: 42 tests."], cifra="42"),
-             ["NO es el derivado con ast de run_tests.py (7)"], []),
+             ["NO es el derivado con ast de run_tests.py (7)"], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
             ("c2: el total del arbol cambia y el panel se queda con la cifra vieja",
              _panel([CON_ANCLA + " Y repite la cifra que el panel tiene por "
                      "cierta: 7 tests."]),
-             ["NO es el derivado con ast de run_tests.py (9)"], []),
+             ["NO es el derivado con ast de run_tests.py (9)"], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
             ("d: panel de SOLO filas cerradas",
-             _panel([CON_ANCLA + " **CERRADA** en el ciclo #1.",
-                     "- **Fila cerrada sin ancla.** **CERRADA** en el ciclo #2."]),
-             [], ["Deuda"]),
+             _panel([CON_ANCLA + " **\U0001f534 CERRADA en TASK-001.**",
+                     "- **Fila cerrada sin ancla.** **\U0001f534 CERRADA en "
+                     "TASK-001.**"]),
+             [], ["Deuda"], "2 exenta(s) CERRADA(s), 0 viva(s)"),
             ("e: seccion ausente",
              _panel([CON_ANCLA], con_seccion=False),
-             ["no existe la seccion de Deuda Tecnica Conocida"], []),
+             ["no existe la seccion de Deuda Tecnica Conocida"], [], ""),
             ("f1: el marcador de cierre DENTRO de codigo inline no exime a nadie",
              _panel(["- **Fila que se exime sola:** escribe `CERRAD` en mayusculas "
                      "dentro de codigo inline y no cita ninguna."]),
-             ["VIVA sin ancla resoluble"], []),
+             ["VIVA sin ancla resoluble"], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
             ("f2: la fila que escribe el criterio no puede declararse cerrada",
              _panel(["- **Fila del criterio:** escribe "
                      "`_comprobar_deuda_con_anclas(root, errors, ok)` como la regla "
-                     "de toda fila viva y se marca **CERRADA** para no estar "
-                     "vigilada."]),
-             ["la fila del criterio se ha autoeximido"], []),
+                     "de toda fila viva y se marca **\U0001f534 CERRADA en TASK-002** "
+                     "para no estar vigilada."]),
+             ["la fila del criterio se ha autoeximido"], [],
+             "1 exenta(s) CERRADA(s), 0 viva(s)"),
             ("g: la unica fuente es una TAREA ya cerrada",
              _panel(["- **Fila reabierta:** su unica prueba es `TASK-001`, que ya "
                      "esta en `completed`."]),
              ["su UNICA fuente es una TAREA YA CERRADA: TASK-001.status == completed"],
-             []),
+             [], "0 exenta(s) CERRADA(s), 1 viva(s)"),
             ("h: la gravedad baja y el problema sigue vivo",
              _panel(["- **Fila rebajada:** declara AMARILLO y ancla "
                      "`git_safe_commit.py`, que sigue declarando 0."]),
-             ["declara AMARILLO pero su comprobable SIGUE VIVO"], []),
+             ["declara AMARILLO pero su comprobable SIGUE VIVO"], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
             ("i: la cita existe pero ya no apunta a lo que dice",
              _panel(["- **Fila con la cita movida:** el identificador "
                      "`notepad.exe` se le atribuye a "
                      "`docs/index.md:25 notepad.exe` y ese fichero no lo tiene."]),
              ["existe pero NO contiene el identificador que la fila le atribuye: "
-              "notepad.exe"], []),
+              "notepad.exe"], [], "0 exenta(s) CERRADA(s), 1 viva(s)"),
             ("j: el reparto que el panel declara y el ast desmiente",
              _panel([CON_ANCLA], reparto="5 backend + 2 headless"),
-             ["separa 6/1"], []),
+             ["separa 6/1"], [], "0 exenta(s) CERRADA(s), 1 viva(s)"),
             ("k: el marcador headless no existe",
              _panel([CON_ANCLA]),
-             ["NO SE ENCUENTRA el marcador estructural"], []),
+             ["NO SE ENCUENTRA el marcador estructural"], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("l: la palabra de cierre en PROSA no exime a nadie",
+             _panel(["- **Fila que habla de su cierre:** dice que esta NO esta "
+                     "CERRADA todavia, y no cita ancla ninguna."]),
+             ["VIVA sin ancla resoluble"], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("m: el veredicto en negrita que NIEGA el cierre tampoco exime",
+             _panel(["- **Fila que se niega a cerrar:** **NO CERRADA todavia**, "
+                     "aunque TASK-002 sigue pendiente."]),
+             [], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("n: el panel no puede certificarse a si mismo",
+             _panel(["- **Fila que se deriva de si misma:** su unica verdad es "
+                     "`STATUS.md:9 Deuda Tecnica Conocida`, que existe."]),
+             ["VIVA sin ancla resoluble",
+              "ancla NO RESOLUBLE: STATUS.md EXISTE pero es el propio panel"], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("o: la cifra que la fila DECLARA y que es la verdadera",
+             _panel(["- **Fila que dice la verdad:** la suite tiene 7 tests y lo "
+                     "dice sin citar a nadie mas."]),
+             [],
+             ["VIVA sin ancla resoluble", "NO es el derivado con ast"], ""),
+            ("p: un tramo de codigo inline VACIO no tumba el validador",
+             _panel(["- **Fila con comillas huerfanas:** escribe `` y ` ` en "
+                     "medio, y ancla `run_tests.py`."]),
+             [], ["VIVA sin ancla resoluble"], ""),
+            ("q: mencionar el contrato no es DECLARAR el contrato",
+             _panel(["- **Fila que solo lo menciona:** declara "
+                     "\U0001f7e1 y ancla `otro_wrapper.py`, que habla del "
+                     "contrato en su documentacion pero no lo declara."]),
+             [], ["su comprobable SIGUE VIVO"], ""),
+        )
+        # El numero de filas es un CONTRATO, no una consecuencia: sin esta
+        # cuenta, borrar tres escenarios deja la suite verde con el mismo
+        # recuento de tests (S1 del mutation-auditor, ciclo #49, MEDIDO).
+        assert len(FILAS) == 19, (
+            "la tabla de escenarios del check 8 tiene "
+            f"{len(FILAS)} filas y su contrato son 19. Una fila que se borra sin "
+            "su cuenta deja el test en verde midiendo menos de lo que dice medir"
         )
 
         # Dos escenarios cambian el `run_tests.py` del arbol: (c2) cambia el
@@ -12966,12 +13042,12 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
                 _run_tests_sintetico(7, 0, con_marcador=False),
         }
 
-        for nombre, panel, esperados, prohibidos in FILAS:
+        for nombre, panel, esperados, prohibidos, recuento_esperado in FILAS:
             _escribir("STATUS.md", panel)
             _escribir("run_tests.py", _run_tests_sintetico(7, 1))
             if nombre in OVERRIDES:
                 _escribir("run_tests.py", OVERRIDES[nombre])
-            errors, _ok = _informe_del_validador_real(tmp)
+            errors, ok = _informe_del_validador_real(tmp)
             faltan = [e for e in esperados if not any(e in x for x in errors)]
             assert not faltan, (
                 f"escenario {nombre}: el check NO acuso {faltan!r}. Sin el fix esta "
@@ -12982,16 +13058,33 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
                 f"escenario {nombre}: el check acuso {sobran!r} y no debia. Un guard "
                 "que marca de mas entrena al lector a ignorar el semaforo, que es "
                 "como se muere un validador. Errores del informe: " + repr(errors))
+            # El RECUENTO de la linea `ok` es un contrato y no una decoracion:
+            # sin esta asercion una fila que se autoexime (m) deja la suite
+            # verde sin mover un solo numero, que es la forma que tenian los
+            # autoexencios antes de que el cierre exigiera un veredicto.
+            if recuento_esperado:
+                linea = [o for o in ok if "Deuda Tecnica Conocida:" in o]
+                assert linea, (
+                    f"escenario {nombre}: el check NO imprimio su linea `ok` de la "
+                    "seccion. Amputar el check 8 entero baja el validador a 114 OK "
+                    "y 0 FAIL, que es verde: sin esta asercion nadie vigila el "
+                    "recuento. Linea ok: " + repr(ok))
+                assert recuento_esperado in linea[0], (
+                    f"escenario {nombre}: la linea `ok` dice {linea[0]!r} y el "
+                    f"recuento que mide este escenario es {recuento_esperado!r}")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    print("Check 8 de la Deuda Tecnica Conocida, 13 filas por validar(root): ancla "
-          "viva rota, la misma cerrada, cifra autoderivada, panel solo de cerradas, "
-          "seccion ausente, CERRAD dentro de codigo inline, la fila del criterio "
-          "autoeximida, la cifra autoderivada con el total cambiado, la unica fuente "
-          "en una TAREA cerrada, gravedad rebajada con "
-          "el comprobable vivo, cita que ya no apunta a lo que dice, reparto que el "
-          "ast desmiente, y marcador headless ausente.")
+    print("Check 8 de la Deuda Tecnica Conocida, 19 filas por validar(root): ancla "
+          "viva rota, la misma cerrada, la cifra autoderivada y la del total "
+          "cambiado, panel solo de cerradas, seccion ausente, CERRAD dentro de "
+          "codigo inline, la fila del criterio autoeximida, la unica fuente en una "
+          "TAREA cerrada, gravedad rebajada con el comprobable vivo, cita que ya "
+          "no apunta a lo que dice, reparto y marcador headless que el ast "
+          "desmiente, la palabra de cierre en prosa y el veredicto que la niega, "
+          "el panel certificandose a si mismo, la cifra declarada que es la "
+          "verdad, el tramo de codigo inline vacio, y un fichero que solo "
+          "menciona el contrato.")
 
 
 
