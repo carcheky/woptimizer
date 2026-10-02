@@ -117,7 +117,7 @@ líneas 229-230): **la suite entera queda 103/103 en verde con exit 0**, y el wr
 es lo que el contrato declara normativo— se lleva el falso verde. El invariante **se cumple hoy en
 el código** (medido: repo temporal con un `pre-commit` que sale con 1 -> `WOPT_FAIL commit` + exit
 1), pero **nadie lo ata a un test**: por eso vive como 🔴 en la fila del `spawn EPERM` de
-`STATUS.md:88`. Cerrarla exige decidir antes qué se hace con `GIT_WORK_TREE` (regla 7) y después
+`STATUS.md:88`. **SEGUNDA MEDICIÓN (cierre del ciclo #48):** el mutante sobrevive también a `validate_docs.py` (`110 OK / 0 FAIL` con el mutante puesto), así que los dos semi-veredictos del toolchain lo dejan pasar. **La víctima, nombrada:** el único consumidor real del código de salida es el **agente orquestador** (`.agents/agents/architect-review/agent.md:50` y `.agents/skills/id-pipeline/SKILL.md:382`, que escribe el changelog tras el commit «para tener el hash»), mientras que `run_tests.py` solo mira `3` y `2` y `validate_docs.py` solo lo menciona. Y el matiz que corrige el tamaño del daño: un `WOPT_NOOP` **no lleva hash** (regla 4 de esta tabla), luego esta puerta no puede reintroducir el CHANGELOG con hashes inventados; el daño real es el ciclo cerrado sin commit. Desde el cierre del ciclo #48 tiene dueño: **`TASK-061`**. Cerrarla exige decidir antes qué se hace con `GIT_WORK_TREE` (regla 7) y después
 escribir su test.
 
 ## Ancla de trazabilidad en el historial (TASK-057, ciclo 47)

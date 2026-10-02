@@ -288,7 +288,7 @@ El mensaje lleva el **tipo real**: sin eso, el diagnóstico de un fichero roto e
 
 > **Corrección de la documentación heredada:** `tasks.json` marca TASK-011 (`auto-backup de
 > perfiles al guardar`) como `completed`, `openspec/changes/2026-09-29-v3.1-quality-of-life/tasks.md:5`
-> tiene el `[x]` puesto y `.taskmaster/CHANGELOG.md:91` afirma la "rotación segura de backups". **Ninguna
+> tiene el `[x]` puesto y `.taskmaster/CHANGELOG.md:1361` afirma la "rotación segura de backups". **Ninguna
 > de las tres era cierta**: no existía `shutil`, ni `.bak`, ni escritura atómica en `src/`. Es
 > una feature documentada que nunca se escribió. Si alguna vez se cita TASK-011 como precedente,
 > este es el commit que la implementa de verdad (TASK-026).

@@ -72,11 +72,11 @@ una conjetura.
 |---|---|
 | **Mutacion literal** | `.taskmaster/git_safe_commit.py:230`: `sys.exit(CODE_FAIL)` -> `sys.exit(CODE_OK)` en el camino de commit (`print(f"WOPT_FAIL commit ...")` en 229) |
 | **Estado del repo que lo dispara** | 103 tests en verde y `validate_docs.py` en `110 OK / 0 FAIL` |
-| **Medicion** | Mutante confirmado por hash (`c248f694…` -> `ddac118f…`) **y por comportamiento** (el wrapper pasa a salir `0`). Suite completa: **`ALL TESTS PASSED.`, exit 0**. Tras restaurar, el wrapper vuelve a salir `1` |
+| **Medicion** | Mutante confirmado por hash (`c248f694…` -> `ddac118f…`) **y por comportamiento** (el wrapper pasa a salir `0`). Suite completa: **`ALL TESTS PASSED.`, exit 0**. Tras restaurar, el wrapper vuelve a salir `1`. **SEGUNDA MEDICION, independiente y del auditor de cierre:** el mutante **tambien sobrevive a `validate_docs.py`** (`110 OK / 0 FAIL` con el mutante puesto). Se declara aparte porque el validador es **el otro semi-verdicto del toolchain**, no una repeticion de la suite: dos comprobaciones que dan el mismo veredicto sobre la misma linea no son dos testigos, son uno medido dos veces |
 | **Por que sobrevive** | `run_tests.py:1352 test_git_safe_commit_fail_safe` solo ejercita las puertas de **uso incorrecto (2)** y de **repo no verificable (3)**: sus aserciones son `returncode == 3` (`:1399`, `:1413`, `:1423`) y `== 2` (`:1435`). **Ninguna de sus invocaciones llega a un `WOPT_FAIL`.** El invariante que el ciclo #11 rompio —*un fallo de git tiene que salir con un codigo distinto de 0`*— es el unico que no tiene test |
 | **Severidad** | 🔴 — este wrapper es la unica puerta de versionado del repo; un falso verde ahi pierde commits en silencio, que es literalmente el fallo del ciclo #11 |
-| **Por que nadie lo escribio (medido, y no es pereza)** | `get_env()` respeta un `GIT_DIR` del entorno pero **impone `GIT_WORK_TREE = REPO_ROOT` sin condicion** (`git_safe_commit.py:78`): una invocacion con un `GIT_DIR` desechable sigue haciendo `add -A` y `commit` **sobre el arbol de trabajo real**. Medido: una sonda con `GIT_DIR` temporal stageo y commiteo el arbol real dentro del repo temporal (el historial real quedo intacto). El hook que `docs/ai/sandbox-rules.md:78-80` llama «tests hermeticos» es hermetico **en el repo, no en el arbol de trabajo**, y por eso el test existente solo toca las dos puertas que devuelven antes de cualquier `add` |
-| **Donde muere** | **En ninguna parte.** Cerrarla exige una **decision de diseno** antes que un test (honrar `GIT_WORK_TREE` del entorno, o que el test mute el arbol real a proposito y lo declare). Anotado en `STATUS.md:88` y en `docs/ai/sandbox-rules.md`; **sin tarea propia todavia**, la crea el proximo `architect-review` |
+| **Por que nadie lo escribio (medido, y no es pereza)** | `get_env()` respeta un `GIT_DIR` del entorno pero **impone `GIT_WORK_TREE = REPO_ROOT` sin condicion** (`.taskmaster/git_safe_commit.py:78`): una invocacion con un `GIT_DIR` desechable sigue haciendo `add -A` y `commit` **sobre el arbol de trabajo real**. Medido: una sonda con `GIT_DIR` temporal stageo y commiteo el arbol real dentro del repo temporal (el historial real quedo intacto). El hook que `docs/ai/sandbox-rules.md:78-80` llama «tests hermeticos» es hermetico **en el repo, no en el arbol de trabajo**, y por eso el test existente solo toca las dos puertas que devuelven antes de cualquier `add` |
+| **Donde muere** | **En ninguna parte.** Cerrarla exige una **decision de diseno** antes que un test (honrar `GIT_WORK_TREE` del entorno, o que el test mute el arbol real a proposito y lo declare). Anotado en `STATUS.md:88` y en `docs/ai/sandbox-rules.md`; desde el cierre del ciclo #48 tiene dueno: **`TASK-061`** (prioridad alta, `pending`), cuya primera funcion es **decidir antes de testar** |
 
 ### S48-3 — Una fila viva falsa es indetectable, y hay una instancia medida · severidad 🟡
 
@@ -119,13 +119,13 @@ que el ciclo #47 sello: una conclusion de auditor que no se mide antes de mover 
 
 La ronda de cierre tuvo que **resolver por contenido cada ancla `fichero:línea`** que iba a escribir
 en las filas tocadas, y dos no resolvieron. Las dos venían **del contrato de este mismo change**
-(`proposal.md:36` y `tasks.md:54`), no de esta ronda, y por eso conviene que queden escritas: quien
+(`openspec/changes/2026-10-02-sanear-deuda-status/proposal.md:36` y `openspec/changes/2026-10-02-sanear-deuda-status/tasks.md:54`), no de esta ronda, y por eso conviene que queden escritas: quien
 ejecute ese contrato al pie de la letra reintroduce dos anclas falsas.
 
 | Ancla del contrato | Donde apunta de verdad | Ancla correcta |
 |---|---|---|
 | `STATUS.md:37` (el hito del ciclo #11) | `STATUS.md:37` es el hito del **ciclo #10** (`model_copy()` shallow). El del ciclo #11 esta **una linea mas abajo** | `STATUS.md:38` |
-| `.taskmaster/CHANGELOG.md:1525` (evidencia del `spawn EPERM`) | Esa linea habla de `model_copy()` shallow, **no de `spawn EPERM`**. La entrada que documenta el fallo intermitente del shell esta mucho mas abajo | `.taskmaster/CHANGELOG.md:1655` |
+| `.taskmaster/CHANGELOG.md:1555` (evidencia del `spawn EPERM`) | Esa linea habla de `model_copy()` shallow, **no de `spawn EPERM`**. La entrada que documenta el fallo intermitente del shell esta mucho mas abajo | `.taskmaster/CHANGELOG.md:1685` |
 
 El desplazamiento viene de que el contrato numera las filas contando el encabezado de la seccion como
 la fila 85, mientras que el numero de linea real del panel es esa cifra mas uno. **Las filas de

@@ -8,19 +8,22 @@
 - Paso 3 (Ejecutar): openspec-dev — TASK-058 (STATUS.md + docs/index.md + 2 changelogs + tasks.json)
 - Paso 4 (Auditar tests): **NO APLICA** — sin cambios en `src/`, `run_tests.py` ni `validate_docs.py`; no hay fix de código que mutar. Sustituido por un comprobador propio que resuelve cada ancla escrita por contenido.
 
+> **Convención de anclas de esta entrada: números de línea FÍSICOS.** El contrato del change numera las filas contando el encabezado de la sección como la 85, así que sus números son estos menos uno (`openspec/changes/2026-10-02-sanear-deuda-status/mutation-report.md:118` lo documenta). Todas las filas de la tabla de arriba son líneas reales de `STATUS.md` y se comprueban por contenido, no por memoria. Dos anclas falsas que traía esta entrada y se corrigieron en el cierre: la del `spawn EPERM` llevaba el número de la fila anterior, y la del hito del **ciclo #11** llevaba el del **ciclo #10** (`model_copy`), que está una línea por encima. Ambas se han reescrito contra la línea real del panel y se comprueban por contenido, no por memoria.
+
 ### Ficheros tocados (y los que NO, por auditoría)
 | Fichero | Cambio |
 |---|---|
 | `STATUS.md:20` | «Ciclo Actual #47 … Completado» -> «Ciclo Actual #48: TASK-058 … En curso». La línea siguiente ya anunciaba este ciclo. |
-| `STATUS.md:85` | FALSA x2 (no estaban en la raíz; 10 de 11 morían por el import). Conservada + cierre con `TASK-055`, `docs/archive/legacy-root-tests/README.md:1-7`, guard `run_tests.py:11590`. |
-| `STATUS.md:87` | CIERTA, gravedad corregida: `spawn EPERM` causó el falso verde de versionado del ciclo #11 (`STATUS.md:37`). |
-| `STATUS.md:88` | FALSA: los ciclos #14-#20 sí están versionados. `--verify` -> `WOPT_REPO_OK` exit 0. Pasa a puntero a la fila del residuo (#47). |
-| `STATUS.md:91` | Cola corregida: `TASK-031` está `completed`. Cuerpo intacto con sus tres comprobables. |
-| `STATUS.md:92` | CERRADA en CYCLE-047: el ancla es la unión del journal y el historial (`validate_docs.py:238,267`). |
-| `STATUS.md:97` | FALSA en su premisa: cerrada en CYCLE-044 por `TASK-054` (`run_tests.py:11478`). Conservada. |
-| `STATUS.md:98` (NUEVA, VIVA) | `docs/index.md:25` decía 96 tests y hay 103, y el check del recuento no vigila ese fichero. Nace con ancla, mutante y severidad 🟡. |
+| `STATUS.md:86` | FALSA x2 (no estaban en la raíz; 10 de 11 morían por el import). Conservada + cierre con `TASK-055`, `docs/archive/legacy-root-tests/README.md:1-7`, guard `run_tests.py:11590`. |
+| `STATUS.md:88` | CIERTA, gravedad corregida: `spawn EPERM` causó el falso verde de versionado del ciclo #11 (`STATUS.md:38`). |
+| `STATUS.md:89` | FALSA: los ciclos #14-#20 sí están versionados. `--verify` -> `WOPT_REPO_OK` exit 0. Pasa a puntero a la fila del residuo (#47). |
+| `STATUS.md:92` | Cola corregida: `TASK-031` está `completed`. Cuerpo intacto con sus tres comprobables. |
+| `STATUS.md:93` | CERRADA en CYCLE-047: el ancla es la unión del journal y el historial (`validate_docs.py:238,267`). |
+| `STATUS.md:98` | FALSA en su premisa: cerrada en CYCLE-044 por `TASK-054` (`run_tests.py:11478`). Conservada. |
+| `STATUS.md:99` (NUEVA, VIVA) | `docs/index.md:25` decía 96 tests y hay 103, y el check del recuento no vigila ese fichero. Nace con ancla, mutante y severidad 🟡. |
 | `docs/index.md:25` | 96 -> 103. |
-| Sin cambios | `STATUS.md:86, 89, 93, 94, 95, 96`; `src/**`; `run_tests.py`; `validate_docs.py`; `verify_ui_syntax.py`; `AGENTS.md`; `README.md`. |
+| `STATUS.md:100` (NUEVA, VIVA) | La fila del check que falta (`TASK-060`): el criterio entero, con la cuenta medida de las 5 filas vivas, la trampa del marcador de cierre y la propuesta para que el check no nazca fallando. Nace con ancla y severidad 🟡. |
+| Sin cambios | `STATUS.md:87, 90, 91, 94, 95, 96, 97`; `src/**`; `run_tests.py`; `validate_docs.py`; `verify_ui_syntax.py`; `AGENTS.md`; `README.md`. |
 
 ### Verificación ejecutada (no supuestos)
 - Cada ancla `archivo:línea` escrita en las filas tocadas se comprobó **por contenido**: ruta existente, línea dentro del fichero y snippet esperado presente. Mutar cualquiera de ellas hace fallar el comprobador.
@@ -59,7 +62,7 @@ salidas, en `openspec/changes/2026-10-02-sanear-deuda-status/mutation-report.md`
   después de mutar).
 - **El código que hoy se confunde con el de commit OK es el `0`**: está sobrecargado —
   `WOPT_COMMIT_OK` (commit real) y `WOPT_NOOP` (nada que comitear) salen los dos con `0`
-  (`git_safe_commit.py:13-14`, tabla en `docs/ai/sandbox-rules.md:55-56`). Medido en el repo real
+  (`.taskmaster/git_safe_commit.py:13-14`, tabla en `docs/ai/sandbox-rules.md:55-56`). Medido en el repo real
   con el árbol limpio: `WOPT_NOOP arbol limpio (status --porcelain vacio)`, **exit 0**, sin escribir
   nada. Quien solo lea el código de salida no puede distinguir «se ha versionado» de «no había nada
   que versionar».
@@ -70,7 +73,7 @@ salidas, en `openspec/changes/2026-10-02-sanear-deuda-status/mutation-report.md`
   0**. El mutante se confirmó **por hash** (`c248f694…` → `ddac118f…`) **y por comportamiento**, y el
   fichero se restauró byte a byte (hash `c248f694…` de nuevo, y el wrapper volvió a salir 1).
 - **Por qué nadie lo escribió, medido también:** `get_env()` respeta un `GIT_DIR` del entorno pero
-  **impone `GIT_WORK_TREE = REPO_ROOT` sin condición** (`git_safe_commit.py:78`), así que una
+  **impone `GIT_WORK_TREE = REPO_ROOT` sin condición** (`.taskmaster/git_safe_commit.py:78`), así que una
   invocación con un `GIT_DIR` desechable sigue haciendo `add -A` y `commit` **sobre el árbol de
   trabajo real**. El hook que `docs/ai/sandbox-rules.md:78-80` llama «tests herméticos» es hermético
   **en el repo, no en el árbol de trabajo**, y por eso el test existente solo toca las dos puertas
@@ -127,6 +130,33 @@ no es un artefacto de este ciclo: lo añadió **`8efc0ae`** y está en `git ls-f
 **Verificaciones del cierre:** `python verify_ui_syntax.py` → EXITO, exit 0 · `python run_tests.py`
 → `ALL TESTS PASSED.`, exit 0 (103) · `python validate_docs.py` → **110 OK / 0 FAIL**, exit 0.
 Salida literal completa en `mutation-report.md` §6.
+### Ronda de cierre — la reauditoría dio FAIL otra vez, y lo que fallaba era la medición escrita
+
+1. **🔴 Una deuda sin dueño.** El mutante `CODE_FAIL` → `CODE_OK` (`.taskmaster/git_safe_commit.py:230`) sobrevive
+   a la suite **y** al validador (`110 OK / 0 FAIL` con el mutante puesto, confirmado por hash y por comportamiento), y
+   la fila 88 decía «sin tarea propia todavía». Creada **`TASK-061`** (prioridad alta, `pending`) con la **decisión de
+   diseño** que hay que tomar antes: `get_env()` impone `GIT_WORK_TREE = REPO_ROOT` sin condición (`:78`), así que un
+   `GIT_DIR` desechable sigue commiteando el árbol real. **El fix NO se implementó aquí**: es diseño y es del
+   arquitecto. Cerrar el ciclo con una 🔴 de integridad de versionado sin `TASK-xxx` es la misma forma que S1.
+2. **La fila 88, con la víctima nombrada y el matiz del `NOOP`.** El único consumidor real del código de salida es el
+   **agente orquestador** (`.agents/agents/architect-review/agent.md:50` le dice que compruebe su salida;
+   `.agents/skills/id-pipeline/SKILL.md:382` le manda escribir el changelog tras el commit «para tener el hash», y la plantilla exige hashes en
+   `.agents/skills/id-pipeline/SKILL.md:372`). No son consumidores: `run_tests.py:1352` solo mira `3` y `2`, `validate_docs.py:280` es una frase
+   de un docstring y `sync_agents.py` tiene contrato propio. Y como **`WOPT_NOOP` nunca imprime hash**
+   (`docs/ai/sandbox-rules.md:56` y `:70`), el fallo del ciclo #11 en su forma literal —el CHANGELOG registrando hashes
+   que no existen— **no puede recuperar por esta puerta**: el daño real es «ciclo cerrado sin commit».
+3. **La fila 100, con la lista real, y una afirmación nueva que era falsa.** Decía «dos filas vivas» y citaba
+   `STATUS.md:91` como caso: **esa fila está cerrada** («cerrado en el ciclo #16») y el criterio la exonera. Medido:
+   hay **5 filas vivas** (87, 88, 94, 99, 100); lectura estricta (`fichero:línea`) → fallan **87 y 94**; leniente →
+   falla **94**, la única con cero referencias a ficheros, ni con línea ni sin ella. Y al implementarlo sale una
+   **trampa del propio criterio**: la búsqueda ingenua de `cerrad` marca como cerradas justo la 94 («Declararlo cerrado
+   sería…») y la 100 (el criterio describiéndose), con lo que el check dejaría de vigilar las dos filas que más lo
+   necesitan. Propuesta en la fila: marcador de cierre estructural, ancla propia para la 87 y fila-tabla para la 94.
+4. **Anclas de esta ronda unificadas a línea física** en los dos changelogs, y **segunda medición** del mutante de
+   S48-2 añadida a `mutation-report.md` (también sobrevive al validador, que es el otro semi-veredicto del toolchain).
+
+**Cero cambios en `src/`, `run_tests.py`, `validate_docs.py` y `verify_ui_syntax.py`**; la suite sigue en **103 tests**.
+
 ---
 ## [CYCLE-047] 2026-10-01 23:59 - validator-independent-anchor
 **Área**: Arquitectura & Calidad
