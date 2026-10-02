@@ -25,6 +25,23 @@ Un test que pasa porque ejecuta el codigo sin comprobar nada da **100% de cobert
 
 1. **Identifica los fixes del ciclo.** Lee `CHANGELOG.md` (raíz) y `openspec/changes/<id>/` del ciclo actual: qué se añadió o corrigió. No mutes código que el ciclo no tocó.
 2. **Copia** el proyecto a `%TEMP%` (nombre único, con sufijo del ciclo). Nunca borres nada: usa nombres nuevos.
+
+> ⚠️ **TRAMPA DEL GITLINK — ya ha contaminado el repo real DOS VECES. Léelo antes de copiar.**
+> En este proyecto **`.git` NO es un directorio: es un FICHERO** de 57 bytes con `gitdir: C:/Users/carch/AppData/Local/woptimizer_git/.git`. Cualquier copia que lo arrastre convierte la cámara en un cliente del **repo real**, y un `git add -A` o un `commit` escriben en el historial del proyecto.
+>
+> **`robocopy /XD .git` NO lo evita**: `-XD` excluye solo directorios, y esto es un fichero. Los dos accidentes pasaron por ahí.
+>
+> **Protocolo obligatorio, en este orden:**
+> 1. **Copia con un script de Python explícito** que excluya `.git` como *fichero* (`os.path.isfile`), no solo como directorio. `shutil.copytree(..., ignore=shutil.ignore_patterns(".git"))` funciona: `ignore_patterns` cubre ficheros y directorios.
+> 2. **Pasa un `GIT_DIR` desechable y EXPLÍCITO en cada comando** que invoque git dentro de la cámara. Nunca dejes que git lo descubra.
+> 3. **PRUEBA EL AISLAMIENTO ANTES DE MUTAR NADA**, y si falla, párate y dilo en vez de seguir:
+>    ```python
+>    print(subprocess.run(["git","rev-parse","--git-dir"], cwd=camara,
+>                         env={**os.environ, "GIT_DIR": str(desechable)}).stdout)
+>    ```
+>    Si devuelve una ruta que **no** es tu cámara, la cámara está apuntando al repo real. **No sigas.**
+> 4. Usa un `GIT_DIR` desechable **nuevo por intento**: en Windows los ficheros de objetos bloqueados hacen fallar los reutilizados, y reutilizar uno es un buen motivo para improvisar mal.
+> 5. **Al terminar, y esto es parte del encargo, no un extra:** `git log --oneline -1`, `git status --porcelain`, `git diff --stat` y `git diff --cached --stat` del **repo real**, y **`git rev-parse --git-dir` desde la raíz del proyecto** para demostrar que la cámara nunca lo tocó. Si has tocado algo, **confiesa aunque lo hayas revertido**: un informe que declara "no toqué nada" cuando sí toqué es peor que uno que confiesa.
 3. **Muta uno a uno.** Para cada fix, rompe la garantia de la forma *mínima* que un desarrollador real cometería. No hagas mutaciones esotericas: busca el fallo tipico, no uno inventado.
 4. **Ejecuta `run_tests.py`** en la copia y registra el veredicto de cada mutacion.
 5. **Distingue el motivo del fallo.** Un test que falla por un `ImportError` o un error de sintaxis **no** prueba nada: hay que confirmar que falla **por la asercion que ese test dice comprobar**.
