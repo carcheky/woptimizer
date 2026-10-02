@@ -1,7 +1,7 @@
 ## [CYCLE-048] 2026-10-02 03:10 - sanear-deuda-status
 **Área**: Documentación & Arquitectura
 **Change**: openspec/changes/2026-10-02-sanear-deuda-status/
-**Estado**: COMPLETED — **VEREDICT: PASS** (0 cambios de producto; recuento estable en 103)
+**Estado**: COMPLETED — **VEREDICT: PASS** (0 cambios de producto; recuento estable en 103). `validate_docs.py` sale con **110 OK / 1 FAIL** *despues* del commit, y el unico FAIL es **causado por este commit, no por el panel**: ver la nota de verificacion.
 **Models**:
 - Paso 1 (Buscar): orchestrator (backlog: `active_task_id` TASK-058)
 - Paso 2 (Planear): architect-review — Auditoría fila por fila de las 13 filas de Deuda Conocida; **3 falsas, 2 caducadas, 1 imprecisa** detectadas con evidencia, y 2 premisas del encargo refutadas
@@ -25,7 +25,8 @@
 ### Verificación ejecutada (no supuestos)
 - Cada ancla `archivo:línea` escrita en las filas tocadas se comprobó **por contenido**: ruta existente, línea dentro del fichero y snippet esperado presente. Mutar cualquiera de ellas hace fallar el comprobador.
 - La redacción original de las 6 filas tocadas se comprobó presente (ninguna fila se borra).
-- `python run_tests.py` -> 103 tests | `python verify_ui_syntax.py` -> OK | `python validate_docs.py` -> 110 OK, 0 FAIL.
+- `python run_tests.py` -> 103 tests **PASS**, exit 0 | `python verify_ui_syntax.py` -> **EXITO**, exit 0 | `python validate_docs.py` -> **110 OK, 1 FAIL, exit 1**.
+- **El unico FAIL lo causa este commit, no el panel, y no se maquilla:** el mensaje lleva el marcador `ciclo #48`, y `rd_journal.json` (47 entradas, **lo escribe el orquestador**) todavia no registra el 48. Antes del commit el validador daba 110 OK / 0 FAIL. Es el residuo (a) de la fila 93 declarado en `TASK-059`, apareciendo en su forma honesta: hay un commit del ciclo 48 y el journal no lo sabe. **`.taskmaster/rd_journal.json` no se toco** porque no pertenece a esta tarea; lo registra el orquestador al cerrar el ciclo.
 
 ### Decisiones que el contrato debía corregir y se corrigieron antes de ejecutar
 1. **El criterio de aceptación de `TASK-058` sobre `docs/api.md`/`docs/index.md` estaba construido sobre un estado del repositorio inexistente.** `TASK-054` cerró ese punto en CYCLE-044. Se conservó la fila como cerrada en vez de "actualizar su severidad real".
@@ -34,6 +35,7 @@
 
 ### Salidas a otro ciclo
 - `TASK-060` (check de anclas en la Deuda Conocida, con las filas cerradas exentas) queda `pending` a propósito.
+- **`.taskmaster/rd_journal.json` no registra el ciclo 48.** Mientras tanto el validador queda en 110 OK / 1 FAIL. Se reporta tal cual en vez de evitarse quitando el marcador de ciclo del commit: un commit sin marcador seria menos trazable, no mas.
 - `STATUS.md:80` («Commits pendientes de los ciclos #14 a #20») arrastra la misma afirmación caducada que se corrigió en la fila 88. **No se reescribió** por quedar fuera del alcance; se señaló desde la fila 88. Decisión pendiente del propietario si se extiende el alcance.
 - `STATUS.md:13` cita `ae53be7` como último commit; el HEAD real ya es `96c349f`. No es una falsedad («al día en git» es cierto) y lo rota el orquestador al cerrar el ciclo.
 
