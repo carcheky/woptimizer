@@ -447,5 +447,10 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
                 target_pack.apps.append(exe_name)
                 added += 1
                 
-        self.pack_service.save()
+        # BUG (TASK-062): `target_pack` es una COPIA defensiva de
+        # `get_all_packs()`, y `save()` serializa `self._data`, que la copia
+        # nunca toca: las apps anadidas se perdian. `update_pack()` copia a
+        # `_data`, guarda e invalida la cache. Mismo patron que
+        # `change_default` y `remove_app_from_pack`.
+        self.pack_service.update_pack(target_pack)
         self.status_label.configure(text=f"✅ {added} apps añadidas a {target_pack.name}.")

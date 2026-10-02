@@ -5657,15 +5657,46 @@ def test_el_gestor_guarda_la_ruta_absoluta():
             self.textos.append(kw.get("text"))
 
     class _PackServiceGrabador:
+        """Doble que modela el CONTRATO de `PackService`, no su codigo (TASK-062).
+
+        El servicio real devuelve **copias defensivas** de `get_all_packs()`
+        (`model_copy(deep=True)` sobre una cache de dos capas) y la UNICA via
+        que persiste es `update_pack()`, que ademas invalida la cache. Un doble
+        que devolviera los mismos objetos haria que `on_add_to_pack` pasara
+        **aunque no guardara nada**: la mutacion se veria en memoria y
+        `save()` --que serializa el estado interno-- no la veria nunca. Ese fue
+        el bug real, y este doble lo hacia invisible.
+
+        `save()` se mantiene a proposito: si alguien vuelve a llamar a `save()`
+        en vez de `update_pack()`, el test debe morir por la **asercion** (lo
+        guardado esta vacio), no por un `AttributeError`. Un fallo de codigo no
+        es una discriminacion.
+        """
+
         def __init__(self, packs):
             self._packs = packs
             self.saves = 0
+            self.actualizados = []
 
         def get_all_packs(self):
-            return self._packs
+            return {k: p.model_copy(deep=True) for k, p in self._packs.items()}
+
+        def update_pack(self, pack):
+            self._packs[pack.id] = pack.model_copy(deep=True)
+            self.actualizados.append(pack.id)
+            self.saves += 1
 
         def save(self):
             self.saves += 1
+
+    def _guardado(vista, p_id="a"):
+        """Lo que el SERVICIO tiene de verdad, no el `pack` que la vista recibio.
+
+        Leer el `pack` original es lo que hacia pasar este test con el bug
+        puesto: la vista mutaba la copia, el original nunca cambiaba, y aun asi
+        la asercion veia la mutacion en la copia compartida.
+        """
+        return vista.pack_service._packs[p_id]
 
     RUTA_CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
@@ -5684,14 +5715,18 @@ def test_el_gestor_guarda_la_ruta_absoluta():
         return vista
 
     # --- (1) con exe_path: se guarda la RUTA, no el nombre -------------------
+    # TASK-062: las tres aserciones leen `_guardado(vista)`, es decir lo que el
+    # servicio PERSISTE. Antes leian el `pack` original, que la vista nunca
+    # tocaba (mutaba una copia), asi que el test pasaba con `save()` en vez de
+    # `update_pack()`: el falso verde exacto que escondia el bug.
     pack = Pack(id="a", name="Pack A")
     vista = _armar(pack, ["chrome"])
     vista.on_add_to_pack()
-    assert pack.apps == [RUTA_CHROME], (
-        f"lo guardado no es la ruta absoluta: {pack.apps}. Con el nombre pelado "
-        "el arranque lo resuelve adivinando en las raices permitidas y lo rechaza"
+    assert _guardado(vista).apps == [RUTA_CHROME], (
+        f"lo PERSISTIDO no es la ruta absoluta: {_guardado(vista).apps}. Con el nombre "
+        "pelado el arranque lo resuelve adivinando en las raices permitidas y lo rechaza"
     )
-    assert vista.pack_service.saves == 1, "save() debe llamarse una vez"
+    assert vista.pack_service.saves == 1, "update_pack() debe llamarse una vez"
 
     # --- (2) sin exe_path (AccessDenied): degradación documentada ------------
     pack = Pack(id="a", name="Pack A")
@@ -5705,19 +5740,22 @@ def test_el_gestor_guarda_la_ruta_absoluta():
     vista.status_label = _Label()
     vista.pack_service = _PackServiceGrabador({"a": pack})
     vista.on_add_to_pack()
-    assert pack.apps == ["chrome.exe"], (
-        f"con exe_path vacia hay que degradar a full_name, no guardar '': {pack.apps}"
+    assert _guardado(vista).apps == ["chrome.exe"], (
+        f"con exe_path vacia hay que degradar a full_name y PERSISTIRLO, no guardar '': "
+        f"{_guardado(vista).apps}"
     )
 
     # --- (3) duplicado: el `if not in apps` sigue vivo -----------------------
     pack = Pack(id="a", name="Pack A", apps=[RUTA_CHROME])
     vista = _armar(pack, ["chrome", "chrome2"])
     vista.on_add_to_pack()
-    assert pack.apps == [RUTA_CHROME], f"se duplico la misma app en el pack: {pack.apps}"
+    assert _guardado(vista).apps == [RUTA_CHROME], (
+        f"se duplico la misma app en lo persistido: {_guardado(vista).apps}"
+    )
     assert vista.status_label.textos[-1].startswith("✅ 0 apps"), (
         f"el contador de anadidas miente: {vista.status_label.textos[-1]}"
     )
-    print("El Gestor guarda la ruta absoluta en el pack (FIX-003, escritor).")
+    print("El Gestor PERSISTE la ruta absoluta en el pack (FIX-003 + TASK-062).")
 
 
 def test_orden_de_categorias_no_es_alfabetico():
@@ -7964,8 +8002,25 @@ def test_scan_latency_and_lazy_exe_resolution():
             if "text" in kw: self.textos.append(kw["text"])
 
     class _PackServiceMock:
-        def __init__(self, packs): self.packs = packs; self.saves = 0
-        def get_all_packs(self): return self.packs
+        """Contrato de `PackService`, no su codigo (TASK-062).
+
+        `get_all_packs()` devuelve COPIAS defensivas como el servicio real, y la
+        unica via que persiste es `update_pack()`. `save()` se mantiene para
+        que un mutant que vuelva a ella muera por la **asercion** y no por un
+        `AttributeError`. Las aserciones de abajo leen `ps_mock._packs`, que es
+        lo que el servicio retiene de verdad.
+        """
+        def __init__(self, packs):
+            self.packs = packs
+            self._packs = packs
+            self.saves = 0
+            self.actualizados = []
+        def get_all_packs(self):
+            return {k: p.model_copy(deep=True) for k, p in self._packs.items()}
+        def update_pack(self, pack):
+            self._packs[pack.id] = pack.model_copy(deep=True)
+            self.actualizados.append(pack.id)
+            self.saves += 1
         def save(self): self.saves += 1
 
     pack_destino = Pack(id="test_lazy", name="Pack Lazy")
@@ -7988,9 +8043,13 @@ def test_scan_latency_and_lazy_exe_resolution():
     vista.pack_service = _PackServiceMock({"test_lazy": pack_destino})
 
     vista.on_add_to_pack()
-    assert len(pack_destino.apps) == 1, f"Se esperaba 1 app anadida, obtenido {pack_destino.apps}"
-    assert os.path.normcase(os.path.realpath(pack_destino.apps[0])) == os.path.normcase(os.path.realpath(sys.executable)), (
-        f"on_add_to_pack debio resolver la ruta absoluta on-demand: {pack_destino.apps[0]}"
+    # TASK-062: se lee lo que el SERVICIO retiene, no `pack_destino`. La vista
+    # mutaba una copia y `pack_destino` --el objeto del test-- nunca cambiaba,
+    # asi que estas aserciones pasaba con `save()` en vez de `update_pack()`.
+    persistido = vista.pack_service._packs["test_lazy"]
+    assert len(persistido.apps) == 1, f"Se esperaba 1 app PERSISTIDA, obtenido {persistido.apps}"
+    assert os.path.normcase(os.path.realpath(persistido.apps[0])) == os.path.normcase(os.path.realpath(sys.executable)), (
+        f"on_add_to_pack debio resolver la ruta absoluta on-demand y persistirla: {persistido.apps[0]}"
     )
 
     # 5) Benchmark de rendimiento: latencia < 25 ms
@@ -12793,13 +12852,13 @@ def _run_tests_sintetico(n_tests, n_headless, con_marcador=True):
 
 
 def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
-    """TASK-060 (ciclo #49): el CHECK 8 de `validate_docs.py`, treinta y tres escenarios.
+    """TASK-060 (ciclo #49): el CHECK 8 de `validate_docs.py`, cuarenta y dos escenarios.
 
     El ciclo #48 sano 13 filas de la seccion `## Deuda Tecnica Conocida` y su
     auditoria cerro PARTIAL por una razon MEDIDA: 8 de 9 mutaciones sobrevivieron
     porque NADA en este repo vigilaba esa seccion (`validate_docs.py` tenia 0
     coincidencias de la palabra `Deuda`). Este test es el guardian de las
-    treinta filas de la tabla de abajo, y todas asientan por `validar(root)`
+    cuarenta y dos filas de la tabla de abajo, y todas asientan por `validar(root)`
     (D3): la MISMA funcion que `main()` llama, sobre el esqueleto REAL copiado
     una vez en un `tempfile.mkdtemp()`. Nada de esto toca el repo real.
 
@@ -12808,8 +12867,8 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
     `ast`" de "lei el numero correcto a mano", que es justo el mutante que esa
     fila existe para matar.
 
-    LAS TREINTA Y TRES FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla
-    es el contrato, y `len(FILAS) == 33` la cuenta para que borrar una fila no salga
+    LAS CUARENTA Y DOS FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla
+    es el contrato, y `len(FILAS) == 42` la cuenta para que borrar una fila no salga
     gratis). DOS de ellas -- (y) y (n2) -- NO matan nada: ARCHIVAN residuos
     declarados como controles negativos, y estan marcadas como tales para que
     nadie las lea como cobertura:
@@ -12966,8 +13025,41 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
       palabra, aceptar minusculas, ignorar la negacion del veredicto, ignorar la
       de la prosa, no borrar el codigo inline, y aceptarlo en toda la fila)
       dejan el panel REAL en `7 exenta(s) / 8 viva(s)` y `0 FAIL` y las pasan
-      las 30 filas de esta tabla SIN DELATAR NADA. (f2) solo ve la mitad que ya
+      las 42 filas de esta tabla SIN DELATAR NADA. (f2) solo ve la mitad que ya
       funciona: con el marcador en negrita los dos caminos coinciden.
+    - (cyc) un `CYCLE` con ENTRADA publicada en los changelogs del arbol CIERRA
+      la fila: exenta y sin errores. ES LA MITAD POSITIVA DEL FIX, y antes de
+      esta fila no la probaba NADIE. MEDIDO el 2026-10-02: con
+      `_ciclos_cerrados` vuelto a `return []` (X3), o con el grupo de captura
+      descartado (X1), la suite entera seguia en verde, porque (x), (c3), (x4) y
+      (x4b) comprueban que un ciclo NO cierra y ninguna que SI. El `CYCLE` se
+      DERIVA de las entradas publicadas del arbol copiado, no se escribe a mano.
+    - (p1) marcador en la PROSA con una `TASK` ya `completed` -> la fila sigue
+      VIVA. Mata: el respaldo que acepta el marcador fuera del veredicto (P1) y
+      `findall(texto)` -> `[texto]` (C25). MEDIDO: las dos sobreviven a la ronda 5
+      entera, y la (u) no las cierra porque su id esta PENDIENTE: con un id
+      pendiente la fila no se cierra de todos modos, luego esa fila no midia la
+      regla que decia medir.
+    - (p2) el PLURAL `**CERRADAS todas en TASK-001**` con la tarea `completed` ->
+      la fila sigue VIVA. Mata: `CERRAD` en vez de la palabra entera (P2). La (u)
+      y la (l) no lo cierran por la misma razon que la (p1).
+    - (p3) `**cerrada en TASK-001**` (minusculas) con la tarea `completed` -> la
+      fila sigue VIVA. Mata: `re.IGNORECASE` en `_RE_CERRADA` (C26). MEDIDO el
+      2026-10-02: `IGNORECASE` SI muere en la suite, pero en otro test del repo y
+      no en esta tabla; aqui es su muerte LOCAL, y de primera fila.
+    - (p4a) `**CERRADA en TASK-001, NO lo parece**` con la tarea `completed` -> la
+      fila sigue VIVA. Mata: ignorar la negacion del VEREDICTO. La (m) es el
+      mismo caso con la tarea PENDIENTE, luego no lo distingue.
+    - (p4b) `**CERRADA en TASK-001**` con la negacion en la PROSA y la tarea
+      `completed` -> la fila sigue VIVA. Mata: borrar la negacion sobre la prosa
+      (C28). La (v) es el mismo caso con la tarea PENDIENTE.
+    - (p5) el marcador SOLO entre acentes graves dentro del veredicto, con la
+      tarea `completed` -> la fila sigue VIVA. Mata: no borrar el codigo INLINE
+      del veredicto (P5). La (f1) es el mismo caso sin id ninguno.
+    - (m2c) la fila del criterio con el marcador en MINUSCULAS en su prosa NO se
+      autoexime. Mata: la AUTOEXENCION insensible a caja (M2C).
+    - (m2d) la fila del criterio con el marcador SOLO dentro de codigo inline NO
+      se autoexime. Mata: la AUTOEXENCION que no borra el codigo inline (M2D).
     - (y) CONTROL NEGATIVO: el mismo veredicto de (x) pero con una TAREA ya
       `completed` -> la fila SI queda exenta. No mide un fix: ARCHIVA el
       residuo declarado del limite 19 para que el proximo que lo encuentre no
@@ -12983,7 +13075,7 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
       no en el cuerpo**", "**guardas que no guardaban**"). La caja es la forma,
       por el mismo argumento que ya fija el limite 18 para `CERRADA`.
 
-    LIMITACION CONOCIDA, y hay que decirla: las treinta y tres filas comparten
+    LIMITACION CONOCIDA, y hay que decirla: las cuarenta y dos filas comparten
     esqueleto y comparten helper, luego comparten punto ciego -- una fila solo
     mide la forma de arbol que construye. Las LIMITACIONES que este check tiene
     por DISENO (S1 prueba existencia y no verdad; las filas cerradas quedan
@@ -13042,6 +13134,25 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
                      "en el arbol, y nada mas.")
         CON_ANCLA = ("- **Fila viva con ancla:** cita `run_tests.py` y por ahi "
                      "empieza.")
+        # El `CYCLE` de la fila (cyc) se DERIVA de las entradas que publica el
+        # ARBOL COPIADO, y no se escribe a mano. MEDIDO el 2026-10-02: las filas
+        # (x), (c3), (x4) y (x4b) comprueban que un ciclo NO cierra, y ninguna
+        # comprobaba que un ciclo SI cierre, luego `_ciclos_cerrados` podia
+        # volver a `return []` y la suite entera seguia en verde (X3). Un id
+        # escrito a mano mediria un arbol que este test no construye, y en
+        # cuanto el changelog avanzara un ciclo mediria un id que ya no esta.
+        import re as _re
+        _publicados = []
+        for _rel in (os.path.join(".taskmaster", "CHANGELOG.md"), "CHANGELOG.md"):
+            with open(os.path.join(tmp, _rel), encoding="utf-8") as _fh:
+                _publicados.extend(
+                    _re.findall(r"^##[ \t]+\[?(CYCLE-\d+)\]?", _fh.read(),
+                                _re.MULTILINE))
+        assert _publicados, (
+            "el arbol copiado no publica ninguna entrada de ciclo, luego la fila "
+            "(cyc) mediria un id que no existe donde el validador mira")
+        CICLO_REAL = _publicados[-1]
+
         FILAS = (
             ("a: fila viva cuya unica cita no existe",
              _panel([SIN_ANCLA]),
@@ -13212,6 +13323,59 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
                      "en su prosa, sin veredicto, para no estar vigilada."]),
              ["la fila del criterio se ha autoeximido"], [],
              "1 exenta(s) CERRADA(s), 0 viva(s)"),
+            ("cyc: un CYCLE con ENTRADA publicada CIERRA la fila de verdad",
+             _panel(["- **Fila que se exime con un ciclo REALMENTE cerrado:** ancla "
+                     "`run_tests.py` y anade al final \u2014 **CERRADA en "
+                     + CICLO_REAL + "** \u2014, que tiene entrada publicada en los "
+                     "changelogs de este arbol. NINGUN otro id de esta fila nombra "
+                     "trabajo ya hecho."]),
+             [], [], "1 exenta(s) CERRADA(s), 0 viva(s)"),
+            ("p1: el marcador en la PROSA con un id YA CERRADO tampoco exime",
+             _panel(["- **Fila que escribe su cierre en la prosa:** dice que esta "
+                     "CERRADA en TASK-001, que esta completed, y no lo escribe en "
+                     "negrita."]),
+             ["su UNICA fuente es una TAREA YA CERRADA: TASK-001.status == completed"],
+             [], "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("p2: el plural CERRADAS no es el marcador de cierre",
+             _panel(["- **Fila que se exime con un plural:** **CERRADAS todas en "
+                     "TASK-001**, que esta completed."]),
+             ["su UNICA fuente es una TAREA YA CERRADA: TASK-001.status == completed"],
+             [], "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("p3: el marcador en minusculas con un id YA CERRADO no exime",
+             _panel(["- **Fila que escribe su cierre en minuscula:** **cerrada en "
+                     "TASK-001**, que esta completed."]),
+             ["su UNICA fuente es una TAREA YA CERRADA: TASK-001.status == completed"],
+             [], "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("p4a: el veredicto que NIEGA el cierre no exime con un id YA CERRADO",
+             _panel(["- **Fila que se niega a cerrar:** **CERRADA en TASK-001, NO lo "
+                     "parece**, que esta completed."]),
+             ["su UNICA fuente es una TAREA YA CERRADA: TASK-001.status == completed"],
+             [], "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("p4b: la prosa que NIEGA el cierre no exime con un id YA CERRADO",
+             _panel(["- **Fila que se contradice:** **CERRADA en TASK-001**, que esta "
+                     "completed, y NO lo esta de verdad: sigue pendiente de cerrar."]),
+             ["su UNICA fuente es una TAREA YA CERRADA: TASK-001.status == completed"],
+             [], "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("p5: el marcador dentro de codigo inline no exime con un id YA CERRADO",
+             _panel(["- **Fila que escribe el marcador entrecomillado:** **`CERRADA` en "
+                     "TASK-001**, que esta completed."]),
+             ["su UNICA fuente es una TAREA YA CERRADA: TASK-001.status == completed"],
+             [], "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("m2c: la fila del criterio en minusculas NO se autoexime",
+             _panel(["- **Fila del criterio:** escribe "
+                     "`_comprobar_deuda_con_anclas(root, errors, ok)` como la regla "
+                     "de toda fila viva y dice en su prosa que esta cerrada en "
+                     "TASK-002, en minusculas y sin veredicto, para no estar "
+                     "vigilada."]),
+             [], ["se ha autoeximido"],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("m2d: la fila del criterio con el marcador en codigo inline NO se autoexime",
+             _panel(["- **Fila del criterio:** escribe "
+                     "`_comprobar_deuda_con_anclas(root, errors, ok)` como la regla "
+                     "de toda fila viva y escribe `CERRADA en TASK-002` entre "
+                     "acentos graves, para no estar vigilada."]),
+             [], ["se ha autoeximido"],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
             ("y: CONTROL NEGATIVO, un id YA CERRADO si cierra la fila",
              _panel(["- **Fila cerrada de verdad:** ancla `run_tests.py` y anade "
                      "al final \u2014 **CERRADA en TASK-001** \u2014, que esta "
@@ -13228,9 +13392,9 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
         # El numero de filas es un CONTRATO, no una consecuencia: sin esta
         # cuenta, borrar tres escenarios deja la suite verde con el mismo
         # recuento de tests (S1 del mutation-auditor, ciclo #49, MEDIDO).
-        assert len(FILAS) == 33, (
+        assert len(FILAS) == 42, (
             "la tabla de escenarios del check 8 tiene "
-            f"{len(FILAS)} filas y su contrato son 33. Una fila que se borra sin "
+            f"{len(FILAS)} filas y su contrato son 42. Una fila que se borra sin "
             "su cuenta deja el test en verde midiendo menos de lo que dice medir"
         )
 
@@ -13334,10 +13498,71 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
                 assert recuento_esperado in linea[0], (
                     f"escenario {nombre}: la linea `ok` dice {linea[0]!r} y el "
                     f"recuento que mide este escenario es {recuento_esperado!r}")
+
+        # --- EL PANEL REAL, QUE HASTA AQUI NO LO EJECUTABA NADIE --------------
+        # MEDIDO el 2026-10-02 (ronda 6): los TRES llamantes de `validar` de esta
+        # suite apuntaban a un ARBOL TEMPORAL, luego la mitad POSITIVA del fix --
+        # la que pregunta si un `CYCLE` de verdad cierra una fila-- solo la
+        # ejecutaba `python validate_docs.py`, que es un comando y no un test.
+        # Este bloque ata el guardian al repo de verdad, y lo que afirma es la
+        # LINEA `ok` de la seccion, no un numero escrito a mano.
+        #
+        # El recuento de filas es PROPIO y no `_filas_de_deuda`: un guardian que
+        # cuenta con la misma funcion que juzga no puede notar que esa funcion
+        # dejo de contar, que es justo lo que hace un `return` borrado.
+        raiz_real = os.path.dirname(os.path.abspath(__file__))
+        errors_real, ok_real = _informe_del_validador_real(raiz_real)
+        with open(os.path.join(raiz_real, "STATUS.md"), encoding="utf-8") as fh:
+            cuerpo_real = fh.read()
+        lineas_real = cuerpo_real.split("\n")
+        inicio = None
+        for i, linea in enumerate(lineas_real):
+            if linea.startswith("## ") and "Deuda" in linea:
+                inicio = i
+                break
+        assert inicio is not None, (
+            "el STATUS.md REAL no tiene seccion de Deuda, luego la linea `ok` que "
+            "se comprueba a continuacion no existiria y el fallo seria invisible")
+        fin = len(lineas_real)
+        for j in range(inicio + 1, len(lineas_real)):
+            if lineas_real[j].startswith("## "):
+                fin = j
+                break
+        filas_reales = [x for x in lineas_real[inicio + 1:fin]
+                        if x.startswith("- **")]
+        linea_ok = [o for o in ok_real if "Deuda Tecnica Conocida:" in o]
+        assert linea_ok, (
+            "el validador NO imprimio su linea `ok` de la seccion sobre el REPO "
+            "REAL: amortuar el check 8 entero baja el validador a 114 OK y 0 FAIL, "
+            "que es verde. Linea ok: " + repr(ok_real))
+        encontrado = _re.search(
+            r": (\d+) fila\(s\), (\d+) exenta\(s\) CERRADA\(s\), (\d+) viva\(s\)",
+            linea_ok[0])
+        assert encontrado, (
+            "la linea `ok` del repo real no tiene la forma que este test mide: "
+            f"{linea_ok[0]!r}")
+        n_filas, exentas, vivas = (int(x) for x in encontrado.groups())
+        assert n_filas == len(filas_reales), (
+            f"la linea `ok` cuenta {n_filas} fila(s) y el STATUS.md real tiene "
+            f"{len(filas_reales)}: el check 8 y el panel ya no hablan de la misma "
+            "seccion. Linea ok: " + repr(linea_ok[0]))
+        assert exentas + vivas == n_filas, (
+            f"la linea `ok` no cuadra: {exentas} exenta(s) + {vivas} viva(s) != "
+            f"{n_filas} fila(s). Una fila que se salta uno de los dos bancos deja "
+            "el recuento sin cerrar y nadie lo ve")
+        assert exentas >= 1 and vivas >= 1, (
+            f"el panel real tiene {exentas} exenta(s) y {vivas} viva(s): o el "
+            "criterio se apago entero o el panel entero se dio por cerrado, y las "
+            "dos son un panel que no vigila. Linea ok: " + repr(linea_ok[0]))
+        redness = [e for e in errors_real if e.startswith("STATUS.md Deuda")
+                   or "Deuda Tecnica Conocida" in e]
+        assert not redness, (
+            "el panel REAL esta en rojo y la suite lo daba por bueno: "
+            + repr(redness))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    print("Check 8 de la Deuda Tecnica Conocida, 30 filas por validar(root): ancla "
+    print("Check 8 de la Deuda Tecnica Conocida, 42 filas por validar(root): ancla "
           "viva rota, la misma cerrada, la cifra autoderivada y la del total "
           "cambiado, panel solo de cerradas, seccion ausente, CERRADA dentro de "
           "codigo inline, la fila del criterio autoeximida, la unica fuente en una "
@@ -13353,10 +13578,129 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
           "cierre que apunta a una TAREA pendiente, el CYCLE que solo esta en "
           "el journal, el CYCLE que es PREFIJO de uno real, el CYCLE truncado a "
           "siete caracteres, la fila del criterio con el marcador en la prosa, "
-          "el enlace DURO al panel, y los dos controles negativos "
+          "el ciclo REAL que cierra la fila de verdad, el marcador en la prosa "
+          "con un id ya cerrado, el plural que no es la palabra, las minusculas "
+          "con un id ya cerrado, la negacion del veredicto y la de la prosa con "
+          "un id ya cerrado, el marcador entrecomillado con un id ya cerrado, la "
+          "fila del criterio en minusculas y con el marcador entrecomillado, el "
+          "panel REAL con su linea `ok` comprobada fila a fila, el enlace DURO "
+          "al panel, y los dos controles negativos "
           "que archivan el residuo declarado.")
 
 
+
+
+def test_el_estado_que_elige_el_usuario_se_persiste_de_verdad():
+    """TASK-062: la eleccion de "arrancar / matar" no se guardaba. NUNCA.
+
+    **El bug.** `get_all_packs()` devuelve COPIAS defensivas (`model_copy(deep=True)`
+    sobre una cache de dos capas) y `save()` serializa `self._data`, que esa copia
+    NUNCA toca. Las tres vistas mutaban la copia y guardaban el estado interno, asi
+    que la eleccion se perdia entera: el desplegable cambiaba en pantalla, se
+    escribia el fichero con el valor viejo y al recargar volvia al anterior. Por eso
+    era tan traicionero: *parecia* que funcionaba. Y `save()` ademas no invalida la
+    cache, asi que la UI seguia enseñando el valor viejo aunque la mutacion llegara.
+
+    **Por que dos mitades y no un solo assert.** `change_default` vive dentro de
+    `_render_pack_card` y solo se alcanza por el `command` de un `CTkOptionMenu`, es
+    decir con una ventana de Tk. Este repo no abre ventanas en la suite, asi que la
+    mitad A demuestra **la causa** con el `PackService` REAL sobre disco temporal --
+    si el servicio dejara de copiar, la mitad B dejaria de ser necesaria--, y la
+    mitad B es una guarda `ast` que ata los TRES call sites al metodo que persiste.
+
+    MATA:
+      * `update_pack(...)` -> `save()` en cualquiera de los tres sitios -> B;
+      * borrar el `update_pack` entero de `change_default` -> B;
+      * `get_all_packs()` sin `deep=True` (volver a devolver los mismos objetos) -> A;
+      * `save()` que dejara de serializar `_data` -> A;
+      * `update_pack()` que dejara de invalidar la cache -> A (el servicio volveria a
+        servir el valor viejo aunque el fichero estuviera bien escrito).
+    """
+    import ast
+    import inspect
+    import tempfile
+    import textwrap
+    from woptimizer.services.pack_service import PackService as _PackService
+    from woptimizer.ui.views.pack_manager_view import PackManagerView as _PMV
+    from woptimizer.ui.views.process_manager_view import ProcessManagerView as _PMProcs
+
+    # --- (A) LA CAUSA, con el servicio REAL y disco temporal -----------------
+    with tempfile.TemporaryDirectory() as tmp:
+        ruta = os.path.join(tmp, "profiles.json")
+        svc = _PackService(data_path=ruta)
+
+        # M1: mutar una copia NO llega al disco, aunque se llame a `save()`.
+        # Esta es exactamente la razon por la que el bug no se veia.
+        copia = svc.get_all_packs()["gaming"]
+        copia.default_action = "start"
+        svc.save()
+        releido = _PackService(data_path=ruta).get_all_packs()["gaming"]
+        assert releido.default_action == "kill", (
+            f"`save()` sobre una copia de `get_all_packs()` TIENE que perder el cambio; si lo "
+            f"guarda, el servicio dejo de devolver copias defensivas y la mitad B de este test "
+            f"habria dejado de ser necesaria. Leido: {releido.default_action!r}"
+        )
+
+        # M2: la via que SI persiste, y ademas invalida la cache.
+        svc2 = _PackService(data_path=ruta)
+        svc2.get_all_packs()                      # calienta la cache de 2 capas
+        p = svc2.get_all_packs()["gaming"]
+        p.default_action = "start"
+        svc2.update_pack(p)
+        assert svc2._cached_all_packs is None, (
+            "update_pack() debe invalidar la cache: si no, `get_all_packs()` seguiria "
+            "sirviendo el valor viejo y la UI no se enteraria del cambio"
+        )
+        releido2 = _PackService(data_path=ruta).get_all_packs()["gaming"]
+        assert releido2.default_action == "start", (
+            f"update_pack() tiene que persistir en el fichero; leido del disco: "
+            f"{releido2.default_action!r}"
+        )
+
+    # --- (B) LOS TRES CALL SITES, por forma ---------------------------------
+    def _persistencia(fuente):
+        arbol = ast.parse(textwrap.dedent(inspect.getsource(fuente)))
+        out = []
+        for nodo in ast.walk(arbol):
+            f = getattr(nodo, "func", None)
+            if (isinstance(f, ast.Attribute) and f.attr in ("update_pack", "save")
+                    and isinstance(f.value, ast.Attribute)
+                    and f.value.attr == "pack_service"):
+                out.append(f.attr)
+        return out
+
+    fuente_change = textwrap.dedent(inspect.getsource(_PMV._render_pack_card))
+    assert "update_pack(p)" in fuente_change, (
+        "`change_default` debe persistir con `update_pack`. Con `save()` el cambio se "
+        "pierde: `get_all_packs()` devuelve una copia y `save()` serializa `_data`, que "
+        "la copia nunca toca. Es el bug que reporto el usuario."
+    )
+    assert "self.pack_service.save()" not in fuente_change, (
+        "`_render_pack_card` no debe llamar a `save()`: no persiste la copia ni invalida "
+        "la cache. Aqui caen DOS call sites --la accion por defecto y las categorias "
+        "automaticas--, y el segundo decide que cierra el Gaming Mode. El guard cita "
+        "la llamada prohibida, no solo la exigida."
+    )
+    assert "update_pack(actual)" in fuente_change, (
+        "El toggle de categorias automaticas debe releer el pack y persistirlo con "
+        "`update_pack`: mutar la copia de la tarjeta y llamar a `save()` no guarda nada."
+    )
+
+    ll_remove = _persistencia(_PMV.remove_app_from_pack)
+    assert "save" not in ll_remove, (
+        f"`remove_app_from_pack` llama a `save()`: quitar una app de un pack no se guarda. "
+        f"Llamadas de persistencia: {ll_remove}"
+    )
+    assert "update_pack" in ll_remove, f"`remove_app_from_pack` debe usar `update_pack`: {ll_remove}"
+
+    ll_add = _persistencia(_PMProcs.on_add_to_pack)
+    assert "save" not in ll_add, (
+        f"`on_add_to_pack` llama a `save()`: ANADIR apps a un pack no se guarda, y esa es "
+        f"la via principal para construir packs. Llamadas: {ll_add}"
+    )
+    assert "update_pack" in ll_add, f"`on_add_to_pack` debe usar `update_pack`: {ll_add}"
+
+    print("La accion por defecto, y las apps de un pack, SE PERSISTEN de verdad (TASK-062).")
 
 
 if __name__ == "__main__":
@@ -13366,6 +13710,12 @@ if __name__ == "__main__":
     # justo el contrato que promete `docs/ai/architecture.md` §5.
     from woptimizer.config import setup_logging as _setup_logging
     _setup_logging()
+    # TASK-062: la accion por defecto de un pack NO se guardaba y ningun test lo miraba.
+    # `change_default` es un closure dentro de `_render_pack_card`, alcanzable solo por el
+    # `command` de un OptionMenu, asi que su mitad ejecutable es una guarda `ast`; la mitad
+    # que SI se ejecuta prueba la CAUSA con el `PackService` real sobre disco temporal.
+    # Suite: 104 -> 105.
+    test_el_estado_que_elige_el_usuario_se_persiste_de_verdad()
 
     print("--- Running Backend Tests ---")
     test_models()

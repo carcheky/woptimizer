@@ -408,14 +408,29 @@ sobre las 7 exentas reales del panel, que las cumplen **sin tocar una sola fila*
    `**a diferencia de las CERRADAS, esta sigue viva**` dejaban la fila 89 EXENTA
    con `0 FAIL` (variantes V3 y V4 del auditor).
 2. El marcador está dentro de un **veredicto en negrita** (`**...**`), que es como el
-   panel escribe todos sus veredictos. MEDIDO: hasta esta ronda **ninguna** fila de
-   la tabla comprobaba esta condición, y por eso el mutante que la borra
-   (`findall` → `[texto]`) sobrevivía con la suite entera en verde.
-3. La fila nombra un **id trazable** (`TASK-NNN` o `CYCLE-NNN`) que **existe** en
-   `.taskmaster/tasks.json`, en un `CHANGELOG.md` o en el journal.
-4. Ni el **veredicto** ni la **prosa** de la fila **niegan** el cierre.
+   panel escribe todos sus veredictos. MEDIDO: hasta la ronda 5 **ninguna** fila de la
+   tabla comprobaba esta condición, y por eso el mutante que la borra
+   (`findall` → `[texto]`, C25) sobrevivía con la suite entera en verde. La ronda 6 lo
+   cierra con **(p1)**: marcador **en la prosa** + `TASK-001` ya `completed` → la fila
+   sigue VIVA. MEDIDO: C25 **MUERE en (p1)**. La (u) —que el informe declaraba su lugar
+   de muerte— **NO lo mata**, porque su id está pendiente.
+3. ~~La fila nombra un **id trazable** (`TASK-NNN` o `CYCLE-NNN`) que **existe**.~~
+   **SUPRIMIDA con su código.** MEDIDO el 2026-10-02: la quinta condición la
+   **subsume** (un id cerrado es por definición trazable) y `_ids_trazables` se quedó
+   sin un solo llamante, luego se borró en vez de quedarse como decoración. Este punto
+   estaba aquí **describiendo código que ya no existe**, que es peor que no
+   documentarlo.
+4. Ni el **veredicto** ni la **prosa** de la fila **niegan** el cierre. Cubierta por
+   (m), (v) y (t) **con id pendiente**, y por **(p4a)** y **(p4b)** con la `TASK-001`
+   ya `completed`: MEDIDO el 2026-10-02 que las dos primeras **no** la mataban, porque
+   con un id pendiente la fila no se cierra de todos modos.
 5. Y el id que cierra la fila está **CERRADO**, no pendiente: una `TASK` con
    `status == completed` o un `CYCLE` con entrada en uno de los **dos changelogs**.
+   MEDIDO el 2026-10-02: las condiciones 1, 2 y 4 solo se probaban con un id
+   **pendiente**, luego ninguna regla de la FORMA marcaba la diferencia, y (y)/(n2) —las
+   únicas dos filas que cerraban de verdad— las dejaban pasar todas. Por eso la ronda 6
+   añade (p1), (p2), (p3), (p4a), (p4b) y (p5): **marcador DEFECTUOSO con un id ya
+   CERRADO, que es la única combinación en la que la forma decide el veredicto**.
    MEDIDO que las 7 exentas la cumplen sin tocar una fila — 87 `TASK-055`/
    `CYCLE-045`, 90 `TASK-057`, 93 `TASK-031`/`TASK-060`, 94 `TASK-057`/`CYCLE-026`/
    `CYCLE-047`, 96 y 97 `TASK-037`/`CYCLE-027`, 99 `TASK-054`/`CYCLE-044` — y que
@@ -510,11 +525,17 @@ de markdown que **tabula** el contrato (`docs/ai/sandbox-rules.md:55-56`) lo doc
 no lo declara.
 
 **La gravedad se lee del emoji, no de la palabra.** El panel se expresa en 🔴🟡🟢 y el
-validador leía `ROJO`/`AMARILLO`/`VERDE`: medido el 2026-10-02, **14 de las 15 filas
-no tienen ni una palabra** de gravedad, y la única que la tiene (la 98) la usa para el
-*color* de un diagnóstico de UI. El suelo **no se ejecutaba nunca**. El emoji se mapea
-a la palabra **al leer**, y el informe sigue siendo ASCII puro porque la consola es
-cp1252 (trampa #16).
+validador leía `ROJO`/`AMARILLO`/`VERDE`, luego el suelo **no se ejecutaba nunca**. El
+emoji se mapea a la palabra **al leer**, y el informe sigue siendo ASCII puro porque la
+consola es cp1252 (trampa #16).
+
+**MEDIDO el 2026-10-02 con `_gravedad_declarada` fila a fila, ya con el mapeo: `ROJO` en
+ocho filas (87, 89, 90, 93, 94, 96, 98 y 99), `AMARILLO` en dos (100 y 101) y NINGUNA en
+cinco (88, 91, 92, 95 y 97).** La versión anterior de este párrafo decía «14 de las 15
+filas no tienen ni una palabra de gravedad, y la única que la tiene (la 98) la usa para
+el *color* de un diagnóstico de UI»: es **falso**, y lo era porque se había mirado el
+TEXTO sin mapear los glifos que se estaba contando. La 98 usa 🔴 cuatro veces y lo
+usa como severidad real de la fila, lo cual no la invalida para este propósito.
 
 ### LIMITACIONES RESIDUALES — lo que este check NO cubre
 
@@ -535,9 +556,18 @@ Se escriben, no se omiten. Todas medidas el 2026-10-02.
    con `_gravedad_declarada` fila a fila: de las quince filas, **cinco no declaran
    ninguna** (88, 91, 92, 95 y 97) y las otras diez sí — **ocho declaran 🔴**
    (87, 89, 90, 93, 94, 96, 98 y 99) y **dos 🟡** (100 y 101). De las **vivas**,
-   las que declaran 🔴 son la **89 y la 98**, y como el suelo de ambas es `ROJO`,
-   ninguna está por debajo: rebajar la 89 a 🟡 sale en rojo (P7), rebajar la 98
-   también. La **88 no declara ninguna gravedad** —`_gravedad_declarada` devuelve
+   las que declaran 🔴 son la **89 y la 98**. MEDIDO el 2026-10-02 (ronda 6) con
+   `_severidad_minima` fila a fila: **solo la 88 y la 89 tienen suelo**, porque son las
+   **únicas dos** que anclan `git_safe_commit.py`; las otras trece dan `""`.
+   - **Rebajar la 89 a 🟡 sale en ROJO** (`1 FAIL`, P7): su suelo es `ROJO` y
+     `AMARILLO` está por debajo.
+   - **Rebajar la 98 a 🟡 sale en VERDE**: `7 exenta(s) / 8 viva(s) / 35` anclas y
+     `0 FAIL`. La versión anterior de esta línea decía «rebajar la 98 **también**», y es
+     **FALSA**: la 98 **no ancla `git_safe_commit.py`**, luego su suelo es `""` y el
+     `if suelo and …` no llega a evaluarse. No lo delata ni el suelo ni ninguna otra
+     regla, y ese mecanismo —**una 🔴 sin suelo no la declara nadie**— es un agujero
+     DISTINTO del que este límite enunciaba, con su propio número: el **27**.
+   La **88 no declara ninguna gravedad** —`_gravedad_declarada` devuelve
    `None` porque no tiene glifo—, así que su P6 no «rebaja» nada: **añade** una
    gravedad por debajo de un suelo que ya era `ROJO`, y por eso también muere.
    *(La versión anterior de este límite decía «de las quince filas, la 89 es la
@@ -576,6 +606,13 @@ Se escriben, no se omiten. Todas medidas el 2026-10-02.
    - **La linea base de anclas es `35`, no `22`.** El `22` de la version
      anterior de este limite era de una medicion mas antigua; hoy el panel da
      `35` anclas de ruta resuelta y `2` por contenido.
+   - **MEDIDO el 2026-10-02 (ronda 6), y aisla el mecanismo:** cambiar `CYCLE-999` por
+     `CYCLE-998` —un id que **tampoco** existe en ningun registro— en la misma fila 95
+     da **exactamente lo mismo**: `8 exenta(s) / 7 viva(s) / 35` anclas y `0 FAIL`. O sea
+     que el `CYCLE` de ese veredicto **no aporta nada**: la fila se exime por su
+     `TASK-057` (`completed`), que es el residuo ya declarado del limite 19, y no por
+     una puerta nueva. Es la prueba de que aqui no hay un agujero de forma sino una
+     exencion que ya existia.
 
    No es una puerta nueva: es el residuo del límite 19 con otro disfraz, porque
    el veredicto `CYCLE-999` no aporta nada y la fila se cerraba igual. Lo que se
@@ -795,7 +832,15 @@ Se escriben, no se omiten. Todas medidas el 2026-10-02.
     está. En su lugar la identidad se ha ampliado por `(st_dev, st_ino)` (límite
     22), que es donde estaba de verdad el agujero.
 24. **La rama del journal de `_ciclos_de_la_fila` es INERTE en este repo, y se
-    declara en vez de eliminarse porque el escenario (c3) la ejecuta de verdad.**
+    declara en vez de eliminarse porque el escenario (c3) la ejecuta de verdad. La
+    ronda 6 anade que `_ciclos_cerrados` TAMPOCO la puede usar: el mutante **C3**
+    («el registro de ciclos vuelve a mirar el journal») **sobrevivio** a la ronda 6
+    entera.** MEDIDO: con el journal entre los registros, `CYCLE-901` sigue sin cerrar
+    nada, porque la forma de ENTRADA `^##[ \t]+\[?(CYCLE-\d+)\]?` no casa con nada de
+    un `.json` que guarda `"cycle": <int>`. O sea que **mirar el journal o no es
+    indistinguible**, y por eso la quinta condicion ya no depende de _que_ registros se
+    leen sino de la FORMA de la entrada. El escenario (c3) sigue siendo el que ejecuta
+    esa rama, y su valor es el de una asercion de cobertura, no el de un agujero.
     MEDIDO el 2026-10-02 sobre el journal real: **cero** literales `CYCLE-NNN` y
     **49** entradas con `"cycle": <int>` (los ciclos van del `1` al `49`, todos
     enteros). `_RE_CICLOS` busca la forma `CYCLE-\d+`, luego la rama del journal
@@ -813,20 +858,57 @@ Se escriben, no se omiten. Todas medidas el 2026-10-02.
     el panel idéntico a cualquier fichero del árbol (límite 22), pero **nadie la
     ha medido y por tanto nadie puede romperla aquí**. Se declara como cobertura
     ausente, no como bug: es un residuo de portabilidad sin banco.
-26. **La fila 101 del panel tiene un número IMPAR de `**` y eso HOY decide si su
-    marcador se ve.** MEDIDO: la fila 101 cuenta **117** asteriscos (impar) y
-    `_RE_NEGRITA` extrae **58** veredictos; al añadirle un veredicto de cierre
-    bien formado, el recuento pasa a 59 y **el veredicto nuevo NO está entre los
-    extraídos**: `**CERRADA en TASK-001**` añadido a la fila se queda **invisible**
-    para el guard. MEDIDO el contraste que lo demuestra: con los 117 asteriscos
-    impares `_porta_el_marcador_de_cierre` devuelve `False` y con los 120 pares
-    (cerrando el desbalance) devuelve `True`. Es decir, **hoy la fila 101 está
-    protegida por un accidente de formato del Markdown, no por la regla**; el
-    escenario (f2) usa una fila sintética **balanceada**, luego el comportamiento
-    real de la fila del criterio **no estaba cubierto**. La ronda 5 lo cubre con el
-    escenario (m2), que pone el marcador **en la prosa** (independiente del
-    balance de asteriscos) y exige que la fila del criterio se acuse igual. **No se
-    corrige el desbalance de la 101**: es una fila de Deuda y su regla es *solo
-    añadir, nunca reescribir*. Se declara el accidente y se cubre por donde el
-    Markdown no decide.
+26. **TRES filas del panel tienen un número IMPAR de `**`, y eso HOY decide si un
+    marcador escrito en NEGRITA se ve. MEDIDO el 2026-10-02 (ronda 6) con
+    `_RE_NEGRITA.findall` sobre el panel real:** la **89** cuenta **63** asteriscos y
+    extrae **31** veredictos, la **96** cuenta **21** y extrae **10**, y la **101** cuenta
+    **117** y extrae **58**. Las tres son impares y **ninguna estaba declarada**: solo se
+    conocía la 101.
+
+    **El contraste que la versión anterior de este límite citaba NO reproduce.** Decía
+    «con los 120 asteriscos pares, `_porta_el_marcador_de_cierre` devuelve `True`». MEDIDO
+    con la 101 a **119, 120, 121 y 123** asteriscos: el veredicto bien formado añadido
+    **NO aparece entre los extraídos en los cuatro casos**, ni con el recuento par. Y lo
+    mismo en la 89 (a 65 y 66) y en la 96 (a 23 y 24). La razón es que el emparejamiento
+    de `**…**` es **posicional y de izquierda a derecha**: un `**` suelto empareja con el
+    primero del veredicto que se añada, luego a partir de ahí **todo** va desplazado y la
+    paridad no lo arregla.
+
+    **Lo que de verdad protege a la 101 no es el formato, y por eso este límite se
+    reescribe.** La protege la **autoexención**, que **no usa negrita**: mira el nombre
+    del criterio y la palabra de cierre en mayúsculas **fuera de código inline**. MEDIDO:
+    añadirle `**CERRADA en TASK-060, cerrada de verdad.**` da `8 exenta(s) / 7 viva(s) /
+    27` anclas y **1 FAIL** —«la fila del criterio se ha autoeximido»—, o sea que **falla
+    en ROJO y no en verde**. Y cerrar el desbalance (añadir un `**` suelto, 118) no cambia
+    nada: `7 exenta(s) / 8 viva(s) / 35` anclas y `0 FAIL`.
+
+    **Y el escenario (m2) NO lo cubre**: usa un árbol **sintético**, luego mide una fila
+    formateada por el propio test y no la fila del criterio real. Lo que ahora ata esa
+    fila al código es la fase que la ronda 6 añadió **dentro** del test del check 8, que
+    ejecuta `validar` contra el **repo real** y exige `0 FAIL` de la sección: un ataque a
+    la 101 pasa a ser un fallo de `run_tests.py` y no un `FAIL` que solo ve quien ejecuta
+    `validate_docs.py` a mano. **No se corrige el desbalance de las tres filas**: son
+    filas de Deuda y su regla es *solo añadir, nunca reescribir*.
+27. **TRECE de las quince filas NO TIENEN SUELO, y a una 🔴 sin suelo no la vigila
+    nadie.** Es el hermano del límite 4 por el otro lado, y existe porque medir el suelo
+    fila a fila dio un número que el límite 4 no recogía. MEDIDO el 2026-10-02 con
+    `_severidad_minima` sobre el panel real: el suelo se deriva de si algún ancla de RUTA
+    **declara** el código sobrecargado, y **`.taskmaster/git_safe_commit.py` es el único
+    fichero del repo que lo declara**; MEDIDO que **solo la 88 y la 89 lo anclan**. Las
+    otras trece dan `""`:
+
+    | fila | gravedad | suelo | por qué |
+    |---|---|---|---|
+    | 87, 90, 93, 94, 96, 99 | 🔴 | `""` | declaran severidad y no anclan el comprobable. Las seis son **exentas**, luego el suelo ni se les pregunta |
+    | 91, 92, 95, 97 | ninguna | `""` | no declaran gravedad y no anclan el comprobable |
+    | **98** | 🔴 | `""` | **MEDIDO: bajar su primer 🔴 a 🟡 deja el panel en `7/8/35` y `0 FAIL`** |
+    | 100, 101 | 🟡 | `""` | declaran `AMARILLO` y no anclan el comprobable, luego tampoco pueden bajar a 🟢 sin que nada lo vea |
+    | 88, 89 | ninguna / 🔴 | `ROJO` | las dos únicas con suelo; la 89 está **justo en su suelo**, y por eso bajar su 🔴 a 🟡 sí sale en rojo (P7) |
+
+    O sea que el suelo de gravedad vigila hoy **una sola fila del panel** (la 89). No se
+    arregla porque un suelo derivado exigiría escribir a mano la política de gravedad del
+    repo, que es la misma mentira un nivel más arriba (límite 3), y porque el fix posible
+    —derivar la gravedad de la materia prima de cada fila— no se ha medido. Se declara
+    como cobertura ausente **con su número de filas**, que es lo que hace que un
+    re-lector no lo descubra como novedad.
 

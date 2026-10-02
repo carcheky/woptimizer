@@ -224,9 +224,18 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
         right_box.pack(side="right")
         
         def change_default(choice, p_id=pack.id):
+            # BUG (TASK-062): `get_all_packs()` devuelve COPIAS defensivas
+            # (`model_copy(deep=True)`, cache de 2 capas en `pack_service.py:593`),
+            # y `save()` serializa `self._data`, que esa copia NUNCA toca. La
+            # mutacion se perdia entera: el desplegable cambiaba, se escribia el
+            # fichero con el valor viejo y al recargar volvia al anterior.
+            # Ademas `save()` NO invalida la cache, asi que la UI seguia
+            # enseñando el valor viejo aun con la mutacion bien hecha.
+            # `update_pack()` hace las tres cosas: copia a `_data`, guarda e
+            # invalida la cache. No volver a llamar a `save()` aqui.
             p = self.pack_service.get_all_packs()[p_id]
             p.default_action = choice
-            self.pack_service.save()
+            self.pack_service.update_pack(p)
             
         combo_action = ctk.CTkOptionMenu(
             right_box,
@@ -365,16 +374,24 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
             grid.pack(fill="x", padx=6, pady=4)
             grid.grid_columnconfigure((0, 1), weight=1)
             
-            def create_command(c, v):
+            def create_command(c, v, p_id=pack.id):
                 def toggle():
+                    # BUG (TASK-062): `pack` es la COPIA de `get_all_packs()` que
+                    # llego a esta tarjeta. Mutar `target_categories` en ella y
+                    # llamar a `save()` no persiste NADA, porque `save()`
+                    # serializa `_data` y la copia nunca lo toca. Es decir: las
+                    # categorias automaticas del pack Gaming --justo lo que decide
+                    # que cierra el Gaming Mode-- no se guardaban.
+                    # `update_pack()` copia a `_data`, guarda e invalida la cache.
+                    actual = self.pack_service.get_all_packs()[p_id]
                     if v.get() == 1:
-                        if c not in pack.target_categories:
-                            pack.target_categories.append(c)
+                        if c not in actual.target_categories:
+                            actual.target_categories.append(c)
                     else:
-                        if c in pack.target_categories:
-                            pack.target_categories.remove(c)
-                    self.pack_service.save()
-                    acc_btn.configure(text=f"⚙️ Configurar Categorías Automáticas ({len(pack.target_categories)} activas) ▲")
+                        if c in actual.target_categories:
+                            actual.target_categories.remove(c)
+                    self.pack_service.update_pack(actual)
+                    acc_btn.configure(text=f"⚙️ Configurar Categorías Automáticas ({len(actual.target_categories)} activas) ▲")
                 return toggle
                 
             sorted_cats = ordenar_categorias(all_cats)
@@ -453,7 +470,10 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
             self._inline_status(f"⚠️ '{app_name}' ya no está en '{pack.name}'.", AMBAR)
             return
         pack.apps.remove(app_name)
-        self.pack_service.save()
+        # Mismo bug y mismo arreglo que `change_default`: `pack` es una copia
+        # defensiva de `get_all_packs()`, y `save()` sola no la persiste ni
+        # invalida la cache. `update_pack()` si.
+        self.pack_service.update_pack(pack)
         self.refresh_packs()
         self._inline_status(f"✅ '{app_name}' quitada de '{pack.name}'.", VERDE)
 

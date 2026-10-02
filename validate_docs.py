@@ -1457,7 +1457,7 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
         # prosa, aceptar el prefijo en vez de la palabra, aceptar minusculas,
         # ignorar la negacion del veredicto, ignorar la de la prosa, no borrar el
         # codigo inline, yaceptarlo en toda la fila) dejan el panel REAL en
-        # `7 exenta(s) / 8 viva(s)` y `0 FAIL` y las pasan las 30 filas de la
+        # `7 exenta(s) / 8 viva(s)` y `0 FAIL` y las pasan las 42 filas de la
         # tabla sin delatar NADA. El guard que vigila al vigilante no puede
         # depender de la forma que el vigilante evalua.
         #
@@ -1469,7 +1469,7 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
         # no lleva marcador en mayusculas fuera de codigo inline, luego el
         # predicado amplio no cambia NINGUN veredicto de las 15 filas reales
         # (`7 exenta(s) / 8 viva(s) / 35` anclas y `0 FAIL`, identico antes y
-        # despues), y la tabla de 30 escenarios sigue verde con el fix puesto.
+        # despues), y la tabla de 42 escenarios sigue verde con el fix puesto.
         autoeximida = (NOMBRE_DE_LA_FILLA_DEL_CRITERIO in fila
                        and bool(_RE_CERRADA.search(
                            _RE_CODIGO_INLINE.sub(" ", fila))))
@@ -1494,8 +1494,8 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
                                      if s != "completed")
                 errors.append(
                     f"STATUS.md Deuda fila {numero}: la fila del criterio se ha "
-                    "autoeximido: lleva el marcador de cierre en un veredicto y es "
-                    f"la fila que escribe este check"
+                    "autoeximido: lleva el marcador de cierre en MAYUSCULAS y FUERA "
+                    "de codigo inline, y es la fila que escribe este check"
                     + (f", declarando ademas {', '.join(pendientes)} sin cerrar"
                        if pendientes else "")
                     + ". Una fila que exige anclas no puede quedarse sin vigilar"

@@ -796,7 +796,7 @@
     "area": "Arquitectura & Calidad",
     "slug": "2026-10-02-check-deuda-con-anclas",
     "task": "TASK-060",
-    "status": "COMPLETED",
+    "status": "BLOCKED",
     "commits": [
       "c65b2e1",
       "795a1ed",
@@ -808,9 +808,12 @@
     },
     "impact": "Check 8 de validate_docs.py: el arreglo de fondo del PARTIAL del ciclo #48. Hasta aqui la seccion Deuda Tecnica Conocida de STATUS.md -que gobierna que trabajo hace el bucle cuando el backlog esta vacio- no la miraba NINGUN check (0 coincidencias de 'Deuda' en el validador). Ahora toda fila no marcada cerrada debe llevar un ancla resoluble cuya verdad se derive de FUERA del panel, con las filas cerradas exentas. 8 filas vivas vigiladas, 15 en total, 7 exentas. El marcador de cierre ignora el codigo en linea (re.sub de las comillas invertidas) porque si no el panel se autoexime: la fila que escribe el criterio no puede estar exenta por el criterio. Nacio en verde tocando UNA sola fila (la 91, que no tenia ancla). Reparto 93+10 derivado con ast en el check 7, no en el 8. Suite 103 -> 104 con 13 escenarios; 12 mutantes de codigo mueren por su asercion y quitar un argumento del cableado da TypeError, nunca un falso verde.",
     "audit": {
-      "verdict": "PENDIENTE",
-      "note": "Paso 4 en curso."
+      "verdict": "FAIL x5, ronda 6 implementada y verificada en el arbol pero SIN COMMIT",
+      "rondas": "El mutation-auditor dio FAIL cinco veces seguidas sobre este check. Cada ronda teoriog una parte del fix como cerrada y la siguiente la desmintio. Lo que se ha consolidado: el cierre se resuelve por la FORMA de la entrada del changelog y no por subcadena (asi CYCLE-04 deja de coincidir dentro de CYCLE-045); el panel no se ancla a si mismo por identidad de ruta resuelta ni por identidad de fichero (st_dev, st_ino); la exencion exige un veredicto con un id trazable y CERRADO; y hay una fase que valida el repo real, que es el nudo que hacia invisible la mitad positiva del fix.",
+      "supervivientes_que_quedan": "P4c (limites 20/21) y C3 (limite 24, inerte desde la forma de entrada). El resto de los 13 que quedaban mueren con su asercion propia.",
+      "el_que_mas_console": "X3: _ciclos_cerrados -> return [] sobrevivia a la suite entera porque los tres llamantes de validar pasaban siempre un arbol temporal. Nadie verificaba que un CYCLE real cerrara una fila. Cerrado en la ronda 6 con la fila (cyc) mas la fase contra el repo real (coste medido 3,70 s)."
     },
+    "incidente": "BLOQUEO DE ENTORNO. A mitad de la ronda 6 el shell dejo de poder crear subprocesos: node:internal/child_process spawn EPERM, que falla incluso con Write-Output. Le afecta tambien al orquestador, no es un fallo del subagente; es la limitacion de sandbox que el propio repo documenta. CONSECUENCIA: el trabajo de la ronda 6 esta EN DISCO y verificado por el dev (run_tests.py 104 verdes, validate_docs.py 115 OK / 0 FAIL, verify_ui_syntax.py OK, 17 mutantes de codigo: 15 mueren y 2 sobreviven con dueno), pero SIN COMMIT y sin las cuatro verificaciones finales repetidas tras las ultimas ediciones de solo texto. HEAD sigue en 49083d3 y hay cambios sin versionar en run_tests.py, validate_docs.py, docs/ai/sandbox-rules.md, STATUS.md y mutation-report.md. AL RECUPERAR EL SHELL: python .taskmaster/git_safe_commit.py 'fix(validate): ciclo #49 ronda 6 - la mitad positiva del fix con test, y las tres muertes corregidas' y re-ejecutar las cuatro verificaciones. NO se declara cerrado: el Paso 4 final sigue sin hacerse.",
     "deuda_nueva": "TASK-061: el invariante del codigo de salida de git_safe_commit.py (WOPT_NOOP y WOPT_COMMIT_OK comparten el 0; el mutante CODE_FAIL->CODE_OK sobrevive a la suite y al validador). Tambien TASK-059: commits sin marcador de ciclo, de modo que la union de fuentes se apoya en su mayoria solo en el journal."
   }
 ]

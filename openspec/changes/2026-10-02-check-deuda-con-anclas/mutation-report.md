@@ -5,6 +5,10 @@
 la ronda 3 (siete correcciones, **las siete de TEXTO**: ni una tocaba `src/` ni
 una sola fila del panel).
 **Fecha de medicion:** 2026-10-02, en Windows.
+**Rondas 5 y 6, más abajo, con su propio §0 cada una.** Este fichero acumula rondas
+y **cada una se mide contra su propio commit**, luego los números de las secciones
+antiguas son los de su ronda y no los de hoy. La ronda 6 esta al final, y su §0
+declara los suyos.
 
 ## 0. EL BASELINE, DECLARADO — y por qué este informe REEMPLAZA al anterior
 
@@ -48,8 +52,10 @@ no se puede re-auditar, que es lo unico para lo que sirve.
 **Estado del panel que se mide, y es el mismo en las dos columnas de todas las
 tablas:** `115 OK / 0 FAIL`, 15 filas, 7 exentas, 8 vivas, **35 anclas** de ruta
 resuelta y 2 por contenido, suite de **104 tests** (la tabla de escenarios del
-check 8 subio de 25 a **30** filas; el numero de tests no cambia, porque los
-escenarios son filas de una tabla).
+check 8 tenía **30** filas en el commit de esta ronda —`a31e585`—; la ronda 5 la
+subió a 33 y la **ronda 6 a 42**, y el numero de tests no cambia en ninguno de los
+tres casos, porque los escenarios son filas de una tabla, no tests. El recuento
+unico de este informe es el de su propio §0, y el de la ronda que lo firma.).
 
 ## 1. Como reproducir una fila de este informe
 
@@ -64,10 +70,19 @@ Nada se escribe en el arbol: `git_safe_commit.py` hace `add -A`.
   P6, P7 y G2 morirían por un motivo que no es el suyo. Una campana sobre un árbol
   que no es el repo mide otra cosa.
 - **Columna `HEAD`** — el validador de `a31e585` **tal cual**, sobre el mismo
-  banco y el mismo árbol. No hay `git` en este entorno, luego no se reconstruye
-  por parche inverso: se mide el fichero que hay, y el control es que las dos
+  banco y el mismo árbol. Se mide el fichero que hay, y el control es que las dos
   columnas coincidan exactamente sobre el panel intacto
   (`0 FAIL / 7 exentas / 8 vivas / 35 anclas`).
+  ~~No hay `git` en este entorno, luego no se reconstruye por parche inverso.~~
+  **CORREGIDO en la ronda 6, y era FALSO: `git` SÍ está.** MEDIDO
+  `git --version` → `git version 2.55.0.windows.5`, y con el `GIT_DIR`
+  desacoplado que usa `git_safe_commit.py`
+  (`$env:GIT_DIR = "$env:LOCALAPPDATA\woptimizer_git\.git"`) el
+  `git rev-parse --short HEAD` reproduce `49083d3` a la primera. O sea que la
+  columna `HEAD` de este informe **sí** es reconstruible, y la frase anterior
+  convertía una limitación del banco en una afirmación sobre el entorno. No se
+  reconstruye igual porque el validador de `a31e585` no está en el árbol de este
+  pase, pero la razón es otra y queda escrita.
 - **Mutantes de código** — se copia el repo a `%TEMP%`, se aplica el mutante al
   fichero de la **copia** y se ejecuta **solo**
   `test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva()` en un subproceso
@@ -182,8 +197,8 @@ sobrevive a su propio fix roto no mide el fix.
 
 | id | Mutante sobre el ORIGINAL | Muerte medida |
 |---|---|---|
-| **X** | `_esta_cerrada`: `return bool(_ids_cerrados(root, fila))` -> `return _porta_el_marcador_de_cierre(fila)` | **MUERE**: escenario (x). Sin la quinta condicion el ataque vuelve a eximir la fila |
-| **C3** | `_ciclos_cerrados`: el registro pasa a mirar tambien `.taskmaster/rd_journal.json` | **MUERE**: escenario (c3). Un ciclo EN VUELO cerraria la fila |
+| **X** | `_esta_cerrada`: `return bool(_ids_cerrados(root, fila))` -> `return _porta_el_marcador_de_cierre(fila)` | **MUERE**, pero **no en el (x)**: la versión anterior de esta tabla decía «escenario (x)» y la §5 de la ronda 5 lo corrigió al **(r)**. MEDIDO el 2026-10-02 (ronda 6) contra la suite COMPLETA: **MUERE**, y el motivo es el que la §5 daba —el bucle de escenarios aborta en el PRIMERO que falla y `r` va antes que `x`—. Se escribe con la medición aislada, no con la esperada. |
+| **C3** | `_ciclos_cerrados`: el registro pasa a mirar tambien `.taskmaster/rd_journal.json` | **MUERE en la ronda 4 y SOBREVIVE desde la ronda 5**, y el cambio es medido: con la capa (b) —la forma de ENTRADA `^##[ \t]+\[?(CYCLE-\d+)\]?`— puesta, esa forma no casa con nada de un journal que guarda `"cycle": <int>`, luego **mirar el journal o no es indistinguible**. La fila (c3) sigue ejecutando esa rama, pero ya no la ata. Ver RONDA 6 §2 y el límite 24. |
 | **H2** | `_es_el_propio_panel`: `return _es_el_mismo_fichero(panel, otra)` -> se borra | **MUERE**: escenario (h2). El enlace duro volveria a colar |
 | **F2** | el bucle: `if _esta_cerrada(root, fila) or autoeximida:` -> `if _esta_cerrada(root, fila):` | **MUERE**: escenario (f2). La autoexencion se preguntaria DESPUES del estado |
 | **N2** | `_RE_NEGACION_DEL_CIERRE` -> `re.IGNORECASE` | **MUERE a proposito**, y es la fila que hace FALLO a un arreglo que nadie aplico: lleva las exentas a `0 exenta(s)` |
@@ -221,12 +236,12 @@ C30 y por el mismo motivo.
 | **C5** | `_citas_de_la_fila`: borrar `if not palabras: continue` | **MUERE por la asercion del envoltorio, NO por el `IndexError`**: `validar(root) debia devolver un INFORME y tiro IndexError: list index out of range`. Es la correccion al informe anterior: el envoltorio captura la excepcion, luego lo que se mide es que el validador **no** entregue informe. |
 | **C6** | S5: `elif derivado in anclas["numeros"]` -> `elif False and ...` | **MUERE**: `escenario o: el check acuso ['VIVA sin ancla resoluble', 'NO es el derivado con ast']` |
 | **C7** | `derivado in anclas["numeros"]` -> `104 in ...` (constante a mano) | **MUERE**: mismo escenario `o`. El derivado de este arbol es 7, no 104. |
-| **C8** | `run_tests.py`: `assert len(FILAS) == 30` -> `== 99` | **MUERE**: `la tabla de escenarios del check 8 tiene 30 filas y su contrato son 30` |
+| **C8** | `run_tests.py`: `assert len(FILAS) == <N>` -> `== 99` | **MUERE**: `la tabla de escenarios del check 8 tiene <N> filas y su contrato son <N>` |
 | **C9** | el `ok.append(...)` del check 8 -> `if False: ok.append(...)` | **MUERE**: `escenario a: el check NO imprimio su linea \`ok\` de la seccion` |
 | **C13** | `if ids:` -> `if True:` | **MUERE**: `escenario r: veredicto en negrita con un id que NO resuelve: el check NO acuso ['VIVA sin ancla resoluble']` |
-| **C25** | `findall(texto)` -> `[texto]` (la negrita deja de exigirse) | **MUERE**: `escenario u: el marcador tiene que estar en NEGRITA: la linea \`ok\` dice '... 0 exenta(s) CERRADA(s), 1 viva(s) ...'` |
-| **C26** | `_RE_CERRADA` -> `re.IGNORECASE` | **MUERE**: `escenario s: el marcador en minusculas no cierra nada: la linea \`ok\` dice '... 0 exenta(s) CERRADA(s), 1 viva(s) ...'` |
-| **C28** | borrar la negacion sobre la **prosa** | **MUERE**: `escenario v: la negacion en la PROSA tambien niega el cierre: la linea \`ok\` dice '... 0 exenta(s) CERRADA(s), 1 viva(s) ...'` |
+| **C25** | `findall(texto)` -> `[texto]` (la negrita deja de exigirse) | **SOBREVIVIO en el commit de esta ronda: MEDIDO el 2026-10-02 que la fila (u) NO lo mata** (`RESULTADO: PASA`, suite entera en verde). El motivo, medido: la (u) tiene el id **pendiente** (`TASK-002`), luego con el marcador en la prosa la fila no se cierra de todos modos y el recuento no se mueve. **La ronda 6 lo cierra con la fila (p1)** —marcador en la prosa con la `TASK-001` ya `completed`— y ahí **MUERE en (p1)**. Ver RONDA 6 §2. |
+| **C26** | `_RE_CERRADA` -> `re.IGNORECASE` | **SOBREVIVIO a la tabla del check 8: MEDIDO el 2026-10-02 que la fila (s) NO lo mata** (`RESULTADO: PASA`), por la misma razón que C25: la (s) tiene el id pendiente. La **ronda 6 lo cierra con la fila (p3)** y ahí **MUERE en (p3)**. Y sobre el panel REAL `IGNORECASE` no es verde: MEDIDO `10 exenta(s) / 5 viva(s) / 24` anclas y **1 FAIL**, porque la 101 tiene «cerrada» en minúsculas en su prosa y la autoexención, insensible a caja, la acusa de autoeximirse. |
+| **C28** | borrar la negacion sobre la **prosa** | **SOBREVIVIO en el commit de esta ronda: MEDIDO el 2026-10-02 que la fila (v) NO lo mata** (`RESULTADO: PASA`), misma razón: la (v) tiene el id pendiente. **La ronda 6 lo cierra con la fila (p4b)** y ahí **MUERE en (p4b)**. |
 | **C29** | la identidad -> igualdad de cadena con `"STATUS.md"` | **MUERE**: `escenario w: el panel no se certifica a si mismo con otra GRAFIA: el check NO acuso ['VIVA sin ancla resoluble', 'ancla NO RESOLUBLE: status.md EXISTE pero es el propio panel']` |
 
 **C27** (`limpio.replace('**','')`) y **C21** (la memoizacion de los ids)
@@ -282,11 +297,19 @@ novedad:
    quinta condicion puesta y el **panel intacto**: `7 exenta(s) / 8 viva(s) /
    35` anclas, `0 FAIL` y **ni una fila tocada**. Ver limite 19.
 7. **Lo que de G2f' sobrevive, y es TODO lo que queda de este agujero:** nombrar
-   un id **ya cerrado** (`TASK-055`, `CYCLE-045`) da `8/7/33, 0 FAIL`, y
-   P4 (`CYCLE-999` en la fila 89) tambien, porque la 89 nombra `TASK-060`
-   `completed`. No es cerrable con una regla de forma: una fila que nombra
-   trabajo de verdad terminado es indistinguible de una fila real cerrada. El
-   escenario (y) de la suite lo archiva como control negativo.
+   un id **ya cerrado** (`TASK-055`, `CYCLE-045`) da `8/7/33, 0 FAIL`. No es
+   cerrable con una regla de forma: una fila que nombra trabajo de verdad
+   terminado es indistinguible de una fila real cerrada. El escenario (y) de la
+   suite lo archiva como control negativo.
+   ~~y P4 (`CYCLE-999` en la fila 89) tambien, porque la 89 nombra `TASK-060`
+   `completed`.~~ **CORREGIDO en la ronda 6: es FALSO, y lo medí.** Anadir
+   ` - **CERRADA en CYCLE-999**` a la fila 89 da `7 exenta(s) / 8 viva(s) / 35`
+   anclas y `0 FAIL`, o sea que **la 89 NO se exime** y no puede ser ejemplo de
+   nada. Motivo medido: su veredicto «🔴 VUELTA A 🔴 Y NO SE CIERRA» lleva un `NO`
+   en mayusculas DENTRO de la negrita, y la regla de negacion rechaza el
+   marcador de cualquier veredicto antes de mirar ningun id. El ejemplo que sí
+   funciona es la **95**, y con el aislamiento del `CYCLE-998` (RONDA 6, §3) queda
+   demostrado que su exención no viene del `CYCLE` sino del `TASK-057`.
 8. **La negacion en MINUSCULA no se ve, y no se arregla.** MEDIDO que
    `re.IGNORECASE` lleva las **siete** exentas reales a **cero** y pone el repo en
    `1 FAIL`: en castellano `no` y `nunca` son prosa ordinaria, y hay negaciones
@@ -356,9 +379,17 @@ es una asercion.
   estando fuera del alcance de este check.
 - **Los controles E4, A2, G3b, N2, M4b, C11, C14-C17, C20 y C22** no son
   re-audibles desde el repo (ver §5).
-- **El recuento de escenarios del test es 30 y su contrato es 30.** La tabla
-  aumento de 25 a 30 en este pase (x, c3, h2, y y n2) y **el numero de tests no
-  cambio: sigue en 104**, porque los escenarios son filas de una tabla.
+- **El recuento de escenarios del test:** la tabla tiene hoy **42** filas y su
+  contrato es `assert len(FILAS) == 42`. Su historia, para que se vea que el
+  número es un **contrato y no una consecuencia**: 25 al nacer, **30** en la ronda
+  4 (+ x, c3, h2, y, n2), **33** en la ronda 5 (+ x4, x4b, m2 y las que ya estaban
+  a medio escribir) y **42** en la ronda 6 (+ cyc, p1, p2, p3, p4a, p4b, p5, m2c y
+  m2d). **El numero de tests no cambio ni una vez: sigue en 104**, porque los
+  escenarios son filas de una tabla y no tests. *(Las tres primeras frases de este
+  párrafo decían «30» como si fuera el número del día, y era el número de una ronda
+  ya cerrada; el `print()` de `run_tests.py` y la aserción de contratoaban de 30
+  con 33 filas. Los seis sitios quedan unificados y el único número vigente es el
+  que firma su propia ronda.)*
 
 ---
 
@@ -377,22 +408,32 @@ registros)`: una **SUBCADENA**. Los dos changelogs publican `CYCLE-001` a
 `CYCLE-045`, y `"CYCLE-04]" in changelog` es `False`. `CYCLE-04` **no es un ciclo
 de este repo** y el validador lo contaba como cerrado.
 
-| id | Edicion, sobre el panel real | `ok` HEAD | FAIL | Veredicto |
+| id | Edicion, sobre el panel real | `ok` HEAD (ronda 4) | `ok` con el FIX (ronda 6) | Que mutacion muere y donde |
 |---|---|---|---|---|
-| **N1** | fila 88 + ` - **CERRADA en CYCLE-04**` | `15 / 8 / 7 / 33` | `0` | **SOBREVIVE** |
-| **N2** | ` - **CERRADA en CYCLE-0**` (siete caracteres) | `15 / 8 / 7 / 33` | `0` | **SOBREVIVE** |
-| **N3** | ` - **CERRADA en CYCLE-999**` + una linea `## [CYCLE-999]` en el changelog tecnico | `15 / 8 / 7 / 33` | `0` | **SOBREVIVE** |
+| **N1** | fila 88 + ` - **CERRADA en CYCLE-04**` | `15 / 8 / 7 / 33`, `0 FAIL` | `15 / 7 / 8 / 35`, `0 FAIL` | **MUERE.** El prefijo `CYCLE-04` dentro de `CYCLE-045` ya no exime, y el sitio de su muerte es el escenario **(x4)** |
+| **N2** | fila 88 + ` - **CERRADA en CYCLE-0**` (siete caracteres) | `15 / 8 / 7 / 33`, `0 FAIL` | `15 / 7 / 8 / 35`, `0 FAIL` | **MUERE.** Mismo camino que N1, en el mismo escenario **(x4)**: el truncado es un prefijo |
+| **N3** | fila 88 + ` - **CERRADA en CYCLE-999**` + una linea `## [CYCLE-999]` en el changelog tecnico | `15 / 8 / 7 / 33`, `0 FAIL` | `15 / 8 / 7 / 33`, `0 FAIL` | **NO es un agujero: es el fix funcionando.** Con la entrada **publicada**, exime y debe eximir. Lo que se declara es el residuo del limite 19 («nombrar un id ya cerrado»), y su control negativo es **(y)** |
+| **N4** | fila 88 + ` - **CERRADA en CYCLE-04, nunca se resolvio**` | `15 / 8 / 7 / 33`, `0 FAIL` | `15 / 7 / 8 / 35`, `0 FAIL` | **MUERE**, pero por un motivo distinto: la negacion es un residuo declarado (limite 21) y el **prefijo** de N1 ya no cuela. Sin la negacion, N4 seria N1 |
 
-**N3, aislado:** con la fila 88 (la que usa el resto de la tabla) el `CYCLE-999`
-**no** la exime, porque la 88 no nombra ninguna `TASK` cerrada; medido `7 exenta(s)
-/ 8 viva(s) / 35`, `0 FAIL`. El ataque de N3 se reproduce en la **95**, y MEDIDO
-que allí la exención **no viene del `CYCLE-999`**: la 95 nombra `TASK-057`, que
-esta `completed`, y sin el veredicto anadido **también** queda exenta
-(`8 exenta(s)`). O sea que N3-medido-en-la-95 es el residuo ya declarado del
-limite 19 —«nombrar un id **ya cerrado**»—, con su escenario (y), y **no** una
-puerta nueva. Lo que sí es nuevo y sí se cierra es el **prefijo**: `CYCLE-04`
-dentro de `CYCLE-045`, que la fila 88 sí sufría y que era el agujero central.
-| **N4** | ` - **CERRADA en CYCLE-04, nunca se resolvio**` | `15 / 8 / 7 / 33` | `0` | **SOBREVIVE** |
+**Las cuatro filas de esta tabla se MEDEN en las DOS columnas y por eso la tabla
+tenia una fila fuera de la rejilla y una contradiccion**: la columna «`ok` HEAD» es
+la de `2229c12`, **antes** del fix, y la de «con el FIX» es la de este commit. N1,
+N2 y N4 sobreviven al estado **anterior** y mueren al **actual**; N3 sobrevive a los
+dos, y no porque quede un agujero sino porque es el comportamiento correcto. La
+version anterior de esta tabla decia «SOBREVIVE» en la columna unica y luego, tres
+lineas mas abajo, que la 88 **no** quedaba exenta con N3: las dos cosas no podian ser
+ciertas, y era la tabla la que estaba rota, no las mediciones.
+
+**N3, aislado, con el FIX puesto:** con la fila 88 (la que usa el resto de la tabla) y
+`CYCLE-999` **sin** entrada publicada da `7 exenta(s) / 8 viva(s) / 35`, `0 FAIL`; y
+**con** la entrada `## [CYCLE-999]` publicada da `8 exenta(s) / 7 viva(s) / 33`,
+`0 FAIL`. O sea que **el `CYCLE-999` solo cuenta si su entrada existe**, que es
+justo lo que el fix decide. El ataque de N3 **no** se reproduce en la 95 como puerta
+nueva: MEDIDO que cambiar `CYCLE-999` por `CYCLE-998` —que tampoco existe en ningun
+registro— en la 95 da **exactamente lo mismo** (`8/7/35`, `0 FAIL`), luego su
+exención viene del `TASK-057` `completed`, que es el residuo ya declarado del limite
+19 con su escenario (y). Lo que sí era nuevo y sí se ha cerrado es el **prefijo**:
+`CYCLE-04` dentro de `CYCLE-045`, que la 88 sí sufría y que era el agujero central.
 
 **El dano medido con la fila 88 sin NINGUNA otra fuente** (rotas todas sus citas
 de ruta, para que el ataque no tenga un salvavidas): sin el ataque
@@ -435,7 +476,7 @@ se debilita, el guard se debilita con ella**. MEDIDO: **siete** mutaciones suyas
 (aceptar el marcador en prosa, aceptar el prefijo en vez de la palabra, aceptar
 minusculas, ignorar la negacion del veredicto, ignorar la de la prosa, no borrar
 el codigo inline, y aceptarlo en toda la fila) dejan el panel real en
-`7 exenta(s) / 8 viva(s)` y `0 FAIL` y **no las delata ninguna de las 30 filas de
+`7 exenta(s) / 8 viva(s)` y `0 FAIL` y **no las delata ninguna de las 42 filas de
 la tabla**.
 
 Se **des-acopla**: la autoexencion pregunta la forma MAS AMPLIA que tiene
@@ -455,6 +496,15 @@ minusculas) **siguen pasando** la tabla con el fix puesto. Lo que cambia es que
 la **autoexencion** deja de seguirlas, que es justo el acoplamiento que se
 pretendia cerrar. Afirmar lo contrario seria escribir un informe mas ancho que su
 fix.
+
+**CORREGIDO en la ronda 6, y la afirmacion era correcta en su momento pero
+incompleta de un modo que la hacia inutil como informacion:** esos tres
+supervivientes, y **siete mas**, no estaban «acoplados a la autoexencion»: estaban
+**invisibles** porque toda su cobertura —(u), (l), (m), (s), (v), (f1)— usaba un
+`**id pendiente**`, y con un id pendiente la fila no se cierra de **ninguna** de las
+dos maneras, luego la forma del marcador no podia mover un solo numero. La ronda 6
+anade las seis filas `p*`, que son **marcador DEFECTUOSO con un id YA CERRADO**:
+la unica combinacion en la que la forma decide el veredicto. Ver RONDA 6 §1 y §2.
 
 ## 3. LO QUE SE BORRA, y lo que no
 
@@ -510,13 +560,19 @@ re-auditor. Anotado aqui con su medicion, no con la esperada.
    tanto nadie puede romperla aqui. Ahora es el limite **25**.
 3. **La fila 101 tiene 117 `**` (impar)**: MEDIDO que `_RE_NEGRITA` extrae 58
    veredictos y que un veredicto bien formado anadido a la fila **no aparece entre
-   los extraidos** (impar: `False`; par: `True`). O sea que hoy la 101 esta
-   **protegida por un accidente de formato, no por la regla**, y el escenario
-   (f2) usa una fila sintetica **balanceada**, luego el comportamiento real de la
-   fila del criterio no estaba cubierto. El escenario **(m2)** lo cubre por donde
-   el Markdown no decide (marcador en la prosa). **No se corrige el desbalance**:
-   es una fila de Deuda y su regla es *solo anadir, nunca reescribir*. Ahora es el
-   limite **26**.
+   los extraidos**. O sea que hoy la 101 esta **protegida por un accidente de
+   formato, no por la regla**, y el escenario (f2) usa una fila sintetica
+   **balanceada**, luego el comportamiento real de la fila del criterio no estaba
+   cubierto. El escenario **(m2)** lo cubre por donde el Markdown no decide
+   (marcador en la prosa). **No se corrige el desbalance**: es una fila de Deuda y
+   su regla es *solo anadir, nunca reescribir*. Ahora es el limite **26**.
+   ~~(impar: `False`; par: `True`)~~ **CORREGIDO en la ronda 6: el contraste
+   «par: `True`» NO reproduce.** MEDIDO que con la fila a 119, 120, 121 y 123
+   asteriscos el veredicto anadido **no aparece en ninguno** de los cuatro casos, y
+   que lo que de verdad protege a la 101 es la **autoexencion**, que no usa
+   negrita y **falla en ROJO** (`8/7/27` y `1 FAIL`). Ademas **la 89 tiene 63 `**` y
+   la 96 tiene 21**, las dos impares y **ninguna declarada**. Todo ello, con su
+   tabla, en el limite **26** reescrito y en RONDA 6 §4.
 
 ## 7. LO QUE ESTA CERRADO Y NO SE HA TOCADO
 
@@ -525,3 +581,336 @@ pendiente estaban cerrados **y con test que los distingue**; esta ronda no los
 ha tocado. El ataque de panel a la autoexencion sigue sin colar (`7/8/35, 0 FAIL`),
 el enlace duro reproduce `0 FAIL / 36` -> `2 FAIL / 35`, y M3, M5, M6 y las cuatro
 mutaciones literales de §3.1 siguen muriendo con su asercion.
+
+---
+
+# RONDA 6 - LA MITAD POSITIVA DEL FIX NO LA MEDIA NADIE
+
+**Medido contra `49083d3`** (HEAD al empezar este pase; el commit de la ronda 5,
+`2229c12`, es el que midio la seccion anterior). Sin cambios en `src/`: este pase
+toca `run_tests.py`, `validate_docs.py`, `docs/ai/sandbox-rules.md`, `STATUS.md` y
+este informe.
+
+## 0. EL BASELINE, DECLARADO
+
+- `python validate_docs.py` -> **`115 OK, 0 FAIL`**. Panel: **15 filas, 7 exentas,
+  8 vivas, 35 anclas** de ruta resuelta y **2** por contenido.
+- `python run_tests.py` -> **`ALL TESTS PASSED`**, **104 tests**. El numero de
+  tests **no cambia** en esta ronda: los nueve escenarios nuevos son **filas de la
+  tabla** del test del check 8, no tests.
+- La tabla de escenarios del check 8 pasa de **33** a **42** filas, y su contrato
+  pasa de `assert len(FILAS) == 33` a `== 42`. El `print()` de `run_tests.py`
+  decia «30 filas» con 33 en el fichero, y los tres numeros convivian.
+- `validar(REPO real)`: **3,70 s**, `0` errores, `115` `ok`. Y `git` **si** esta:
+  `git version 2.55.0.windows.5`, y con el `GIT_DIR` desacoplado
+  `git rev-parse --short HEAD` reproduce `49083d3`. Ver §7, donde se corrige la
+  afirmacion contraria que hacia la ronda 4.
+- El informe anterior daba por muertas tres mutaciones con un escenario y un
+  mensaje. **Las tres sobreviven.** Ver §3.
+
+### 0.1 EL ORDEN DE LAS MEDICIONES, y lo que NO se ha podido re-verificar
+
+Esta ronda se ejecutó en el orden siguiente, y las salidas literales de cada paso
+son las que da este mismo §0.1 punto por punto:
+
+1. Las **catorce** sustituciones de codigo en `run_tests.py` y `validate_docs.py` (doce
+   y tres) se hicieron con un script de bytes que **comprueba cada literal antes de
+   escribir** y **aborta sin escribir** si un literal no aparece el numero exacto de
+   veces. Despues se releyeron los ficheros de vuelta y `ast.parse` respondio
+   `AST OK`. Ese script **aborto y dejo el fichero intacto** una vez, cuando un
+   literal mio traia un caracter roto, que es exactamente para lo que existe la
+   comprobacion.
+2. `python run_tests.py` -> `ALL TESTS PASSED`, **RC=0**, ya con las catorce.
+   (Hubo un `m2c`/`m2d` en rojo en el intento anterior: las dos filas tienen la
+   `TASK-002` **pendiente** como fuente, luego no son «VIVA sin ancla» sino filas
+   **no autoeximidas**, y la expectativa correcta es la **ausencia** del error de
+   autoexención más el recuento. Anotado porque es el mismo error de criterio que
+   produjo trece supervivientes: exigir el motivo equivocado.)
+3. `python validate_docs.py` -> `115 OK, 0 FAIL`, **RC=0**, y
+   `python verify_ui_syntax.py` -> `EXITO`, **RC=0**.
+4. Despues se escribieron **solo ficheros de texto**: `docs/ai/sandbox-rules.md`,
+   `STATUS.md` y este informe. Las seis sustituciones de `STATUS.md` son **dentro de
+   linea**, asi que no pueden haber introducido ni perdido un `\r` (el fichero es
+   CRLF y anadir texto detras de un `\r` lo deja invisible: la trampa).
+5. **Lo que NO se ha podido hacer:** repetir las cuatro verificaciones **despues**
+   de esas ediciones de texto, ni commitear. MEDIDO que el shell del entorno dejo de
+   poder crear subprocesos (`spawn EPERM` del propio runtime, que falla incluso con
+   un `Write-Output`) y no se recupero en ~30 intentos a lo largo de tres turnos.
+   Como la regla de este repo es que un informe sin verificacion final es un
+   informe sin cerrar, **queda pendiente y asi se dice**: las cuatro verificaciones
+   literales y la linea `WOPT_*` del commit las tiene que ejecutar quien recoja el
+   arbol. Lo que si consta por escrito es el estado del arbol en el momento del
+   bloqueo, y los dos ultimos verdes literales son los del punto 3, anteriores a las
+   ediciones de texto.
+
+## 1. EL HALLAZGO DE FONDO, y por que es estructural
+
+**Los tres llamantes de `validar` que tenia la suite apuntaban a un ARBOL
+TEMPORAL.** MEDIDO: los tres son llamadas a `_informe_del_validador_real(...)` con
+un `tmp`/`esqueleto` construido con `_copiar_el_esqueleto_del_validador`. O sea que
+**ningun test validaba el repo real**, y por eso la mitad positiva del fix --la que
+pregunta si un `CYCLE` de verdad cierra una fila-- solo la ejecutaba
+`python validate_docs.py`, que es un comando y no un test.
+
+De ahi salia todo lo demas, y ahora se ve por que eran tantos supervivientes:
+
+1. **X3** (`_ciclos_cerrados` -> `return []`): la mitad positiva **anulada**, y
+   **SUITE ENTERA EN VERDE**. Motivo medido: las filas (x), (c3), (x4) y (x4b)
+   comprueban que un ciclo **NO** cierra, y **ninguna** que **SI**. Un invariante
+   del que solo se mide el lado negativo no esta medido.
+2. **X1** (el id capturado se descarta, grupo no capturante): la capa (b) inutil, y
+   suite entera en verde por lo mismo.
+3. **X2** (busqueda por prefijo del id, con el grupo de captura fuera): aqui **si**
+   lo mata, en **(x4)**. MEDIDO: `MUERE en (x4)`, con la definicion de bytes exacta
+   en la tabla de §2. Lo dejo escrito porque el `mutation-auditor` de la ronda 5 lo
+   declaro vivo con otra definition del mismo nombre —`findall` de un patron sin
+   grupo de captura, que es el mutante **X1** de arriba—, y con esa otra
+   definition **si** sobrevive. Dos mutantes con el mismo nombre y distinta
+   definicion se distinguen por los bytes, no por la etiqueta.
+
+Y el motivo por el que la cobertura estaba tan repartida: **las filas (u), (l),
+(m), (s), (v) y (f1) usaban todas un id PENDIENTE**. Con un id pendiente la fila no
+se cierra de **ninguna** de las dos maneras, luego la forma del marcador no puede
+mover un solo numero y el mutante pasa por lo que sea. Solo (y) y (n2) cerraban de
+verdad, y las dos usan una `TASK`.
+
+## 2. LOS NUEVE ESCENARIOS, y que mutante mata cada uno
+
+El criterio es uno solo, y es el que faltaba: **marcador DEFECTUOSO con un id YA
+CERRADO**. Es la unica combinacion en la que la FORMA decide el veredicto.
+
+| fila | que mide | mutante nominal | sitio de muerte MEDIDO |
+|---|---|---|---|
+| **(cyc)** | un `CYCLE` con **entrada publicada** en los changelogs del arbol CIERRA la fila | X3, X1 | el propio (cyc) |
+| **(p1)** | el marcador en la **prosa** con la `TASK-001` ya `completed` | P1, **C25** | el propio (p1) |
+| **(p2)** | el **plural** `**CERRADAS todas**` con la `TASK-001` ya `completed` | P2 | el propio (p2) |
+| **(p3)** | el marcador en **minusculas** con la `TASK-001` ya `completed` | **C26** | el propio (p3) |
+| **(p4a)** | el veredicto que **niega** el cierre (`NO lo parece`) | P4a | el propio (p4a) |
+| **(p4b)** | la **prosa** que niega el cierre | **C28** | el propio (p4b) |
+| **(p5)** | el marcador solo entre **acentos graves** dentro del veredicto | P5 | el propio (p5) |
+| **(m2c)** | la fila del criterio en **minusculas** NO se autoexime | M2C | el propio (m2c) |
+| **(m2d)** | la fila del criterio con el marcador **entrecomillado** NO se autoexime | M2D | el propio (m2d) |
+
+**El `CYCLE` de (cyc) se DERIVA de las entradas publicadas del arbol copiado**, no
+se escribe a mano: un id fijo mediria un arbol que el test no construye, y en
+cuanto el changelog avanzara un ciclo mediria un id que ya no esta. Es la misma
+leccion que el `CYCLE-901` de la ronda 4, escrita al reves. MEDIDO que con este
+arbol el id derivado es `CYCLE-049`, y que es el **ultimo** publicado por los dos
+changelogs, luego la fila se exime por la misma razon por la que lo haria cualquier
+otro: tener **entrada**.
+
+**La tabla tiene 42 filas y el contrato es 42**, y las nueve nuevas estan **todas**
+en la zona de la capa positiva: las que comprueban que un marcador **DEFECTUOSO**
+no cierra y la que comprueban que un marcador **correcto** si. Antes solo estaba
+la segunda clase, con id pendiente, que es la combinacion donde nada decide nada.
+
+**MEDIDO, con el codigo de este commit, contra la tabla del check 8 (17 mutantes,
+uno por subproceso limpio):**
+
+| mutante | veredicto | donde |
+|---|---|---|
+| X3 (capa positiva anulada) | **MUERE** | (cyc) |
+| X1 (id capturado descartado) | **MUERE** | (cyc) |
+| X2 (prefijo en la capa (b)) | **MUERE** | (x4) |
+| C25 / P6 (`findall` -> `[texto]`) | **MUERE** | (p1) |
+| C26 / P3 (`re.IGNORECASE`) | **MUERE** | (p3) |
+| C28 (negacion de la prosa) | **MUERE** | (p4b) |
+| P1 (marcador en la prosa) | **MUERE** | (p1) |
+| P2 (prefijo de palabra) | **MUERE** | (p2) |
+| P4a (negacion del veredicto) | **MUERE** | (p4a) |
+| P5 (codigo inline no borrado) | **MUERE** | (p5) |
+| M2C (autoexencion sin caja) | **MUERE** | (m2c) |
+| M2D (autoexencion con inline) | **MUERE** | (m2d) |
+| S2 (autoexencion sin exigir el criterio) | **MUERE** | (d) |
+| H2 (enlace duro) | **MUERE** | (h2) |
+| F2 (orden de la pregunta) | **MUERE** | (f2) |
+| **P4c** (la negacion se busca en la fila entera) | **SOBREVIVE** | dueno: limites 20 y 21 |
+| **C3** (el registro vuelve a mirar el journal) | **SOBREVIVE** | dueno: limite 24 |
+
+**Los dos supervivientes que quedan son inertes, y por eso se declaran en vez de
+inventarles una muerte:**
+
+- **P4c**: MEDIDO que pone el panel real en `6 exenta(s) / 9 viva(s) / 39` anclas y
+  `0 FAIL` -- reabre la **87**, cuyo veredicto de cierre lleva un `NO` en OTRO
+  veredicto. Es exactamente el residuo ya declarado del limite 21 («una negacion
+  escondida en otro veredicto reabre una fila cerrada»), con su medicion y su
+  dueno. No es un agujero de forma: es el **precio** de haber matado la regla que
+  si distingue el `NO` propio.
+- **C3**: desde que la capa (b) exige la forma de ENTRADA
+  `^##[ \t]+\[?(CYCLE-\d+)\]?`, esa forma **no casa con nada** de un `.json` que
+  guarda `"cycle": <int>`, luego **mirar el journal o no es indistinguible**.
+  Anadido al limite 24, que ya declaraba la rama inerte de `_ciclos_de_la_fila`.
+
+## 3. LAS TRES MUERTES QUE EL INFORME DECLARABA Y NO REPRODUCEN
+
+Con la medicion aislada de cada mutante, y aplicando la leccion de la ronda 4
+--**anotar el PRIMERO que falla, no el que se espera**--, la tabla queda asi:
+
+| mutante | lo que decia el informe | MEDIDO antes de este pase | MEDIDO ahora |
+|---|---|---|---|
+| **C25** (`findall(texto)` -> `[texto]`) | «MUERE: escenario (u)» | **SOBREVIVE**: la (u) tiene el id **pendiente**, luego el recuento no se mueve | **MUERE en (p1)**, con la `TASK-001` ya `completed` |
+| **C26** (`re.IGNORECASE`) | §3.1 decia «MUERE: escenario (s)» y §5 decia «muere en el (r)»: **las dos vivas** | **NO muere en la tabla del check 8**; en la suite entera si, en otro test | **MUERE en (p3)**, con la `TASK-001` ya `completed` |
+| **C28** (borrar la negacion de la prosa) | «MUERE: escenario (v)» | **SOBREVIVE**: la (v) tiene el id **pendiente** | **MUERE en (p4b)**, con la `TASK-001` ya `completed` |
+
+**La contradiccion de C26 era real y su resolucion es «en ninguno de los dos»:** la
+fila (s) tiene `TASK-002` pendiente, luego con `IGNORECASE` el marcador minusculo la
+exime, pero sin marcador la fila tampoco se cierra, luego el recuento es identico y
+la asercion pasa igual. La muerte de `IGNORECASE` en la suite entera esta en otro
+test y no en esta tabla; la de la ronda 6 es **local y de primera fila**, que es lo
+que un re-auditor puede comprobar sin leer el resto del repo.
+
+**C25 y C28 NO se declaran muertas a la ligera:** se ha medido que sobreviven al
+estado anterior con `RESULTADO: PASA` y que mueren en el estado de este commit con
+un escenario concreto. Lo que se retira es la afirmacion de que morian antes.
+
+## 4. LAS MEDICIONES DE PANEL DE ESTE PASE
+
+### 4.1 Mutantes de PANEL, sobre una copia completa del repo (sin `.git`)
+
+Con la inyeccion comprobada byte a byte en lo que el validador lee —una fila mal
+insertada detras de un `\r` se evaporaria y mediria otra cosa—:
+
+| edicion | panel | FAIL |
+|---|---|---|
+| sin ataque | `15 / 7 / 8 / 35` + 2 | `0` |
+| fila 88 + `**CERRADA en CYCLE-04**` (N1) | `15 / 7 / 8 / 35` | `0` |
+| fila 88 + `**CERRADA en CYCLE-0**` (N2) | `15 / 7 / 8 / 35` | `0` |
+| fila 88 + `**CERRADA en CYCLE-999**` sin entrada publicada (N3b) | `15 / 7 / 8 / 35` | `0` |
+| fila 88 + `**CERRADA en CYCLE-999**` **con** entrada publicada (N3) | `15 / 8 / 7 / 33` | `0` |
+| fila 88 + `**CERRADA en CYCLE-04, nunca se resolvio**` (N4) | `15 / 7 / 8 / 35` | `0` |
+| fila 89 + `**CERRADA en CYCLE-999**` | `15 / 7 / 8 / 35` | `0` |
+| fila 95 + `**CERRADA en CYCLE-999**` | `15 / 8 / 7 / 35` | `0` |
+| fila 95 + `**CERRADA en CYCLE-998**` (id que tampoco existe) | `15 / 8 / 7 / 35` | `0` |
+| fila 98, primer ROJO -> AMARILLO | `15 / 7 / 8 / 35` | `0` |
+| fila 101 + `**CERRADA en TASK-060, cerrada de verdad.**` | `15 / 8 / 7 / 27` | **`1`** |
+| fila 101 + `**CERRADA en TASK-059, cerrada de verdad.**` | `15 / 8 / 7 / 27` | **`1`** |
+| fila 101 + un `**` suelto (118) | `15 / 7 / 8 / 35` | `0` |
+
+Cuatro cosas se leen aqui, y las cuatro se corrigen en los limites:
+
+1. **La 89 NO se exime** (§4.7 de la ronda 5 decia que si). Su veredicto lleva un
+   `NO` en mayusculas DENTRO de la negrita, luego la regla de negacion rechaza el
+   marcador antes de mirar ningun id.
+2. **La 95 se exime, pero por su `TASK-057`**: con `CYCLE-998`, que tampoco existe
+   en ningun registro, sale **exactamente igual**. O sea que el `CYCLE` de ese
+   veredicto no aporta nada, y el limite 5 queda con su medicion de aislamiento.
+3. **Bajar la 98 a AMARILLO sale en VERDE** (§7), y **cerrar el desbalance de la 101
+   no cambia nada** (§6).
+4. **Ninguna de las nueve filas nuevas se apoya en el panel real**: son las de
+   §4.1, sobre copias con el panel intacto. Las que si lo hacen son las de §4.2.
+
+### 4.2 El PANEL REAL con cada MUTANTE DE CÓDIGO aplicado
+
+`validar(REPO)` con el validador mutado en memoria y `root` = el repo de verdad, o
+sea que se juzga el panel que hay y el codigo es el mutado. **Esta es la tabla que
+justifica las nueve filas**: la mitad de los mutantes son **invisibles** al panel
+real, luego ningún test sobre el panel real podría detectarlos.
+
+| mutante | panel real con el mutante | FAIL |
+|---|---|---|
+| sin mutante | `15 / 7 / 8 / 35` | `0` |
+| X3 (capa positiva anulada) | `15 / 7 / 8 / 35` | `0` |
+| X1 (id capturado descartado) | `15 / 7 / 8 / 35` | `0` |
+| X2 (prefijo en la capa (b)) | `15 / 7 / 8 / 35` | `0` |
+| C25 (`findall` -> `[texto]`) | `15 / 6 / 9 / 39` | `0` — **reabre una exenta real** |
+| C26 (`re.IGNORECASE`) | `15 / 10 / 5 / 24` | **`1`** |
+| C28 (negacion de la prosa) | `15 / 7 / 8 / 35` | `0` |
+| P1 (marcador en la prosa) | `15 / 7 / 8 / 35` | `0` |
+| P2 (prefijo de palabra) | `15 / 7 / 8 / 35` | `0` |
+| P4a (negacion del veredicto) | `15 / 7 / 8 / 35` | `0` |
+| P4c (negacion en la fila entera) | `15 / 6 / 9 / 39` | `0` — reabre la 87 |
+| P5 (codigo inline no borrado) | `15 / 7 / 8 / 35` | `0` |
+| M2C (autoexencion sin caja) | `15 / 8 / 7 / 27` | **`1`** |
+| M2D (autoexencion con inline) | `15 / 8 / 7 / 27` | **`1`** |
+| S2 (autoexencion sin el criterio) | `15 / 7 / 8 / 35` | **`7`** |
+| C3 (el registro mira el journal) | `15 / 7 / 8 / 35` | `0` |
+
+**Lo que dice esta tabla y es el motivo de existir de las nueve filas:** nueve
+mutantes dejan el panel real **exactamente igual**. Un test que solo mirase el
+panel real —por muy bueno que fuera— no los veria. Los que el panel real **si**
+delata son C26, M2C, M2D y S2, y los delata en **rojo** (`1`, `1`, `1` y `7` `FAIL`),
+que es justo lo que ahora exige la fase contra el repo real de §5.
+
+## 5. EL TEST QUE VALIDA EL REPO REAL
+
+Ademas de las nueve filas, el test del check 8 ejecuta ahora `validar` **contra el
+repo de verdad** y afirma la **linea `ok`** de la seccion, no un numero escrito a
+mano. Lo que comprueba, en este orden:
+
+- que la linea `ok` **exista** (amputar el check 8 entero la hace desaparecer y el
+  validador baja a `114 OK / 0 FAIL`, que es verde);
+- que su `N fila(s)` **cuadre con las filas `- **` de la seccion real del
+  `STATUS.md`**, contadas con un conteo **PROPIO** y no con `_filas_de_deuda`: un
+  guardian que cuenta con la misma funcion que juzga no puede notar que esa funcion
+  dejo de contar, que es justo lo que hace un `return` borrado;
+- que `exentas + vivas == filas`, y que **las dos** sean `>= 1` (o el criterio se
+  apago entero, o el panel entero se dio por cerrado: las dos son un panel que no
+  vigila);
+- que la seccion este en **ROJO con cero `FAIL`**.
+
+**MEDIDO: 3,70 s**, y el numero de tests **sigue en 104** porque la fase va dentro
+del test del check 8 y no es un test nuevo. La alternativa --un test aparte-- habria
+costado ademas subir el recuento declarado a 105 en `AGENTS.md`, `README.md`,
+`STATUS.md` y la tabla de `docs/ai/testing-guide.md`, que es exactamente la cascata
+que hace que un informe se quede a medias.
+
+## 6. EL LIMITE 26, REESCRITO, Y LAS DOS FILAS QUE FALTABAN
+
+El limite 26 afirmaba que la 101 esta «protegida por un accidente de formato» y lo
+sustentaba en un contraste que **no reproduce**: MEDIDO que anadiendo un veredicto
+bien formado a la 101 a **119, 120, 121 y 123** asteriscos, el veredicto **no aparece
+entre los extraidos en los cuatro casos**, ni con el recuento par. El emparejamiento
+de `**...**` es posicional: un `**` suelto empareja con el primero del veredicto
+nuevo y a partir de ahi todo va desplazado, luego **la paridad no lo arregla**.
+
+Lo que de verdad protege a la 101 es la **autoexencion**, que **no usa negrita**: y
+eso **falla en ROJO**, con `8/7/27` y `1 FAIL`, no en verde. El escenario (m2) **no lo
+cubria** porque usa un arbol sintetico; ahora lo ata al codigo la fase contra el
+repo real de §5.
+
+**Las dos filas que faltaban, declaradas:** la **89 tiene 63 `**`** y extrae 31
+veredictos, y la **96 tiene 21** y extrae 10. Las tres impares, ninguna declarada.
+
+## 7. LO QUE SE CORRIGE EN EL INFORME ANTERIOR
+
+- **§1 «No hay `git` en este entorno»**: es **falso**. MEDIDO `git version
+  2.55.0.windows.5` y, con el `GIT_DIR` desacoplado, `HEAD` reproduce `49083d3`. La
+  columna `HEAD` **si** es reconstruible; lo que no esta en este arbol es el
+  validador de `a31e585`, y son dos cosas distintas.
+- **§4.7 «la 89 sobrevive»**: es **falso**, y esta corregido en §4 de esta ronda.
+- **El 30/33**: unificado. El unico numero vigente es el que firma su ronda, y el
+  contrato del codigo es `assert len(FILAS) == 42`.
+- **La tabla N1-N4**: reconstruida con una columna de **que mutacion muere y donde**,
+  con las dos columnas medidas (antes del fix y con el fix) y con N3 declarado como
+  residuo declarado y no como agujero.
+- **El limite 4**: «rebajar la 98 a AMARILLO sale en rojo» es **falso**; sale en
+  verde, y el motivo --que la 98 no ancla `git_safe_commit.py` y su suelo es ninguno--
+  es un agujero mas ancho que el enunciaba, con su propio limite, el **27**.
+
+## 8. EL MENSAJE QUE MENTIA
+
+El validador acusaba a la fila del criterio «lleva el marcador de cierre **en un
+veredicto**», y **MEDIDO que el marcador esta en la PROSA**: la autoexencion no usa
+negrita, y la 101 lo lleva ahi. Un semaforo que acusa con un motivo falso entrena a
+ignorar el semaforo, asi que el mensaje dice ahora lo que mide: «lleva el marcador
+de cierre en **MAYUSCULAS y FUERA de codigo inline**».
+
+## 9. LO QUE ESTA SIN CERRAR
+
+- **P4c** y **C3** sobreviven, con dueno (limites 20/21 y 24) y con su medicion.
+- **El limite 27** declara que trece de las quince filas **no tienen suelo** de
+  gravedad, y que el suelo vigila hoy **una sola** (la 89). No se arregla porque un
+  suelo derivado exigiria escribir a mano la politica de gravedad del repo.
+- **El escenario (m2)** sigue sin cubrir la 101 real por si mismo; lo que la ata es
+  la fase contra el repo real.
+- **La guardia `st_ino`** y el resto de limites abiertos de la ronda 5 siguen como
+  estaban.
+- **La medicion de `X`, `P4c` y `C3` contra la suite COMPLETA** (no solo la tabla del
+  check 8) no se pudo terminar: el shell dejo de crear subprocesos. Lo que si consta
+  es que `P4c` y `C3` **pasan la tabla del check 8** con su codigo actual, y que la
+  tabla va dentro de la suite, luego un muerte-alli es un muerte-en-la-suite; lo que
+  no se ha medido es si **alguno de los dos los mata otro test mas adelante**, que es
+  la unica forma que tendria de dejar de ser superviviente.
+- **Las cuatro verificaciones finales y el commit**, pendientes por lo mismo. Ver
+  §0.1 punto 5. Quien recoja el arbol las tiene que ejecutar y pegar su salida, y
+  el commit tiene que llevar el marcador `ciclo #49`.
