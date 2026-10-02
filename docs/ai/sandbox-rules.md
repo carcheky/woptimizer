@@ -552,21 +552,50 @@ Se escriben, no se omiten. Todas medidas el 2026-10-02.
    histórica antes de la de hoy** (límite 15). El suelo tiene hoy **cero** filas
    que puedan delatarlo.
 5. **Un cierre falsificado en la forma del panel sigue eximiendo — y es el MISMO
-   residuo del límite 19, no uno aparte.** El id trazable se busca **en la fila**,
-   no en el veredicto. Consecuencia medida: añadir `**🔴 CERRADA en CYCLE-999**` a
-   una fila que **ya cita ids resolubles** la exime (`8 exenta(s) / 7 viva(s)`,
-   `22` anclas, `0 FAIL`), y la quinta condición del límite 19 **no lo cierra**:
-   MEDIDO que la fila 89 nombra `TASK-061` y `TASK-059` (los dos `pending`) **y
-   `TASK-060` (`completed`)**, luego el `CYCLE-999` —que no existe en ningún
-   registro— hereda el cierre de un id que sí estaba cerrado. No es una puerta
-   nueva: es el residuo del límite 19 escrito con otro disfraz, porque el
-   veredicto `CYCLE-999` no aporta nada y la fila se cerraba igual. Lo que se
+   residuo del límite 19, no uno aparte.** El id que cierra la fila se busca
+   **en la fila**, no solo en el veredicto. Consecuencia medida: añadir
+   `**CERRADA en CYCLE-999**` a una fila que **ya cita ids resolubles** la exime,
+   y la quinta condición del límite 19 **no lo cierra**.
+
+   **La medición, con su fila y sus cifras, y CORREGIDA respecto a la version
+   anterior de este limite (que citaba la 89 y `22` anclas y no reproducia).**
+   MEDIDO el 2026-10-02 en la ronda 5 del ciclo #49, sobre el panel de hoy:
+   - **La fila 89 NO se exime** y **no puede** servir de ejemplo. Su veredicto
+     «🔴 VUELTA A 🔴 Y NO SE CIERRA: bajarla a 🟡 sin cerrar el problema es
+     documentación *fail-open*…» lleva un `NO` en mayusculas **dentro** de la
+     negrita, y la regla de negacion rechaza el marcador de cualquier veredicto
+     asi antes de mirar ningun id. MEDIDO: `_RE_CERRADA` encuentra el marcador
+     anadido y `_RE_NEGACION_DEL_CIERRE` lo rechaza en ese mismo veredicto, luego
+     anadirle ` - **CERRADA en CYCLE-999**` deja la 89 VIVA y el panel igual:
+     `7 exenta(s) / 8 viva(s) / 35` anclas, `0 FAIL`. No es que el `CYCLE-999`
+     no cerrara: es que **el veredicto que lo lleva no pasa la regla de negacion**.
+   - **La fila 95 SI se exime**, y ahi esta el mecanismo de verdad: `8 exenta(s)`,
+     `7 viva(s)`, `35` anclas, `0 FAIL`. Nombra `TASK-057` (`completed`) y
+     `TASK-059` (`pending`), luego el `CYCLE-999` —que no existe en ningun
+     registro— **hereda el cierre de un id que ya estaba cerrado**.
+   - **La linea base de anclas es `35`, no `22`.** El `22` de la version
+     anterior de este limite era de una medicion mas antigua; hoy el panel da
+     `35` anclas de ruta resuelta y `2` por contenido.
+
+   No es una puerta nueva: es el residuo del límite 19 con otro disfraz, porque
+   el veredicto `CYCLE-999` no aporta nada y la fila se cerraba igual. Lo que se
    midió y se descartó como regla es **«el id tiene que estar FUERA del
    veredicto»**, que es lo que este apartado defendía antes. MEDIDO que atar el
    id al veredicto **cambia qué** filas se cerrarían y no las separa del ataque:
    las filas **87, 96 y 97 no escriben ningún id fuera de su veredicto** y están
    CERRADAS de verdad, luego exigírselo las reabre sin motivo mientras el ataque
    sigue entrando. La condición que sí separa es la del **estado** (límite 19).
+
+   **Y con la ronda 5 el residuo declarado es MAS ANCHO de lo que decía aquí.**
+   Antes se declaraba solo «nombrar un id **ya cerrado**», que es el caso de la
+   95 y el del escenario (y). MEDIDO que hay un segundo caso, más grande: un
+   **`CYCLE` que NUNCA EXISTIÓ** y al que se le publica la entrada. Se cerró el
+   de subcadena (`CYCLE-04`.counta dentro de `CYCLE-045`), pero **`CYCLE-999` +
+   una línea `## [CYCLE-999]` escrita en el changelog sigue eximiendo**, porque
+   publicar la entrada de un ciclo **es** el acto legítimo de cerrarlo y un
+   validador que lo negara no podría cerrar nunca un ciclo. Ese residuo no es de
+   **forma**, es de **acto**: no lo cierra ninguna regla de forma, y por eso se
+   declara entero aquí en vez de declararse solo la mitad.
 6. **Las filas cerradas quedan mudas por construcción.** Una fila exenta puede quedar
    enteramente falsa y el check no dice nada.
 7. **El corte de la sección es por línea.** Una fila escrita como sub-vineta (`  - `)
@@ -668,16 +697,34 @@ Se escriben, no se omiten. Todas medidas el 2026-10-02.
     el ataque declarado (`**CERRADA en TASK-059**` y con `TASK-061`) pasa de
     `8/7/33, 0 FAIL` a `7/8/35, 0 FAIL`, y el mismo ataque con su negación en
     minúscula («nunca se resolvio») también.
-    **El residuo que sí es real, y es más estrecho que el que se declaraba**:
-    nombrar un id **ya cerrado** sobrevive, y sobrevive por la misma puerta
-    (`**CERRADA en TASK-055**` o `**CERRADA en CYCLE-045**` en la fila 88 dan
-    `8/7/33, 0 FAIL`). Eso **no es cerrable con una regla de forma** y se declara
-    como tal: una fila que nombra trabajo de verdad terminado es indistinguible de
-    una fila real cerrada. El escenario (y) de la suite lo archiva como control
-    negativo para que el próximo no lo lea como un bug sin explicar. Y el daño que
-    el auditor atribuía al suelo **no ocurre en la 88**: esa fila no declara
-    ninguna gravedad (`_gravedad_declarada` → `None`), luego su suelo no podía
-    dispararse ni antes ni después. Lo que se apaga es la fila entera.
+    **El residuo que sí es real, y hay que declararlo ENTERO, no por la mitad.**
+    MEDIDO el 2026-10-02 (ronda 5) que el agujero es **más ancho** que «nombrar un
+    id ya cerrado», y declarar solo eso es reincidir en lo que este ciclo lleva
+    tres rondas corrigiendo en su propia documentación. Son **DOS** casos, y los dos
+    son de **acto**, no de forma:
+    1. **Nombrar un id ya cerrado** sobrevive, y sobrevive por la misma puerta
+       (`**CERRADA en TASK-055**` o `**CERRADA en CYCLE-045**` en la fila 88 dan
+       `8/7/33, 0 FAIL`). El escenario (y) de la suite lo archiva como control
+       negativo para que el próximo no lo lea como un bug sin explicar. No es
+       cerrable con una regla de forma: una fila que nombra trabajo de verdad
+       terminado es indistinguible de una fila real cerrada.
+    2. **Nombrar un `CYCLE` que NUNCA EXISTIÓ y publicarle la entrada.** MEDIDO que
+       `**CERRADA en CYCLE-999**` más una línea `## [CYCLE-999]` escrita en
+       `.taskmaster/CHANGELOG.md` da `8/7/33, 0 FAIL`. **La ronda 5 cerró la
+       mitad de este caso y no la otra**: el `CYCLE` se resolví **por la FORMA de
+       su entrada** y con el **id literal completo**, con lo que mueren `CYCLE-04`
+       (que estaba dentro de `CYCLE-045`), `CYCLE-0`, `CYCLE-09` y `CYCLE-999`
+       sin entrada; pero en cuanto la entrada se **publica**, el ciclo queda
+       cerrado, y **no puede ser de otra forma**: publicar la entrada de un ciclo
+       **es** el acto legítimo de cerrarlo, y un validador que lo negara no podría
+       cerrar nunca un ciclo. El residuo que queda es por tanto **intranscendible
+       con reglas de forma** y se declara entero. Detalle y medición en el
+       docstring de `_ciclos_cerrados`.
+    Lo que sí semidió y **no** se puede cerrar así es la distinción *dentro/fuera
+    del veredicto*, porque no separa nada (ver arriba). El daño que el auditor
+    atribuía al suelo **no ocurre en la 88**: esa fila no declara ninguna
+    gravedad (`_gravedad_declarada` → `None`), luego su suelo no podía dispararse
+    ni antes ni después. Lo que se apaga es la fila entera.
     **Lo que sí costó el arreglo, y va en su propia línea (límite 21):** la
     condición 5 no se puede preguntar antes que la autoexención sin romper el
     escenario (f2), y se resuelve midiendo la autoexención **por la forma** de la
@@ -747,4 +794,39 @@ Se escriben, no se omiten. Todas medidas el 2026-10-02.
     Mutante C30: deja de existir como tal, porque el código al que mutaba ya no
     está. En su lugar la identidad se ha ampliado por `(st_dev, st_ino)` (límite
     22), que es donde estaba de verdad el agujero.
+24. **La rama del journal de `_ciclos_de_la_fila` es INERTE en este repo, y se
+    declara en vez de eliminarse porque el escenario (c3) la ejecuta de verdad.**
+    MEDIDO el 2026-10-02 sobre el journal real: **cero** literales `CYCLE-NNN` y
+    **49** entradas con `"cycle": <int>` (los ciclos van del `1` al `49`, todos
+    enteros). `_RE_CICLOS` busca la forma `CYCLE-\d+`, luego la rama del journal
+    **no puede casar con nada** con el journal que este repo escribe hoy. No es un
+    agujero: es código que solo un árbol sintético ejecuta, y su valor es
+    justo que (c3) sea el ÚNICO escenario que mide esa rama. Por eso se declara
+    en lugar de borrarse: borrarla sería borrar el escenario que la mide. Lo que
+    **no** se declara es que la rama sirva para el journal real, porque no sirve.
+25. **La guardia `st_ino != 0` de `_es_el_mismo_fichero` no tiene test ni
+    víctima, y eso se dice con su verdad.** En NTFS `st_ino` vale un entero de
+    16 dígitos (MEDIDO: `3940649674545953` para `STATUS.md` en esta medición), luego
+    **nunca es `0` aquí** y **quitar la guardia no muere nada**: es una mutación
+    inerte en esta plataforma. La guardia **es correcta** en un sistema de
+    ficheros sin índice, donde `st_ino` vale `0` para todo y `0 == 0` declararía
+    el panel idéntico a cualquier fichero del árbol (límite 22), pero **nadie la
+    ha medido y por tanto nadie puede romperla aquí**. Se declara como cobertura
+    ausente, no como bug: es un residuo de portabilidad sin banco.
+26. **La fila 101 del panel tiene un número IMPAR de `**` y eso HOY decide si su
+    marcador se ve.** MEDIDO: la fila 101 cuenta **117** asteriscos (impar) y
+    `_RE_NEGRITA` extrae **58** veredictos; al añadirle un veredicto de cierre
+    bien formado, el recuento pasa a 59 y **el veredicto nuevo NO está entre los
+    extraídos**: `**CERRADA en TASK-001**` añadido a la fila se queda **invisible**
+    para el guard. MEDIDO el contraste que lo demuestra: con los 117 asteriscos
+    impares `_porta_el_marcador_de_cierre` devuelve `False` y con los 120 pares
+    (cerrando el desbalance) devuelve `True`. Es decir, **hoy la fila 101 está
+    protegida por un accidente de formato del Markdown, no por la regla**; el
+    escenario (f2) usa una fila sintética **balanceada**, luego el comportamiento
+    real de la fila del criterio **no estaba cubierto**. La ronda 5 lo cubre con el
+    escenario (m2), que pone el marcador **en la prosa** (independiente del
+    balance de asteriscos) y exige que la fila del criterio se acuse igual. **No se
+    corrige el desbalance de la 101**: es una fila de Deuda y su regla es *solo
+    añadir, nunca reescribir*. Se declara el accidente y se cubre por donde el
+    Markdown no decide.
 

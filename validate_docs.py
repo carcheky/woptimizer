@@ -683,6 +683,14 @@ _RE_RUTA = re.compile(
 )
 _RE_TAREAS = re.compile(r"TASK-\d+")
 _RE_CICLOS = re.compile(r"CYCLE-\d+")
+# La ENTRADA de un ciclo en un changelog, con el id CAPTURADO ENTERO. Es la
+# FORMA, y no una mencion: el grupo de captura es lo que impide que `CYCLE-04`
+# casa dentro de `## [CYCLE-045]` por prefijo, y el corchete opcional es lo que
+# admite las dos grafias que el repo escribe de verdad (`## CYCLE-048` en el
+# changelog de raiz y `## [CYCLE-048]` en el tecnico). MEDIDO el 2026-10-02: los
+# dos ficheros publican 49 entradas, `CYCLE-001` a `CYCLE-049`, y exigir solo
+# una de las dos grafias pondria el repo en rojo. Ver `_ciclos_cerrados`.
+_RE_ENTRADA_DE_CICLO = re.compile(r"^##[ \t]+\[?(CYCLE-\d+)\]?", re.MULTILINE)
 _RE_CIFRA_DE_TESTS = re.compile(r"(?<!\d)(\d{1,4})\s+tests\b")
 # Un VEREDICTO de este panel es su tramo en negrita, y MEDIDO el 2026-10-02 las
 # SIETE filas exentas escriben el marcador de cierre dentro de uno. Por eso el
@@ -691,11 +699,6 @@ _RE_CIFRA_DE_TESTS = re.compile(r"(?<!\d)(\d{1,4})\s+tests\b")
 # final -- deja de eximir a nadie, y esas dos son exactamente las formas que el
 # mutation-auditor midio VIVAS contra este marcador.
 _RE_NEGRITA = re.compile(r"\*\*(.+?)\*\*")
-# El cierre tiene que ser TRAZABLE: un id que existe en el tablero o en un
-# registro de este repo. MEDIDO: las 7 exentas tienen al menos uno (87 CYCLE-045 y
-# TASK-055, 90 TASK-057, 93 TASK-031, 94 CYCLE-026/047 y TASK-057, 96 y 97
-# TASK-037, 99 CYCLE-044 y TASK-054), luego exigirlo NO obliga a tocar ninguna fila.
-_RE_ID_TRAZABLE = re.compile(r"(?:TASK|CYCLE)-\d+")
 # Un veredicto que NIEGA el cierre no cierra, y la negacion se evalua donde
 # HABLA LA FILA: en su prosa y en el veredicto que lleva el marcador. MEDIDO el
 # 2026-10-02, con el predicado viejo (`NO|NUNCA|JAMAS` en los 40 caracteres
@@ -784,7 +787,15 @@ CODIGOS_DE_SALIDA_SOBRECARGADOS = ("WOPT_COMMIT_OK", "WOPT_NOOP")
 # La DECLARACION es la linea que EMPIEZA por el token `0` seguido del nombre, que
 # es como lo escribe `.taskmaster/git_safe_commit.py:13-14`; una tabla que TABULA
 # el contrato (`docs/ai/sandbox-rules.md:55-56`) lo documenta, no lo declara.
-_RE_DECLARACION_DE_CODIGO = re.compile(r"^[ \t]*0[ \t]+")
+#
+# Esta constante es la DEFINICION UNICA de esa forma y `_declara_el_codigo_
+# sobrecargado` la compone con el nombre del codigo. Antes vivia el patron
+# DUPLICADO dentro de la funcion y la constante aqui sin un solo uso: MEDIDO con
+# `ast` el 2026-10-02, `_RE_DECLARACION_DE_CODIGO` estaba definida y nunca leida,
+# y el guard de codigo muerto de `run_tests.py:11650` no la cazaba porque su
+# alcance es `src/woptimizer/**`, no el tooling. Dos definiciones de una forma en
+# el mismo fichero es como una de las dos se queda desfasada sin que nadie lo vea.
+_RE_DECLARACION_DE_CODIGO = re.compile(r"^[ \t]*0[ \t]+", re.MULTILINE)
 # Marca de la fila que ESCRIBE el criterio. MEDIDO: solo la nombra esa fila, y
 # ninguna de las 7 exentas. Se usa el nombre de la funcion y no la palabra
 # "criterio" porque la fila 93, que esta CERRADA de verdad, habla de "el check de
@@ -972,20 +983,87 @@ def _ids_cerrados(root, fila):
 
 
 def _ciclos_cerrados(root, fila):
-    """Los `CYCLE-NNN` de la fila con entrada en uno de los DOS changelogs.
+    """Los `CYCLE-NNN` de la fila con ENTRADA en uno de los DOS changelogs.
 
     Deliberadamente NO mira `rd_journal.json`, que `_ciclos_de_la_fila` si mira
     para exigir que el id exista. Un ciclo se "traza" en cuanto se nombra, y se
     "cierra" cuando su entrada esta publicada en un changelog: son dos hechos
     distintos, y exigir solo el primero es lo que dejaba pasar al ataque.
+
+    ## EL LITERAL COMPLETO, Y POR QUE UNA SUBCADENA NO ES LO MISMO
+
+    MEDIDO el 2026-10-02: el predicado era `if any(c in registro ...)`, o sea
+    una SUBCADENA, y el danio no era cosmetico. Los dos changelogs publican
+    `CYCLE-001` a `CYCLE-049`, luego `"CYCLE-04" in changelog` es `True` porque
+    esta DENTRO de `CYCLE-045`, y una fila que nombra `CYCLE-04` -- un ciclo que
+    NO existe en este repo -- se eximia con `8 exenta(s) / 7 viva(s)`,
+    `33` anclas y `0 FAIL`. MEDIDO con las citas de ruta de la fila 88 rotas
+    para que no la salve ninguna otra fuente: sin la exencion `7/8/33, 1 FAIL`
+    (`VIVA sin ancla resoluble`), y con solo 24 caracteres mas `8/7/33, 0 FAIL`.
+    Veinticuatro caracteres que nombran un ciclo inexistente convierten un rojo
+    en verde.
+
+    Y no es que `CYCLE-04` este "cerca" de uno real: `_RE_CICLOS` acepta
+    `CYCLE-0` (SIETE caracteres) y con el el ataque tambien cuela, porque la
+    comparacion era de subcadena y no de token.
+
+    El fix son DOS capas, y hacen cosas DISTINTAS, que es lo que las hace
+    necesarias las dos:
+
+    (a) LITERAL COMPLETO: `re.escape(c) + r"\\b"` contra el texto del changelog.
+        MEDIDO: mata `CYCLE-04` (patron `CYCLE\\-04\\b`) y `CYCLE-0`
+        (`CYCLE\\-0\\b`), porque `4` y `5` son los DOS caracteres de palabra y no
+        hay limite entre ellos, luego el patron no casa dentro de `CYCLE-045`.
+        Con (a) sola un `CYCLE-045` citado en PROSA ("La fila cita CYCLE-045 al
+        pasar") ya contaria como cerrado, porque basta con que el token APAREZCA
+        en cualquier linea.
+
+    (b) LA FORMA DE LA ENTRADA, con el id CAPTURADO ENTERO y comparado como
+        token, sobre la `MULTILINE` de cada changelog:
+
+            `^##[ \\t]+\\[?(CYCLE-\\d+)\\]?`
+
+        MEDIDO con las dos capas: los 49 ids que publican los dos changelogs son
+        `CYCLE-001`..`CYCLE-049` y los 7 que nombran las exentas reales
+        (`CYCLE-045`, `CYCLE-026`, `CYCLE-047`, `CYCLE-027`, `CYCLE-044`) siguen
+        resolviendo, mientras `CYCLE-04`, `CYCLE-0`, `CYCLE-09` y `CYCLE-999`
+        MUEREN los cuatro. Sin tocar una sola fila de Deuda. Y el mismo
+        `CYCLE-045` en prosa deja de contar, que es lo que (a) sola no hacia.
+
+    La forma tiene que admitir las DOS grafias que existen de verdad --`## CYCLE-048`
+    en el changelog de raiz y `## [CYCLE-048]` en el tecnico-- y por eso el
+    corchete es opcional. MEDIDO: 49 entradas en total por los dos ficheros, y
+    exigir solo una de las dos grafias dejaria el repo en rojo.
+
+    OJO con sondear esto con una regex SIN grupo de captura: `^##[ \\t]+\\[?CYCLE-04\\]?`
+    casa contra `## [CYCLE-045]` porque el `5` que sigue no se mira y el `]` es
+    opcional. MEDIDO: esa sonda da `True` y la forma con captura da `False`. Es
+    el mismo fallo de subcadena, un nivel mas adentro, y por eso la comparacion
+    es de token capturado y no de coincidencia.
+
+    ## EL RESIDUO QUE NO ES DE FORMA, medido y declarado
+
+    `CYCLE-999` + una linea `## [CYCLE-999]` escrita en el changelog tecnico SE
+    EXIME con las dos capas. No es un fallo de este predicado: publicar la
+    entrada de un ciclo ES el acto legitimo de cerrarlo, y un validador que lo
+    negara no podria cerrar nunca un ciclo. El agujero que queda no es de FORMA
+    sino de ACTO, y es MAS ANCHO que el que declaraba el limite 19: no solo
+    "nombrar un id ya cerrado" --el residuo viejo, que se mantiene y sigue
+    cubierto por su escenario (y)--, sino tambien "nombrar un id que NUNCA
+    EXISTIO y publicar su entrada". Declarar solo el primero es declarar un
+    residuo mas estrecho que el agujero, que es lo que este ciclo lleva tres
+    rondas corrigiendo en su propia documentacion.
     """
     registros = []
     for relativa in ("CHANGELOG.md", ".taskmaster/CHANGELOG.md"):
         texto = _leer_texto(root, relativa)
         if texto:
             registros.append(texto)
+    publicados = set()
+    for registro in registros:
+        publicados.update(_RE_ENTRADA_DE_CICLO.findall(registro))
     return [c for c in dict.fromkeys(_RE_CICLOS.findall(fila or ""))
-            if any(c in registro for registro in registros)]
+            if c in publicados]
 
 
 def _ruta_de_ancla(root, nombre):
@@ -1207,7 +1285,15 @@ def _declara_el_codigo_sobrecargado(root, relativa):
     """
     cuerpo = _leer_texto(root, relativa) or ""
     for codigo in CODIGOS_DE_SALIDA_SOBRECARGADOS:
-        forma = re.compile(r"^[ \t]*0[ \t]+" + codigo + r"\b", re.MULTILINE)
+        # Se compone el PATRON y se recompila con `re.MULTILINE` explicito, y no
+        # `re.compile(constante.pattern + ...)`: MEDIDO el 2026-10-02 que
+        # componiendo solo el `.pattern` se pierden los flags de la constante
+        # compilada, el patron pasa a buscar en UNA sola linea, el suelo de
+        # gravedad deja de detecting cualquier declaracion y el escenario (h) de
+        # la tabla del check 8 muere. Es el mismo fallo de "dos definiciones de
+        # una forma" que esta constante vino a cerrar, un nivel mas adentro.
+        forma = re.compile(_RE_DECLARACION_DE_CODIGO.pattern + codigo + r"\b",
+                           re.MULTILINE)
         if not forma.search(cuerpo):
             return False
     return True
@@ -1362,8 +1448,31 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
         # lo decide la FORMA -- que nombre este check -- no si el trabajo que
         # cita ya estaba hecho. Medirla despues de exigir el estado es dejar el
         # guard que vigila al vigilante condicionado a que el vigilante pase.
+        #
+        # Y NO se apoya en `_porta_el_marcador_de_cierre`, que es lo que hace el
+        # ACOPLAMIENTO que el mutation-auditor midio. Preguntar "¿se ha declarado
+        # cerrada?" por la misma funcion que decide "¿esta cerrada de verdad?"
+        # ata el guard al codigo que vigila: MEDIDO el 2026-10-02 que SIETE
+        # mutaciones de `_porta_el_marcador_de_cierre` (aceptar el marcador en
+        # prosa, aceptar el prefijo en vez de la palabra, aceptar minusculas,
+        # ignorar la negacion del veredicto, ignorar la de la prosa, no borrar el
+        # codigo inline, yaceptarlo en toda la fila) dejan el panel REAL en
+        # `7 exenta(s) / 8 viva(s)` y `0 FAIL` y las pasan las 30 filas de la
+        # tabla sin delatar NADA. El guard que vigila al vigilante no puede
+        # depender de la forma que el vigilante evalua.
+        #
+        # Aqui la pregunta es la MAS AMPLIA que tiene sentido: la fila se nombra
+        # a si misma y lleva la palabra de cierre en mayusculas FUERA de codigo
+        # inline. No se exige negrita, no se mira la negacion y no se mira el
+        # estado, porque esas tres son preguntas de EVALUACION y no de
+        # DECLARACION. MEDIDO que la fila 101 del panel real nombra este check y
+        # no lleva marcador en mayusculas fuera de codigo inline, luego el
+        # predicado amplio no cambia NINGUN veredicto de las 15 filas reales
+        # (`7 exenta(s) / 8 viva(s) / 35` anclas y `0 FAIL`, identico antes y
+        # despues), y la tabla de 30 escenarios sigue verde con el fix puesto.
         autoeximida = (NOMBRE_DE_LA_FILLA_DEL_CRITERIO in fila
-                       and _porta_el_marcador_de_cierre(fila))
+                       and bool(_RE_CERRADA.search(
+                           _RE_CODIGO_INLINE.sub(" ", fila))))
 
         if _esta_cerrada(root, fila) or autoeximida:
             exentas += 1

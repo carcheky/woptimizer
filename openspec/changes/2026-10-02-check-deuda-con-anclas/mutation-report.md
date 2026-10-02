@@ -359,3 +359,169 @@ es una asercion.
 - **El recuento de escenarios del test es 30 y su contrato es 30.** La tabla
   aumento de 25 a 30 en este pase (x, c3, h2, y y n2) y **el numero de tests no
   cambio: sigue en 104**, porque los escenarios son filas de una tabla.
+
+---
+
+# RONDA 5 - el `CYCLE` se resolvia por SUBCADENA
+
+**Medido contra `2229c12`** (HEAD al empezar este pase; el commit de la ronda 4,
+`a31e585`, es el que midio la seccion anterior y lo declara en su `0`). Sin
+`2229c12` en el informe, dentro de seis meses no se sabe contra que se midio la
+columna HEAD, y un informe sin baseline no se puede re-auditar.
+
+## 0. EL HALLAZGO, y por que la ronda 4 no lo podia ver
+
+`_ciclos_cerrados` cerra un ciclo con `if any(c in registro for registro in
+registros)`: una **SUBCADENA**. Los dos changelogs publican `CYCLE-001` a
+`CYCLE-049`, luego `"CYCLE-04" in changelog` es `True` porque esta **dentro** de
+`CYCLE-045`, y `"CYCLE-04]" in changelog` es `False`. `CYCLE-04` **no es un ciclo
+de este repo** y el validador lo contaba como cerrado.
+
+| id | Edicion, sobre el panel real | `ok` HEAD | FAIL | Veredicto |
+|---|---|---|---|---|
+| **N1** | fila 88 + ` - **CERRADA en CYCLE-04**` | `15 / 8 / 7 / 33` | `0` | **SOBREVIVE** |
+| **N2** | ` - **CERRADA en CYCLE-0**` (siete caracteres) | `15 / 8 / 7 / 33` | `0` | **SOBREVIVE** |
+| **N3** | ` - **CERRADA en CYCLE-999**` + una linea `## [CYCLE-999]` en el changelog tecnico | `15 / 8 / 7 / 33` | `0` | **SOBREVIVE** |
+
+**N3, aislado:** con la fila 88 (la que usa el resto de la tabla) el `CYCLE-999`
+**no** la exime, porque la 88 no nombra ninguna `TASK` cerrada; medido `7 exenta(s)
+/ 8 viva(s) / 35`, `0 FAIL`. El ataque de N3 se reproduce en la **95**, y MEDIDO
+que allí la exención **no viene del `CYCLE-999`**: la 95 nombra `TASK-057`, que
+esta `completed`, y sin el veredicto anadido **también** queda exenta
+(`8 exenta(s)`). O sea que N3-medido-en-la-95 es el residuo ya declarado del
+limite 19 —«nombrar un id **ya cerrado**»—, con su escenario (y), y **no** una
+puerta nueva. Lo que sí es nuevo y sí se cierra es el **prefijo**: `CYCLE-04`
+dentro de `CYCLE-045`, que la fila 88 sí sufría y que era el agujero central.
+| **N4** | ` - **CERRADA en CYCLE-04, nunca se resolvio**` | `15 / 8 / 7 / 33` | `0` | **SOBREVIVE** |
+
+**El dano medido con la fila 88 sin NINGUNA otra fuente** (rotas todas sus citas
+de ruta, para que el ataque no tenga un salvavidas): sin el ataque
+`7/8/33, 1 FAIL` (`VIVA sin ancla resoluble`), y con N1 `8/7/33, 0 FAIL`.
+**Veinticuatro caracteres que nombran un ciclo inexistente convierten un rojo en
+verde.** Y N1 sobrevive a los 104 tests: `ALL TESTS PASSED`, rc 0.
+
+N1 y N4 son el mismo caso (la negacion en minuscula es el residuo ya declarado),
+y **N2 no es lo que el auditor dijo**: `CERCADA` no es el marcador de cierre
+(`_RE_CERRADA` es `\bCERRAD[OA]\b`), luego `**CERCADA en CYCLE-0**` deja la fila
+VIVA, `7 exenta(s) / 8 viva(s) / 35`, `0 FAIL`. El id truncado que **si** cuela
+es `**CERRADA en CYCLE-0**`, y es el que mide el escenario (x4b).
+
+## 1. EL FIX, en dos capas, y por que dos
+
+- **(a) literal completo**: `re.escape(c) + r"\b"`. MEDIDO que mata `CYCLE-04` y
+  `CYCLE-0`, porque `4` y `5` son los dos caracteres de palabra y no hay limite
+  entre ellos.
+- **(b) la forma de la ENTRADA**, `^##[ \t]+\[?(CYCLE-\d+)\]?` en `MULTILINE`,
+  con el id **capturado entero** y comparado como token.
+
+(a) sola no basta: MEDIDO que un `CYCLE-045` citado en **prosa** ("La fila cita
+CYCLE-045 al pasar") ya contaria como cerrado, porque basta con que el token
+APAREZCA. (b) sola tampoco: un regex **sin grupo de captura** casa `CYCLE-04`
+contra `## [CYCLE-045]` porque el `5` que sigue no se mira. Es el mismo fallo de
+subcadena un nivel mas adentro.
+
+MEDIDO con las dos: los 49 ids publicados siguen resolviendo, y `CYCLE-04`,
+`CYCLE-0`, `CYCLE-09` y `CYCLE-999` **mueren los cuatro**, con el panel intacto
+(`7 exenta(s) / 8 viva(s) / 35` y `0 FAIL`) y **sin tocar una sola fila de Deuda**.
+Las dos grafias que el repo escribe de verdad (`## CYCLE-048` en el de raiz y
+`## [CYCLE-048]` en el tecnico) las cubre el corchete opcional; exigir solo una
+pondria el repo en rojo.
+
+## 2. M2: el guard que vigila al vigilante estaba atado al vigilante
+
+Si la autoexencion se preguntaba con `_porta_el_marcador_de_cierre` --la misma
+funcion que decide si la fila esta cerrada de verdad--, entonces **si esa funcion
+se debilita, el guard se debilita con ella**. MEDIDO: **siete** mutaciones suyas
+(aceptar el marcador en prosa, aceptar el prefijo en vez de la palabra, aceptar
+minusculas, ignorar la negacion del veredicto, ignorar la de la prosa, no borrar
+el codigo inline, y aceptarlo en toda la fila) dejan el panel real en
+`7 exenta(s) / 8 viva(s)` y `0 FAIL` y **no las delata ninguna de las 30 filas de
+la tabla**.
+
+Se **des-acopla**: la autoexencion pregunta la forma MAS AMPLIA que tiene
+sentido --la fila se nombra a si misma y lleva `CERRAD[OA]` en mayusculas fuera de
+codigo inline--, sin exigir negrita, sin mirar la negacion y sin mirar el estado,
+porque esas tres son preguntas de EVALUACION. MEDIDO que **no cambia ningun
+veredicto de las 15 filas reales** (la 101 nombra el check pero no lleva marcador
+en mayusculas fuera de codigo inline), luego el des-acoplamiento no compra nada a
+cambio de un falso positivo. Cuesta **3 lineas**, y su unico escenario nuevo es
+el (m2), que **MUERE al volver al acoplamiento** (`MUERE:m2`) y **pasa** con el
+des-acoplamiento.
+
+**Lo que NO se declara, medido:** el des-acoplamiento **no** hace que la tabla
+mate las mutaciones de `_porta_el_marcador_de_cierre`. MEDIDO que tres de ellas
+(aceptar el marcador en prosa, aceptar el prefijo en vez de la palabra, aceptar
+minusculas) **siguen pasando** la tabla con el fix puesto. Lo que cambia es que
+la **autoexencion** deja de seguirlas, que es justo el acoplamiento que se
+pretendia cerrar. Afirmar lo contrario seria escribir un informe mas ancho que su
+fix.
+
+## 3. LO QUE SE BORRA, y lo que no
+
+- `_RE_ID_TRAZABLE`: **borrada**. La condicion de trazabilidad que describia ya no
+  existe --la quinta la subsume-- y la constante estaba definida y nunca leida.
+- `_RE_DECLARACION_DE_CODIGO`: **reconectada**, no borrada. `_declara_el_
+  sobrecargado` construia su patron en linea, luego la forma estaba **definida dos
+  veces** en el mismo fichero. Ahora la constante es la definicion unica.
+  MEDIDO y escrito en el codigo: componiendo solo `.pattern` se **pierden los
+  flags** de la constante compilada y el escenario (h) muere; se recompila con
+  `re.MULTILINE` explicito.
+- El bloque de comentario que describia la condicion de trazabilidad: **borrado**,
+  porque describia algo que el codigo ya no hace.
+
+El guard de codigo muerto (`run_tests.py:11650`) mira `src/woptimizer/**` y por
+eso no caza nada de esto: es TASK-056 repetido en el tooling.
+
+## 4. LIMITE 5, REESCRITO CON SU MEDICION REAL
+
+La version anterior citaba la **fila 89** y **`22` anclas**, y **no reproduce**.
+MEDIDO hoy, con el panel de este commit:
+
+| donde | edicion | resultado | reproduce lo que decia |
+|---|---|---|---|
+| fila 89 | ` - **CERRADA en CYCLE-999**` | `7 exenta(s) / 8 viva(s) / 35`, `0 FAIL` | **NO** |
+| fila 95 | ` - **CERRADA en CYCLE-999**` | `8 exenta(s) / 7 viva(s) / 35`, `0 FAIL` | **SI** |
+
+**Por que la 89 no sirve de ejemplo**, que es lo que el limite no decia: su
+veredicto «VUELTA A ROJA Y **NO** SE CIERRA: bajarla a 🟡 sin cerrar el problema
+es documentacion *fail-open*» lleva un `NO` en mayusculas **dentro de la
+negrita**, y la regla de negacion rechaza el marcador de cualquier veredicto asi
+**antes de mirar ningun id**. El mecanismo existe, pero en la 95. Y la linea base
+es **35** anclas, no `22`.
+
+## 5. FILA X, CORREGIDA CON LA MEDICION AISLADA
+
+La tabla de §3.1 decia que el mutante X (quitar la quinta condicion) **MUERE en el
+escenario (x)**. **Realmente muere en el (r)**, y la leccion es la que ya se
+aplico a la ronda 4: **el bucle de escenarios aborta en el PRIMERO que falla**, y
+`r` va antes que `x` en la tabla. El mutante muere igual, pero **el sitio de
+muerte declarado no era el medido**, que es justo lo que viene a comprobar un
+re-auditor. Anotado aqui con su medicion, no con la esperada.
+
+## 6. LOS TRES RESIDUOS QUE EL INFORME TENIA QUE DECIR
+
+1. **La rama del journal de `_ciclos_de_la_fila` es INERTE**: el journal real
+   tiene **cero** literales `CYCLE-NNN` y **49** `"cycle": <int>`. C3 esta cerrado
+   y cubierto, y el diagnostico era el correcto, pero el residuo **no figuraba en
+   la lista de limites**. Ahora es el limite **24**.
+2. **La guardia `st_ino != 0` no tiene test ni victima**: en NTFS `st_ino` vale un
+   entero de 16 digitos, **nunca `0`**, luego **quitar la guardia no muere nada**.
+   Es correcta en un sistema de ficheros sin indice, pero nadie la ha medido y por
+   tanto nadie puede romperla aqui. Ahora es el limite **25**.
+3. **La fila 101 tiene 117 `**` (impar)**: MEDIDO que `_RE_NEGRITA` extrae 58
+   veredictos y que un veredicto bien formado anadido a la fila **no aparece entre
+   los extraidos** (impar: `False`; par: `True`). O sea que hoy la 101 esta
+   **protegida por un accidente de formato, no por la regla**, y el escenario
+   (f2) usa una fila sintetica **balanceada**, luego el comportamiento real de la
+   fila del criterio no estaba cubierto. El escenario **(m2)** lo cubre por donde
+   el Markdown no decide (marcador en la prosa). **No se corrige el desbalance**:
+   es una fila de Deuda y su regla es *solo anadir, nunca reescribir*. Ahora es el
+   limite **26**.
+
+## 7. LO QUE ESTA CERRADO Y NO SE HA TOCADO
+
+La separacion del (f2), el enlace duro y la quinta condicion contra una `TASK`
+pendiente estaban cerrados **y con test que los distingue**; esta ronda no los
+ha tocado. El ataque de panel a la autoexencion sigue sin colar (`7/8/35, 0 FAIL`),
+el enlace duro reproduce `0 FAIL / 36` -> `2 FAIL / 35`, y M3, M5, M6 y las cuatro
+mutaciones literales de §3.1 siguen muriendo con su asercion.

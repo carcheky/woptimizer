@@ -12793,7 +12793,7 @@ def _run_tests_sintetico(n_tests, n_headless, con_marcador=True):
 
 
 def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
-    """TASK-060 (ciclo #49): el CHECK 8 de `validate_docs.py`, treinta escenarios.
+    """TASK-060 (ciclo #49): el CHECK 8 de `validate_docs.py`, treinta y tres escenarios.
 
     El ciclo #48 sano 13 filas de la seccion `## Deuda Tecnica Conocida` y su
     auditoria cerro PARTIAL por una razon MEDIDA: 8 de 9 mutaciones sobrevivieron
@@ -12808,8 +12808,8 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
     `ast`" de "lei el numero correcto a mano", que es justo el mutante que esa
     fila existe para matar.
 
-    LAS TREINTA FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla es el
-    contrato, y `len(FILAS) == 30` la cuenta para que borrar una fila no salga
+    LAS TREINTA Y TRES FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla
+    es el contrato, y `len(FILAS) == 33` la cuenta para que borrar una fila no salga
     gratis). DOS de ellas -- (y) y (n2) -- NO matan nada: ARCHIVAN residuos
     declarados como controles negativos, y estan marcadas como tales para que
     nadie las lea como cobertura:
@@ -12915,6 +12915,9 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
       normaliza a minusculas en Linux), y el producto es Windows: en un sistema
       de ficheros sensible a mayusculas `status.md` NO existiria y el motivo
       seria "no existe en el arbol", que tambien es un FAIL.
+    - (x4) el veredicto de cierre apunta a un CYCLE que es PREFIJO de uno
+      real -> la fila sigue VIVA. Mata: que `_ciclos_cerrados` resuelva el
+      `CYCLE` por SUBCADENA.
     - (x) el veredicto de cierre apunta a una TAREA PENDIENTE -> la fila sigue
       VIVA. Mata: la quinta condicion de `_esta_cerrada` entera (borrar
       `_ids_cerrados`), que es el agujero G2f' del mutation-auditor: MEDIDO
@@ -12937,7 +12940,35 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
       ruta resuelta lo aceptaba como ancla legitima con `0 FAIL` de Deuda y
       colaba S1 y S2 a la vez. Un enlace simbolico y una junction SI los cierra
       `realpath`; el duro no cambia de nombre.
-    - (y) CONTROL NEGATIVO: el mismo veredicto que (x) pero con una TAREA ya
+    - (x4) el id de la fila tiene que existir COMO ID, no como PREFIJO de otro:
+      la MISMA puerta que (x) pero con un `CYCLE` que no es un ciclo de este
+      repo. Mata: que `_ciclos_cerrados` resuelva un `CYCLE` por SUBCADENA
+      (`if any(c in registro ...)`), que es el agujero central que midi�� el
+      mutation-auditor en la ronda 5. MEDIDO: los dos changelogs publican
+      `CYCLE-001`..`CYCLE-049`, luego `"CYCLE-04" in changelog` es `True` porque
+      esta DENTRO de `CYCLE-045`, y la fila 88 se eximia con `8 exenta(s) /
+      7 viva(s)`, `33` anclas y `0 FAIL`; con las citas de ruta de la 88 rotas
+      para que no la salve otra fuente, sin el ataque `7/8/33, 1 FAIL` y con el
+      `8/7/33, 0 FAIL`, o sea 24 caracteres que convierten un rojo en verde.
+      `_RE_CICLOS` ademas acepta `CYCLE-0` (SIETE caracteres), y con el el
+      ataque tambien cuela: por eso (x4b) lo mide con ese id truncado.
+    - (x4b) el `CYCLE` truncado a SIETE caracteres (`CYCLE-0`) tampoco cierra
+      nada. Es la segunda mitad del mismo ataque y mide el otro extremo: con
+      solo el fix de la forma, un id de dos digitos tendria que casar contra
+      `CYCLE-001` por el mismo prefijo.
+    - (m2) la AUTOEXENCION no se apoya en la forma que evalua el estado: la
+      fila del criterio con el marcador en la PROSA (no en un veredicto) TAMBIEN
+      se acusa. Mata: el ACOPLAMIENTO `NOMBRE in fila and _porta_el_marcador_
+      de_cierre(fila)`, con el que el guard que vigila al vigilante se apoyaba
+      en la misma funcion que decide si la fila esta cerrada de verdad. MEDIDO
+      el 2026-10-02 en la ronda 5: SIETE mutaciones de `_porta_el_marcador_de_
+      cierre` (aceptar el marcador en prosa, aceptar el prefijo en vez de la
+      palabra, aceptar minusculas, ignorar la negacion del veredicto, ignorar la
+      de la prosa, no borrar el codigo inline, y aceptarlo en toda la fila)
+      dejan el panel REAL en `7 exenta(s) / 8 viva(s)` y `0 FAIL` y las pasan
+      las 30 filas de esta tabla SIN DELATAR NADA. (f2) solo ve la mitad que ya
+      funciona: con el marcador en negrita los dos caminos coinciden.
+    - (y) CONTROL NEGATIVO: el mismo veredicto de (x) pero con una TAREA ya
       `completed` -> la fila SI queda exenta. No mide un fix: ARCHIVA el
       residuo declarado del limite 19 para que el proximo que lo encuentre no
       lo lea como un bug sin explicar. Sin esta fila, "arreglar" el residuo
@@ -12952,7 +12983,7 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
       no en el cuerpo**", "**guardas que no guardaban**"). La caja es la forma,
       por el mismo argumento que ya fija el limite 18 para `CERRADA`.
 
-    LIMITACION CONOCIDA, y hay que decirla: las veinticinco filas comparten
+    LIMITACION CONOCIDA, y hay que decirla: las treinta y tres filas comparten
     esqueleto y comparten helper, luego comparten punto ciego -- una fila solo
     mide la forma de arbol que construye. Las LIMITACIONES que este check tiene
     por DISENO (S1 prueba existencia y no verdad; las filas cerradas quedan
@@ -13159,6 +13190,28 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
               "ancla NO RESOLUBLE: panel_duro.md EXISTE pero es el propio panel"],
              [],
              "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("x4: un CYCLE que es PREFIJO de uno real no cierra nada",
+             _panel(["- **Fila que se exime con un ciclo inexistente:** ancla "
+                     "`run_tests.py` y anade al final — **CERRADA en "
+                     "CYCLE-04** —, que no es un ciclo de este repo: los "
+                     "changelogs publican del 001 al 049 y ese id cae DENTRO "
+                     "del 045, luego la busqueda por subcadena lo resolvia. "
+                     "NINGUN otro id de esta fila nombra un ciclo real."]),
+             [], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("x4b: un CYCLE truncado a siete caracteres tampoco cierra nada",
+             _panel(["- **Fila que se exime con un id truncado:** ancla "
+                     "`run_tests.py` y anade al final — **CERRADA en "
+                     "CYCLE-0** —, que es el prefijo de todos."]),
+             [], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("m2: la fila del criterio con el marcador en la PROSA se acusa",
+             _panel(["- **Fila del criterio:** escribe "
+                     "`_comprobar_deuda_con_anclas(root, errors, ok)` como la "
+                     "regla de toda fila viva y escribe CERRADA en TASK-002 "
+                     "en su prosa, sin veredicto, para no estar vigilada."]),
+             ["la fila del criterio se ha autoeximido"], [],
+             "1 exenta(s) CERRADA(s), 0 viva(s)"),
             ("y: CONTROL NEGATIVO, un id YA CERRADO si cierra la fila",
              _panel(["- **Fila cerrada de verdad:** ancla `run_tests.py` y anade "
                      "al final \u2014 **CERRADA en TASK-001** \u2014, que esta "
@@ -13175,9 +13228,9 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
         # El numero de filas es un CONTRATO, no una consecuencia: sin esta
         # cuenta, borrar tres escenarios deja la suite verde con el mismo
         # recuento de tests (S1 del mutation-auditor, ciclo #49, MEDIDO).
-        assert len(FILAS) == 30, (
+        assert len(FILAS) == 33, (
             "la tabla de escenarios del check 8 tiene "
-            f"{len(FILAS)} filas y su contrato son 30. Una fila que se borra sin "
+            f"{len(FILAS)} filas y su contrato son 33. Una fila que se borra sin "
             "su cuenta deja el test en verde midiendo menos de lo que dice medir"
         )
 
@@ -13298,7 +13351,9 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
           "vez, el marcador que tiene que estar en negrita, la negacion que "
           "esta en la prosa, el panel que se cita a si mismo con otra grafia, el "
           "cierre que apunta a una TAREA pendiente, el CYCLE que solo esta en "
-          "el journal, el enlace DURO al panel, y los dos controles negativos "
+          "el journal, el CYCLE que es PREFIJO de uno real, el CYCLE truncado a "
+          "siete caracteres, la fila del criterio con el marcador en la prosa, "
+          "el enlace DURO al panel, y los dos controles negativos "
           "que archivan el residuo declarado.")
 
 
