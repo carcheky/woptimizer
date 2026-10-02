@@ -12018,15 +12018,24 @@ def _copiar_el_esqueleto_del_validador(destino):
     lo expone como fallo del propio test en vez de dejarlo pasar en silencio.
     Medido: 1,7 MB, y se copia UNA vez por test, no una vez por fila. Eso es lo
     que hace que anadir un escenario cueste una fila y no un test (D4).
+
+    MEDIDO de nuevo en el ciclo #49, y por el mismo motivo: el check 8 lee
+    `src/` (para la fila 91, que cita `pack_service.py`) y `.taskmaster/
+    tasks.json` (para la fila 95, cuya unica fuente es `TASK-059`). Sin ellos, el
+    arbol copiado se queda con dos fallos MAS que no tienen nada que ver con lo que
+    el test mide, y los tests que cuentan `len(errors)` --el del journal ilegible--
+    mueren por un motivo que no es su sujeto. Ampliar el esqueleto es justo lo que
+    este docstring manda: que la copia exponga la lectura nueva.
     """
     import shutil
 
     raiz_repo = os.path.dirname(os.path.abspath(__file__))
     ficheros = ("llms.txt", "llms-full.txt", "AGENTS.md", "README.md", "STATUS.md",
                 "CHANGELOG.md", "mkdocs.yml", "run_tests.py", "validate_docs.py")
-    arboles = ("docs", "openspec")
+    arboles = ("docs", "openspec", "src")
     ocultos = (os.path.join(".taskmaster", "CHANGELOG.md"),
-               os.path.join(".taskmaster", "rd_journal.json"))
+               os.path.join(".taskmaster", "rd_journal.json"),
+               os.path.join(".taskmaster", "tasks.json"))
     for nombre in ficheros:
         shutil.copy2(os.path.join(raiz_repo, nombre), os.path.join(destino, nombre))
     for arbol in arboles:
@@ -12758,6 +12767,233 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
           "plural que declara un rango de ciclos acotado.")
 
 
+def _run_tests_sintetico(n_tests, n_headless, con_marcador=True):
+    """`run_tests.py` sintetico con `n_tests` tests, `n_headless` tras el marcador.
+
+    El marcador estructural es el que separa el reparto backend de las headless, y
+    `con_marcador=False` construye la forma en la que ese reparto NO se puede
+    derivar: la fila (k) lo usa para exigir que se acuse el motivo literal en vez
+    de devolver `0 + 0` en verde.
+    """
+    lineas = ["# Sintetico: este fichero existe para que el validador derive su",
+              "# total con `ast` y no lo lea de ningun sitio.", ""]
+    for i in range(n_tests):
+        lineas.append(f"def test_sintetico_{i}():")
+        lineas.append("    pass")
+        lineas.append("")
+    lineas.append('if __name__ == "__main__":')
+    for i in range(n_tests - n_headless):
+        lineas.append(f"    test_sintetico_{i}()")
+    if con_marcador and n_headless:
+        lineas.append('    print("\\n--- Running Headless UI Tests ---")')
+        for i in range(n_tests - n_headless, n_tests):
+            lineas.append(f"    test_sintetico_{i}()")
+    lineas.append('    print("\\nALL TESTS PASSED.")')
+    return "\n".join(lineas) + "\n"
+
+
+def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
+    """TASK-060 (ciclo #49): el CHECK 8 de `validate_docs.py`, trece escenarios.
+
+    El ciclo #48 sano 13 filas de la seccion `## Deuda Tecnica Conocida` y su
+    auditoria cerro PARTIAL por una razon MEDIDA: 8 de 9 mutaciones sobrevivieron
+    porque NADA en este repo vigilaba esa seccion (`validate_docs.py` tenia 0
+    coincidencias de la palabra `Deuda`). Este test es el guardian de las trece
+    filas de la tabla de abajo, y todas asientan por `validar(root)` (D3): la
+    MISMA funcion que `main()` llama, sobre el esqueleto REAL copiado una vez en
+    un `tempfile.mkdtemp()`. Nada de esto toca el repo real.
+
+    EL TOTAL SE DERIVA CON `ast` DEL ARBOL SINTETICO (6 + 1 = 7), nunca del repo
+    real. Si la cifra se leyera del repo, la fila (c) no distinguiria "derive con
+    `ast`" de "lei el numero correcto a mano", que es justo el mutante que esa
+    fila existe para matar.
+
+    LAS TRECE FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla es el contrato):
+
+    - (a) fila viva cuya unica cita no existe -> "VIVA sin ancla resoluble" (0 de
+      5) y "ancla NO RESOLUBLE". Mata: no exigir ninguna fuente.
+    - (b) la MISMA fila marcada CERRADA -> nada. Mata: borrar la exencion de las
+      cerradas, que con esta fila sola sale en rojo.
+    - (c) el panel DECLARA 42 tests (una cifra que el `ast` desmiente, porque el
+      arbol sintetico tiene 7) y una fila viva la repite como verdad -> "NO es el
+      derivado con ast". Mata: leer la verdad del panel en vez del codigo. La
+      fila (c) declara la cifra EN LA CABECERA del panel a proposito: si solo la
+      llevara la fila, un mutante que leyera el numero del panel daria el mismo
+      veredicto que el codigo correcto y la fila no mediria nada.
+    - (c2) el MISMO panel con un `run_tests.py` de 9 tests y la fila repitiendo la
+      cifra vieja de 7 -> "NO es el derivado ... (9)". Mata: escribir el numero a
+      mano. Sin esta fila, un mutante con una CONSTANTE que por casualidad vale lo
+      mismo que el derivado daria el mismo veredicto que el codigo correcto, y la
+      (c) sola no lo distingue: es la razon de que un test que deriva de un solo
+      arbol no pueda sellarlo.
+    - (d) panel de SOLO filas cerradas -> CERO errores de la seccion. Mata: marcar
+      todo, que es un guard que no vigila nada.
+    - (e) seccion ausente -> "no existe la seccion". Mata: buscarla por indice fijo
+      o tolerar su ausencia.
+    - (f1) fila cuyo unico `CERRAD` va DENTRO de codigo inline, sin ancla -> "VIVA
+      sin ancla resoluble". Mata: borrar el `re.sub` de codigo inline, que la
+      declararia cerrada y la dejaria sin vigilar y en verde.
+    - (f2) fila que ESCRIBE el criterio y se marca CERRADA -> "se ha autoeximido".
+      Mata: no comprobar que la fila del criterio siga viva.
+    - (g) fila viva cuya unica fuente es una `TASK` `completed` -> "su UNICA fuente
+      es una TAREA YA CERRADA". Mata: borrar la regla de la tarea cerrada, que es
+      lo que haria que reabrir una fila cerrada pasara en verde.
+    - (h) fila viva que declara AMARILLO con el codigo de salida sobrecargado
+      presente -> "su comprobable SIGUE VIVO". Mata: borrar el suelo de gravedad,
+      que es el S1 del ciclo #48.
+    - (i) cita que atribuye un identificador a un fichero que existe pero no lo
+      contiene -> "NO contiene el identificador que la fila le atribuye". Mata:
+      resolver por EXISTENCIA y no por contenido.
+    - (j) el panel declara un reparto que el `ast` desmiente -> "separa 6/1". Mata:
+      no derivar el reparto, que hoy nadie vigila.
+    - (k) el marcador headless NO aparece -> "NO SE ENCUENTRA el marcador". Mata:
+      devolver `0 + 0` en verde cuando el reparto no se puede derivar.
+
+    LIMITACION CONOCIDA, y hay que decirla: las trece filas comparten esqueleto y
+    comparten helper, luego comparten punto ciego -- una fila solo mide la forma de
+    arbol que construye. Las LIMITACIONES que este check tiene por DISENO (S1
+    prueba existencia y no verdad; las filas cerradas quedan mudas; el corte de la
+    seccion es por linea; el suelo de gravedad es UNO) estan escritas con sus
+    siete puntos en `docs/ai/sandbox-rules.md`, no aqui.
+    """
+    import json
+    import os
+    import shutil
+    import tempfile
+
+    tmp = tempfile.mkdtemp(prefix="wopt_deuda_anclas_")
+    try:
+        _copiar_el_esqueleto_del_validador(tmp)
+
+        def _escribir(relativa, texto):
+            destino = os.path.join(tmp, *relativa.split("/"))
+            os.makedirs(os.path.dirname(destino), exist_ok=True)
+            with open(destino, "w", encoding="utf-8") as fh:
+                fh.write(texto)
+
+        # El total del panel se deriva de ESTE `run_tests.py`, no del real: 7
+        # tests, 6 antes del marcador headless y 1 desde el.
+        _escribir("run_tests.py", _run_tests_sintetico(7, 1))
+        # El tablero: una `TASK` cerrada y otra pendiente, que es lo que separa la
+        # fila (g) de una fila que si tiene comprobable vivo.
+        _escribir(".taskmaster/tasks.json", json.dumps({"tasks": [
+            {"id": "TASK-001", "status": "completed"},
+            {"id": "TASK-002", "status": "pending"},
+        ]}))
+        # El UNICO comprobable del que se deriva el suelo de gravedad, con los
+        # DOS codigos de salida `0` sobrecargados.
+        _escribir(".taskmaster/git_safe_commit.py",
+                  "0  WOPT_COMMIT_OK <hash> <mensaje>  commit creado de verdad\n"
+                  "0  WOPT_NOOP <motivo>  no hay nada que comitear\n"
+                  "1  WOPT_FAIL <operacion> <detalle>  fallo de git\n")
+
+        def _panel(filas, con_seccion=True, reparto="6 backend + 1 headless",
+                   cifra="7"):
+            cuerpo = ["# Panel sintetico", "",
+                      "- **Suite de Tests Headless:** (`run_tests.py`, **" + cifra
+                      + " tests**: " + reparto + " UI)", ""]
+            if con_seccion:
+                cuerpo += ["## Deuda Tecnica Conocida", ""] + list(filas) + [""]
+            return "\n".join(cuerpo) + "\n## Otra Seccion\n\nCierre.\n"
+
+        SIN_ANCLA = ("- **Fila viva sin ancla:** cita `run_testz.py`, que no existe "
+                     "en el arbol, y nada mas.")
+        CON_ANCLA = ("- **Fila viva con ancla:** cita `run_tests.py` y por ahi "
+                     "empieza.")
+        FILAS = (
+            ("a: fila viva cuya unica cita no existe",
+             _panel([SIN_ANCLA]),
+             ["VIVA sin ancla resoluble (0 fuentes de 5)",
+              "ancla NO RESOLUBLE: run_testz.py no existe en el arbol"], []),
+            ("b: la MISMA fila marcada CERRADA",
+             _panel([SIN_ANCLA + " **CERRADA** en el ciclo #1."]),
+             [], ["VIVA sin ancla resoluble", "ancla NO RESOLUBLE"]),
+            ("c: la cifra que el panel se deriva a si mismo",
+             _panel([CON_ANCLA + " Y repite como si fuera verdad la cifra que "
+                     "declara el propio panel: 42 tests."], cifra="42"),
+             ["NO es el derivado con ast de run_tests.py (7)"], []),
+            ("c2: el total del arbol cambia y el panel se queda con la cifra vieja",
+             _panel([CON_ANCLA + " Y repite la cifra que el panel tiene por "
+                     "cierta: 7 tests."]),
+             ["NO es el derivado con ast de run_tests.py (9)"], []),
+            ("d: panel de SOLO filas cerradas",
+             _panel([CON_ANCLA + " **CERRADA** en el ciclo #1.",
+                     "- **Fila cerrada sin ancla.** **CERRADA** en el ciclo #2."]),
+             [], ["Deuda"]),
+            ("e: seccion ausente",
+             _panel([CON_ANCLA], con_seccion=False),
+             ["no existe la seccion de Deuda Tecnica Conocida"], []),
+            ("f1: el marcador de cierre DENTRO de codigo inline no exime a nadie",
+             _panel(["- **Fila que se exime sola:** escribe `CERRAD` en mayusculas "
+                     "dentro de codigo inline y no cita ninguna."]),
+             ["VIVA sin ancla resoluble"], []),
+            ("f2: la fila que escribe el criterio no puede declararse cerrada",
+             _panel(["- **Fila del criterio:** escribe "
+                     "`_comprobar_deuda_con_anclas(root, errors, ok)` como la regla "
+                     "de toda fila viva y se marca **CERRADA** para no estar "
+                     "vigilada."]),
+             ["la fila del criterio se ha autoeximido"], []),
+            ("g: la unica fuente es una TAREA ya cerrada",
+             _panel(["- **Fila reabierta:** su unica prueba es `TASK-001`, que ya "
+                     "esta en `completed`."]),
+             ["su UNICA fuente es una TAREA YA CERRADA: TASK-001.status == completed"],
+             []),
+            ("h: la gravedad baja y el problema sigue vivo",
+             _panel(["- **Fila rebajada:** declara AMARILLO y ancla "
+                     "`git_safe_commit.py`, que sigue declarando 0."]),
+             ["declara AMARILLO pero su comprobable SIGUE VIVO"], []),
+            ("i: la cita existe pero ya no apunta a lo que dice",
+             _panel(["- **Fila con la cita movida:** el identificador "
+                     "`notepad.exe` se le atribuye a "
+                     "`docs/index.md:25 notepad.exe` y ese fichero no lo tiene."]),
+             ["existe pero NO contiene el identificador que la fila le atribuye: "
+              "notepad.exe"], []),
+            ("j: el reparto que el panel declara y el ast desmiente",
+             _panel([CON_ANCLA], reparto="5 backend + 2 headless"),
+             ["separa 6/1"], []),
+            ("k: el marcador headless no existe",
+             _panel([CON_ANCLA]),
+             ["NO SE ENCUENTRA el marcador estructural"], []),
+        )
+
+        # Dos escenarios cambian el `run_tests.py` del arbol: (c2) cambia el
+        # TOTAL y (k) borra el marcador. Se reescribe en cada iteracion, porque
+        # una fila que heredase el arbol de la anterior mediria otra cosa.
+        OVERRIDES = {
+            "c2: el total del arbol cambia y el panel se queda con la cifra vieja":
+                _run_tests_sintetico(9, 1),
+            "k: el marcador headless no existe":
+                _run_tests_sintetico(7, 0, con_marcador=False),
+        }
+
+        for nombre, panel, esperados, prohibidos in FILAS:
+            _escribir("STATUS.md", panel)
+            _escribir("run_tests.py", _run_tests_sintetico(7, 1))
+            if nombre in OVERRIDES:
+                _escribir("run_tests.py", OVERRIDES[nombre])
+            errors, _ok = _informe_del_validador_real(tmp)
+            faltan = [e for e in esperados if not any(e in x for x in errors)]
+            assert not faltan, (
+                f"escenario {nombre}: el check NO acuso {faltan!r}. Sin el fix esta "
+                "fila pasa en verde, que es el falso verde que este check existe "
+                "para cerrar. Errores del informe: " + repr(errors))
+            sobran = [p for p in prohibidos if any(p in x for x in errors)]
+            assert not sobran, (
+                f"escenario {nombre}: el check acuso {sobran!r} y no debia. Un guard "
+                "que marca de mas entrena al lector a ignorar el semaforo, que es "
+                "como se muere un validador. Errores del informe: " + repr(errors))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print("Check 8 de la Deuda Tecnica Conocida, 13 filas por validar(root): ancla "
+          "viva rota, la misma cerrada, cifra autoderivada, panel solo de cerradas, "
+          "seccion ausente, CERRAD dentro de codigo inline, la fila del criterio "
+          "autoeximida, la cifra autoderivada con el total cambiado, la unica fuente "
+          "en una TAREA cerrada, gravedad rebajada con "
+          "el comprobable vivo, cita que ya no apunta a lo que dice, reparto que el "
+          "ast desmiente, y marcador headless ausente.")
+
+
 
 
 if __name__ == "__main__":
@@ -12916,6 +13152,12 @@ if __name__ == "__main__":
     test_el_ancla_se_cablea_en_el_camino_real_del_validador()
     test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador()
     test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios()
+    # TASK-060 (ciclo #49): el CHECK 8 de `validate_docs.py` vigila la seccion de
+    # Deuda Tecnica Conocida de `STATUS.md`, que gobierna el Paso 1 del bucle y no
+    # la miraba nadie (`validate_docs.py` tenia 0 coincidencias de `Deuda`). El
+    # reparto 94+10 del panel tambien se deriva, en el check 7 y no aqui. Suite:
+    # 103 -> 104; trece escenarios en una tabla, sobre arbol sintetico.
+    test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.

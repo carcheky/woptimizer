@@ -1235,7 +1235,7 @@
       "description": "Decidido en el ciclo #48 (TASK-058) y NO implementado ahi. En la seccion 'Deuda Tecnica Conocida' de STATUS.md mintieron 3 de 13 filas y nada lo detecto. Esa seccion gobierna que trabajo hace el bucle: el Paso 1 la lee cuando el backlog esta vacio. CRITERIO: toda fila de la seccion que NO este marcada cerrada debe llevar al menos un ancla resoluble, y la verdad de su afirmacion debe derivarse de FUERA del panel (arbol de ficheros, recuento derivado con ast de run_tests.py, git log). Las filas marcadas cerradas son registros historicos y quedan exentas. La extraccion con root es OBLIGATORIA por el motivo que ya pago TASK-037: main() deriva root de __file__ y no admite argv, asi que sin extraccion el check solo se despierta lanzando el validador entero contra el repo entero. La regla de derivar de fuera es la que impide repetir el fallo de la fila 92, donde el validador se deducía a si mismo.",
       "complexity": 3,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-058"
       ],

@@ -324,3 +324,99 @@ correcta en el sitio donde se cometió el error no es una defensa.
   cuya muerte no había medido. Un informe de mutación que afirma algo falso es peor que no
   tenerlo: es la materia prima de la siguiente auditoría.
 
+## Check 8: la Deuda Técnica Conocida exige ancla resoluble (TASK-060, ciclo #49)
+
+La sección `## Deuda Técnica Conocida` de `STATUS.md` **gobierna qué trabajo hace el
+bucle** cuando el backlog está vacío: el Paso 1 la lee y prioriza lo que pone ahí.
+Hasta el ciclo #48 eso no lo miraba nadie — `validate_docs.py` tenía **0**
+coincidencias de la palabra `Deuda` — y la auditoría de aquel ciclo cerró en
+**PARTIAL** por una razón medida: 8 de 9 mutaciones sobrevivieron.
+
+### Qué hace y dónde está cableado
+
+`_comprobar_deuda_con_anclas(root, errors, ok)`, llamada desde `validar(root)` entre
+el check 7 y el `return`. **Tres posicionales, sin defaults y sin parámetros extra**:
+todo se re-deriva de `root`, igual que `_comprobar_recuento_de_tests` (ciclo 27) y
+`_comprobar_ancla_del_changelog` (ciclo 47). Un default convertiría un cableado roto
+en un `None` silencioso, que es la clase de fallo que D1 cerró en el ciclo #47.
+
+El **check 7** deriva también su reparto: `_reparto_de_tests(root)` cuenta con `ast` las llamadas
+`test_*()` del `__main__` antes y desde el marcador estructural
+`--- Running Headless UI Tests ---`, y lo compara con lo que declara `STATUS.md`. Va
+ahí y no en el 8 porque es la **misma derivación** sobre el mismo fichero, y mezclar
+dos derivaciones en un check hace que un rojo no diga *qué* está mal. Si el marcador no
+aparece, se acusa el motivo literal: **nunca `0 + 0` en verde**.
+
+### Las cinco fuentes de verdad, todas fuera del panel
+
+| Id | Fuente | Resuelve por |
+|---|---|---|
+| **S1** | Ruta citada | el fichero **existe** (raíz, `.taskmaster/`, `docs/`, `docs/ai/`, `docs/archive/`). **Sin número de línea** |
+| **S2** | Identificador | la cita trae identificador (`fichero:línea identificador`) y el fichero lo contiene |
+| **S3** | `TASK-NNN` | existe en `.taskmaster/tasks.json` con `status` legible. **`completed` no basta solo** |
+| **S4** | `CYCLE-NNN` | hay entrada en `CHANGELOG.md` o en `rd_journal.json` |
+| **S5** | Cifra | la fila declara un número de tests y el derivado con `ast` de `run_tests.py` aparece en ella |
+
+Una fila viva necesita **≥1** fuente resoluble **y ≥1** que no sea una `TASK`
+`completed`. Una fila marcada cerrada queda exenta.
+
+### El marcador de cierre, y por qué lleva un `sub`
+
+Una fila está **CERRADA** si, **tras eliminar los tramos de código inline** (`` `...` ``),
+contiene el literal `CERRAD` en mayúsculas. El `sub` **es el fix**: la fila que escribe
+el criterio lleva el token dentro de comillas invertidas *porque está escribiendo el
+criterio*, y sin la limpieza el panel se declararía cerrado a sí mismo. Medido al
+nacer: **15 filas, 7 exentas y 8 vivas**; de las 8 vivas solo `STATUS.md:91` se quedaba
+sin fuente, y por eso el nacimiento tocó **una** fila (ganó el ancla de
+`src/woptimizer/services/pack_service.py`, donde vive `CORRUPTION_ERRORS`).
+
+**Opt-out, no opt-in.** Exigir anclas a las filas cerradas las declararía inválidas
+para siempre; y borrar el `CERRADA` de una fila cerrada la convierte en **vigilada**,
+que es justo el ataque que importa. En opt-in, borrar la declaración la dejaría *sin
+vigilar y en verde*.
+
+### El suelo de gravedad: UNO, y derivado
+
+Si un fichero de S1 sigue declarando `0` para `WOPT_COMMIT_OK` **y** para
+`WOPT_NOOP`, el suelo es `ROJO` y una fila viva que se declare `AMARILLO` sale en
+rojo. Bajar la gravedad sin cerrar el problema es documentación *fail-open*, que es lo
+que la fila del `spawn EPERM` sufrió en el ciclo #48. La gravedad se lee con
+**palabras** (`ROJO`/`AMARILLO`/`VERDE`) porque la consola es cp1252 (trampa #16) y un
+símbolo en el `print()` tumba el validador entero.
+
+### LIMITACIONES RESIDUALES — lo que este check NO cubre
+
+Se escriben, no se omiten. Todas medidas el 2026-10-02.
+
+1. **S1 solo prueba existencia, no verdad.** Una fila cuya única prueba es S1 pasa
+   aunque el fichero exista y diga lo contrario. Solo S2 ata la fila a lo que afirma.
+2. **S2 solo mira la atribución EXPLÍCITA** (`fichero:línea identificador`), que es la
+   única forma que el panel escribe. Una cita de fichero desnuda se resuelve por
+   existencia, y no se intenta emparejarla con los identificadores sueltos de la
+   fila: medido, eso produce falsos rojos de una fila a otra.
+3. **El suelo de gravedad es UNO.** Solo el código de salida sobrecargado de
+   `git_safe_commit.py` deriva gravedad. Una 🔴 rebajada sobre cualquier otro ancla
+   sobrevive: derivarla exigiría escribir a mano la política de gravedad, que es la
+   misma mentira un nivel más arriba.
+4. **La severidad se lee por palabra, no por emoji.** Un panel que bajase la
+   severidad cambiando el 🔴 por 🟡 **evade el suelo**. Es un agujero medido, no
+   teórico: la mutación M5 sobre la fila del `spawn EPERM` sobrevive.
+5. **Las filas cerradas quedan mudas por construcción.** Una fila exenta puede quedar
+   enteramente falsa y el check no dice nada.
+6. **El corte de la sección es por línea.** Una fila escrita como sub-vineta (`  - `)
+   no cuenta como fila, y una sección partida en dos encabezados solo se lee la
+   primera.
+7. **`docs/index.md` lo vigila el check 7, no el 8**, y de hecho no lo vigila ninguno:
+   sigue fuera de la lista de `validate_docs.py`. El 8 certifica que la fila *cita*
+   ese fichero, no que ese documento no vuelva a mentir. Queda escrito en la fila
+   100 de `STATUS.md` con la misma figura vigente.
+8. **Una cita rota solo se acusa cuando es decisiva.** Si la fila tiene otra fuente
+   viva, la cita que no resuelve no se denuncia (medido: `profiles.json` es dato de
+   usuario y no está en el árbol; acusarlo siempre sería un rojo sin motivo).
+9. **La regla de la `TASK` cerrada solo muerde cuando la tarea es la única clase de
+   fuente.** Reabrir la fila 94 borrando su `CERRADA` la deja en verde, porque esa
+   fila tiene además dos rutas resolubles y su `CYCLE-047`. Para que la regla saltara   haría falta escribir a mano qué citas son "de la historia" y cuáles son "de hoy".
+10. **La marca de la fila del criterio es el nombre de la función.** Si se renombra
+    `_comprobar_deuda_con_anclas`, la cláusula de autoexención deja de reconocer a la
+    fila del criterio hasta que se actualice el literal.
+

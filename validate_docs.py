@@ -158,7 +158,7 @@ def _comprobar_recuento_de_tests(root, errors, ok):
                 )
         else:
             errors.append("docs/ai/testing-guide.md: NO EXISTE, no se puede comprobar la tabla")
-
+        _comprobar_reparto_de_tests(root, errors, ok, defined)
 
 # --- TASK-057 (ciclo 47): el ancla del changelog deja de depender SOLO de quien
 # escribe el registro. Tres funciones extraidas CON RAIZ, por el mismo motivo que
@@ -166,7 +166,7 @@ def _comprobar_recuento_de_tests(root, errors, ok):
 # `__file__` y no admite argv, asi que sin extraccion el residuo que estas cazan
 # NO se puede construir en un test. Una guarda que solo se despierta lanzando el
 # validador entero contra el repo entero es una guarda que nadie ejecuta.
-
+#
 # G1 (cierre del ciclo #47): el PLURAL declara MAS DE UN ciclo. La semantica es
 # una DECISION DE PRODUCTO, no una eleccion del implementador: un asunto con
 # plural ("ciclos", "cycles") seguido de un rango declara mas de un ciclo y se
@@ -497,8 +497,584 @@ def _comprobar_ancla_del_changelog(root, errors, ok):
             )
 
 
+# --- TASK-060 (ciclo #49), T3: el REPARTO de `run_tests.py`. Va como segunda
+# derivacion de `_comprobar_recuento_de_tests` y NO dentro del check 8, por dos
+# razones concretas: (i) es la MISMA derivacion `ast` sobre el MISMO fichero que
+# ya declara las cifras, y el check 8 tiene otro sujeto --las filas de una
+# seccion--; (ii) mezclar dos derivaciones en una funcion hace que un rojo no
+# diga QUE esta mal, y el coste de un falso rojo es que nadie mire el validador.
+
+
+def _reparto_de_tests(root):
+    """`(antes, desde, total, linea_del_marcador)` del reparto de `run_tests.py`.
+
+    Cuentas las llamadas `test_*()` del bloque `__main__` ANTES del marcador
+    estructural `--- Running Headless UI Tests ---` y DESDE el. MEDIDO el
+    2026-10-02: 93 antes y 10 desde, 103 exactas, que es el total que el check 7
+    ya vigila. El total NO se vuelve a derivar aqui: se cruza contra el que le
+    pasa el check 7, y si los dos no coinciden el reparto esta contando otra
+    cosa.
+
+    `None` cuando el marcador NO aparece, y NUNCA `0 + 0`: un reparto que no se
+    deriva no se declara, y devolver ceros en verde seria un falso verde Built
+    con la forma de un acierto. La linea del marcador se deriva del propio
+    `ast` y se imprime en el informe, donde es informacion para el humano: el
+    numero de linea no se verifica, porque verificarlo fabrica un rojo en
+    cuanto alguien inserte una linea arriba.
+    """
+    ruta = os.path.join(root, "run_tests.py")
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            fuente = f.read()
+    except OSError:
+        return None
+    try:
+        arbol = ast.parse(fuente, filename=ruta)
+    except SyntaxError:
+        return None
+    cuerpo_main = None
+    for nodo in arbol.body:
+        if (isinstance(nodo, ast.If) and isinstance(nodo.test, ast.Compare)
+                and isinstance(nodo.test.left, ast.Name)
+                and nodo.test.left.id == "__name__"):
+            cuerpo_main = nodo.body
+            break
+    if cuerpo_main is None:
+        return None
+    antes = desde = 0
+    visto = False
+    linea_marcador = None
+    for stmt in cuerpo_main:
+        llamadas = sum(
+            1 for nodo in ast.walk(stmt)
+            if isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Name)
+            and nodo.func.id.startswith("test_"))
+        if visto:
+            desde += llamadas
+        else:
+            antes += llamadas
+        if MARCADOR_HEADLESS in (ast.get_source_segment(fuente, stmt) or ""):
+            visto = True
+            linea_marcador = stmt.lineno
+    if not visto:
+        return None
+    return (antes, desde, antes + desde, linea_marcador)
+
+
+def _comprobar_reparto_de_tests(root, errors, ok, defined):
+    """El reparto que STATUS.md declara tiene que ser el que se deriva con `ast`.
+
+    `defined` es el total que YA derivó `_recuento_de_tests`; el reparto es una
+    segunda lectura del mismo `ast`, no un segundo total. Se exige que las dos
+    derivaciones sumen lo mismo, y se exige que el panel declare el reparto con
+    la forma que este check lee (`\\d+ backend + \\d+ headless`): un validador que
+    no encuentra lo que valida no es un validador, y el mensaje lo dice con el
+    patron exacto, como ya hace el check del total.
+    """
+    reparto = _reparto_de_tests(root)
+    if reparto is None:
+        # El prefijo NO es `run_tests.py:` a proposito. Ese prefijo lo usa el
+        # check 7 para sus hallazgos, y hay un test del ciclo #27 que cuenta las
+        # lineas `[FAIL]` que empiezan asi para exigir que un test huerfano dé
+        # exactamente una. Un reparto que no se deriva es OTRO hallazgo de otro
+        # contrato, asi que nombra el fichero dentro del mensaje en vez de
+        # Vestirse con el prefijo de su vecino.
+        errors.append(
+            "reparto de la suite: NO SE ENCUENTRA el marcador estructural de las "
+            f"pruebas headless en `run_tests.py` (`{MARCADOR_HEADLESS}`), asi que el "
+            "reparto backend + headless NO SE PUEDE derivar. Un reparto que no se "
+            "deriva no se declara: nunca 0 + 0 en verde"
+        )
+        return
+    antes, desde, total, linea = reparto
+    if total != defined:
+        errors.append(
+            f"run_tests.py: el reparto derivado suma {total} y el recuento de tests "
+            f"es {defined}. Las dos derivaciones leen el mismo `ast`, asi que una "
+            "diferencia aqui significa que una de las dos cuenta otra cosa"
+        )
+    else:
+        ok.append(
+            f"run_tests.py: reparto {antes} backend + {desde} headless derivado con "
+            f"ast (marcador en run_tests.py:{linea}); suma el total que ya deriva el "
+            "check 7"
+        )
+
+    ruta_status = os.path.join(root, "STATUS.md")
+    if not os.path.exists(ruta_status):
+        return
+    with open(ruta_status, encoding="utf-8") as f:
+        cuerpo_status = f.read()
+    declarados = re.findall(
+        r"(\d{1,4})\s*backend\s*\+\s*(\d{1,4})\s*headless", cuerpo_status)
+    if not declarados:
+        errors.append(
+            "STATUS.md: no declara el reparto de tests con la forma que este check "
+            "lee (\\d+ backend + \\d+ headless). Si el texto cambio, cambia el "
+            "patron aqui tambien: un validador que no encuentra lo que valida no es "
+            "un validador"
+        )
+    elif (str(antes), str(desde)) not in declarados:
+        errors.append(
+            "run_tests.py: STATUS.md declara "
+            + ", ".join(f"{a} backend + {b} headless" for a, b in declarados)
+            + f" y el reparto DERIVADO es {antes} backend + {desde} headless; el "
+            f"marcador de run_tests.py:{linea} separa {antes}/{desde}. El total "
+            f"puede seguir dando {defined} mientras el reparto miente"
+        )
+    else:
+        ok.append(
+            f"STATUS.md: declara el reparto {antes} backend + {desde} headless que "
+            "deriva el marcador de run_tests.py"
+        )
+
+
+# --- TASK-060 (ciclo #49): CHECK 8. La seccion `## Deuda Tecnica Conocida` de
+# `STATUS.md` gobierna que trabajo hace el bucle cuando el backlog esta vacio (el
+# Paso 1 del bucle la lee literalmente), y hasta el ciclo #48 NADA en este repo
+# la miraba: `validate_docs.py` tenia 0 coincidencias de la palabra `Deuda` y
+# mencionaba `STATUS.md` una sola vez, en la lista del recuento de tests. El
+# ciclo #48 sano 13 filas de esa seccion y su auditoria cerro PARTIAL por una
+# razon MEDIDA, no supuesta: 8 de 9 mutaciones sobrevivieron porque nada vigila
+# la seccion. Este bloque es ese arreglo de fondo.
+#
+# CINCO fuentes de verdad, TODAS fuera del panel, porque el panel no es fuente de
+# verdad de si mismo (la clase de fallo que la fila 92 ya escribio):
+#   S1 la ruta citada EXISTE en el arbol (sin numero de linea);
+#   S2 la cita trae identificador (`fichero:linea identificador`) y el fichero lo
+#      contiene: es lo que distingue "apunta a algo" de "apunta a lo que dice";
+#   S3 `TASK-NNN` con `status` legible en `.taskmaster/tasks.json`;
+#   S4 `CYCLE-NNN` con entrada en `CHANGELOG.md` o en `rd_journal.json`;
+#   S5 una cifra que coincide con el recuento DERIVADO con `ast` de `run_tests.py`.
+#
+# NINGUN numero de linea se verifica, y no por vaguedad. MEDIDO el 2026-10-02: las
+# citas que nombran una funcion o un test son exactas hoy, y lo unico desviado es
+# el bloque INTRA-panel de la fila del criterio, por una unidad, porque el panel
+# se cita a si mismo por numero de linea. Verificar el numero seria fabricar un
+# rojo en cuanto alguien inserte una fila arriba, que es justo lo que este bucle
+# hace cada ciclo: ese es el rojo que entrena a ignorar el validador.
+
+MARCADOR_HEADLESS = "--- Running Headless UI Tests ---"
+
+# Precedencias donde se busca una ruta citada POR SU NOMBRE. Medido: las filas
+# del panel citan `rd_journal.json` y `git_safe_commit.py` sin su prefijo, y la
+# verdad es que viven en `.taskmaster/`. Sin esta lista esas dos filas salen sin
+# ancla por un detalle de escritura, que es un rojo sin motivo.
+PREFIJOS_DE_ANCLA = ("", ".taskmaster/", "docs/", "docs/ai/", "docs/archive/")
+
+# El marcador de cierre se busca DESPUES de borrar el codigo inline, y ese `sub`
+# es el fix entero, no un detalle de estilo: la fila que escribe el criterio lleva
+# el token dentro de comillas invertidas porque esta ESCRIBIENDO el criterio, y
+# sin la limpieza el panel se declararia cerrado a si mismo. Medido al nacer: con
+# el `sub`, 7 exentas y 8 vivas; sin el, la fila del criterio se autoexime y el
+# check nace verde justo sobre lo que tiene que vigilar.
+_RE_CODIGO_INLINE = re.compile(r"`[^`]*`")
+_RE_CERRADA = re.compile(r"CERRAD")
+_RE_CITAS = re.compile(r"`([^`]*)`")
+_RE_NUMERO_DE_LINEA = re.compile(r":\d+(?:-\d+)?$")
+_RE_RUTA = re.compile(
+    r"^[A-Za-z0-9_.\\/-]+\.(?:py|md|json|txt|yml|yaml|ini|cfg|bat|toml|exe|log|git)$"
+)
+_RE_TAREAS = re.compile(r"TASK-\d+")
+_RE_CICLOS = re.compile(r"CYCLE-\d+")
+_RE_CIFRA_DE_TESTS = re.compile(r"(?<!\d)(\d{1,4})\s+tests\b")
+# La gravedad se lee como PALABRA y no como simbolo: la consola es cp1252 (trampa
+# #16) y un emoji en el `print()` tumba el validador entero. El limite que esto
+# compra -- bajar la severidad cambiando el emoji en vez de la palabra evade el
+# suelo -- esta declarado en `docs/ai/sandbox-rules.md`, no escondido.
+_RE_GRAVEDAD = re.compile(r"\b(ROJO|AMARILLO|VERDE)\b")
+CODIGOS_DE_SALIDA_SOBRECARGADOS = ("WOPT_COMMIT_OK", "WOPT_NOOP")
+# Marca de la fila que ESCRIBE el criterio. MEDIDO: solo la nombra esa fila, y
+# ninguna de las 7 exentas. Se usa el nombre de la funcion y no la palabra
+# "criterio" porque la fila 93, que esta CERRADA de verdad, habla de "el check de
+# anclas pendiente (TASK-060)" y se refiere a trabajo futuro.
+NOMBRE_DE_LA_FILLA_DEL_CRITERIO = "_comprobar_deuda_con_anclas"
+
+
+def _leer_texto(root, relativa):
+    """El texto de un fichero del arbol por su ruta relativa, o `None`.
+
+    `None` y no `""`: un fichero ausente y un fichero vacio son fallos
+    distintos, y quien cita un ancla tiene que poder nombrar cual de los dos es.
+    SIN CACHE de ningun tipo, y a proposito: los tests construyen arboles
+    sinteticos en el MISMO proceso, y una cache de modulo devolveria el contenido
+    del arbol anterior, que es un falso verde con forma de acierto.
+    """
+    try:
+        with open(os.path.join(root, *relativa.split("/")), encoding="utf-8",
+                  errors="replace") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def _seccion_de_deuda(cuerpo):
+    """`(lineas, numero_de_linea_de_la_primera)`, o `None` si no hay seccion.
+
+    Desde el encabezado `## ` que contiene `Deuda` hasta el siguiente `## `.
+    MEDIDO: la seccion es la ULTIMA de `STATUS.md` y llega hasta el final del
+    fichero. `None` NO es `[]`: una seccion ausente y una seccion vacia son
+    fallos distintos, y el check acusa los dos con motivos distintos.
+    """
+    lineas = (cuerpo or "").split("\n")
+    inicio = None
+    for i, linea in enumerate(lineas):
+        if linea.startswith("## ") and "Deuda" in linea:
+            inicio = i
+            break
+    if inicio is None:
+        return None
+    fin = len(lineas)
+    for j in range(inicio + 1, len(lineas)):
+        if lineas[j].startswith("## "):
+            fin = j
+            break
+    return lineas[inicio:fin], inicio + 1
+
+
+def _filas_de_deuda(cuerpo):
+    """`[(numero_de_linea, fila)]` de la seccion de Deuda. `[]` si no hay seccion.
+
+    Una fila es una linea que empieza por `- **`, y el corte es POR LINEA a
+    proposito: una fila de deuda escrita como sub-vineta no es una fila, y
+    contarla haria que el check seudocomprobara algo que no lee.
+    """
+    seccion = _seccion_de_deuda(cuerpo)
+    if seccion is None:
+        return []
+    lineas, primera = seccion
+    return [(primera + i, linea) for i, linea in enumerate(lineas)
+            if linea.startswith("- **")]
+
+
+def _esta_cerrada(fila):
+    """`True` si la fila esta CERRADA: `CERRAD` en mayusculas FUERA de codigo.
+
+    Ver el `sub` en la nota de `_RE_CODIGO_INLINE`: quitarlo hace que el panel se
+    exima a si mismo, y ese mutante es el que la fila (f1) del test de este
+    check mata.
+    """
+    return bool(_RE_CERRADA.search(_RE_CODIGO_INLINE.sub(" ", fila or "")))
+
+
+def _ruta_de_ancla(root, nombre):
+    """La ruta REAL del arbol a la que apunta `nombre`, o `None` si no existe."""
+    for prefijo in PREFIJOS_DE_ANCLA:
+        relativa = prefijo + nombre
+        if os.path.isfile(os.path.join(root, *relativa.split("/"))):
+            return relativa
+    return None
+
+
+def _citas_de_la_fila(fila):
+    """`[(ruta, identificador_o_None)]`: lo que la fila CITA, no lo que dice.
+
+    Solo se lee lo que va entre acentos graves, y un token cuenta como ruta si su
+    primera palabra tiene extension de fichero. El `:linea` se descarta SIEMPRE
+    (no se verifica nunca) y lo que queda a su derecha es el IDENTIFICADOR que
+    la fila le atribuye a ese fichero. Medido: la atribucion explicita
+    (`fichero:linea identificador`) es la unica forma que el panel usa de verdad
+    -- `run_tests.py:1352 test_git_safe_commit_fail_safe` -- y es la que permite
+    distinguir S1 de S2 sin inventar emparejamientos que el panel no escribe.
+    """
+    citas = []
+    for token in _RE_CITAS.findall(fila or ""):
+        palabras = token.split(None, 1)
+        nombre = _RE_NUMERO_DE_LINEA.sub("", palabras[0].strip().rstrip(",.;:)"))
+        if not _RE_RUTA.match(nombre):
+            continue
+        identificador = palabras[1].strip() if len(palabras) > 1 else ""
+        citas.append((nombre, identificador or None))
+    return citas
+
+
+def _estados_de_tareas(root):
+    """`{TASK-NNN: status}` de `.taskmaster/tasks.json`. `{}` si no se puede leer.
+
+    Un `tasks.json` ilegible NO es un error propio de este check: se comporta
+    como un tablero sin estados, y por eso una fila cuya unica fuente fuera una
+    `TASK` sale en rojo por la regla de la tarea cerrada, que es el fallo real.
+    """
+    try:
+        with open(os.path.join(root, ".taskmaster", "tasks.json"),
+                  encoding="utf-8") as f:
+            datos = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    tareas = datos.get("tasks") if isinstance(datos, dict) else datos
+    estados = {}
+    for tarea in (tareas or []):
+        if isinstance(tarea, dict) and tarea.get("id") and tarea.get("status"):
+            estados[tarea["id"]] = str(tarea["status"])
+    return estados
+
+
+def _ciclos_de_la_fila(root, fila):
+    """Los `CYCLE-NNN` que la fila nombra Y que existen en un registro de este repo."""
+    registros = []
+    for relativa in ("CHANGELOG.md", ".taskmaster/CHANGELOG.md",
+                     ".taskmaster/rd_journal.json"):
+        texto = _leer_texto(root, relativa)
+        if texto:
+            registros.append(texto)
+    return [c for c in dict.fromkeys(_RE_CICLOS.findall(fila or ""))
+            if any(c in registro for registro in registros)]
+
+
+def _anclas_resolubles(root, fila):
+    """Las CINCO fuentes de verdad de UNA fila, todas fuera del panel.
+
+    - S1 `rutas`: la cita resuelve si el fichero EXISTE. Es la fuente mas debil
+      --un fichero puede existir y decir lo contrario-- y por eso no sostiene
+      sola una fila que solo se apoya en una `TASK` ya cerrada.
+    - S2 `contenido`: la cita trae identificador y el fichero lo contiene.
+    - S3 `tareas`: `TASK-NNN` con `status` legible. Un `completed` NO computa
+      como comprobable de una fila viva: lo escribe la propia fila 93.
+    - S4 `ciclos`: `CYCLE-NNN` con entrada en un changelog o en el journal.
+    - S5 `numeros`: las cifras que la fila declara como numero de tests. La
+      coincidencia con el derivado la juzga el cuerpo, que ya tiene el `ast`.
+    """
+    rutas, contenido = [], []
+    for nombre, identificador in _citas_de_la_fila(fila):
+        real = _ruta_de_ancla(root, nombre)
+        if real is None:
+            continue
+        if real not in rutas:
+            rutas.append(real)
+        if identificador:
+            cuerpo = _leer_texto(root, real) or ""
+            if identificador in cuerpo:
+                contenido.append((real, identificador))
+    estados = _estados_de_tareas(root)
+    return {
+        "rutas": rutas,
+        "contenido": contenido,
+        "tareas": {tid: estados[tid] for tid in dict.fromkeys(
+            _RE_TAREAS.findall(fila or "")) if tid in estados},
+        "ciclos": _ciclos_de_la_fila(root, fila),
+        "numeros": [int(n) for n in _RE_CIFRA_DE_TESTS.findall(fila or "")],
+    }
+
+
+def _declara_el_codigo_sobrecargado(root, relativa):
+    """`True` si el fichero sigue declarando `0` para los DOS codigos de salida `0`.
+
+    El suelo de gravedad (el S1 del ciclo #48) se apoya en UN comprobable, y este
+    es el unico que existe en el repo de forma estable: `git_safe_commit.py`
+    declara `0` para `WOPT_COMMIT_OK` y para `WOPT_NOOP`, y la tabla de
+    `docs/ai/sandbox-rules.md` lo tabula. Se exigen los DOS en el MISMO fichero
+    porque un `0` suelto en un fichero cualquiera no demuestra nada.
+    """
+    cuerpo = _leer_texto(root, relativa) or ""
+    for codigo in CODIGOS_DE_SALIDA_SOBRECARGADOS:
+        if not re.search(r"(?<!\d)0\b[^\n]*" + codigo, cuerpo):
+            return False
+    return True
+
+
+def _severidad_minima(root, anclas):
+    """`"ROJO"` si algun ancla de ruta tiene su comprobable VIVO; `""` si no.
+
+    UN solo suelo, y es una DECISION: la gravedad de una fila es un TEXTO, y
+    derivarla exigiria escribir a mano la politica de gravedad, que es la misma
+    mentira un nivel mas arriba. Lo unico que se deriva de verdad es si el
+    PROBLEMA sigue vivo.
+
+    `root` va de primero y no es mio: el contrato de la tarea lo decia con un
+    solo argumento, pero un auxiliar que LEE el arbol no puede derivar `root` de
+    si mismo, y la regla que ese contrato impone ("todo se deriva de `root`")
+    solo se puede cumplir si `root` le llega. Se reporta como desviacion.
+    """
+    for relativa in anclas.get("rutas", ()):
+        if _declara_el_codigo_sobrecargado(root, relativa):
+            return "ROJO"
+    return ""
+
+
+def _comprobar_deuda_con_anclas(root, errors, ok):
+    """CHECK 8 (TASK-060, ciclo #49): toda fila VIVA de la Deuda Tecnica Conocida
+    necesita un ancla resoluble cuya verdad se derive FUERA del panel.
+
+    Sin defaults y sin parametros extra: todo se deriva de `root`, por el motivo
+    que ya pago TASK-037. `main()` deriva `root` de `__file__` y no admite argv,
+    asi que sin raiz el residuo que este check caza NO se puede construir en un
+    test; y un default convertiria un cableado roto en un `None` silencioso, que
+    es la clase de fallo que D1 cerro en el ciclo #47.
+
+    MEDIDO el 2026-10-02 al nacer: 15 filas, 7 exentas y 8 vivas, y de las 8 vivas
+    solo `STATUS.md:91` se quedaba sin ninguna fuente resoluble -- por eso el
+    nacimiento toco UNA fila y no tres. Las exentas NO son filas mudas por
+    capricho: son registros historicos, y exigirles anclas haria que el check
+    fallara siempre y luego nadie lo mirara, que es como muere un validador.
+    """
+    ruta_status = os.path.join(root, "STATUS.md")
+    if not os.path.exists(ruta_status):
+        errors.append(
+            "STATUS.md: NO EXISTE, no se puede comprobar la seccion de Deuda "
+            "Tecnica Conocida, que es la que gobierna el Paso 1 del bucle"
+        )
+        return
+    with open(ruta_status, encoding="utf-8") as f:
+        cuerpo = f.read()
+
+    if _seccion_de_deuda(cuerpo) is None:
+        errors.append(
+            "STATUS.md: no existe la seccion de Deuda Tecnica Conocida. Sin "
+            "seccion no hay bucle que priorizar, y un validador que no encuentra "
+            "lo que valida no es un validador"
+        )
+        return
+
+    filas = _filas_de_deuda(cuerpo)
+    if not filas:
+        errors.append(
+            "STATUS.md Deuda Tecnica Conocida: 0 fila(s). La seccion que gobierna "
+            "el Paso 1 vaciada es indistinguible de la que aun no existe"
+        )
+        return
+
+    recuento = _recuento_de_tests(os.path.join(root, "run_tests.py"))
+    derivado = recuento[0] if recuento else None
+    exentas = vivas = rutas_resueltas = contenido_resuelto = 0
+
+    for numero, fila in filas:
+        anclas = _anclas_resolubles(root, fila)
+
+        if _esta_cerrada(fila):
+            exentas += 1
+            # Una fila que ESCRIBE el criterio no puede declararse CERRADA: se
+            # vigila a si misma y el check nace verde sobre lo que tiene que
+            # vigilar. MEDIDO el 2026-10-02: de las 7 exentas, ni una nombra este
+            # check, y la unica que lo nombra es la fila 101, que esta VIVA. La
+            # marca es el NOMBRE de la funcion, no la palabra "criterio": la
+            # fila 93 (CERRADA de verdad) dice "el check de anclas pendiente
+            # (TASK-060)" y se refiere a trabajo FUTURO, que es un puntero
+            # legitimo y no una autoexencion. Sin esta clausula, poner `CERRADA`
+            # en la fila del criterio la deja muda y en verde, que es el fallo
+            # que el criterio describe.
+            if NOMBRE_DE_LA_FILLA_DEL_CRITERIO in fila:
+                pendientes = sorted(t for t, s in anclas["tareas"].items()
+                                     if s != "completed")
+                errors.append(
+                    f"STATUS.md Deuda fila {numero}: la fila del criterio se ha "
+                    "autoeximido: lleva el marcador de cierre fuera de codigo "
+                    f"inline y es la fila que escribe este check"
+                    + (f", declarando ademas {', '.join(pendientes)} sin cerrar"
+                       if pendientes else "")
+                    + ". Una fila que exige anclas no puede quedarse sin vigilar"
+                )
+            continue
+
+        vivas += 1
+        rutas_resueltas += len(anclas["rutas"])
+        contenido_resuelto += len(anclas["contenido"])
+
+        # La atribucion rota se acusa SIEMPRE, con o sin otras fuentes: un
+        # fichero que existe NO demuestra que la fila apunte a lo que dice, y esa
+        # es justo la diferencia entre S1 y S2.
+        for nombre, identificador in _citas_de_la_fila(fila):
+            real = _ruta_de_ancla(root, nombre)
+            if real is None or not identificador:
+                continue
+            if identificador not in (_leer_texto(root, real) or ""):
+                errors.append(
+                    f"STATUS.md Deuda fila {numero}: {real} existe pero NO contiene "
+                    f"el identificador que la fila le atribuye: {identificador}. "
+                    "Un fichero que existe no demuestra que la cita apunte a lo "
+                    "que dice"
+                )
+
+        tareas_vivas = {t: s for t, s in anclas["tareas"].items()
+                        if s != "completed"}
+        fuentes = []
+        if anclas["rutas"]:
+            fuentes.append("ruta")
+        if anclas["contenido"]:
+            fuentes.append("contenido")
+        # Una `TASK` cuenta como fuente RESUELTA tambien cuando esta cerrada: la
+        # fila la nombra y existe. Lo que no vale es que sea la UNICA, y eso lo
+        # acusa la regla de mas abajo. Contarlas solo si estan abiertas hacia el
+        # mensaje equivocado --una fila con una `TASK` cerrada y nada mas salia
+        # como "0 fuentes de 5" en vez de "su unica fuente es una tarea cerrada"--
+        # y hacia que la regla de la tarea cerrada no se ejecutase nunca.
+        if anclas["tareas"]:
+            fuentes.append("tarea")
+        if anclas["ciclos"]:
+            fuentes.append("ciclo")
+        if anclas["numeros"]:
+            if derivado is None:
+                errors.append(
+                    f"STATUS.md Deuda fila {numero}: declara el numero "
+                    f"{anclas['numeros']} y NO SE PUEDE derivar el recuento de "
+                    "run_tests.py, asi que la cifra que declara esta fila no se "
+                    "puede comprobar. Nunca verde por omision"
+                )
+            elif re.search(r"(?<!\d)" + str(derivado) + r"(?!\d)", fila):
+                fuentes.append("numero")
+            else:
+                errors.append(
+                    f"STATUS.md Deuda fila {numero}: declara el numero "
+                    f"{anclas['numeros']} que NO es el derivado con ast de "
+                    f"run_tests.py ({derivado}). El panel no es fuente de verdad "
+                    "de si mismo"
+                )
+
+        if not fuentes:
+            errors.append(
+                f"STATUS.md Deuda fila {numero}: VIVA sin ancla resoluble "
+                "(0 fuentes de 5). Una fila de la seccion que gobierna el bucle "
+                "sin prueba fuera del panel es la que manda hacer un trabajo ya "
+                "hecho"
+            )
+            for nombre, _ in _citas_de_la_fila(fila):
+                if _ruta_de_ancla(root, nombre) is None:
+                    errors.append(
+                        f"STATUS.md Deuda fila {numero}: ancla NO RESOLUBLE: "
+                        f"{nombre} no existe en el arbol (probado en la raiz, "
+                        ".taskmaster/, docs/, docs/ai/ y docs/archive/). Una cita "
+                        "que no resuelve no es un ancla: es decoracion"
+                    )
+            continue
+
+        # La regla que se audita a si misma: una fila viva no puede apoyarse
+        # SOLO en una tarea cerrada. Sin esta clausula, reabrir una fila cerrada
+        # borrando su `CERRADA` la dejaria en verde si su unica prueba es un
+        # `TASK-057` completado, que es exactamente el fallo que describe.
+        # MEDIDO: la condicion es "la unica CLASE de fuente es una tarea Y
+        # ninguna esta abierta". Con la primera parte sola, la fila 95 (que
+        # cita `TASK-057` cerrado y `TASK-059` pendiente) sale en rojo: tiene
+        # fuente viva y exigir mas seria un rojo sin motivo.
+        if fuentes == ["tarea"] and not tareas_vivas:
+            errors.append(
+                f"STATUS.md Deuda fila {numero}: VIVA y su UNICA fuente es una "
+                "TAREA YA CERRADA: "
+                + ", ".join(f"{t}.status == {s}"
+                            for t, s in sorted(anclas["tareas"].items()))
+                + ". Una fila cerrada reabierta sin decirlo es el fallo que el "
+                "criterio describe"
+            )
+
+        gravedad = _RE_GRAVEDAD.search(_RE_CODIGO_INLINE.sub(" ", fila))
+        suelo = _severidad_minima(root, anclas)
+        if suelo and gravedad and gravedad.group(1) != "ROJO":
+            vivos = [r for r in anclas["rutas"]
+                     if _declara_el_codigo_sobrecargado(root, r)]
+            errors.append(
+                f"STATUS.md Deuda fila {numero}: declara {gravedad.group(1)} pero "
+                f"su comprobable SIGUE VIVO: {vivos[0] if vivos else suelo} declara "
+                "0 para WOPT_COMMIT_OK y para WOPT_NOOP. La gravedad solo baja si "
+                "el problema se cierra"
+            )
+
+    ok.append(
+        f"STATUS.md: Deuda Tecnica Conocida: {len(filas)} fila(s), {exentas} "
+        f"exenta(s) CERRADA(s), {vivas} viva(s) con {rutas_resueltas} ancla(s) de "
+        f"ruta resuelta(s) y {contenido_resuelto} por contenido"
+    )
+
+
 def validar(root):
-    """Los checks 1-7 enteros. -> `(errors, ok)`. Sin imprimir y sin salir.
+    """Los checks 1-8 enteros. -> `(errors, ok)`. Sin imprimir y sin salir.
 
     D1 (TASK-057, ciclo 47, intento 3). Por que existe, medido: durante dos
     iteraciones la suite llamo a las funciones PRIVADAS pasandoles a mano los
@@ -712,6 +1288,12 @@ def validar(root):
     # `if n_tests is None:` solo se podia despertar lanzando el validador
     # entero contra el repo entero, es decir, nunca desde un test.
     _comprobar_recuento_de_tests(root, errors, ok)
+    # 8. La seccion `## Deuda Tecnica Conocida` de STATUS.md gobierna que trabajo
+    # hace el bucle cuando el backlog esta vacio, y hasta el ciclo #48 no la
+    # miraba nadie. Delegado a `_comprobar_deuda_con_anclas(root, errors, ok)`,
+    # con raiz y SIN defaults por el motivo de TASK-037 y de D1: un default
+    # convierte un cableado roto en un `None` silencioso.
+    _comprobar_deuda_con_anclas(root, errors, ok)
     return errors, ok
 
 

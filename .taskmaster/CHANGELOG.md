@@ -1925,3 +1925,30 @@ El paso de auditoría no solo confirmó el arreglo: lo hizo **refutando el encar
 
 **Nota de proceso (autorrelevada):** rompí dos veces `tasks.json` con ediciones por regex sobre JSON. La causa es siempre la misma —mi editor no entiende la estructura—, y la lección es usar un script de Python con `json.load`/`json.dump` para cualquier edición estructural, nunca sustitución de texto. Recuperado ambas veces sin pérdida.
 
+
+## [CYCLE-049] 2026-10-02 - check-deuda-con-anclas
+
+**Área**: Documentación & Arquitectura
+**Change**: openspec/changes/2026-10-02-check-deuda-con-anclas/
+**Estado**: IMPLEMENTADO (TASK-060) — la palabra final la tiene el `mutation-auditor`.
+**Models**:
+- Paso 1 (Buscar): orchestrator (backlog: `active_task_id` TASK-060)
+- Paso 2 (Planear): architect-review — contrato con el diseño de las cinco fuentes de verdad, el reparto reubicado en el check 7 y la medición que refutó tres premisas del encargo
+- Paso 3 (Ejecutar): openspec-dev — TASK-060 (`validate_docs.py`, `run_tests.py`, `STATUS.md`, `docs/ai/sandbox-rules.md`, `docs/ai/testing-guide.md`, `AGENTS.md`, `README.md`, `docs/index.md` y los dos changelogs)
+- Paso 4 (Auditar tests): PENDIENTE
+
+> **Por qué esta entrada va al FINAL y no arriba:** el registro va de más nuevo a más viejo, y anteponerla desplazaría las 26 citas `fichero:línea` a `.taskmaster/CHANGELOG.md` que existen en 11 ficheros. Al agregarla al final no se desplaza ninguna. Escrito para que se lea como decisión y no como descuido.
+
+### Lo implementado
+
+- `_comprobar_deuda_con_anclas(root, errors, ok)` en `validate_docs.py`: tres posicionales, **sin defaults** y sin parámetros extra, cableada entre el check 7 y el `return` de `validar(root)`. Un default convertiría un cableado roto en un `None` silencioso.
+- Cinco fuentes de verdad, todas fuera del panel: S1 la ruta existe, S2 la atribución `fichero:línea identificador` contiene el identificador, S3 `TASK-NNN` con `status` legible, S4 `CYCLE-NNN` con entrada en un registro, S5 la cifra que coincide con el recuento derivado con `ast`. El marcador de cierre se busca **después** de borrar el código inline, que es lo que impide que el panel se autoexima, y hay una regla que impide que la fila del criterio se marque cerrada.
+- `_reparto_de_tests(root)` + `_comprobar_reparto_de_tests(root, errors, ok, defined)`: el reparto `94 + 10` derivado con `ast` en el **check 7**, no en el 8, y con el motivo literal obligatorio cuando el marcador estructural no aparece.
+- Un único test con trece escenarios, todos por `validar(root)`, sobre el esqueleto real copiado una vez y con el total derivado con `ast` del árbol sintético.
+
+### Outcome
+
+- Tests: **103 → 104**, 0 fallos. `verify_ui_syntax.py` EXITO (8/8). `validate_docs.py` **115 OK / 0 FAIL** con el check 8 activo.
+- **Autocomprobación antes del commit, medida**: 7 de las 9 mutaciones del panel y la del reparto mueren con su mensaje literal. Sobreviven **reabrir la fila 94** (tiene dos rutas resolubles además de su `TASK-057`) y **bajar la gravedad cambiando el emoji** (el suelo lee palabras, no símbolos), y el motivo de cada una está escrito en los puntos 9 y 4 de los límites residuales. Del lado del código, **12 mutantes** mueren por la aserción de su escenario, incluido el que le quita un argumento al cableado (`TypeError`, nunca falso verde).
+- El panel cambió en **una** fila por lo que se refiere a anclas (`STATUS.md:91`), más dos cláusulas de cifra **añadidas** por añadido. Ninguna fila se borró ni se reescribió.
+- `src/woptimizer/**` con **cero** cambios.

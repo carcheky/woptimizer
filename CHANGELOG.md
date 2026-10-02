@@ -953,3 +953,31 @@ Se cierra la vía por la que la app más se dañaba a sí misma. Un proceso de l
 - **Rediseño completo a v3**: tres ventanas (Portada, Packs, Procesos) con `CustomTkinter`.
 - Backend migrado de PowerShell/WMI a **`psutil`**.
 - Persistencia con **`pydantic v2`**.
+
+## CYCLE-049 - 2026-10-02
+
+**Documentación & Arquitectura** — `TASK-060` (check 8 de `validate_docs.py`: la Deuda Técnica Conocida exige un ancla resoluble en toda fila viva) · `openspec/changes/2026-10-02-check-deuda-con-anclas/`
+
+> **Esta entrada va al FINAL del fichero a propósito.** El registro va de más nuevo a más viejo, y anteponerla desplazaría las **26 citas `fichero:línea`** a `.taskmaster/CHANGELOG.md` que existen hoy en 11 ficheros —`CHANGELOG.md` entre ellos— y las dejaría caducas de un plumazo. Agregarla al final no desplaza ninguna. Está medido y escrito, para que se lea como decisión y no como descuido.
+
+### Añadido
+
+- **El check 8 de `validate_docs.py`**: `_comprobar_deuda_con_anclas(root, errors, ok)`, cableado entre el check 7 y el `return` de `validar(root)`. Toda fila **viva** de la sección `## Deuda Técnica Conocida` de `STATUS.md` necesita un ancla resoluble cuya verdad se derive de **fuera** del panel, por cinco fuentes: la ruta citada existe, la cita trae identificador y el fichero lo contiene, `TASK-NNN` tiene estado legible, `CYCLE-NNN` tiene entrada en un registro, y la cifra que declara coincide con el recuento derivado con `ast`. Las filas marcadas `CERRADA` quedan exentas, y una fila viva no puede apoyarse **solo** en una `TASK` ya cerrada.
+- **El reparto `94 backend + 10 headless` se deriva en el check 7** con `ast`, contando las llamadas `test_*()` antes y desde el marcador estructural de `run_tests.py`. Hasta el ciclo #48 se comprobaba a mano, y la propia fila 9 del panel lo decía. Si el marcador no aparece, se acusa el motivo literal: **nunca `0 + 0` en verde**.
+- **Un test con trece escenarios** (`test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva`) sobre un `STATUS.md` sintético en `tempfile.mkdtemp()`, con el total de tests derivado con `ast` **del árbol del test**, nunca del repo real.
+
+### Corregido
+
+- **La sección que gobierna el Paso 1 del bucle no tenía ninguna vigilancia.** `validate_docs.py` no contenía ni una coincidencia de la palabra «Deuda», y por eso 8 de 9 mutaciones del panel sobrevivieron en el ciclo #48. Ese PARTIAL era el defecto, y esto es su arreglo de fondo.
+- **`STATUS.md:91` se quedaba sin ancla resoluble** y ahora cita el fichero donde vive `CORRUPTION_ERRORS` (`src/woptimizer/services/pack_service.py`). Su redacción original se conserva entera: la fila **ganó** el comprobable que le faltaba.
+- **Los cuatro ficheros que declaran el recuento** —`STATUS.md`, `AGENTS.md`, `README.md` y la tabla de `docs/ai/testing-guide.md`— están en **104**, y `docs/index.md` también.
+
+### Documentado
+
+- **Diez límites residuales** del check 8 en `docs/ai/sandbox-rules.md`, todos medidos: la severidad se lee por palabra y un cambio de emoji evade el suelo; una cita rota solo se acusa cuando es decisiva; y reabrir una fila cerrada sigue en verde si tiene otras fuentes vivas. Se escriben, no se omiten.
+- **La cifra vigente añadida a las filas 100 y 101** por *añadido*, nunca por sustitución: una fila que declara un número de tests tiene que llevar dentro el número que el validador deriva, o el check 8 la acusa de autoderivarse a sí misma.
+
+### Outcome
+
+- Tests: **103 → 104**, 0 fallos. `verify_ui_syntax.py` EXITO (8/8). `validate_docs.py` **115 OK / 0 FAIL** con el check 8 activo.
+- `src/woptimizer/**` con **cero** cambios. Los contratos del arquitecto y `tasks.json` intactos salvo el `status` de la tarea.
