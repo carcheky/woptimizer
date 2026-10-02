@@ -12793,23 +12793,23 @@ def _run_tests_sintetico(n_tests, n_headless, con_marcador=True):
 
 
 def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
-    """TASK-060 (ciclo #49): el CHECK 8 de `validate_docs.py`, diecinueve escenarios.
+    """TASK-060 (ciclo #49): el CHECK 8 de `validate_docs.py`, veintidos escenarios.
 
     El ciclo #48 sano 13 filas de la seccion `## Deuda Tecnica Conocida` y su
     auditoria cerro PARTIAL por una razon MEDIDA: 8 de 9 mutaciones sobrevivieron
     porque NADA en este repo vigilaba esa seccion (`validate_docs.py` tenia 0
-    coincidencias de la palabra `Deuda`). Este test es el guardian de las trece
-    filas de la tabla de abajo, y todas asientan por `validar(root)` (D3): la
-    MISMA funcion que `main()` llama, sobre el esqueleto REAL copiado una vez en
-    un `tempfile.mkdtemp()`. Nada de esto toca el repo real.
+    coincidencias de la palabra `Deuda`). Este test es el guardian de las
+    veintidos filas de la tabla de abajo, y todas asientan por `validar(root)`
+    (D3): la MISMA funcion que `main()` llama, sobre el esqueleto REAL copiado
+    una vez en un `tempfile.mkdtemp()`. Nada de esto toca el repo real.
 
     EL TOTAL SE DERIVA CON `ast` DEL ARBOL SINTETICO (6 + 1 = 7), nunca del repo
     real. Si la cifra se leyera del repo, la fila (c) no distinguiria "derive con
     `ast`" de "lei el numero correcto a mano", que es justo el mutante que esa
     fila existe para matar.
 
-    LAS DIECINUEVE FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla es el
-    contrato, y `len(FILAS) == 19` la cuenta para que borrar una fila no salga
+    LAS VEINTIDOS FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla es el
+    contrato, y `len(FILAS) == 22` la cuenta para que borrar una fila no salga
     gratis):
 
     - (a) fila viva cuya unica cita no existe -> "VIVA sin ancla resoluble" (0 de
@@ -12869,13 +12869,57 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
       una fila que declara AMARILLO -> NINGUN error. Mata: el predicado viejo del
       suelo, que ataba la gravedad a cualquier fichero que hablara de los codigos
       (incluido el propio `validate_docs.py`).
+    - (r) veredicto en NEGRITA con un id que NO resuelve -> la fila sigue VIVA.
+      Mata: la condicion 3 entera (`if ids:` -> `if True:`), que hasta esta ronda
+      NO la probaba nadie: no habia un solo escenario con un veredicto en negrita
+      cuyo id no resolviera, y que la condicion funcione era casualidad de
+      redaccion. Los 4 controles de P1/P2/P3 ya no la tocan.
+    - (s) veredicto en MINUSCULAS, con un id que si resuelve -> la fila sigue VIVA,
+      y lo que lo mide es el RECUENTO de la linea `ok`, no un error: la fila tiene
+      la `TASK-002` pendiente como fuente, luego sin cierre esta VIVA y en verde,
+      que es exactamente el estado que se quiere. DECISION, no descuido: el
+      marcador es un token EN MAYUSCULAS y esa es su forma, como la linea que
+      empieza por `0` para DECLARAR un codigo de salida. Mata:
+      `re.compile(r"CERRAD", re.IGNORECASE)`, que hoy sobrevive. Y fija por que V6
+      es un redness ACEPTADA y no un bug: cambiar `CERRADA:` por `cerrada:` en la
+      fila 90 pone las 7 exentas en rojo, y esa redness es el precio de que la
+      palabra suelta en prosa no cierre nada. Queda como limite escrito.
+    - (t) COMPOSICION: una fila con suelo, rebajada a AMARILLO, que se exime al
+      final con un veredicto que se NIEGA a si mismo -> el suelo tiene que
+      disparar. Mata: la autoexencion que apaga TRES guards con una sola frase
+      (silencia la fila, y con ella el suelo), que es la combinacion que midio
+      el auditor sobre la fila 88 y que ninguna fila aislada cubria.
+    - (u) marcador en la PROSA, con id que resuelve y sin negacion -> la fila
+      sigue VIVA. Mata: `for veredicto in _RE_NEGRITA.findall(texto)` ->
+      `for veredicto in [texto]`, que es la condicion 2 (el veredicto en negrita)
+      sin exigir. MEDIDO: hasta esta ronda NINGUNA fila comprobaba que el marcador
+      tivesse que estar en negrita, y por eso ese mutante sobrevivia con la
+      suite entera en verde. (l) y (m) no lo cierran porque las dos tienen
+      negacion, que es otra guarda.
+    - (v) marcador en negrita con la negacion en la PROSA, fuera del veredicto ->
+      la fila sigue VIVA. Mata: borrar la comprobacion de negacion sobre la
+      prosa (`_RE_NEGRITA.sub(" ", texto)`), que es la mitad de la regla de
+      negacion y la que detiene la variante V2 del auditor ("**CERRADA**. NO lo
+      esta: sigue pendiente"). La otra mitad --la negacion DENTRO del veredicto--
+      la mata (m) y (t).
 
-    LIMITACION CONOCIDA, y hay que decirla: las trece filas comparten esqueleto y
-    comparten helper, luego comparten punto ciego -- una fila solo mide la forma de
-    arbol que construye. Las LIMITACIONES que este check tiene por DISENO (S1
-    prueba existencia y no verdad; las filas cerradas quedan mudas; el corte de la
-    seccion es por linea; el suelo de gravedad es UNO) estan escritas con sus
-    siete puntos en `docs/ai/sandbox-rules.md`, no aqui.
+    - (w) la MISMA autocertificacion que (n) pero con otra GRAFIA del panel
+      (`status.md` en minusculas) -> los DOS errores de (n). Mata: volver a
+      comparar el NOMBRE ESCRITO con el string `"STATUS.md"` en vez de la
+      IDENTIDAD de la ruta resuelta. MEDIDO: con la igualdad de cadena, las
+      cuatro grafias (`status.md`, `./STATUS.md`, `docs/../STATUS.md` y
+      `.\\STATUS.md`) certificaban al panel con `0 FAIL` y 36 anclas. El
+      escenario es especifico de Windows por construccion (`normcase` no
+      normaliza a minusculas en Linux), y el producto es Windows: en un sistema
+      de ficheros sensible a mayusculas `status.md` NO existiria y el motivo
+      seria "no existe en el arbol", que tambien es un FAIL.
+
+    LIMITACION CONOCIDA, y hay que decirla: las veinticinco filas comparten
+    esqueleto y comparten helper, luego comparten punto ciego -- una fila solo
+    mide la forma de arbol que construye. Las LIMITACIONES que este check tiene
+    por DISENO (S1 prueba existencia y no verdad; las filas cerradas quedan
+    mudas; el corte de la seccion es por linea; el suelo de gravedad es UNO)
+    estan escritas con sus puntos en `docs/ai/sandbox-rules.md`, no aqui.
     """
     import json
     import os
@@ -13022,13 +13066,48 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
                      "\U0001f7e1 y ancla `otro_wrapper.py`, que habla del "
                      "contrato en su documentacion pero no lo declara."]),
              [], ["su comprobable SIGUE VIVO"], ""),
+            ("r: veredicto en negrita con un id que NO resuelve",
+             _panel(["- **Fila que se exime con un id que no existe:** anade al "
+                     "final \u2014 **\U0001f534 CERRADA en CYCLE-999** \u2014 y no "
+                     "cita ancla ninguna."]),
+             ["VIVA sin ancla resoluble"], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("s: el marcador en minusculas no cierra nada",
+             _panel(["- **Fila que escribe su cierre en minuscula:** se declara "
+                     "**cerrada** en TASK-002, que sigue pendiente."]),
+             [], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("t: la frase que se exime y se rebaja apaga el suelo a la vez",
+             _panel(["- **Fila que se exime y se rebaja a la vez:** ancla "
+                     "`git_safe_commit.py`, que sigue declarando 0, declara "
+                     "\U0001f7e1 y anade al final \u2014 **CERRADA en TASK-002, "
+                     "aunque NO lo parezca**."]),
+             ["declara AMARILLO pero su comprobable SIGUE VIVO"], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("u: el marcador tiene que estar en NEGRITA",
+             _panel(["- **Fila que escribe su cierre en la prosa:** dice que "
+                     "esta CERRADA en TASK-002, que sigue pendiente."]),
+             [], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("v: la negacion en la PROSA tambien niega el cierre",
+             _panel(["- **Fila que se contradice:** \u2014 **CERRADA** \u2014 y "
+                     "NO lo esta: sigue pendiente TASK-002."]),
+             [], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
+            ("w: el panel no se certifica a si mismo con otra GRAFIA",
+             _panel(["- **Fila que se deriva de si misma en minusculas:** su "
+                     "unica verdad es `status.md:9 Deuda Tecnica Conocida`, que "
+                     "existe."]),
+             ["VIVA sin ancla resoluble",
+              "ancla NO RESOLUBLE: status.md EXISTE pero es el propio panel"], [],
+             "0 exenta(s) CERRADA(s), 1 viva(s)"),
         )
         # El numero de filas es un CONTRATO, no una consecuencia: sin esta
         # cuenta, borrar tres escenarios deja la suite verde con el mismo
         # recuento de tests (S1 del mutation-auditor, ciclo #49, MEDIDO).
-        assert len(FILAS) == 19, (
+        assert len(FILAS) == 25, (
             "la tabla de escenarios del check 8 tiene "
-            f"{len(FILAS)} filas y su contrato son 19. Una fila que se borra sin "
+            f"{len(FILAS)} filas y su contrato son 25. Una fila que se borra sin "
             "su cuenta deja el test en verde midiendo menos de lo que dice medir"
         )
 
@@ -13075,16 +13154,19 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    print("Check 8 de la Deuda Tecnica Conocida, 19 filas por validar(root): ancla "
+    print("Check 8 de la Deuda Tecnica Conocida, 25 filas por validar(root): ancla "
           "viva rota, la misma cerrada, la cifra autoderivada y la del total "
-          "cambiado, panel solo de cerradas, seccion ausente, CERRAD dentro de "
+          "cambiado, panel solo de cerradas, seccion ausente, CERRADA dentro de "
           "codigo inline, la fila del criterio autoeximida, la unica fuente en una "
           "TAREA cerrada, gravedad rebajada con el comprobable vivo, cita que ya "
           "no apunta a lo que dice, reparto y marcador headless que el ast "
           "desmiente, la palabra de cierre en prosa y el veredicto que la niega, "
           "el panel certificandose a si mismo, la cifra declarada que es la "
-          "verdad, el tramo de codigo inline vacio, y un fichero que solo "
-          "menciona el contrato.")
+          "verdad, el tramo de codigo inline vacio, un fichero que solo "
+          "menciona el contrato, el veredicto con un id que no resuelve, el "
+          "marcador en minusculas, la frase que apaga la fila y el suelo a la "
+          "vez, el marcador que tiene que estar en negrita, la negacion que "
+          "esta en la prosa, y el panel que se cita a si mismo con otra grafia.")
 
 
 

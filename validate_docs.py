@@ -669,7 +669,13 @@ PREFIJOS_DE_ANCLA = ("", ".taskmaster/", "docs/", "docs/ai/", "docs/archive/")
 # el `sub`, 7 exentas y 8 vivas; sin el, la fila del criterio se autoexime y el
 # check nace verde justo sobre lo que tiene que vigilar.
 _RE_CODIGO_INLINE = re.compile(r"`[^`]*`")
-_RE_CERRADA = re.compile(r"CERRAD")
+# El marcador de cierre es una PALABRA, no un prefijo. MEDIDO el 2026-10-02 con
+# `re.compile(r"CERRAD")`: el plural se colaba y convertia una fila VIVA en
+# exenta con `0 FAIL` (la variante V3 del mutation-auditor, "**CERRADAS todas en
+# TASK-061**"), y con el mismo hueco la comparativa "a diferencia de las
+# CERRADAS, esta sigue viva" (V4) tambien. `\bCERRAD[OA]\b` exige la palabra
+# entera y por construccion rechaza el plural y el comparativo.
+_RE_CERRADA = re.compile(r"\bCERRAD[OA]\b")
 _RE_CITAS = re.compile(r"`([^`]*)`")
 _RE_NUMERO_DE_LINEA = re.compile(r":\d+(?:-\d+)?$")
 _RE_RUTA = re.compile(
@@ -690,16 +696,34 @@ _RE_NEGRITA = re.compile(r"\*\*(.+?)\*\*")
 # TASK-055, 90 TASK-057, 93 TASK-031, 94 CYCLE-026/047 y TASK-057, 96 y 97
 # TASK-037, 99 CYCLE-044 y TASK-054), luego exigirlo NO obliga a tocar ninguna fila.
 _RE_ID_TRAZABLE = re.compile(r"(?:TASK|CYCLE)-\d+")
-# Un veredicto que NIEGA el cierre no cierra. MEDIDO: en las 7 exentas no hay un
-# solo `NO`, `NUNCA` ni `JAMAS` en los 40 caracteres ANTERIORES al marcador, y el
-# "no en el cuerpo" de la 93 va DESPUES ("CERRADA en la cola, no en el cuerpo"), de
-# modo que la regla mira solo atras y no confunde esa fila con un cierre negado.
-_RE_NEGACION_DEL_CIERRE = re.compile(r"\b(?:NO|NUNCA|JAMAS)\b[^.;:!?]{0,40}CERRAD")
+# Un veredicto que NIEGA el cierre no cierra, y la negacion se evalua donde
+# HABLA LA FILA: en su prosa y en el veredicto que lleva el marcador. MEDIDO el
+# 2026-10-02, con el predicado viejo (`NO|NUNCA|JAMAS` en los 40 caracteres
+# ANTERIORES al marcador) cuatro frases mas convertian una fila viva en EXENTA
+# con `0 FAIL`, todas sobre la 89: la negacion DESPUES del marcador (V1), la
+# negacion FUERA de la negrita (V2), la negacion cortada por un punto y coma
+# (V5) y la comparativa indirecta que el regex no puede conocer (V4). Una
+# ventana cortable por puntuacion no es una negacion: se evalua la fila entera
+# y sin ventana.
+#
+# Y el alcance NO es la fila entera, que es lo que haria passer a VIVA la fila
+# 87: sus dos `NO` en mayusculas ("**NO lo importaba y NO estaba muerto**") son
+# un aserto sobre el fichero archivado, no sobre el cierre de la fila, y estan
+# dentro de OTRO veredicto. MEDIDO: con la negacion buscada en toda la fila, las
+# 7 exentas pasan a 6, y la 87 tendria que exigir ancla siendo un registro
+# historico cerrado. La prosa -- la fila menos sus veredictos -- mas el veredicto
+# del marcador es lo que separa los dos asertos.
+_RE_NEGACION_DEL_CIERRE = re.compile(r"\b(?:NO|NUNCA|JAMAS)\b")
 # El panel se cita a si mismo y el contrato dice, textual, que la verdad de una
-# fila se deriva FUERA de el. MEDIDO el 2026-10-02: 4 de las 15 filas reales (87,
-# 89, 100 y 101) citan `STATUS.md` y el check lo contaba como ruta valida, luego
-# el panel ya se autocertificaba. NINGUNA de las cuatro se queda sin fuente al
-# rechazar esta: las cuatro tienen ademas rutas y tareas propias.
+# fila se deriva FUERA de el. MEDIDO el 2026-10-02: 5 de las 15 filas reales (87,
+# 89, 97, 100 y 101) citan `STATUS.md` y el check lo contaba como ruta valida,
+# luego el panel ya se autocertificaba. NINGUNA de las cinco se queda sin fuente
+# al rechazar esta: las cinco tienen ademas rutas y tareas propias. La
+# COMPARACION es por IDENTIDAD de ruta resuelta y no por igualdad de cadena del
+# nombre escrito: MEDIDO que cuatro formas del mismo panel (`status.md`, `./`,
+# `docs/../` y `.\`) colaban con `0 FAIL` y 36 anclas porque solo se comparaba el
+# texto. La quinta grafia (`STATUS.MD`) no colaba nunca, y no por esta regla sino
+# porque `_RE_RUTA` exige la extension en minusculas.
 EL_PANEL_NO_ES_ANCLA = "STATUS.md"
 # Fin de frase para decidir si una cifra `N tests` esta ATRIBUIDA a otro documento
 # (S5). El punto cuenta solo seguido de espacio: los nombres de fichero lo llevan
@@ -803,25 +827,34 @@ def _esta_cerrada(root, fila):
     respondia 115 OK / 0 FAIL. Cuatro condiciones, todas medidas sobre las 7
     filas exentas reales, que las cumplen sin tocar una sola:
 
-    1. `CERRAD` en mayusculas FUERA de codigo inline (el `sub` que ya estaba:
-       sin el, el panel se exime escribiendo el criterio entre comillas).
+    1. La PALABRA `CERRADA`/`CERRADO` en mayusculas FUERA de codigo inline (el
+       `sub` que ya estaba: sin el, el panel se exime escribiendo el criterio
+       entre comillas). Con final de palabra, porque el plural y el comparativo
+       ("CERRADAS todas", "a diferencia de las CERRADAS") no son un veredicto.
     2. El marcador esta dentro de un VEREDICTO en negrita. Una mencion en
        prosa o en cursiva no cierra nada.
     3. La fila nombra un id TRAZABLE (`TASK-NNN` o `CYCLE-NNN`) que existe en
        `.taskmaster/tasks.json` o en un changelog o en el journal.
-    4. El veredicto no NIEGA el cierre.
+    4. Ni el veredicto ni la prosa de la fila NIEGAN el cierre.
 
     Las cuatro fallan ABIERTO: lo que no demuestra su cierre queda VIVA y tiene
     que demostrar su ancla, que es la direccion en la que un validador puede
     equivocarse sin dejar de vigilar nada.
     """
     texto = fila or ""
+    # La negacion se evalua en la PROSA -- la fila menos sus veredictos -- y en
+    # el veredicto del marcador. No en la fila entera: la 87 lleva dos `NO` en
+    # un veredicto que habla del fichero archivado, y con la fila entera pasaria
+    # a VIVA siendo un registro historico cerrado.
+    prosa = _RE_NEGRITA.sub(" ", texto)
     ids = None
     for veredicto in _RE_NEGRITA.findall(texto):
         limpio = _RE_CODIGO_INLINE.sub(" ", veredicto)
         if not _RE_CERRADA.search(limpio):
             continue
         if _RE_NEGACION_DEL_CIERRE.search(limpio):
+            continue
+        if _RE_NEGACION_DEL_CIERRE.search(prosa):
             continue
         if ids is None:
             ids = _ids_trazables(root, texto)
@@ -849,13 +882,45 @@ def _ruta_de_ancla(root, nombre):
     `STATUS.md` NO es una fuente: el panel no puede certificarse a si mismo, y
     el contrato de `TASK-060` lo dice textual ("la verdad debe derivarse de
     FUERA del panel") sin que ninguna parte del codigo lo aplicara. MEDIDO el
-    2026-10-02: cuatro de las quince filas reales (87, 89, 100 y 101) citan
-    `STATUS.md` y el check lo contaba como ruta resuelta. MEDIDO tambien que
-    rechazarlo no deja a ninguna de las cuatro sin fuente: todas tienen ademas
-    rutas y tareas propias, luego el veredicto no cambia ni una vez.
+    2026-10-02: cinco de las quince filas reales (87, 89, 97, 100 y 101) citan
+    `STATUS.md` y el check lo contaba como ruta resuelta.
+
+    Y el rechazo es por IDENTIDAD de la ruta RESUELTA, no por igualdad de cadena
+    del nombre escrito. MEDIDO el 2026-10-02 que la igualdad de cadena dejaba
+    cuatro puertas al mismo panel -- `status.md`, `./STATUS.md`, `docs/../STATUS.md`
+    y `.\\STATUS.md` -- y las cuatro con `0 FAIL` y 36 anclas: una fila que se
+    certifica a si misma por cualquiera de ellas salia en verde. MEDIDO
+    tambien que rechazar el panel no deja a ninguna de las cinco filas sin
+    fuente: todas tienen ademas rutas y tareas propias, luego el veredicto no
+    cambia ni una vez.
     """
     real = _ruta_existente(root, nombre)
-    return None if real == EL_PANEL_NO_ES_ANCLA else real
+    if real is None:
+        return None
+    return None if _es_el_propio_panel(root, real) else real
+
+
+def _es_el_propio_panel(root, relativa):
+    """`True` si la ruta `relativa` del arbol RESUELVE al propio `STATUS.md`.
+
+    `os.path.realpath` es lo que cierra las cuatro puertas, MEDIDO: en Windows
+    llama a `_getfinalpathname`, que devuelve el nombre REAL del fichero, luego
+    las cinco grafias (`STATUS.md`, `status.md`, `./STATUS.md`, `docs/../STATUS.md`
+    y `.\\STATUS.md`) colapsan al MISMO camino Y con la MISMA caja. `os.path.normcase`
+    se queda como segunda garantia -- normaliza a minusculas y los separadores --
+    para los sistemas donde `realpath` no canonicaliza la caja; MEDIDO que quitarlo
+    NO lo detecta ninguna fila de la suite, porque en Windows es redundante.
+
+    Con la igualdad de cadena del nombre escrito, en cambio, cuatro de las cinco
+    colaban (ver `_ruta_de_ancla`).
+    """
+    if not relativa:
+        return False
+    aqui = os.path.normcase(
+        os.path.realpath(os.path.join(root, EL_PANEL_NO_ES_ANCLA)))
+    alla = os.path.normcase(
+        os.path.realpath(os.path.join(root, *relativa.split("/"))))
+    return alla == aqui
 
 
 def _ruta_existente(root, nombre):
@@ -1238,7 +1303,10 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
                 "hecho"
             )
             for nombre, _ in _citas_de_la_fila(fila):
-                if nombre == EL_PANEL_NO_ES_ANCLA and _ruta_existente(root, nombre):
+                # Por IDENTIDAD de ruta resuelta, no por el nombre escrito: con
+                # la igualdad de cadena, una cita `status.md` que SI existe
+                # recebia el motivo de "no existe en el arbol", que es falso.
+                if _es_el_propio_panel(root, _ruta_existente(root, nombre)):
                     errors.append(
                         f"STATUS.md Deuda fila {numero}: ancla NO RESOLUBLE: "
                         f"{nombre} EXISTE pero es el propio panel. La verdad de "

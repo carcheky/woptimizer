@@ -360,26 +360,70 @@ aparece, se acusa el motivo literal: **nunca `0 + 0` en verde**.
 Una fila viva necesita **≥1** fuente resoluble **y ≥1** que no sea una `TASK`
 `completed`. Una fila marcada cerrada queda exenta.
 
+**`STATUS.md` no es fuente, y se rechaza por IDENTIDAD de la ruta resuelta.**
+El panel no puede certificarse a sí mismo y el contrato de `TASK-060` lo dice
+textual. MEDIDO el 2026-10-02: **cinco** de las quince filas reales (87, 89, 97,
+100 y 101) citan `STATUS.md`, y ninguna se queda sin fuente al rechazarlo — las
+cinco tienen además rutas y tareas propias, luego el veredicto no cambia ni una
+vez. Lo que NO vale es comparar el **nombre escrito** con el string
+`"STATUS.md"`: esa igualdad de cadena deja **cuatro** puertas al mismo panel
+(`status.md`, `./STATUS.md`, `docs/../STATUS.md` y `.\STATUS.md`) y las cuatro
+con `0 FAIL` y 36 anclas. Se compara `os.path.realpath`, que en Windows llama a
+`_getfinalpathname` y devuelve el **nombre real** del fichero: las cinco grafías
+(colocando también `STATUS.MD`) colapsan al mismo camino y con la misma caja.
+`os.path.normcase` se conserva como **segunda** garantía para sistemas donde
+`realpath` no canonicaliza la caja; MEDIDO que **quitarlo no lo detecta ninguna
+fila** de la suite (mutante C30 sobrevive), porque en Windows es redundante. La
+quinta grafía (`STATUS.MD`) ya no colaba ni antes, y no por esta regla: `_RE_RUTA`
+exige la extensión en minúsculas, luego no llega a ser una cita.
+
 ### El marcador de cierre: un VEREDICTO, no una palabra
 
 Una fila está **CERRADA** si se cumplen **cuatro** cosas a la vez. Las cuatro se miden
 sobre las 7 exentas reales del panel, que las cumplen **sin tocar una sola fila**:
 
-1. El literal `CERRAD` en mayúsculas **fuera de código inline** (el `sub` que ya estaba:
-   la fila que escribe el criterio lleva el token dentro de comillas invertidas *porque
-   está escribiendo el criterio*, y sin la limpieza el panel se declararía cerrado a sí mismo).
+1. La **palabra** `CERRADA`/`CERRADO` en mayúsculas **fuera de código inline** (el
+   `sub` que ya estaba: la fila que escribe el criterio lleva el token dentro de
+   comillas invertidas *porque está escribiendo el criterio*, y sin la limpieza el
+   panel se declararía cerrado a sí mismo). Con **final de palabra**
+   (`\bCERRAD[OA]\b`): MEDIDO que sin el final de palabra el plural y el
+   comparativo se colaban — `**CERRADAS todas en TASK-061**` y
+   `**a diferencia de las CERRADAS, esta sigue viva**` dejaban la fila 89 EXENTA
+   con `0 FAIL` (variantes V3 y V4 del auditor).
 2. El marcador está dentro de un **veredicto en negrita** (`**...**`), que es como el
-   panel escribe todos sus veredictos.
+   panel escribe todos sus veredictos. MEDIDO: hasta esta ronda **ninguna** fila de
+   la tabla comprobaba esta condición, y por eso el mutante que la borra
+   (`findall` → `[texto]`) sobrevivía con la suite entera en verde.
 3. La fila nombra un **id trazable** (`TASK-NNN` o `CYCLE-NNN`) que **existe** en
    `.taskmaster/tasks.json`, en un `CHANGELOG.md` o en el journal.
-4. El veredicto **no niega** el cierre (`NO`, `NUNCA` o `JAMAS` en los 40 caracteres
-   anteriores al marcador, dentro del mismo veredicto).
+4. Ni el **veredicto** ni la **prosa** de la fila **niegan** el cierre.
 
 **Por qué cuatro y no una.** Medido el 2026-10-02 con el marcador de una sola palabra:
 la fila 89 —la 🔴 del `spawn EPERM`— se **eximía a sí misma** con cualquier frase
 normal que hablara de cierre («y esta fila NO está CERRADA todavía», «(marcada
 \*CERRAD\*)» al final), y el validador respondía `115 OK / 0 FAIL`. Una palabra suelta
 no es un veredicto.
+
+**La negación se evalúa sin ventana cortable por puntuación, y en la prosa.**
+La regla vieja era `\b(?:NO|NUNCA|JAMAS)\b[^.;:!?]{0,40}CERRAD`: una ventana de
+40 caracteres **anteriores** al marcador, cortable por `;` `:` `.`. MEDIDO que deja
+pasar cuatro frases más, todas sobre la 89 y todas con `0 FAIL`: la negación
+**después** del marcador (`**CERRADA, aunque NO lo parezca (TASK-061)**`), la
+negación **fuera** de la negrita (`**CERRADA**. NO lo esta: …`), la negación
+cortada por un punto y coma (`**NO: CERRADA en TASK-061**`) y la comparativa
+indirecta que el regex no puede conocer. Ahora la negación se busca **en el
+veredicto que lleva el marcador y en la prosa**, con la forma `\b(?:NO|NUNCA|JAMAS)\b`
+y sin ventana.
+
+**Por qué NO en la fila entera, que es lo que la frase "en la fila" sugiere.**
+MEDIDO: la fila 87 (exenta de verdad) lleva **dos** `NO` en mayúsculas dentro de
+**otro** veredicto — `**NO lo importaba y NO estaba muerto**` — que es un aserto
+sobre el fichero archivado, no sobre el cierre de la fila. Con la negación
+buscada en toda la fila, las 7 exentas pasan a **6** y la 87 tendría que exigir
+ancla siendo un registro histórico cerrado. La fila del panel es un **catálogo
+de asertos**, y la negación de un aserto no niega el otro: prosa + veredicto del
+marcador es lo que separa los dos. Lo que queda es un residuo declarado (límite
+15): una negación escondida en *otro* veredicto no cuenta.
 
 Las cuatro fallan **abierto**: lo que no demuestra su cierre queda **VIVA** y tiene que
 demostrar su ancla, que es la única dirección en la que un validador puede equivocarse
@@ -431,18 +475,30 @@ Se escriben, no se omiten. Todas medidas el 2026-10-02.
    misma mentira un nivel más arriba.
 4. **El suelo no tiene fila víctima hoy, y eso es un agujero medido.** El suelo se
    dispara cuando una fila declara **por debajo** de su suelo. Medido el 2026-10-02:
-   las filas 88 y 89 declaran 🔴 y su suelo es `ROJO`, así que rebajarlas **sí** sale
-   en rojo (M5 muere, y antes no moría: el emoji no se leía). Pero **neutralizar el
-   suelo entero deja el panel en verde**, porque ninguna fila viva declara una
-   gravedad por debajo del suyo. No es un agujero teórico: es la razón por la que
-   este límite se escribe y no se omite.
+   de las quince filas, **la 89 es la única que declara 🔴**, y su suelo es `ROJO`;
+   rebajarla a 🟡 sale en rojo (P7). Y la **88 no declara ninguna gravedad** —
+   `_gravedad_declarada` devuelve `None` porque no tiene glifo —, así que su P6 no
+   «rebaja» nada: **añade** una gravedad por debajo de un suelo que ya era `ROJO`, y
+   por eso también muere. (La versión anterior de este límite decía «las filas 88 y
+   89 declaran 🔴»: es falso para la 88. La conclusión —el suelo muere— era correcta,
+   la descripción no.) Pero **neutralizar el suelo entero deja el panel en verde**,
+   porque ninguna fila viva declara una gravedad por debajo de la suya. No es un
+   agujero teórico: es la razón por la que este límite se escribe y no se omite. Y lo
+   que agrava el agujero es **doble**, no uno: **tampoco hay fila víctima con un
+   glifo fuera del mapa de tres** (límite 16) **ni con una gravedad histórica antes
+   de la de hoy** (límite 15). El suelo tiene hoy **cero** filas que puedan delatarlo.
 5. **Un cierre falsificado en la forma del panel sigue eximiendo.** El id trazable se
-   busca **en la fila**, no en el veredicto, porque la fila 90 (CERRADA de verdad)
-   escribe `TASK-057` fuera de su veredicto: atar el id al veredicto la volvería viva
-   y pondría el repo en rojo sin motivo. Consecuencia medida: añadir
-   `**🔴 CERRADA en CYCLE-999**` a una fila **que ya cita ids resolubles** la exime
-   (`8 exenta(s) / 7 viva(s)`, `0 FAIL`). La autoexención por palabra suelta sí está
-   cerrada; la falsificación con la forma completa del veredicto, no.
+   busca **en la fila**, no en el veredicto. Consecuencia medida: añadir
+   `**🔴 CERRADA en CYCLE-999**` a una fila que **ya cita ids resolubles** la exime
+   (`8 exenta(s) / 7 viva(s)`, `22` anclas, `0 FAIL`).
+   **Y el alcance real es más ancho que el motivo con el que se justificó aquí la
+   ronda anterior.** Ese motivo era la fila 90, que escribe su `TASK-057` fuera de su
+   veredicto. MEDIDO que no es el único caso: las filas **87, 96 y 97 no escriben
+   ningún id fuera del veredicto** y siguen exentas, luego atar el id al veredicto no
+   pondría hoy el repo en rojo: cambiaría *qué* filas lo harían. Lo que de verdad
+   puede eximir a una fila es **mencionar cualquier id resoluble en cualquier parte
+   de ella**, y la fila 89 tiene tres. Agotado ese alcance, la forma del veredicto ya
+   no puede separar la fila real del ataque: ver límite 19.
 6. **Las filas cerradas quedan mudas por construcción.** Una fila exenta puede quedar
    enteramente falsa y el check no dice nada.
 7. **El corte de la sección es por línea.** Una fila escrita como sub-vineta (`  - `)
@@ -462,13 +518,21 @@ Se escriben, no se omiten. Todas medidas el 2026-10-02.
 11. **La marca de la fila del criterio es el nombre de la función.** Si se renombra
     `_comprobar_deuda_con_anclas`, la cláusula de autoexención deja de reconocer a la
     fila del criterio hasta que se actualice el literal.
-12. **S5 comprueba la cifra que la fila DECLARA, no la que cita.** Una cifra
-    `N tests` que la fila atribuye a otro documento (`docs/index.md` declara
-    «96 tests») es una **cita**, no una afirmación, y no se acusa: verificarla contra
-    el contenido actual de ese documento haría imposible de redactar la fila 100, que
-    existe para documentar que ese documento declaraba una cifra desfasada. Medido el
-    2026-10-02: mutar «96 tests» → «42 tests» en la fila 100 conservando el `104` de
-    otra frase deja el validador en `0 FAIL`. Es residual y está declarado.
+12. **S5 comprueba la cifra que la fila DECLARA, no la que CITA, y esa distinción
+    es de FORMA, no de sustancia.** Una cifra `N tests` es una **cita** cuando va
+    dentro de código inline (`docs/index.md` declara «96 tests») **o cuando su
+    frase cita un fichero**; es una **declaración** cuando va suelta. Solo la
+    declaración se contrasta con el derivado por `ast`. MEDIDO el 2026-10-02: la
+    misma mentira en las dos formas se comporta distinto — una fila nueva que dice
+    «segun `run_tests.py` la suite tiene 42 tests» sale con `0 FAIL` (límite 17),
+    y la misma cifra en su propia frase, con la cita en la frase anterior, sale en
+    rojo.
+    **Por qué no se comprueba la cita contra el documento que la fila acusa.** No
+    porque sea físicamente imposible, sino porque esa fila **existe para acusar a
+    ese documento de mentir**: la 100 documenta que `docs/index.md` declaraba una
+    cifra desfasada, y validar esa cita contra el contenido *actual* de ese mismo
+    documento la haría imposible de redactar. Es una decisión de alcance, y por
+    eso se declara como tal en vez de disfrazarse de límite físico.
 13. **El panel se certifica a sí mismo por la cifra, si la cifra es la única fuente.**
     Con el rechazo de `STATUS.md` como ancla, una fila cuya única verdad es el propio
     panel sale en rojo. Lo que **no** se comprueba es que la cifra que el panel
@@ -482,4 +546,51 @@ Se escriben, no se omiten. Todas medidas el 2026-10-02.
     el journal: **falla ruido, no verde**, pero un `len(errors) == 1` es un conteo
     exacto atado al panel. Queda declarado para que el próximo que lo lea no lo tome
     por un fallo del journal.
+15. **La gravedad que cuenta es la PRIMERA del texto, y una gravedad histórica la
+    tapa.** `_gravedad_declarada` devuelve el primer `ROJO|AMARILLO|VERDE` que
+    aparece tras mapear los glifos. MEDIDO el 2026-10-02: poner un 🟡 **después**
+    de un 🔴 que la fila ya traía sale con `0 FAIL` y `35` anclas (mutante G2a'),
+    porque el 🔴 histórico gana y la rebaja de hoy no se ve. Sin victimas, esto no
+    es un agujero explotable hoy (límite 4) y con ella lo sería: por eso se escribe
+    y no se arregla — arreglarlo exigiría decidir qué emoji manda, que es política
+    de gravedad escrita a mano, el mismo nivel de mentira que el suelo único.
+16. **Un glifo fuera del mapa de tres no es una gravedad.** El mapa es 🔴🟡🟢; un
+    🟠 (u otro) deja `gravedad = None` y el suelo **nunca** se dispara. MEDIDO el
+    2026-10-02 con la fila 100 (mutante G2b'): `0 FAIL` y `35` anclas, y el emoji
+    sigue ahí a la vista. La fila 100 declara además 🟡 de verdad, luego hoy es un
+    no-op; lo que se declara es la clase de fallo: **cualquier glifo que no sea
+    uno de los tres se le como si no hubiera gravedad**.
+17. **Cualquier fila puede mentir sobre el recuento y autoeximirse mencionando un
+    fichero en la MISMA frase.** MEDIDO el 2026-10-02: una fila nueva que dice
+    «segun `run_tests.py` la suite tiene 42 tests» sale con `0 FAIL` y `36` anclas
+    (mutante N1a), y la misma cifra con la cita en la frase **anterior** sí sale en
+    rojo (N1b, `1 FAIL`). La atribución por forma es lo que separa los dos casos, y
+    es también lo que abre esta puerta: basta mover la cita a la frase de la
+    mentira para que el guard no la vea. Es límite 12 aplicado a una fila nueva, no
+    a la 100, y por eso se declara aparte.
+18. **El marcador es un token EN MAYÚSCULAS, y la MAYÚSULA es forma, no estilo.**
+    Decidido y escrito: `CERRADA:` → `cerrada:` en la fila 90 pone las **siete**
+    exentas en rojo, y ese rojo es el precio de que la palabra suelta en prosa no
+    cierre nada (es el mismo argumento que declara el código de salida por la línea
+    que empieza por `0`). MEDIDO y **aceptado**: el escenario (s) de la suite fija
+    esta decisión. Consecuencia: un descuido de caja en el veredicto de una fila
+    cerrada la reabre de golpe, y no es un rojo que un guard pueda contener.
+19. **El id trazable puede proceder del propio veredicto de cierre, y eso ya no
+    distingue la fila real del ataque.** MEDIDO el 2026-10-02: añadir
+    ` — **CERRADA en TASK-059**` al final de la fila 88 la deja muda
+    (`8 exenta(s) / 7 viva(s)`, `33` anclas, `0 FAIL`) y sobrevive también al
+    arreglo de las cinco variantes de autoexención. La regla que lo frenaría —
+    «el id tiene que estar FUERA del veredicto» — **rompe la fila 87**, que es
+    CERRADA de verdad y no tiene ningún id fuera del suyo (medido: 87, 96 y 97
+    tienen todos sus ids dentro del veredicto). Fila 87 y fila 88+ataque tienen la
+    **misma forma**, luego no hay regla que las separe sin poner el repo en rojo.
+    Y el daño que el auditor atribuía al suelo **no ocurre en la 88**: esa fila no
+    declara ninguna gravedad (`_gravedad_declarada` → `None`), luego su suelo no
+    podía dispararse ni antes ni después. Lo que sí se apaga es la fila entera.
+20. **Una negación escondida en OTRO veredicto no cuenta.** La regla de negación
+    mira el veredicto del marcador y la prosa de la fila, no los demás veredictos
+    (límite del apartado anterior, y la razón medida es la fila 87). MEDIDO: una
+    fila cuyo veredicto de cierre es `**CERRADA en TASK-059**` y que dice
+    `**NO lo esta**` en otro veredicto se exime. Se declara porque la regla que se
+    eligió para no romper la 87 abre esta puerta a cambio.
 

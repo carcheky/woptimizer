@@ -964,7 +964,7 @@ Se cierra la vía por la que la app más se dañaba a sí misma. Un proceso de l
 
 - **El check 8 de `validate_docs.py`**: `_comprobar_deuda_con_anclas(root, errors, ok)`, cableado entre el check 7 y el `return` de `validar(root)`. Toda fila **viva** de la sección `## Deuda Técnica Conocida` de `STATUS.md` necesita un ancla resoluble cuya verdad se derive de **fuera** del panel, por cinco fuentes: la ruta citada existe, la cita trae identificador y el fichero lo contiene, `TASK-NNN` tiene estado legible, `CYCLE-NNN` tiene entrada en un registro, y la cifra que declara coincide con el recuento derivado con `ast`. Las filas marcadas `CERRADA` quedan exentas, y una fila viva no puede apoyarse **solo** en una `TASK` ya cerrada.
 - **El reparto `94 backend + 10 headless` se deriva en el check 7** con `ast`, contando las llamadas `test_*()` antes y desde el marcador estructural de `run_tests.py`. Hasta el ciclo #48 se comprobaba a mano, y la propia fila 9 del panel lo decía. Si el marcador no aparece, se acusa el motivo literal: **nunca `0 + 0` en verde**.
-- **Un test con trece escenarios** (`test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva`) sobre un `STATUS.md` sintético en `tempfile.mkdtemp()`, con el total de tests derivado con `ast` **del árbol del test**, nunca del repo real.
+- **Un test con veinticinco escenarios** (`test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva`) sobre un `STATUS.md` sintético en `tempfile.mkdtemp()`, con el total de tests derivado con `ast` **del árbol del test**, nunca del repo real. La ronda de cierre los subió de 19 a 25 (`r`, `s`, `t`, `u`, `v` y `w`) y **el número de tests no cambió**: son filas de una tabla, no tests.
 
 ### Corregido
 
@@ -974,7 +974,7 @@ Se cierra la vía por la que la app más se dañaba a sí misma. Un proceso de l
 
 ### Documentado
 
-- **Diez límites residuales** del check 8 en `docs/ai/sandbox-rules.md`, todos medidos: la severidad se lee por palabra y un cambio de emoji evade el suelo; una cita rota solo se acusa cuando es decisiva; y reabrir una fila cerrada sigue en verde si tiene otras fuentes vivas. Se escriben, no se omiten.
+- **Veinte límites residuales** del check 8 en `docs/ai/sandbox-rules.md`, todos medidos: la gravedad **se lee del emoji** y bajar la 🔴 a 🟡 **sí salta el suelo** (lo que queda no es que el suelo se evada, sino que hoy **no tiene fila víctima**); una cita rota solo se acusa cuando es decisiva; y reabrir una fila cerrada sigue en verde si tiene otras fuentes vivas. Se escriben, no se omiten.
 - **La cifra vigente añadida a las filas 100 y 101** por *añadido*, nunca por sustitución: una fila que declara un número de tests tiene que llevar dentro el número que el validador deriva, o el check 8 la acusa de autoderivarse a sí misma.
 
 ### Outcome
