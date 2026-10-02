@@ -1,3 +1,43 @@
+## [CYCLE-048] 2026-10-02 03:10 - sanear-deuda-status
+**Área**: Documentación & Arquitectura
+**Change**: openspec/changes/2026-10-02-sanear-deuda-status/
+**Estado**: COMPLETED — **VEREDICT: PASS** (0 cambios de producto; recuento estable en 103)
+**Models**:
+- Paso 1 (Buscar): orchestrator (backlog: `active_task_id` TASK-058)
+- Paso 2 (Planear): architect-review — Auditoría fila por fila de las 13 filas de Deuda Conocida; **3 falsas, 2 caducadas, 1 imprecisa** detectadas con evidencia, y 2 premisas del encargo refutadas
+- Paso 3 (Ejecutar): openspec-dev — TASK-058 (STATUS.md + docs/index.md + 2 changelogs + tasks.json)
+- Paso 4 (Auditar tests): **NO APLICA** — sin cambios en `src/`, `run_tests.py` ni `validate_docs.py`; no hay fix de código que mutar. Sustituido por un comprobador propio que resuelve cada ancla escrita por contenido.
+
+### Ficheros tocados (y los que NO, por auditoría)
+| Fichero | Cambio |
+|---|---|
+| `STATUS.md:20` | «Ciclo Actual #47 … Completado» -> «Ciclo Actual #48: TASK-058 … En curso». La línea siguiente ya anunciaba este ciclo. |
+| `STATUS.md:85` | FALSA x2 (no estaban en la raíz; 10 de 11 morían por el import). Conservada + cierre con `TASK-055`, `docs/archive/legacy-root-tests/README.md:1-7`, guard `run_tests.py:11590`. |
+| `STATUS.md:87` | CIERTA, gravedad corregida: `spawn EPERM` causó el falso verde de versionado del ciclo #11 (`STATUS.md:37`). |
+| `STATUS.md:88` | FALSA: los ciclos #14-#20 sí están versionados. `--verify` -> `WOPT_REPO_OK` exit 0. Pasa a puntero a la fila del residuo (#47). |
+| `STATUS.md:91` | Cola corregida: `TASK-031` está `completed`. Cuerpo intacto con sus tres comprobables. |
+| `STATUS.md:92` | CERRADA en CYCLE-047: el ancla es la unión del journal y el historial (`validate_docs.py:238,267`). |
+| `STATUS.md:97` | FALSA en su premisa: cerrada en CYCLE-044 por `TASK-054` (`run_tests.py:11478`). Conservada. |
+| `STATUS.md:98` (NUEVA, VIVA) | `docs/index.md:25` decía 96 tests y hay 103, y el check del recuento no vigila ese fichero. Nace con ancla, mutante y severidad 🟡. |
+| `docs/index.md:25` | 96 -> 103. |
+| Sin cambios | `STATUS.md:86, 89, 93, 94, 95, 96`; `src/**`; `run_tests.py`; `validate_docs.py`; `verify_ui_syntax.py`; `AGENTS.md`; `README.md`. |
+
+### Verificación ejecutada (no supuestos)
+- Cada ancla `archivo:línea` escrita en las filas tocadas se comprobó **por contenido**: ruta existente, línea dentro del fichero y snippet esperado presente. Mutar cualquiera de ellas hace fallar el comprobador.
+- La redacción original de las 6 filas tocadas se comprobó presente (ninguna fila se borra).
+- `python run_tests.py` -> 103 tests | `python verify_ui_syntax.py` -> OK | `python validate_docs.py` -> 110 OK, 0 FAIL.
+
+### Decisiones que el contrato debía corregir y se corrigieron antes de ejecutar
+1. **El criterio de aceptación de `TASK-058` sobre `docs/api.md`/`docs/index.md` estaba construido sobre un estado del repositorio inexistente.** `TASK-054` cerró ese punto en CYCLE-044. Se conservó la fila como cerrada en vez de "actualizar su severidad real".
+2. **La fila de los `test_*.py` no solo mezclaba el recuento del import: también mentía en la ubicación** ("en la raíz"), que es la parte más peligrosa porque manda a un archivo que no existe desde hace 35 días.
+3. **Incoherencia de contrato detectada al ejecutar:** la proposal §5 daba por hecha en este ciclo la ampliación de la lista del check del recuento con `docs/index.md`, pero su propia §6 excluía `validate_docs.py` del alcance y esa ampliación está reasignada a `TASK-060`. Se siguió §6: el validador no se tocó.
+
+### Salidas a otro ciclo
+- `TASK-060` (check de anclas en la Deuda Conocida, con las filas cerradas exentas) queda `pending` a propósito.
+- `STATUS.md:80` («Commits pendientes de los ciclos #14 a #20») arrastra la misma afirmación caducada que se corrigió en la fila 88. **No se reescribió** por quedar fuera del alcance; se señaló desde la fila 88. Decisión pendiente del propietario si se extiende el alcance.
+- `STATUS.md:13` cita `ae53be7` como último commit; el HEAD real ya es `96c349f`. No es una falsedad («al día en git» es cierto) y lo rota el orquestador al cerrar el ciclo.
+
+---
 ## [CYCLE-047] 2026-10-01 23:59 - validator-independent-anchor
 **Área**: Arquitectura & Calidad
 **Change**: openspec/changes/2026-10-01-validator-independent-anchor/

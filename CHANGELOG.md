@@ -1,3 +1,32 @@
+## CYCLE-048 - 2026-10-02
+
+**Documentación & Arquitectura** — `TASK-058` (Sanear las filas FALSAS de la Deuda Técnica Conocida de `STATUS.md`)
+
+> 🧬 **VEREDICTO: PASS** — Cero cambios de producto: `src/`, `run_tests.py` y `validate_docs.py` intactos, y el recuento sigue en **103 tests** (derivado con `ast`, no escrito a mano). Lo que se corrige es **el panel que gobierna qué trabajo hace el bucle**, que es justo donde este repo ya se engañó dos veces.
+
+### Por qué esta tarea no era cosmética
+Cuando el backlog está vacío, el Paso 1 del bucle lee `## ⚠️ Deuda Técnica Conocida` y prioriza lo que ahí pone literalmente. **De 13 filas auditadas, tres mentían** —y dos de ellas no las detectó nadie— así que el panel mandaba repetir trabajo ya hecho o tomarlo por cerrado cuando no lo estaba. El precedente de por qué las filas cerradas **no se borran** estaba escrito en la propia sección desde el ciclo #26, y este ciclo se aplicó esa regla a sí mismo: **ninguna fila se borró**.
+
+### Corregido (con la redacción original conservada, más su cierre comprobable)
+- 🔴 **La fila de los 11 `test_*.py` "en la raíz" era falsa por partida doble.** No estaban en la raíz: los 11 se archivaron en `docs/archive/legacy-root-tests/` en el ciclo #45 (`TASK-055`), y un guard impide que vuelvan. Y de los 11, solo **10** morían por `import process_manager`: el undécimo, `test_powershell_direct.py`, no lo importaba y **no estaba muerto** —lanzaba `notepad.exe` y ejecutaba `taskkill /F`, un riesgo de efecto colateral completamente distinto del que la fila describía. Verificado con `ast.Import` sobre los 11, no contando la aparición de la cadena en un comentario.
+- 🔴 **"Sin commit desde el ciclo #14" era falsa.** Los ciclos #14 a #20 sí están versionados: `git_safe_commit.py --verify` responde `WOPT_REPO_OK` con exit 0. El dato cierto y comprobable no es «sin commit» sino **«sin commit ANCLADO»**, y ese ya vivía con su severidad en la fila del residuo honesto del ciclo #47: la fila queda como puntero, no como deuda.
+- 🔴 **La fila de `docs/api.md`/`docs/index.md` documentando una API v2 caducó en el ciclo #44.** Cero residuos v2 en ambos ficheros, `docs/api.md:1` es «Referencia de API (v3)» y `TASK-054` está cerrada con un test que lo impide volver. **El criterio de aceptación de la tarea pedía "actualizar esa fila con su severidad real", y eso estaba construido sobre un estado del repositorio que ya no existía**: ejecutarlo al pie de la letra habría reescrito una fila cerrada y reintroducido en el panel una afirmación que el ciclo #44 ya demostró falsa. Se conserva como cerrada, y la deuda real que la fila describía mal entra en su lugar, viva y con su propia severidad.
+- 🟡 **La fila del `spawn EPERM` tenía la gravedad equivocada.** Decía «afecta al versionado, no al producto», pero en el ciclo #11 esa misma intermitencia hizo que `git_safe_commit.py` saliera con **código 0 ante cualquier fallo de commit** y se perdieran commits. No era inocua: era la causa de un falso verde de versionado. La fila sigue viva —el fenómeno continúa— pero ya no subestima lo que costó.
+- **Dos filas caducadas, corregidas sin borrar nada:** la del validador que «se deduce a sí mismo» (cerrada en el ciclo #47 con el ancla como unión del journal y el historial) y la de los 3 supervivientes del #17, cuya cola apuntaba a `TASK-031`, una tarea ya `completed`. Un puntero a una tarea cerrada se lee como deuda viva y no lo es.
+
+### El fallo vivo que sí quedaba, y ahora es una fila
+- 🔴 **`docs/index.md:25` declaraba «96 tests» y la verdad eran 103.** Y el check que vigila el recuento no lo ve: su lista es de cuatro ficheros (`validate_docs.py:116-118`) y ese no está. Es el mismo fallo que ese check ya cazó una vez, por la misma puerta, y el fichero está **publicado** como portada del sitio (`mkdocs.yml:70`). La cifra se corrige a 103; la fila **no se cierra**, porque el fallo estructural sigue y lleva su mutante escrito: cambiar ese 103 por cualquier otro número y todo el panel, validador incluido, seguirá en verde.
+
+### Lo que queda vivo y con nombre
+- **TASK-060** — el check que exigirá un ancla resoluble a toda fila **no** marcada cerrada, con la verdad derivada de **fuera** del panel (árbol, recuento con `ast`, `git log`). **Se decidió aquí y no se implementó aquí**: es un ciclo propio, y las filas cerradas quedan exentas o el check fallaría siempre y nadie lo miraría.
+- **Una incoherencia de la cabecera** que no estaba en el encargo: la línea del ciclo actual decía «Ciclo #47 … Completado» mientras la siguiente ya anunciaba la tarea de este ciclo. Corregida.
+
+### Honestidad del alcance
+- **Dos premisas del encargo resultaron falsas y no se ejecutaron al pie de la letra** (ver la nota de proceso de este ciclo). Se corrige el criterio antes de ejecutarlo, no después.
+- **Una extensión que la especificación daba por hecha en este ciclo y no se hizo:** la proposal mencionaba ampliar la lista del check del recuento con `docs/index.md`. Su propia lista de ficheros excluía `validate_docs.py`, y esa ampliación está reasignada a `TASK-060`. Se siguió la lista de ficheros: el validador no se tocó.
+- **Paso 4 sin aplicar, y por qué:** no hay código de producto que mutar en este ciclo. La verificación se hizo con un comprobador propio que relee lo escrito y **resuelve cada ancla `archivo:línea` por contenido** (no solo existencia), más las tres verificaciones del repo en verde.
+
+---
 ## CYCLE-047 - 2026-10-01
 
 **Arquitectura & Calidad** — `TASK-057` (Ancla de trazabilidad de ciclos: que el registro no dependa de quien lo escribe)
