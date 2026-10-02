@@ -733,21 +733,27 @@
     "area": "Arquitectura & Calidad",
     "slug": "2026-10-01-validator-independent-anchor",
     "task": "TASK-057",
-    "status": "IN_PROGRESS",
+    "status": "COMPLETED",
     "commits": [
       "9aa7dd5",
       "dbe720d",
-      "614e5ff"
+      "614e5ff",
+      "f10d9b4",
+      "f98cebc",
+      "2f8c9c2",
+      "ae53be7"
     ],
     "tests": {
       "before": "99 totales",
-      "after": "104 totales (validados con ast por validate_docs.py)"
+      "after": "103 totales (validados con ast por validate_docs.py; la suite BAJO en el ciclo)"
     },
     "impact": "Testigo tercero de trazabilidad: el requisito de registrar un ciclo pasa a ser la UNION de rd_journal.json y el historial de commits, porque el journal lo escribe el mismo actor que despues pide la validacion. Dos auditorias seguidas dieron FAIL: el patron que se repitio es que los tests llamaban a las funciones privadas pasandoles a mano los argumentos, asi que el cableado que los suministra nunca se probo (S2 en main(), luego A1 en validate_docs.py:371). Replanificado: un solo camino de validacion validar(root) y borrar el default journal_cycles=() para que el fallo sea imposible por construccion. Ademas se corrigio una afirmacion falsa que se habia propagado a 5 ficheros (41 de 46 hashes no resuelven: son 1).",
     "audit": {
-      "verdict": "FAIL (x2), replanificado, intento 3 pendiente",
-      "round1": "28 mutaciones, 12 supervivientes; criticos S1 (residuo en una sola direccion) y S2 (main() sin cablear el ancla, verde)",
-      "round2": "las 6 declaradas mueren correctamente; sobreviven A1 (journal_cycles no llega al ancla -> 0 FAIL con el parser muerto), A2 (--all) y M1/M2"
+      "verdict": "PASS",
+      "rounds": "4 rondas: FAIL, FAIL, FAIL, PASS",
+      "mutants_killed": "20 declarados en el contrato y las rondas (9 de T-7 + 5 de la ronda 3 + P2b/P3b + G1 y variantes)",
+      "survivors": "0 al cierre. E2 tiene un punto ciego nombrado: muere en el envoltorio compartido, no en su propia asercion.",
+      "note": "A1 (el cableado desconectado en silencio) queda ERRADICADO donde se produjo y desplazado donde no se busco; asi esta escrito en la documentacion, no como cierre."
     }
   }
 ]

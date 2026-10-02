@@ -1,19 +1,23 @@
 ## CYCLE-047 - 2026-10-01
 
-**Arquitectura & Calidad** - `TASK-057` (Ancla de trazabilidad de ciclos: que el registro no dependa de quien lo escribe)
+**Arquitectura & Calidad** — `TASK-057` (Ancla de trazabilidad de ciclos: que el registro no dependa de quien lo escribe)
 
-> 🔴 **Dos auditorias seguidas dieron FAIL.** Se re-planifico y sigue en curso. **104 tests** en verde.
+> ✅ **VEREDICTO FINAL: PASS** — Cerrado tras **cuatro rondas de auditoría**. Las tres primeras dieron FAIL; la cuarta dejó **0 supervivientes** de los 20 mutantes declarados. **103 tests** en verde, y la suite **bajó** de 104 a 103 durante el ciclo: los casos se convirtieron en filas de una tabla, no en pruebas nuevas.
 
-### Anadido
-- **Un tercer testigo para "este ciclo quedo registrado".** Antes, esa pregunta solo se le podia hacer al diario interno del motor, y ese diario lo escribe el mismo motor que despues se autoverifica. Ahora el requisito se exige tanto al diario **como** al historial de commits: para que un ciclo deje de exigirse habria que reescribir la historia de git, no editar una linea de un JSON.
-- **El validador avisa cuando no puede comprobar.** Si el historial de commits no se puede leer, el chequeo sale en rojo diciendo el motivo literal, en vez de darse por satisfecho en silencio. Un validador que no puede mirar y aun asi dice "todo bien" es peor que uno que no existe, porque entrena a leer la luz verde como si fuera rutina.
+### Añadido
+- **Un tercer testigo para "este ciclo quedó registrado".** Antes, esa pregunta solo se le podía hacer al diario interno del motor, y ese diario lo escribe el mismo motor que después se autoverifica. Ahora el requisito se exige tanto al diario **como** al historial de commits: para que un ciclo deje de exigirse habría que reescribir la historia de git, no editar una línea de un JSON.
+- **El validador avisa cuando no puede comprobar.** Si el historial de commits no se puede leer, el chequeo sale en rojo diciendo el motivo literal, en vez de darse por satisfecho en silencio. Un validador que no puede mirar y aun así dice "todo bien" es peor que uno que no existe, porque entrena a leer la luz verde como si fuera rutina.
+- **Un registro de mutaciones que vive en el repo**, con la mutación literal, la aserción, el número de guardianes y el motivo de cada muerte. Antes no existía, así que las 12 supervivencia de una auditoría previa eran imposibles de reauditar por nombre.
 
 ### Corregido
-- 🔴 **Una cifra falsa que se habia propagado a 5 ficheros.** Decia que "41 de 46 entradas del diario no tienen hash resoluble". **Medido de verdad: 1.** Once entradas no declaran hash alguno y, de las 35 que si, solo el ciclo 33 se queda sin ninguno resoluble. El error fue medir el texto de la entrada (`617eef8 (architect)`) en vez del hash. La consecuencia era grave: una tarea pendiente (TASK-059) descartaba esa verificacion arguing que dejaria el validador permanentemente en rojo, cuando daria **un** fallo, no 41. Corregido en la documentacion, en la especificacion y en el tablero.
-- **Un comentario que decia una falsehood tecnica.** El codigo justificaba no estrechar el manejo de errores diciendo que `FileNotFoundError` y `PermissionError` "no son OSError". **Son subclases de OSError.** La razon real es otra, y ya esta escrita bien.
+- 🔴 **Una cifra falsa que se había propagado a 5 ficheros.** Decía que "41 de 46 entradas del diario no tienen hash resoluble". **Medido de verdad: 1.** Once entradas no declaran hash alguno y solo el ciclo 33 se queda sin ninguno resoluble. El error fue medir el texto de la entrada (`617eef8 (architect)`) en vez del hash. La consecuencia era grave: una tarea pendiente (TASK-059) descartaba esa verificación argumentando que dejaría el validador permanentemente en rojo, cuando daría **un** fallo, no 41. Corregido en la documentación, en la especificación y en el tablero.
+- 🔴 **El falso verde del ciclo 15 reintroducido por otra puerta.** El validador buscaba el número de ciclo como subcadena al comprobar los encabezados, así que un encabezado borrado seguía contando como presente mientras la prosa mencionara el número. El propio código lo advertía 200 líneas más arriba y lo cometía igualmente. **Demostrado, no supuesto:** con el bug puesto, un árbol con `TASK-015` en vez de su encabezado pasaba en verde.
+- 🛡️ **Un comentario que decía una falsehood técnica.** El código justificaba no estrechar el manejo de errores diciendo que `FileNotFoundError` y `PermissionError` "no son OSError". **Son subclases de OSError.** La razón real es un tiempo de espera agotado, y ya está escrita bien.
+- **Un informe de auditoría que se contradecía a sí mismo** y que atribuía cada muerte al test equivocado. Tres de esas atribuciones eran falsas por omisión: nombraban un test que sí lo detectaba, pero no el primero, ni el número real de guardianes. Rehecho con las dos columnas medidas.
 
-### El hallazgo que devolvio el trabajo a la mesa
-- 🔴 Los tests llamaban a las funciones internas del validador pasandoles **a mano** los argumentos. Eso hacia que el codigo que conecta esas funciones jamas se ejecutara en las pruebas: se podia **desenchufar el chequeo entero y la suite seguia en verde**. Es justo el fallo que el ciclo anterior (TASK-056) existia cerrar para el codigo del producto, reproducido en el propio validador. Repetido tres veces, el plan de reparacion cambio: en vez de añadir una asercion por hallazgo, el chequeo se hara imposible de desconectar por construccion.
+### El hallazgo que devolvió el trabajo a la mesa dos veces
+- 🔴 Los tests llamaban a las funciones internas del validador pasándoles **a mano** los argumentos. Eso hacía que el código que conecta esas funciones jamás se ejecutara en las pruebas: se podía **desenchufar el chequeo entero y la suite seguía en verde**. Es justo el fallo que el ciclo anterior (TASK-056) existía cerrar para el código del producto, reproducido en el propio validador. Al repetirse, el plan cambió: un solo camino de validación y los casos como filas de una tabla, de modo que **un hallazgo futuro cueste una fila y no una prueba más**.
+- **Lo que queda, dicho sin adornos:** el desconexión silenciosa está **erradicada donde se produjo** y **desplazada donde no se buscó**. Un asunto con plural ("ciclos 14-20") declara un rango, y los rangos están acotados para que un texto cualquiera no pueda exigir 9999 ciclos. Dejar eso anotado como cerrado sería repetir el fallo que este ciclo vino a matar.
 
 ---
 

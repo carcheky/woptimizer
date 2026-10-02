@@ -1,12 +1,12 @@
 ## [CYCLE-047] 2026-10-01 23:59 - validator-independent-anchor
 **Área**: Arquitectura & Calidad
 **Change**: openspec/changes/2026-10-01-validator-independent-anchor/
-**Estado**: IN_PROGRESS — **FAIL x2, REPLANIFICADO** (intento 3 pendiente)
+**Estado**: COMPLETED — **VEREDICT FINAL: PASS** (4 rondas: FAIL, FAIL, FAIL, PASS)
 **Models**:
-- Paso 1 (Buscar): flash (backlog: active_task_id TASK-057)
+- Paso 1 (Buscar): flash (backlog: `active_task_id` TASK-057)
 - Paso 2 (Planear): architect-review — DISEÑO ACEPTADO; 2ª invocación: REPLANIFICACIÓN por Circuit Breaker
-- Paso 3 (Ejecutar): openspec-dev — intento 1 (`dbe720d`) e intento 2 (`614e5ff`)
-- Paso 4 (Auditar tests): mutation-auditor — **FAIL** (28 mut, 12 sobrev) y **FAIL** (24 mut, 3 sobrev de severidad ALTA)
+- Paso 3 (Ejecutar): openspec-dev — 4 pasadas (`dbe720d`, `614e5ff`, `f98cebc`, `2f8c9c2`, `ae53be7`)
+- Paso 4 (Auditar tests): mutation-auditor — **FAIL ×3** (28 mut/12 surv · 24 mut/3 surv · 27 mut/6 surv) y **PASS** al cierre
 
 ### Mutaciones auditadas (Paso 4, ronda 1 — FAIL)
 | Fix | Mutación | Veredicto | Motivo del fallo |
@@ -37,11 +37,32 @@
 - `docs/ai/sandbox-rules.md`: regla nueva, alcance medido y LIMITACIÓN RESIDUAL explícita.
 - Corrección de la afirmación falsa "41 de 46 hashes" en 5+ ficheros: la cifra real es **1**.
 
-### Por qué dos FAIL seguidos (nota de proceso)
-El patrón que se repitió tres veces es el mismo: **los tests llaman a las funciones privadas pasándoles a mano los argumentos, así que el cableado que suministra esos argumentos no se prueba**. Arreglar el hallazgo visible dejaba el mismo agujero un nivel más abajo. La replanificación abandona "añadir una aserción por hallazgo" y pasa a **un solo camino de validación** (`validar(root)`) más **borrar el default `journal_cycles=()`**, de modo que el fallo sea un `TypeError` imposible de ocultar y muera un test que ya existe, con cero líneas de test nuevas. Además la suite debe BAJAR de 104 a 103 fusionando dos tests en una tabla de escenarios: los validadores no crecen por aprendizaje, crecen por defecto.
+### Mutaciones auditadas (Paso 4, ronda 3 — FAIL) y cierre (ronda 4 — PASS)
+| Fix | Mutación | Veredicto | Motivo del fallo | Dónde muere de verdad |
+|---|---|---|---|---|
+| **P2** `missing_entries` laxo | buscar el número como subcadena | killed | `fila (f): encabezado borrado y número solo en prosa ... Errores: []` | **solo** fila (f) |
+| **P3** `has_jentry` laxo | `f"{jlatest}" in rch` | killed | `fila (f): ...` | **solo** fila (f) |
+| **H2** guarda muerta | `if not has_jentry:` → `if False:` | killed | `fila (f): ...` el recuento pasa a 1 y la fila exige 2 | **solo** fila (f) |
+| **P2b/P3b** | buscar `CYCLE-nnn` sin `## ` | killed | `fila (f)` — la segunda clase de cita protege de verdad | **solo** fila (f) |
+| **E2** `except` del git | estrechar a `OSError` | killed | `debía devolver un INFORME y tiró TimeoutExpired` | la tabla, **por el envoltorio compartido** |
+| **E3** sin reintento | `for _intento in (1, 2)` → `(1,)` | killed | `NO SE PUEDE LEER ... TimeoutExpired` | **solo** fila (g), por su `juzgar` |
+| **G1** plural del parser | quitar el `s?` | killed | `fila (h): el rango 015-020 tiene que exigir sus 7 ciclos` | **solo** fila (h) |
+| **G1b/c/d** | no expande / extremo exclusivo / sin tope | killed | `fila (h)` | **solo** fila (h) |
+
+**Supervivientes al cierre: 0.** La fila (f) quedó probada **no tautológica**: al borrar su prosa, P2 y P3 sobreviven a la suite entera. La fila (g) **no contamina**: el doble de `subprocess.run` se restaura limpio (`is` → `True`), así que los veredictos posteriores son válidos. `D2` aislado es **inerte por diseño** (el default no llega a usarse); lo que se mide es `D2+M2`, que muere por la fila (a).
+
+### Cambios Clave
+- `validate_docs.py`: `validar(root)` con los checks 1-7, `main()` reducido a llamar/imprimir/salir — **un solo camino de validación**; default `journal_cycles=()` **borrado**; `_marcador_de_ciclo` → `_ciclos_del_asunto` con plural→rango acotado a 50.
+- `run_tests.py`: tabla de escenarios de **7 filas** (una copia del esqueleto; los escenarios son filas); suite **99 → 104 → 103** (bajó: dos tests fusionados, ninguno añadido).
+- `mutation-report.md` (**nuevo**): registro de mutantes por nombre, que antes no existía en ningún artefacto del repo.
+- `docs/ai/sandbox-rules.md`, `docs/ai/testing-guide.md`, `STATUS.md`, `AGENTS.md`, `README.md`: regla, D1–D4 y recuento a 103.
+- Corrección de la afirmación falsa "41 de 46 hashes" en 5+ ficheros: la cifra real es **1**.
+
+### Por qué tres FAIL seguidos (nota de proceso)
+El patrón que se repitió es el mismo: **los tests llaman a las funciones privadas pasándoles a mano los argumentos, así que el cableado que suministra esos argumentos no se prueba**. Arreglar el hallazgo visible dejaba el mismo agujero un nivel más abajo. Dos aprendizajes que costaron una ronda cada uno: (a) `python run_tests.py` **solo devuelve el primer test que revienta**, así que atribuir la muerte a un test sin aislar es inventarse el dato — tres atribuciones del informe eran falsas por omisión; (b) `validate_docs.py` es **CRLF** y un arnés con `\n` pelado no aplica las mutaciones, así que el auditor pierde media ronda creyendo que son supervivientes.
 
 ### Impact
-El ciclo cumple el objetivo en el papel y falló en la práctica: el ancla nueva **sí** llegó a morder el repo real (107 OK / 2 FAIL, acusando el ciclo 047 comiteado y ausente del journal), que es exactamente el residuo que se perseguía. La lección: una garantía nueva necesita un test que falle cuando la garantía esté desconectada, y ese test tiene que ejecutar el camino real, no llamar a la pieza.
+El ancla nueva **sí llegó a morder el repo real**: al aterrizar el commit con marcador `ciclo #47` sin journal, el validador dio 2 FAIL. Es el residuo que la tarea existía para cazar, detectado en producción y cerrado al registrar el ciclo. **A1 está ERRADICADO donde se produjo y DESPLAZADO donde no se buscó**, y así está escrito: cerrar esto declarándolo resuelto sería el mismo fallo que el ciclo vino a matar. `src/` intacto.
 
 ---
 
