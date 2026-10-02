@@ -15,11 +15,12 @@
 ---
 
 ### 🔄 Estado de la Ejecución Perpetua
-- **Modo:** 🟢 EN MARCHA — reanudado por el usuario. El bucle no para entre ciclos: el siguiente es TASK-058.
-- **Ciclos Completados:** 47 (`rd_journal.json` actualizado).
-- **Ciclo Actual #48:** TASK-058 — Sanear las filas FALSAS de la Deuda Técnica Conocida de `STATUS.md`. 🟡 **En curso.** La línea anterior decía «Ciclo Actual #47 … Completado, PASS» mientras la línea siguiente ya anunciaba la tarea siguiente, que es este ciclo: incoherencia del mismo tipo que el check del recuento impide en la cifra de tests y que nadie vigilaba en la cabecera.
-- **Próxima Tarea:** TASK-058 — Sanear las filas FALSAS de la Deuda Técnica Conocida de `STATUS.md`.
-- **Última Acción:** Ciclo #47 TASK-057 — El requisito de registrar un ciclo pasa a ser la **unión** de `rd_journal.json` y el historial de commits, con un solo camino de validación (`validar(root)`) y los escenarios como **filas de una tabla**: la suite bajó de 104 a 103. Cerró **0 supervivientes de 20 mutantes** tras **cuatro rondas** (FAIL, FAIL, FAIL, PASS) y el Circuit Breaker. `src/` sin cambios.
+- **Modo:** 🟢 EN MARCHA — reanudado por el usuario. El bucle no para entre ciclos: el siguiente es TASK-060.
+- **Ciclos Completados:** 48 (`rd_journal.json` actualizado).
+- **Ciclo Actual #48:** TASK-058 — Sanear las filas FALSAS de la Deuda Técnica Conocida de `STATUS.md`. 🟠 **Implementado y comiteado; auditoría FAIL**, con dos deuda registradas (S1: una fila de gravedad rebajada para que el panel quede más limpio = documentación fail-open. S2: ningún check verifica estas filas, y la propia fila 98 lo admite). Sin cambios en `src/` ni en tests.
+- **Próxima Tarea:** TASK-060 (Ciclo #49) — Check 8 de `validate_docs.py`: que toda fila **viva** de esta sección lleve un ancla resoluble cuya verdad se derive de fuera del panel, con las filas cerradas exentas. Y cerrar S1 devolviendo a `🟠` la fila 87, cuya gravedad se rebajó sin cerrar el problema.
+- **Última Acción:** Ciclo #48 TASK-058 — 13 filas de deuda auditadas una a una con evidencia; 3 falsas, 2 caducadas, 1 imprecisa, **ninguna borrada** (conservan su redacción original y ganan el cierre con su comprobable). Corregidos dos fallos vivos que el panel afirmaba y nadie vigilaba: *«Sin commit desde el ciclo #14»* y los `test_*.py` *«en la raíz»* (0 en la raíz; 11 archivados en `docs/archive/legacy-root-tests/`). El fallo real de fondo era otro: `docs/index.md:25` declaraba 96 tests de 103. **Dos premisas de la propia TASK-058 resultaron falsas** y no se ejecutaron literalmente.
+- ⚠️ **Recuperación aplicada:** el auditor dejó su sonda en el repo real (commit basura `43e25f5` y `.taskmaster/git_safe_commit.py` mutado). Revertido a `0af4fd4`, `WOPT_REPO_OK` y `dist/woptimizer.exe` intactos. Una conclusión suya resultó falsa —`test_profiles_task1.json` no era un artefacto de este ciclo sino un fichero versionado desde `8efc0ae`— y su borrado se revirtió.
 
 ---
 
