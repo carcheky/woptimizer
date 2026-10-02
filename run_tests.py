@@ -6221,22 +6221,57 @@ def test_la_consulta_de_version_no_puede_desincronizarse():
 
 
 def _entorno_git_del_repo():
-    """(repo_root, env) con el MISMO `GIT_DIR` que usa `git_safe_commit.py`.
+    """(repo_root, env) con el `GIT_DIR` del repo REAL de este arbol.
 
-    El `.git` de este repositorio NO vive en el arbol de trabajo: esta corrupto
-    por el VFS de Nextcloud. El historial real esta en
-    `%LOCALAPPDATA%\\woptimizer_git\\.git`. Sin montar aqui ese entorno,
-    `git check-ignore` responderia por OTRO repo y la sonda pasaria sin haber
-    mirado nada: verde por el motivo equivocado, que es el modo de fallo que
-    este ciclo esta cazando. La precedencia ("si el entorno ya trae GIT_DIR se
-    respeta") es la de `git_safe_commit.get_env()` y la via documentada en
-    AGENTS.md.
+    MEDIDO el 2026-10-03 en el runner de GitHub: ahi
+    `%LOCALAPPDATA%\\woptimizer_git\\.git` NO existe, porque ese desacople es una
+    medida del VFS de Nextcloud en la maquina del dueno, no una propiedad del
+    proyecto. Con la ruta FIJA, `git check-ignore` respondia
+    `fatal: not a git repository` (rc=128) y tumbaba el job `verify` entero. El
+    test era correcto y la premisa del entorno era falsa; por eso se descubre el
+    repo en vez de suponerlo.
+
+    El orden es 1. el `GIT_DIR` que ya traiga el entorno (la precedencia
+    documentada en AGENTS.md y la de `git_safe_commit.get_env()`), 2. el
+    desacoplado si existe de verdad, 3. el `.git` del arbol de trabajo, que es
+    donde vive el repo en cualquier clon normal.
+
+    La VERIFICACION no es decorativa y es lo que evita el fallo que este ciclo
+    caza: la sonda tiene que mirar ESTE repo. Sin ella, una ruta que no es la
+    correcta daria verde por el motivo equivocado. Si ninguna candidata es este
+    arbol, se falla fuerte y con el motivo a la vista, en vez de skipear en
+    silencio: una guarda que se salta sola cuando no puede comprobar ya no
+    guarda nada.
     """
     repo_root = os.path.dirname(os.path.abspath(__file__))
-    env = os.environ.copy()
-    env["GIT_DIR"] = env.get("GIT_DIR") or os.path.expandvars(r"%LOCALAPPDATA%\woptimizer_git\.git")
-    env["GIT_WORK_TREE"] = repo_root
-    return repo_root, env
+    desacoplado = os.path.expandvars(r"%LOCALAPPDATA%\woptimizer_git\.git")
+    del_arbol = os.path.join(repo_root, ".git")
+    candidatas = []
+    if os.environ.get("GIT_DIR"):
+        candidatas.append((os.environ["GIT_DIR"], "GIT_DIR del entorno"))
+    if os.path.isdir(desacoplado):
+        candidatas.append((desacoplado, "repo desacoplado del VFS"))
+    if os.path.isdir(del_arbol):
+        candidatas.append((del_arbol, ".git del arbol de trabajo"))
+    if not candidatas:
+        raise AssertionError(
+            f"no hay ningun repositorio git desde el que comprobar {repo_root}: ni "
+            f"GIT_DIR={os.environ.get('GIT_DIR')!r}, ni {desacoplado}, ni {del_arbol}"
+        )
+    descartadas = []
+    for ruta, origen in candidatas:
+        env = os.environ.copy()
+        env["GIT_DIR"] = ruta
+        env["GIT_WORK_TREE"] = repo_root
+        rc, salida = _git(["rev-parse", "--show-toplevel"], env, repo_root)
+        if rc == 0 and os.path.normcase(os.path.normpath(salida.strip())) == \
+                os.path.normcase(repo_root):
+            return repo_root, env
+        descartadas.append(f"{origen} ({ruta}): rc={rc} {salida.strip()[:120]}")
+    raise AssertionError(
+        "ningun GIT_DIR candidato es el repo de este arbol, y una sonda que mira "
+        "otro repo pasaria por el motivo equivocado:\n  " + "\n  ".join(descartadas)
+    )
 
 
 def _git(args, env, cwd):
