@@ -125,15 +125,16 @@ ejecute ese contrato al pie de la letra reintroduce dos anclas falsas.
 | Ancla del contrato | Donde apunta de verdad | Ancla correcta |
 |---|---|---|
 | `STATUS.md:37` (el hito del ciclo #11) | `STATUS.md:37` es el hito del **ciclo #10** (`model_copy()` shallow). El del ciclo #11 esta **una linea mas abajo** | `STATUS.md:38` |
-| `.taskmaster/CHANGELOG.md:1525` (evidencia del `spawn EPERM`) | Esa linea habla de `model_copy()` shallow, **no de `spawn EPERM`**. La entrada que documenta el fallo intermitente del shell esta mucho mas abajo | `.taskmaster/CHANGELOG.md:1723` |
+| `.taskmaster/CHANGELOG.md:1525` (evidencia del `spawn EPERM`) | Esa linea es una de **benchmark** («cold_scan 15ms, cached 0.003ms»), asi que no habla ni de `spawn EPERM` **ni** de `model_copy()`: el `model_copy()` shallow esta en `:1593-1594`. La entrada que documenta el fallo intermitente del shell esta mucho mas abajo | `.taskmaster/CHANGELOG.md:1723` |
 
 **Y las dos tienen causas DISTINTAS, que es lo que faltaba.** El de `STATUS.md:37` a `:38` SI
 viene de que el contrato numera las filas contando el encabezado de la seccion como la fila 85,
 mientras que el numero de linea real del panel es esa cifra mas uno: un off-by-one de esa
 convencion, y solo de ahi. El de `.taskmaster/CHANGELOG.md` **no**, y ninguna convencion de
 numeracion de filas del panel lo explica: ese fichero inserta cada ciclo al principio, de modo
-que una cita de linea envejece por si sola con cada entrada nueva (130 lineas de desviacion,
-medidas contra `HEAD~1` con `git show` de solo lectura). **Las filas de `STATUS.md` que se
+que una cita de linea envejece por si sola con cada entrada nueva (**160** lineas de desviacion:
+el contenido real de esa entrada esta en `.taskmaster/CHANGELOG.md:1685` de `HEAD~1` y la cita del
+contrato decia `:1525`, medido con `git show` de solo lectura). **Las filas de `STATUS.md` que se
 citan aqui son numeros de linea reales del fichero**, y todas las anclas de esta tabla se
 comprueban por contenido, no por memoria.
 
@@ -195,3 +196,43 @@ lectura que hay que hacer bien: ese `110 OK / 0 FAIL` sale **con el panel ya san
 - **Esto no es un `PASS`.** Es la autoprueba de la ronda de cierre de `openspec-dev`. El
   veredicto de `mutation-auditor` sobre esta ronda se anadira aqui cuando exista, y este texto se
   conservara como la medicion previa.
+
+## 8. Quinta ronda: cifras y citas que no se habian medido (2026-10-02)
+
+La reauditoria de la cuarta ronda dio FAIL otra vez, y esta vez sobre el contenido y no sobre el
+codigo: los tres hallazgos de la ronda anterior estaban cerrados y verificados por contenido, pero
+**ocho afirmaciones que este ciclo habia escrito no se sostenian**. Todas son de la misma clase
+--una cifra o una cita que nadie contrasto contra el fichero-- y todas se corrigen en los dos
+changelogs y en el panel.
+
+| # | Que se afirmo | Medido | Donde se corrige |
+|---|---|---|---|
+| 1 | «diecises», en 3 sitios | Era `diecisis`: la `e` y el acento en el sitio equivocado, y **0** ocurrencias de la forma correcta en el repo | `STATUS.md`, `CHANGELOG.md`, `.taskmaster/CHANGELOG.md` |
+| 2 | Este informe, `:128` col. 2: «esa linea habla de `model_copy()` shallow» | `:1525` es una linea de **benchmark** («cold_scan 15ms, cached 0.003ms»); el `model_copy()` shallow esta en `:1593-1594` | este informe |
+| 3 | `STATUS.md:9`: «93 backend + 10 headless» | **Es derivable y sale exacto**: marcador `run_tests.py:12919`, 93 llamadas `test_*()` antes y 10 desde el, contado con `ast` | `STATUS.md:9`, con su ancla y con su limite |
+| 4 | «dos sitios sin tocar»: el bloque `CYCLE-017` y las notas de `TASK-011` | `CYCLE-017` va de `:1852` a `:1883` y tiene **cero** ocurrencias de `CHANGELOG.md:91`; `TASK-011` **no tiene campo `notes`**. La cita esta en `:1747` (dentro de `CYCLE-015`) y las dos de `tasks.json` (`:423` y `:455`) son de `TASK-026` | ambos changelogs |
+| 5 | «cero cambios en `run_tests.py`», en 5 sitios, uno de ellos del commit que lo escribio | Falso desde ese mismo commit: `run_tests.py` cambio en **1 linea de docstring** (`git show 9a8e952 -- run_tests.py`) | `CHANGELOG.md`, `.taskmaster/CHANGELOG.md` (3), `STATUS.md` |
+| 6 | «esta entrada anade 68 lineas» y «desviaciones de 130 a 1240» | **65** lineas (39 + 26 con `git show --numstat 9a8e952`; el commit entero son 87 inserciones y 18 borrados). Desviaciones de **160 a 1270** contra `HEAD~1` y de **198 a 1308** en `HEAD`, cada una resuelta por contenido | ambos changelogs y este informe |
+| 7 | P1: «9 cerradas, offsets 37 a 825» | **Dos criterios en una frase**: el 9 salia por resta (`15 - 5 vivas - 1`) y los offsets por otra regex. Con un criterio unico (marcador `CERRADA`/`CERRADO` en mayusculas): **8 filas lo llevan** (la 95 en el offset 6, otras 6 en offsets 200-825, y la propia 100, que lo lleva porque el criterio esta escrito en ella) y **7 no** (87, 88, 90, 91, 94, 97, 99). **Ninguna** lo tiene en el offset 0 que P1 exige | `STATUS.md:100` y `CHANGELOG.md` |
+| 8 | «era cierta el 2026-10-01» | Falsa ese mismo dia: `CYCLE-041` (`.taskmaster/CHANGELOG.md:397`, 2026-10-01 23:25) es **el mismo change** que escribio la frase y el que conecto el boton. Era cierta **a mas tardar el 2026-09-30** | `CHANGELOG.md` |
+
+**Dos mas, que aparecieron al re-medir y no estaban en el encargo.** Dos citas de
+`.taskmaster/CHANGELOG.md` envejeceron **38 lineas** con este mismo commit: la regla que escribe la fila
+100, visas ocurrir aqui. `STATUS.md:88` apuntaba a `:1685` (hoy la entrada del `spawn EPERM` esta en
+`:1723`) y `docs/ai/data-models.md:291` apuntaba a `:1361` (hoy la linea de la rotacion esta en
+`:1399`). Las dos, corregidas al contenido. Y al medir la desviacion de las seis citas se confirmo lo
+que ya se afirmaba, ahora con las cifras que lo sostienen: **ninguna de las 6 se rompio por las lineas
+de este ciclo**, porque el `numstat` de `9a8e952` no tiene ninguna linea de `src/`.
+
+**La decision del punto 3, y por que se deriva en vez de retirarse:** sale exacta del marcador
+estructural de `run_tests.py` con `ast` (93 antes, 10 desde), y el total ya se deriva con el mismo
+metodo. Lo que queda escrito en `STATUS.md:9` es la cifra **con su ancla y con su limite declarado**: el
+total lo vigila el check 7 de `validate_docs.py`, **el reparto no lo vigila nada**. Anadir esa
+comprobacion al validador es `TASK-060`, no de este ciclo.
+
+**Lo que esta ronda NO arregla:** la convencion de anclas por `fichero:linea` sigue en pie y sigue
+caducando sola; se anota con su medida y **sin parcheo**, porque es contrato de otro change.
+`openspec/changes/2026-09-30-close-mutation-survivors/proposal.md:17` cita `CHANGELOG.md:57-67` como
+«seccion CYCLE-017», y en el changelog de la raiz `:57` es una fila de la tabla de seis anclas de este
+ciclo y `:67` es `## CYCLE-047 - 2026-10-01`; la `CYCLE-017` real esta en `:724` de la raiz y `:1852`
+del tecnico. El dueno es de `architect-review`: el arreglo es cambiar la convencion, no un numero.

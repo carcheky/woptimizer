@@ -6,9 +6,9 @@
 - Paso 1 (Buscar): orchestrator (backlog: `active_task_id` TASK-058)
 - Paso 2 (Planear): architect-review — Auditoría fila por fila de las 13 filas de Deuda Conocida; **3 falsas, 2 caducadas, 1 imprecisa** detectadas con evidencia, y 2 premisas del encargo refutadas
 - Paso 3 (Ejecutar): openspec-dev — TASK-058 (STATUS.md + docs/index.md + 2 changelogs + tasks.json)
-- Paso 4 (Auditar tests): **NO APLICA** — sin cambios en `src/`, `run_tests.py` ni `validate_docs.py`; no hay fix de código que mutar. Sustituido por un comprobador propio que resuelve cada ancla escrita por contenido.
+- Paso 4 (Auditar tests): **NO APLICA** — sin cambios en `src/` ni en `validate_docs.py`, y en `run_tests.py` **una sola línea de docstring** («LAS SIETE FILAS» → «LAS OCHO FILAS», el «7» de la cuarta ronda), sin tests añadidos, borrados ni alterados; no hay fix de código que mutar. Sustituido por un comprobador propio que resuelve cada ancla escrita por contenido.
 
-> **Convención de anclas de esta entrada: números de línea FÍSICOS.** El contrato del change numera las filas contando el encabezado de la sección como la 85, así que sus números son estos menos uno (`openspec/changes/2026-10-02-sanear-deuda-status/mutation-report.md:118` lo documenta). Todas las filas de la tabla de arriba son líneas reales de `STATUS.md` y se comprueban por contenido, no por memoria. Dos anclas falsas que traía esta entrada y se corrigieron en el cierre: la del `spawn EPERM` llevaba el número de la fila anterior, y la del hito del **ciclo #11** llevaba el del **ciclo #10** (`model_copy`), que está una línea por encima. Ambas se han reescrito contra la línea real del panel y se comprueban por contenido, no por memoria. **Y la REGLA que esta cuarta ronda obliga a escribir, porque se va a repetir: una cita `fichero:línea` a un fichero que crece por arriba se caduca sola.** No hace falta que nadie la toque para que mienta: este fichero inserta cada ciclo al principio, de modo que todo número de línea citado en él envejece con cada entrada nueva, y lo mismo le pasa a cualquier log o informe al que se le prependan entradas. Medido en esta misma ronda sobre 6 citas de `openspec/changes/`: desviaciones reales de 130 a 1240 líneas, y **ninguna** de las 6 se rompió por las 68 líneas que añade esta entrada. Por eso arreglar 6 números no las arregla: son la muestra, no el conjunto.
+> **Convención de anclas de esta entrada: números de línea FÍSICOS.** El contrato del change numera las filas contando el encabezado de la sección como la 85, así que sus números son estos menos uno (`openspec/changes/2026-10-02-sanear-deuda-status/mutation-report.md:127` lo documenta, en la tabla de su §5 bis; el `:118` de ese fichero es el encabezado de la sección, no la tabla). Todas las filas de la tabla de arriba son líneas reales de `STATUS.md` y se comprueban por contenido, no por memoria. Dos anclas falsas que traía esta entrada y se corrigieron en el cierre: la del `spawn EPERM` llevaba el número de la fila anterior, y la del hito del **ciclo #11** llevaba el del **ciclo #10** (`model_copy`), que está una línea por encima. Ambas se han reescrito contra la línea real del panel y se comprueban por contenido, no por memoria. **Y la REGLA que esta cuarta ronda obliga a escribir, porque se va a repetir: una cita `fichero:línea` a un fichero que crece por arriba se caduca sola.** No hace falta que nadie la toque para que mienta: este fichero inserta cada ciclo al principio, de modo que todo número de línea citado en él envejece con cada entrada nueva, y lo mismo le pasa a cualquier log o informe al que se le prependan entradas. Medido en esta misma ronda sobre 6 citas de `openspec/changes/`: desviaciones reales de **160 a 1270** líneas contra `HEAD~1` y de **198 a 1308** en `HEAD` (las 5 que apuntan a este fichero; la sexta va a `src/`, que este ciclo no toca), y **ninguna** de las 6 se rompió por las **65** líneas que esta entrada añade en los dos changelogs (39 en este y 26 en el de la raíz, medido con `git show --numstat 9a8e952`). Por eso arreglar 6 números no las arregla: son la muestra, no el conjunto.
 
 ### Ficheros tocados (y los que NO, por auditoría)
 | Fichero | Cambio |
@@ -23,7 +23,7 @@
 | `STATUS.md:99` (NUEVA, VIVA) | `docs/index.md:25` decía 96 tests y hay 103, y el check del recuento no vigila ese fichero. Nace con ancla, mutante y severidad 🟡. |
 | `docs/index.md:25` | 96 -> 103. |
 | `STATUS.md:100` (NUEVA, VIVA) | La fila del check que falta (`TASK-060`): el criterio entero, con la cuenta medida de las 5 filas vivas, la trampa del marcador de cierre y la propuesta para que el check no nazca fallando. Nace con ancla y severidad 🟡. |
-| Sin cambios | `STATUS.md:87, 90, 91, 94, 95, 96, 97`; `src/**`; `run_tests.py`; `validate_docs.py`; `verify_ui_syntax.py`; `AGENTS.md`; `README.md`. |
+| Sin cambios | `STATUS.md:87, 90, 91, 94, 95, 96, 97`; `src/**`; `validate_docs.py`; `verify_ui_syntax.py`; `AGENTS.md`; `README.md`. **Única excepción, `run_tests.py`: 1 línea de docstring** («LAS SIETE FILAS» → «LAS OCHO FILAS», el «7» vivo de la cuarta ronda), sin tests añadidos ni alterados y con el recuento en 103. |
 
 ### Verificación ejecutada (no supuestos)
 - Cada ancla `archivo:línea` escrita en las filas tocadas se comprobó **por contenido**: ruta existente, línea dentro del fichero y snippet esperado presente. Mutar cualquiera de ellas hace fallar el comprobador.
@@ -103,8 +103,8 @@ exige línea, el check nace fallando).
 
 **Ficheros tocados en el cierre:** `STATUS.md` (fila 88 devuelta a 🔴 + fila nueva del check 8),
 `docs/ai/sandbox-rules.md` (regla 7 y «Cobertura»), `openspec/changes/2026-10-02-sanear-deuda-status/mutation-report.md`
-(nuevo), `CHANGELOG.md` (raíz) y este fichero. **Cero cambios en `src/`, en `run_tests.py` y en
-`validate_docs.py`; suite estable en 103.**
+(nuevo), `CHANGELOG.md` (raíz) y este fichero. **Cero cambios en `src/` ni en
+`validate_docs.py`, y en `run_tests.py` una línea de docstring; suite estable en 103.**
 
 **Dos trampas de medición que casi dieron un veredicto falso (para el próximo):**
 
@@ -155,9 +155,9 @@ Salida literal completa en `mutation-report.md` §6.
 4. **Anclas de esta ronda unificadas a línea física** en los dos changelogs, y **segunda medición** del mutante de
    S48-2 añadida a `mutation-report.md` (también sobrevive al validador, que es el otro semi-veredicto del toolchain).
 
-**Cero cambios en `src/`, `run_tests.py`, `validate_docs.py` y `verify_ui_syntax.py`**; la suite sigue en **103 tests**.
+**Cero cambios en `src/`, `validate_docs.py` y `verify_ui_syntax.py`, y en `run_tests.py` una sola línea de docstring** («LAS SIETE FILAS» → «LAS OCHO FILAS», sin tocar ningún test); la suite sigue en **103 tests**.
 
-### Cuarta ronda: el FAIL era documental, y eran tres documentos
+### Cuarta ronda (con una quinta detrás, de cifras y citas, escrita en `mutation-report.md` §8): el FAIL era documental, y eran tres documentos
 
 La reauditoría volvió a dar **FAIL estrecho**: las tres razones de la ronda anterior están **cerradas** una a una
 (`TASK-061` existe con lo afirmado, la fila 88 nombra al dueño, las cinco filas vivas son correctas, la unificación
@@ -170,14 +170,14 @@ Quedan tres hallazgos, **ninguno bloquea** la decisión de diseño de `TASK-061`
    las cinco filas vivas: marca TRES — la 88, la 94 y la 100.** En la 88 el subradical es «ciclo cerra**do** sin
    commit». Importa más de lo que parece: con la enumeración de dos, quien ejecute `TASK-060` acota el trabajo a 94/100
    y **deja sin cubrir la fila 88, que es la 🔴**. Y en la misma frase había otra cifra falsa del mismo tipo: la fila
-   100 decía de sí misma «sus seis apariciones»: **catorce** en el texto que se corrigió y **diecisiés** en el ya reescrito (contadas con `re.findall(r"cerrad", fila, re.I)`), porque **la cuenta es autorreferente** y al reescribir la frase la frase se cuenta a sí misma.
+   100 decía de sí misma «sus seis apariciones»: **catorce** en el texto que se corrigió y **diecisiete** en el ya reescrito (contadas con `re.findall(r"cerrad", fila, re.I)`), porque **la cuenta es autorreferente** y al reescribir la frase la frase se cuenta a sí misma.
    **Corregido en las tres** —esta entrada, `CHANGELOG.md` y la fila 100— a las tres, y **añadida la explicitación de
    que la enumeración es ILUSTRATIVA y lo que manda es P1** (marcador de cierre estructural): sin depender de buscar
    una palabra, la exención no puede clasificar mal ninguna fila. Así el dato de la enumeración deja de ser crítico
    aunque vuelva a quedarse corto.
 2. **Seis citas de ancla falsas en `openspec/changes/`, sin declarar, con causalidad falsa.** Se parchearon a los
    números reales (resueltos por contenido, no por desplazamiento) y se corrigió la causa: **ya apuntaban al mismo
-   contenido equivocado en `HEAD~1`**, con diferencias reales de 130 a 1240 líneas, no de las 68 líneas que esta entrada añade (medido con `git show HEAD~1` de solo lectura, y con un caso que no admite discusión: la cita de `multi-favorites` apunta a `src/woptimizer/ui/views/process_manager_view.py`, fichero que este ciclo no toca, luego su desviación es previa por construcción).
+   contenido equivocado en `HEAD~1`**, con diferencias reales de **160 a 1270** líneas contra `HEAD~1` y de **198 a 1308** en `HEAD` (las 5 anclas que apuntan a este fichero, cada una resuelta por contenido con `git show HEAD~1`, no sumando), y no de las **65** líneas que esta entrada añade en los dos changelogs (39 en este y 26 en el de la raíz, con `git show --numstat 9a8e952`; el commit entero son 87 inserciones y 18 borrados, ninguna de `src/`). Caso que no admite discusión: la cita de `multi-favorites` apunta a `src/woptimizer/ui/views/process_manager_view.py`, fichero que este ciclo no toca, luego su desviación es previa por construcción.
    Ver el detalle medido en la raíz del changelog.
 3. **El «7» vivo, y se arregla en vez de carve-out.** El encabezado de la tabla de escenarios decía «LAS SIETE FILAS»
    con **ocho** filas reales `(a)`–`(h)`, su propia nota de límite ya decía «las ocho filas», y el panel arrastraba el
@@ -193,7 +193,7 @@ desplaza todas las anclas que apuntan a las líneas de abajo**. La arreglo semá
 encabezado** en vez de por línea física. Queda anotado aquí para que quien lo herede lo decida; no se implementa en
 este ciclo porque cambiar la convención de anclas del repo es un cambio de contrato, no una corrección de este ciclo.
 
-**Y no son seis, son una muestra.** Las mismas dos citas rotas (`CHANGELOG.md:91` y `CHANGELOG.md:536`) aparecen además en `openspec/changes/2026-09-29-data-integrity-fixes/tasks.md:47` y en `openspec/changes/2026-09-30-task028-debt-cleanup/proposal.md:173`, y se corrigen por la misma causa y con el mismo método. Quedan dos sitios que **no** se tocan y se declaran: esta misma entrada, en su bloque histórico de `CYCLE-017`, y las notas de `TASK-011` en `.taskmaster/tasks.json`; los dos son registro de lo que se creía, y reescribirlos sería la misma mentira que se está corrigiendo. Y una cita más de la misma familia queda **fuera de este encargo** y anotada: `openspec/changes/2026-09-30-close-mutation-survivors/proposal.md:17` cita `CHANGELOG.md:57-67` como «sección CYCLE-017» y no resuelve ni contra el changelog de la raíz ni contra el técnico (medido: `CYCLE-017` está al final de ambos, no al principio).
+**Y no son seis, son una muestra.** Las mismas dos citas rotas (`CHANGELOG.md:91` y `CHANGELOG.md:536`) aparecen además en `openspec/changes/2026-09-29-data-integrity-fixes/tasks.md:47` y en `openspec/changes/2026-09-30-task028-debt-cleanup/proposal.md:173`, y se corrigen por la misma causa y con el mismo método. **Los dos sitios que declaré «sin tocar» no existían como los nombré, y el motivo para no reescribirlos sí se sostiene:** el bloque de `CYCLE-017` de este fichero va de `:1852` a `:1883` y tiene **cero** ocurrencias de `CHANGELOG.md:91` (cero de la cadena `CHANGELOG`), y `TASK-011` **no tiene campo `notes`** —sus claves son `id`, `title`, `description`, `complexity`, `dependencies`, `priority`, `status` y `module`— ni la cita. La cita **sí existe**, pero en otro bloque y otra tarea: `:1747` de este fichero, dentro de **`CYCLE-015`** (`## [CYCLE-015]` en `:1734`), y las dos de `.taskmaster/tasks.json` (`:423` y `:455`) son de **`TASK-026`** («Integridad de datos, copia profunda y resiliencia de servicios»), no de `TASK-011`. Reescribir ese registro sería la misma mentira que se está corrigiendo, así que el motivo se aplica ahí, pero no a objetos que no existen. Y una cita más de la misma familia queda **fuera de este encargo, medida y con dueño**: `openspec/changes/2026-09-30-close-mutation-survivors/proposal.md:17` cita `CHANGELOG.md:57-67` como «sección CYCLE-017»; en el changelog de la raíz `:57` es una fila de la tabla de seis anclas de esta entrada y `:67` es `## CYCLE-047 - 2026-10-01`, y la `CYCLE-017` real está en `:724` de la raíz y `:1852` de este fichero. **No se parchea** (es propuesta de otro change) y **no se crea tarea**: el dueño es `architect-review`, porque el arreglo es de contrato, no una corrección.
 
 ---
 ## [CYCLE-047] 2026-10-01 23:59 - validator-independent-anchor
