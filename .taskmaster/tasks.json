@@ -1303,6 +1303,32 @@
         "El workflow build.yml ya no existe"
       ],
       "notes": "Verificacion en vivo en GitHub, no en local: este host no tiene node, asi que semantic-release solo puede correr en el runner. validate_docs.py excluido de CI de forma deliberada, ver proposal.md seccion 3.1."
+    },
+    {
+      "id": "TASK-063",
+      "title": "Seleccion por categoria para TODOS los packs: apagar y arrancar",
+      "description": "El campo target_categories YA existe (models.py:37) y el acordeon de la UI YA esta escrito, pero los dos estan GATED a Gaming Mode: el acordeon nace dentro de `if pack.is_gaming:` (pack_manager_view.py:336) y las TRES puertas de apagado enrutan por is_gaming hacia kill_pack_apps(p.apps) (pack_manager_view.py:545, dashboard_view.py:458, app.py:119), que IGNORA las categorias. Medido: hoy un pack normal no tiene ni el control para elegir categorias, y si se le anadieran tampoco podria ejecutar. Arrancar por categoria NO existe en ninguna capa. Diseno: reutilizar target_categories como lista de apagado (sin renombrar, sin migrar profiles.json) y anadir UN campo, start_categories; una sola puerta de apagado comun con las barreras anti-brick dentro; precedencia reusada sin reordenar (blindaje > keepers > apps explicitas > categorias) y en el conflicto stop-vs-start gana kill. Propuesta: openspec/changes/2026-10-03-pack-seleccion-por-categoria/.",
+      "complexity": "high",
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [],
+      "module": "docs/ai/data-models.md",
+      "acceptance_criteria": [
+        "Un pack con is_gaming=False y target_categories=['🟢 Navegadores'] mata el proceso de esa categoria y deja vivo un proceso de otra: el recuento difiere de 0 y el proceso superviviente sigue en el snapshot",
+        "Ese mismo pack supera los guards de la puerta de apagar: no se le responde 'no tiene apps' con categorias marcadas",
+        "El acordeon de categorias se renderiza en un pack no gaming, con casillas para las dos listas y con la casilla espejo deshabilitada cuando la categoria esta en la otra",
+        "Un pack no gaming con start_categories arranca lo que _resolver_app resuelve y cuenta como failed lo que no resuelve: started nunca incluye un arranque no verificado",
+        "Una categoria roja en target_categories de un pack NO gaming mata 0 procesos: svchost sobrevive y las barreras siguen DENTRO de la puerta comun, no duplicadas por llamante",
+        "Una categoria roja en start_categories arranca 0 procesos",
+        "La misma categoria en target_categories y start_categories resuelve a kill: queda en la lista de apagado, fuera de la de arranque, y started vale 0",
+        "Un keeper cuya categoria esta marcada NO muere: la precedencia blindaje > keepers > apps > categorias se respeta sin reordenarse",
+        "Un proceso hijo de uno de la categoria marcada tambien muere: el kill recursivo se cumple porque el camino llega a kill_processes",
+        "execute_pack() no lanza ValueError con un pack no gaming y todo apagado sigue pasando por una sola llamada a kill_processes",
+        "Pack(default_action='stop') sigue levantando ValidationError: el literal es kill, no stop, y el verbo del texto lo decide la puerta, no el pack",
+        "El catalogo de categorias de la vista viene de un servicio y la vista no lee process_db ni repite la lista de ocho nombres a mano",
+        "run_tests.py: los tests de esta tarea estan escritos Y las cuatro cifras (STATUS.md, AGENTS.md, README.md, tabla de docs/ai/testing-guide.md) sincronizadas en la misma pasada, con validate_docs.py en 0 FAIL"
+      ],
+      "notes": "HALLAZGO 1: la premisa del encargo era FALSA en dos puntos. (a) 'apagar por categorias' no necesita un campo nuevo: target_categories ya esta en el modelo (models.py:37) y en el profiles.json de los usuarios via DEFAULT_GAMING_PACK (pack_service.py:239); lo que falta es el cableado, no el formato. (b) default_action NO vale 'stop': es Literal['start','kill'] (models.py:54) y run_tests.py:8176-8179 exige que 'stop' levante. HALLAZGO 2: la ambiguedad 'una app en varias categorias' NO EXISTE. _categorize (process_service.py:446) devuelve una sola cadena y la DB mapea un patron a una categoria (process_service.py:358): la resolucion es uno-a-uno, asi que se descarta la multi-etiqueta con el criterio de que la ambiguedad solo puede existir si la resolucion es many-to-one. El conflicto real era otra cosa: la misma categoria en las dos listas. HALLAZGO 3: hay DOS guards bloqueantes, no uno. Quitar el if pack.is_gaming: del acordeon (pack_manager_view.py:336) NO basta: pack_manager_view.py:495 vuelve a cortar la puerta por apps vacio. HALLAZGO 4 (el importante): la barrera anti-brick no esta en el modelo ni en la vista, esta PEGADA a execute_gaming_pack (gaming_service.py:122-128 y 141), que ademas RECHAZA packs no gaming con ValueError (linea 110). Ampliar el consumo de categorias sin mover la barrera a una puerta comun reintroduce exactamente el ladrillo del ciclo #14. Por eso el orden de T-1 antes de T-3 no es estetico: durante la ventana entre ambos commits el anti-brick esta abierto. HALLAZGO 5: arrancar por categoria tiene un techo real. La DB guarda (categoria, prioridad, descripcion) y NINGUNA ruta (process_service.py:340), y arrancar pasa por _resolver_app contra las raices permitidas (linea 672): hay categorias sin ningun ejecutable resoluble. Se declara failed, nunca started, siguiendo el precedente de la linea 817."
     }
   ]
 }
