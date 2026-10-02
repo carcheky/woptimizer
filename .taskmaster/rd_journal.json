@@ -755,5 +755,28 @@
       "survivors": "0 al cierre. E2 tiene un punto ciego nombrado: muere en el envoltorio compartido, no en su propia asercion.",
       "note": "A1 (el cableado desconectado en silencio) queda ERRADICADO donde se produjo y desplazado donde no se busco; asi esta escrito en la documentacion, no como cierre."
     }
+  },
+  {
+    "cycle": 48,
+    "date": "2026-10-02T00:40:00",
+    "area": "Arquitectura & Calidad",
+    "slug": "2026-10-02-sanear-deuda-status",
+    "task": "TASK-058",
+    "status": "COMPLETED",
+    "commits": [
+      "96c349f",
+      "84588f1",
+      "0af4fd4"
+    ],
+    "tests": {
+      "before": "103 totales",
+      "after": "103 totales (sin cambios: este ciclo no toca codigo ni tests)"
+    },
+    "impact": "Saneamiento de la seccion Deuda Tecnica Conocida de STATUS.md, que gobierna que trabajo hace el bucle: una fila falsa manda hacer un trabajo ya hecho. 13 filas auditadas una a una con evidencia; 3 falsas, 2 caducadas, 1 imprecisa, y NINGUNA se borro: conservan su redaccion original, que es la evidencia de lo que se creia, y ganan el cierre con su comprobable. Corregidos dos fallos vivos que el panel afirmaba y que nadie vigila: 'Sin commit desde el ciclo #14' (falso: el repo desacoplado esta sano) y los test_*.py 'en la raiz' (falso por partida doble: no estan en la raiz y solo 10 de 11 mueren por el import). El fallo real debajo era otro: docs/index.md declaraba 96 tests cuando hay 103, y el check del recuento no vigila ese fichero. Dos de las premisas de la propia TASK-058 resultaron falsas y no se ejecutaron literalmente.",
+    "audit": {
+      "verdict": "PENDIENTE",
+      "note": "Paso 4 en curso."
+    },
+    "deuda_nueva": "TASK-060: check 8 de validate_docs.py que exige que toda fila VIVA de la Deuda Tecnica Conocida lleve un ancla resoluble cuya verdad se derive de fuera del panel (arbol, recuento ast, git log), con las filas cerradas exentas."
   }
 ]
