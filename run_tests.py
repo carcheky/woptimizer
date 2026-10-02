@@ -11843,9 +11843,24 @@ def test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal():
         # El `sin` de "sin marcador de ciclo" NO es un ciclo: la palabra sola,
         # sin numero detras, no marca nada. Sin esta asercion un parser que
         # admitiera `ciclo` sin digitos contaria el 56 del subject anterior.
-        assert vd._marcador_de_ciclo("feat(quality): TASK-056 sin marcador de ciclo") is None, (
+        # G1 (cierre del ciclo #47): la unidad de la funcion paso de UN numero a
+        # un CONJUNTO, porque un asunto en plural declara mas de un ciclo. El
+        # "vacio = nada" es lo que sigue teniendo que ser falso para esa palabra.
+        assert vd._ciclos_del_asunto("feat(quality): TASK-056 sin marcador de ciclo") == set(), (
             "una palabra 'ciclo' sin numero detras no es un marcador de ciclo: "
             "aceptarla fabricaria ciclos que no existen"
+        )
+        # Y el rango del plural, que es la semantica de G1: `ciclos 14-20`
+        # corrobora los SIETE, con los dos extremos dentro. Aqui se fija solo
+        # lo que el parser DEVUELVE para un asunto literal; lo que el rango
+        # EXIGE (y que un rango absurdo no exija 9999 ciclos) lo mide la fila
+        # (h) de la tabla de escenarios, por `validar(root)`. Un invariante con
+        # dos guardianes se reporta con los dos, no con el primero que se
+        # encuentre.
+        assert vd._ciclos_del_asunto("feat(ciclos 14-20): varios ciclos") == set(range(14, 21)), (
+            "un asunto en PLURAL con guion declara un RANGO con extremos "
+            "incluidos: 'ciclos 14-20' corrobora 14 a 20. Sin esta asercion el "
+            "`s?` del plural es decoracion y quitarlo sobrevive a la suite"
         )
 
         # --- A2. EL RESIDUO: comiteado y NO registrado -----------------------
@@ -12331,8 +12346,8 @@ def test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador():
 
 
 def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
-    """TASK-057 iter 3 (D1, D3, D4) y cierre del ciclo #47: siete escenarios
-    del ancla, siete FILAS.
+    """TASK-057 iter 3 (D1, D3, D4) y cierre del ciclo #47: ocho escenarios
+    del ancla, ocho FILAS.
 
     D1 extrajo `validar(root)` de `main()`, asi que el producto y este test
     ejecutan la MISMA ruta: si una linea de cableado desaparece, este test deja
@@ -12389,9 +12404,21 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
       segundo intento. Mata E2 (estrechar el `except Exception` a `OSError`, que
       deja el timeout saliendo con traceback y sin comprobar ni el check 6 ni el
       7) y E3 (quitar el reintento del `spawn EPERM`). Cierre del ciclo #47.
+    - (h) el historial tiene `feat(ciclos 14-20)` y `feat(calidad): rango
+      absurdo ciclos 1-9999`; el journal solo registra el 1 y el 14 y el
+      changelog solo tiene `## CYCLE-001` y `## CYCLE-014`. Los DOS errores que
+      salen tienen que nombrar EXACTAMENTE 015 a 020. Mata G1 (quitar el `s?` del
+      plural: el historial deja de aportar ciclos, el residuo desaparece y los
+      errores nombrarian otra cosa) y mata el `MAX_CICLOS_DE_UN_RANGO` si se
+      borra (los errores nombrarian 9998 ciclos mas). Cierre del ciclo #47.
+
+    Por que la (h) es la que puede matar a G1 y la (a) no: la (a) mide un
+    historial SIN marcadores con un journal que registra, y ahi lo que decide es
+    "el parser no aporta NADA". La (h) pone el numero DENTRO del sujeto en
+    plural, que es justo lo que se quita al mutar el `s?`.
 
     LIMITACION CONOCIDA, y hay que decirla en voz alta (cierre del ciclo #47):
-    las siete filas comparten ESQUELETO y comparten helper, luego comparten
+    las ocho filas comparten ESQUELETO y comparten helper, luego comparten
     punto ciego. Una fila solo mide la forma de arbol que construye: la (f)
     tapona P2/P3/H2 porque su changelog tiene prosa con el numero y sin el
     `## CYCLE-`; un arbol SIN esa prosa daria el MISMO veredicto a las dos
@@ -12409,6 +12436,7 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
     resto de la suite.
     """
     import json
+    import re
     import shutil
     import subprocess as _sp_mod
     import tempfile
@@ -12497,6 +12525,24 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
                                    "chore(release): cerrar ciclo #15 (TASK-015)")
         hist_ciclo_46 = _historial("hist_ciclo_46",
                                    "chore(release): cerrar ciclo #46 (TASK-056)")
+        # Historial de la fila (h): DOS commits en la MISMA rama, porque son dos
+        # caloricidades del MISMO asunto de git y por eso tienen que convivir en
+        # un solo historial. El primero es el sujeto REAL del repo que depende
+        # del plural (G1); el segundo es el rango absurdo, que el parser tiene
+        # que ACOTAR y no expandir (si lo expandiera, el conjunto exigido
+        # pasaria de 8 a 9999 y el FAIL tendria 40.000 caracteres).
+        d_rangos = os.path.join(tmp, "hist_rangos")
+        _repo_temporal_de_un_commit(
+            d_rangos, "feat(ciclos 14-20): varios ciclos en un solo asunto")
+        _commit_vacio(d_rangos, "feat(calidad): rango absurdo ciclos 1-9999")
+        hist_rangos = os.path.join(d_rangos, ".git")
+        log_rangos = _git_de_fixture(["log", "--format=%s"], d_rangos)
+        assert "ciclos 14-20" in log_rangos and "ciclos 1-9999" in log_rangos, (
+            "la fila (h) mide el RANGE, y para eso los dos asuntos tienen que "
+            f"estar en el historial: `git log` dio {log_rangos!r}. Si la fixture "
+            "se montara mal y el validador leyera un historial sin plural, la "
+            "fila moriria por la fixture y el mutante pasaria sin ser probado"
+        )
         del_fallback = os.path.join(os.environ["LOCALAPPDATA"], "woptimizer_git")
         _repo_temporal_de_un_commit(del_fallback,
                                     "chore(release): cerrar ciclo #46 (TASK-056)")
@@ -12560,7 +12606,7 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
             _sp.run = _falso
             return lambda: setattr(_sp, "run", real)
 
-        # --- LAS SIETE FILAS -------------------------------------------------
+        # --- LAS OCHO FILAS -------------------------------------------------
         # Cada fila: (nombre, GIT_DIR o None, journal, entradas del changelog,
         #             doble a instalar antes de asentar (o None), funcion que
         #             juzga `errors` y `ok`).
@@ -12645,6 +12691,27 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
                  "ilegible y no comprueba ni el check 6 ni el 7; estrechando el "
                  "except, el timeout sale con traceback y no llega a ningun check. "
                  "Errores: " + repr(e))),
+            ("h: un asunto en plural declara un RANGO de ciclos, acotado",
+             hist_rangos, [{"cycle": 1}, {"cycle": 14}], [1, 14], None,
+             lambda e, _ok: (
+                 len(e) == 2
+                 and any("sin entrada para el/los ciclo/s" in x for x in e)
+                 and any("NO lo registra" in x for x in e)
+                 # Los tres digitos nombrados por los DOS errores tienen que
+                 # ser EXACTAMENTE 015 a 020. Ni uno mas (el 001 esta en el
+                 # changelog y el 9999 es un rango que el parser acota), ni uno
+                 # menos (los dos extremos del rango entran).
+                 and set(re.findall(r"\b\d{3}\b", " ".join(e)))
+                 == {"015", "016", "017", "018", "019", "020"},
+                 "G1: 'ciclos 14-20' declara SIETE ciclos, no uno. Aqui el journal "
+                 "solo registra el 1 y el 14 y el changelog solo tiene sus dos "
+                 "entradas, asi que lo unico que puede exigir el 015 al 020 es el "
+                 "HISTORIAL: sin la expansion del plural el historial no aporta "
+                 "nada, no hay residuo que acusar y este arbol sale con 0 o 1 "
+                 "errores. Y 'ciclos 1-9999' tiene que quedar ACOTADO al 1, que es "
+                 "la entrada que el changelog tiene: sin el tope de "
+                 "MAX_CICLOS_DE_UN_RANGO los errores nombrarian 9998 ciclos mas. "
+                 "Errores: " + repr(e)[:600])),
         )
 
         for nombre, git_dir, journal, changelog, antes, juzgar in FILAS:
@@ -12683,11 +12750,12 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
             _sp_mod.run = _SP_RUN_DE_ORIGEN
         shutil.rmtree(tmp, ignore_errors=True)
 
-    print("Ancla sobre arbol sintetico, 7 filas por validar(root): parser roto con "
+    print("Ancla sobre arbol sintetico, 8 filas por validar(root): parser roto con "
           "journal que si registra, silencio con journal vacio, ciclo de rama lateral "
           "acusado, journal sin ciclo entero, fallback a %LOCALAPPDATA% sin GIT_DIR, "
-          "encabezado de ciclo borrado con el numero solo en prosa, y git que no "
-          "arranca una vez pero cuyo ancla se lee en el reintento.")
+          "encabezado de ciclo borrado con el numero solo en prosa, git que no "
+          "arranca una vez pero cuyo ancla se lee en el reintento, y un asunto en "
+          "plural que declara un rango de ciclos acotado.")
 
 
 
@@ -12842,7 +12910,7 @@ if __name__ == "__main__":
     # pasandoles los argumentos a mano (D3). Suite: 104 -> 103.
     #
     # Cierre del ciclo #47: la tabla paso de cinco a SIETE filas (P2/P3/H2 y
-    # E2/E3) y la suite NO crecio: un hallazgo se paga con una fila. Ademas se
+    # E2/E3) y de siete a OCHO con la (h) de G1, y la suite NO crecio: un hallazgo se paga con una fila. Ademas se
     # corrige la lectura de D3 de arriba: las privadas no son "unitarias no
     # contractuales", y por eso la fila (f) va aqui y no en el test que las usa.
     test_el_ancla_se_cablea_en_el_camino_real_del_validador()

@@ -167,14 +167,46 @@ def _comprobar_recuento_de_tests(root, errors, ok):
 # NO se puede construir en un test. Una guarda que solo se despierta lanzando el
 # validador entero contra el repo entero es una guarda que nadie ejecuta.
 
-_RE_MARCADOR_DE_CICLO = re.compile(r"\b(?:ciclo|cycle)s?\b[\s:#-]*#?(\d{1,4})", re.IGNORECASE)
+# G1 (cierre del ciclo #47): el PLURAL declara MAS DE UN ciclo. La semantica es
+# una DECISION DE PRODUCTO, no una eleccion del implementador: un asunto con
+# plural ("ciclos", "cycles") seguido de un rango declara mas de un ciclo y se
+# interpreta como RANGO con extremos incluidos -- `ciclos 14-20` corrobora 14,
+# 15, 16, 17, 18, 19 y 20. Un plural con un numero suelto ("ciclos 47")
+# corrobora solo ese, que es el caso trivial de un rango de longitud uno.
+#
+# El grupo `s?` se CAPTURA en vez de consumirse porque la expansion depende de
+# el: con plural y guion, rango; sin plural, el primer numero y nada mas, que es
+# la lectura de siempre. Un `ciclo 14-20` en singular es un asunto prolijo y se
+# lee como el 14, no como siete ciclos que nadie declaro.
+_RE_MARCADOR_DE_CICLO = re.compile(
+    r"\b(?:ciclo|cycle)(s?)\b[\s:#-]*#?(\d{1,4})(?:\s*-\s*(\d{1,4}))?",
+    re.IGNORECASE,
+)
+
+# Techo de la expansion de un rango. MEDIDO sobre el historial real: hay UN
+# asunto con plural, `feat(ciclos 14-20)`, o sea siete ciclos. Sin tope, un
+# `ciclos 1-9999` escrito en cualquier parrafo exigiria 9999 entradas
+# `## CYCLE-` y el validador devolveria un FAIL de 40.000 caracteres: un texto
+# cualquiera no puede fabricar un requisito asi, y un requisito que nadie
+# puede satisfacer no es un requisito. Lo que excede el tope degrada al PRIMER
+# numero, que es exactamente lo que hacia el parser sin rango: acota el dano,
+# no lo inventa.
+MAX_CICLOS_DE_UN_RANGO = 50
 
 
-def _marcador_de_ciclo(asunto):
-    """`int | None`: el numero de ciclo que declara el ASUNTO de un commit.
+def _ciclos_del_asunto(asunto):
+    """`set[int]`: los ciclos que declara el ASUNTO de UN commit. Vacio = nada.
 
-    Regex `\\b(?:ciclo|cycle)s?\\b[\\s:#-]*#?(\\d{1,4})`, case-insensitive, PRIMERA
-    coincidencia. Tres decisiones MEDIDAS, no de estilo:
+    Antes devolvia `int | None` con el PRIMER numero, y por eso el `s?` del
+    plural era DECORACION: quitarlo de la regex no cambiaba ningun veredicto y
+    la suite entera lo toleraba. Medido el 2026-10-02 sobre los 159 subjects
+    reales: hay UN UNICO commit que depende del plural, `feat(ciclos 14-20)`, y
+    al quitarselo el historial deja de corroborar los ciclos 15 a 20 (que el
+    journal ya exigia, luego el veredicto no cambia hoy: lo que cambia es el
+    testigo, y un testigo que no corrobora no corrobora).
+
+    Regex `\\b(?:ciclo|cycle)(s?)\\b[\\s:#-]*#?(\\d{1,4})(?:\\s*-\\s*(\\d{1,4}))?`,
+    case-insensitive, PRIMERA coincidencia. Decisiones MEDIDAS, no de estilo:
 
     - `\\b` en los dos extremos: sin el, "ciclo" casaria dentro de "ciclon" y de
       "ciclope", que es ruido y no un ciclo.
@@ -186,13 +218,31 @@ def _marcador_de_ciclo(asunto):
       parser que confunda ambos devuelve 56 y exige `## CYCLE-056`, que no
       existe: pone el repo real en rojo. Medido hoy sobre los subjects reales:
       los `TASK-` dan {47..57}, todos fuera del journal.
+    - El rango se expande SOLO con plural y con el tope de arriba. Un rango
+      invertido ("ciclos 20-14") o por encima del tope degrada al primer numero
+      en vez de inventar el hueco o el tamano.
     """
     m = _RE_MARCADOR_DE_CICLO.search(asunto or "")
-    return int(m.group(1)) if m else None
+    if not m:
+        return set()
+    primero = int(m.group(2))
+    fin = m.group(3)
+    if not (m.group(1) and fin):
+        return {primero}
+    hasta = int(fin)
+    if hasta < primero or hasta - primero + 1 > MAX_CICLOS_DE_UN_RANGO:
+        return {primero}
+    return set(range(primero, hasta + 1))
 
 
 def _ciclos_de_commits(asuntos):
     """`(ciclos, con_marcador, sin_marcador)` de una lista de asuntos.
+
+    `ciclos` es el conjunto CORROBORABLE, donde un `ciclos 14-20` aporta siete,
+    pero `con_marcador` cuenta SUBJECTS con marcador y no ciclos: un rango es
+    un commit que declara siete. Sumar ciclos donde la linea de informe dice
+    subjects haria que el informe mintiera en la cifra que justamente existe
+    para no mentir.
 
     El TERCER numero no es decorativo: es el punto ciego MEDIDO y lo imprime el
     informe. La cifra EXACTA no se escribe aqui, y no por vaguedad: caduca con
@@ -206,11 +256,11 @@ def _ciclos_de_commits(asuntos):
     ciclos = set()
     con_marcador = 0
     for asunto in asuntos:
-        n = _marcador_de_ciclo(asunto)
-        if n is None:
+        del_asunto = _ciclos_del_asunto(asunto)
+        if not del_asunto:
             continue
         con_marcador += 1
-        ciclos.add(n)
+        ciclos |= del_asunto
     return ciclos, con_marcador, len(asuntos) - con_marcador
 
 

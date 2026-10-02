@@ -113,9 +113,16 @@ ciclos_requeridos = ciclos_del_journal | ciclos_del_historial
 `validate_docs.py` -> `_comprobar_ancla_del_changelog()` implementa las dos mitades:
 
 - **`.taskmaster/rd_journal.json`**, que el orquestador escribe antes que los changelogs.
-- **El historial de commits** (`git log --format=%s --all`), del que se deriva el número de
-  ciclo con `_marcador_de_ciclo()`: regex `\b(?:ciclo|cycle)s?\b[\s:#-]*#?(\d{1,4})`,
-  case-insensitive, primera coincidencia.
+- **El historial de commits** (`git log --format=%s --all`), del que se derivan los ciclos con
+  `_ciclos_del_asunto()`, que devuelve un **conjunto** y no un número: regex
+  `\b(?:ciclo|cycle)(s?)\b[\s:#-]*#?(\d{1,4})(?:\s*-\s*(\d{1,4}))?`, case-insensitive, primera
+  coincidencia. El **plural declara más de un ciclo** (G1, cerrado en el ciclo #47):
+  `ciclos 14-20` corrobora los ciclos 14 a 20 con ambos extremos, y `ciclos 47` —plural con un
+  número suelto— corrobora solo ese. El rango se expande **solo en plural** y hasta
+  `MAX_CICLOS_DE_UN_RANGO = 50`; por encima del tope, o invertido (`ciclos 20-14`), degrada al
+  primer número, que es exactamente lo que hacía el parser sin rango: acota el daño, no lo inventa.
+  Medido el 2026-10-02 sobre los **159 subjects** reales: **un único commit** depende del plural,
+  `feat(ciclos 14-20)`, y con él el historial corroboraría 6 ciclos más (los 15 a 20).
 
 Es una **unión y no una sustitución**, y la diferencia no es de estilo. Medido: los commits de
 cierre de los ciclos 1, 2, 3 y 15 a 20 **no llevan marcador de ciclo**, así que si el historial
@@ -190,6 +197,11 @@ no lo estaba (ciclo #15):
 3. **Un parser de marcador es una convención leída, no una verdad**: un asunto que mencione
    "ciclo 15" por hablar de él corrobora el 15. Solo puede **ablandar** el ancla, nunca
    endurecerla, así que no puede producir un FAIL falso — pero tampoco puede cerrar el punto 2.
+   Con G1 hay un matiz que conviene no esconder: el plural **sí** puede endurecer el ancla,
+   porque `ciclos 14-20` declara de forma explícita siete ciclos y exigir sus siete entradas es
+   leer el commit, no inventarlo. Ese endurecimiento solo ocurre con un rango acotado
+   (`MAX_CICLOS_DE_UN_RANGO`) y en plural; en singular, y más allá del tope, el parser se
+   comporta como antes.
 4. La independencia real de actor **no existe dentro de la banda**: solo la puerta humana la da,
    y el proyecto es explícitamente autónomo.
 
@@ -242,7 +254,7 @@ por hallazgo no convergía; la iteración 3 converge por construcción:
 | **D1** — un solo camino | `validar(root) -> (errors, ok)` con los checks 1-7; `main()` solo llama, imprime y hace `sys.exit` | Producto y tests ejecutan la **misma** función, así que "el cableado que nadie prueba" deja de ser una categoría de bug: no hay dos rutas que puedan divergir |
 | **D2** — el default se borra | `journal_cycles` pasa a **posicional obligatorio** | Borrar el cuarto argumento deja de ser un cambio de comportamiento y pasa a ser un `TypeError` en la llamada: el validador muere con traceback y muere el test de subproceso que ya existía, **sin escribir una línea de test nueva**. Matiz medido al cerrar el ciclo: **restaurar el default en solitario, con la llamada intacta, es una mutación inerte** y ningún test puede matarla, porque no cambia ningún veredicto. Lo que el default decide es si borrar el argumento es un `TypeError` o un silencio |
 | **D3** — un solo camino también para los tests | Todo test contractual se asienta por `validar(root)` o por el subproceso; las privadas dejan de ser **objetivo de tests nuevos** | Una función privada a la que se le pasan los argumentos a mano no prueba nada del producto *mientras su cableado no se pruebe*, y esa era la falsa cobertura. **Matiz medido en el cierre del ciclo #47 (la redacción anterior decía "unitarias-no-contractuales" y era falsa):** `test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal` sí asienta por las privadas y **es contractual de todos modos**, porque es el único guardián de **U1** (unión ≠ sustitución), **P1** (ciclo ≠ tarea: con el parser leyendo `TASK-046` el repo real da `107 OK / 2 FAIL`) y **E1** (ancla ilegible nunca en verde). La regla es *prefiera `validar(root)`*, no *las privadas no importan* |
-| **D4** — los escenarios son FILAS | `test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios`: **siete** escenarios sobre el esqueleto real copiado **una vez** | Medido: 1,7 MB y una copia por test, así que un hallazgo futuro cuesta **una fila**, no un test de 40 líneas con su propia copia. Límite conocido: las filas comparten esqueleto, luego comparten punto ciego — cada fila mide la forma de árbol que construye |
+| **D4** — los escenarios son FILAS | `test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios`: **ocho** escenarios sobre el esqueleto real copiado **una vez** | Medido: 1,7 MB y una copia por test, así que un hallazgo futuro cuesta **una fila**, no un test de 40 líneas con su propia copia. Límite conocido: las filas comparten esqueleto, luego comparten punto ciego — cada fila mide la forma de árbol que construye |
 
 La suite **bajó** de 104 a 103: `test_el_ancla_de_commits_cae_al_git_dir_por_defecto` (S3) y
 `test_un_parser_de_marcadores_roto_no_pasa_en_verde` (S4) se fusionaron en la tabla de
@@ -268,10 +280,21 @@ correcta en el sitio donde se cometió el error no es una defensa.
   el parser roto se acusa (`108 OK / 1 FAIL`, la fila (a) lo mata). En `missing_entries`/`has_jentry`
   el mismo patrón semántico —buscar en vez de exigir— seguía vivo sin sonda. **El ciclo no se
   declara cerrado por esto**: se declara cerrado *donde se midió*.
-- **Cerrado con dos filas, no con dos tests:** (f) encabezado borrado con el número solo en la
-  prosa → mata P2, P3 y H2; (g) `git` que falla una vez con `TimeoutExpired` → mata E2 y E3.
-  La suite sigue en **103 tests**: un hallazgo nuevo cuesta una fila.
-- **Limitación asumida:** las siete filas comparten esqueleto y helper, luego comparten punto
+- **Cerrado con filas, no con tests:** (f) encabezado borrado con el número solo en la
+  prosa → mata P2, P3 y H2; (g) `git` que falla una vez con `TimeoutExpired` → mata E2 y E3;
+  (h) un asunto en plural que declara un rango → mata G1 y el tope del rango. La suite sigue en
+  **103 tests**: un hallazgo nuevo cuesta una fila.
+- **G1 cerrado, no solo anotado.** El `s?` del plural era decorativo y sobrevivía a la suite
+  entera. Con la semántica de rango escrita arriba (decisión de producto) y la fila (h) como
+  prueba, quitar el plural mata la fila, y `MAX_CICLOS_DE_UN_RANGO` impide que un
+  `ciclos 1-9999` escrito en cualquier párrafo exija 9999 entradas de changelog. Es el primer
+  sitio donde el ancla puede endurecerse: la expansión **solo añade requisitos** que el sujeto
+  del commit declara de forma explícita, y nunca relaja los del journal.
+- **Punto ciego declarado, no escondido:** la fila (g) mata a E2, pero **no por su propia
+  aserción** — E2 sale por el envoltorio compartido `_informe_del_validador_real`, que convierte
+  el `Traceback` en `AssertionError`. Si ese envoltorio cambiara, la cobertura de E2 desaparecería
+  sin que nadie lo notase. Detalle y medición en `mutation-report.md`.
+- **Limitación asumida:** las ocho filas comparten esqueleto y helper, luego comparten punto
   ciego. Una fila mide la forma de árbol que construye, y por eso cada una se documenta con el
   mutante que mata en lugar de solo con su nombre.
 - **Dos documentaciones eran falsas y se han corregido:** `sandbox-rules.md` decía "11 de las **46** entradas" del journal
