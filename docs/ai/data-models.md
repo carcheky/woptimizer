@@ -719,8 +719,11 @@ lo deja escrito: lee los dos ficheros (**`tomllib` y `ast`, nunca `import`**, qu
 ejecutaría el paquete) y además comprueba que ninguno de esos tres ficheros de
 empaquetado vuelva a declarar una versión por su cuenta.
 
-> Nota de honestidad: `commit_version.bat:22` hace `findstr "__version__"
+> Nota de honestidad: `commit_version.bat:22` hacía `findstr "__version__"
 > process_manager.py`, y **`process_manager.py` no existe** (es un fichero legacy ya
-> retirado y listado en `.gitignore`). Ese script está muerto desde antes de este
-> ciclo. No se ha tocado: no es una fuente de versión, es un *consumidor* de una, y
-> no puede desincronizar nada. Es deuda, no unacorrección de este ciclo.
+> retirado y listado en `.gitignore`). Ese script estaba muerto desde antes de este
+> ciclo, y en CYCLE-050 pasó a estar muerto **y** obsoleto: la versión la decide
+> `semantic-release` desde el mensaje de commit, así que un script que la extrae del
+> código ya no describe el mecanismo real. **Movido a `basura/`** (fuera del índice,
+> pendiente de que el propietario lo borre). No era una fuente de versión sino un
+> *consumidor* de una, y no podía desincronizar nada.

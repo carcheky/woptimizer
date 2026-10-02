@@ -2,7 +2,7 @@
 
 **Change ID:** `2026-10-03-github-releases-semantic-release`
 **Tarea:** `TASK-062` (ciclo #50)
-**Alcance:** `.github/workflows/`, `.releaserc.json`, `package.json`, `commitlint.config.json`, `docs/ai/release-pipeline.md`, `README.md`, `AGENTS.md`.
+**Alcance:** `.github/workflows/`, `.releaserc.json`, `package.json`, `.commitlintrc.json`, `docs/ai/release-pipeline.md`, `README.md`, `AGENTS.md`.
 **NO toca:** `src/woptimizer/**`. Cero cambios de codigo de producto.
 
 ---

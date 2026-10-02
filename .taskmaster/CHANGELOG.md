@@ -5,7 +5,7 @@
 **Models**:
 - Paso 1 (Buscar): orchestrator (encargo directo del propietario: "configura actions de github para que publique releases del .exe")
 - Paso 2 (Planear): orchestrator - diseño de los cuatro jobs y de las ramas. **Sin `architect-review`**: el encargo es de tooling de CI y no toca `src/`, no hay invariantes de producto en juego y el propio encargo fijaba el resultado esperado (1.0.0 al final). Delegar aquí habría sido gastar una sesión en un plan que ya estaba decidido.
-- Paso 3 (Ejecutar): orchestrator - `.releaserc.json`, `package.json`, `commitlint.config.json`, `release.yml`, `commitlint.yml`, retirada de `build.yml`, docs y los dos changelogs
+- Paso 3 (Ejecutar): orchestrator - `.releaserc.json`, `package.json`, `.commitlintrc.json`, `release.yml`, `commitlint.yml`, retirada de `build.yml`, docs y los dos changelogs
 - Paso 4 (Auditar tests): orchestrator - mutantes del **pipeline** (no de `src/`, que este ciclo no toca). PASS. El detalle está más abajo.
 
 ### Mutaciones auditadas (Paso 4)
@@ -29,7 +29,7 @@ Este ciclo no toca codigo de producto, asi que los mutantes no son de `src/`: so
 - `.github/workflows/release.yml`: `commits` (ubuntu) -> `verify` (windows) -> `release` (ubuntu) -> `build` (windows)
 - `.github/workflows/commitlint.yml`: commitlint en PRs. En push directo lo cubre el job `commits`
 - `package.json` minimo con `"private": true`: el paquete de producto es Python, esto no se publica en npm
-- `commitlint.config.json` autocontenido, sin `extends`, para que `npx @commitlint/cli` lo resuelva sin instalar un shareable config
+- `.commitlintrc.json` autocontenido, sin `extends`, para que `npx @commitlint/cli` lo resuelva sin instalar un shareable config. **OJO al nombre:** `commitlint.config.json` no existe para commitlint (ver el incidente de la corrida 1)
 - **Retirado** `.github/workflows/build.yml`
 - Docs: `docs/ai/release-pipeline.md` (nuevo), `openspec/changes/2026-10-03-github-releases-semantic-release/{proposal,tasks}.md`, entrada en el indice de `llms.txt`, seccion de releases en `AGENTS.md`, correccion de `README.md:46` que declaraba un desfase que ya no puede ocurrir
 
@@ -43,6 +43,24 @@ Cierra en la practica la fila viva de `STATUS.md` que declara que **nadie vigila
 
 ### Incidente: el `WinError 32` que NO era del producto
 Medir la linea base dio `run_tests.py` en rojo en `test_logging_va_a_fichero_y_no_a_stderr` con `WinError 32`. **Medido, no supuesto:** `Move-Item` sobre `src/woptimizer/woptimizer.log` falla con "being used by another process" **despues** de que `run_tests.py` haya terminado, mientras que el mismo fichero **si** se puede truncar a 0 bytes. Esa asimetria (escribir si, renombrar no) es la firma de un handle abierto sin `FILE_SHARE_DELETE`: el VFS de Nextcloud, no un fallo del codigo. El trigger es el estado: al superar el log el tope de rotacion, `doRollover()` hace `os.rename` sobre un fichero que el VFS tiene abierto, la stdlib manda el aviso a `lastResort` (stderr), y eso es exactamente lo que la asercion del test comprueba que **no** pase. En CI no ocurre: checkout limpio, sin VFS. Truncando a 0 la suite da 105/105 dos veces seguidas. Queda escrito en `docs/ai/release-pipeline.md` con su sintoma y con como diferenciarlo de un fallo real.
+
+### Limpieza de la raiz: `basura/`, y lo que se decidio NO mover
+Peticion del propietario: "veo mucha basura en el repo", con carpeta de cuarentena **fuera de Git** para que el borrado en bloque sea una sola operacion suya y segura. `basura/` esta en `.gitignore:79`.
+
+**Metodo, que es la parte importante:** no se movio nada sin medir antes quien lo nombra. `_inventario.py` cruzo `git ls-files` con 20 consumidores (codigo, validadores y `docs/`) y con `tasks.json`. Eso salio:
+
+- **Se movieron 6**: `verify_task1.py`, `verify_task3.py`, `verify_pyw.py`, `test_profiles_task1.json`, `commit_version.bat`, `procesos.csv`. Motivos medidos: los tres verificadores son v2; `verify_task3.py` tiene **cero** referencias en todo el repo; `verify_pyw.py` verifica `process_manager.pyw`, que ya no existe; `test_profiles_task1.json` solo lo consumia `verify_task1.py:12` (se mueven juntos o no vale nada); `commit_version.bat` saca la version con `findstr` sobre un fichero inexistente y ademas contradice semantic-release; `procesos.csv` son 131 filas ya migradas a `assets/process_db.json` en el ciclo 13, y `PROCESS_LIST_FILE` apunta a `saved_processes.json`, no a el (medido en `config.py`).
+- **`_matrix_c26.py` se movio y SE DEVOLVIO.** `docs/ai/testing-guide.md` lo cita en 6 sitios como la matriz **reproducible** de 30 mutaciones, con su salida literal. Moverlo deja esas afirmaciones sin forma de comprobarse: es evidencia viva, no basura. Este es el movido/devuelto del que mas conviene acordarse, porque el criterio "esta roto y no lo usa nadie" era verdad y aun asi bylo incorrecto moverlo: lo que lo sostenia no era codigo, era **documentacion**.
+- **No se toco `woptimizer.spec`, `build.bat` ni `force_build.py`**: parecen residuo de build y son **contrato con la suite** — `run_tests.py` recorre `("woptimizer.spec", "build.bat", "force_build.py")` en un test y falla si falta alguno.
+- **No se toco `saved_processes.json` (38 KB)**: no esta versionado, pero es estado local de la maquina del dueno y es lo que apunta `PROCESS_LIST_FILE`. Borrarlo no seria limpiar el repo, seria tocarle el disco.
+- **No se toco `smoke_check.py`** (prueba viviente de que `PROCESS_LIST_FILE` no se borro) ni **`benchmark.py`** (lo usa el bucle para el micro-benchmarking).
+
+**Documentacion reparada en la misma pasada** (si no, quedan 4 documentos afirmando cosas falsas): `docs/ai/data-models.md:722` (nota de `commit_version.bat`), `docs/archive/legacy-root-data/README.md:52` (la fila que decia que `test_profiles_task1.json` "se queda"), `docs/known-issues.md:191` (cita a `verify_pyw.py`) y `docs/testing.md`, que resulto ser un documento **v2 entero** (`process_manager.py`, `ProcessManager.vbs`, cuatro scripts que ya no estan en la raiz) y lleva ahora un aviso al principio que dice cual es la guia vigente.
+
+### Corrida 1 en GitHub: FALLO en el job `commits`, y no era del mensaje de commit
+El primer push a `beta` (run #1) cayo en `Comprobar los mensajes con commitlint`, y el mensaje de commit era perfectamente convencional. La causa era el **nombre del fichero de configuracion**: `commitlint.config.json` no esta entre los que commitlint busca. Segun su documentacion oficial, los ficheros que recoge son `.commitlintrc`, `.commitlintrc.json`, `.commitlintrc.yaml/.yml`, `.commitlintrc.js/.cjs/.mjs/.ts/.cts/.mts`, `commitlint.config.js/.cjs/.mjs/.ts/.cts/.mts` y el campo `commitlint` de `package.json` — **`.json` bajo el nombre `commitlint.config` no existe**. Cosmiconfig no lo encuentra, commitlint arranca sin reglas y falla. Renombrado a `.commitlintrc.json`.
+
+**Por que se compta como mutacion y no como descuido:** el guard que existe para detectar un commit mal escrito se **disparo a si mismo** por un motivo que no tenia nada que ver con el commit. Un guard que falla por causas ajenas a lo que vigila entrena a apagar el guard, que es peor que no tenerlo: sin el, un commit malo pasa en silencio.
 
 ### Deuda que este ciclo deja escrita
 1. `validate_docs.py` no puede correr en CI mientras su ancla dependa de un `GIT_DIR` desacoplado. Arreglo de fondo: que acepte el repo por `argv` o por variable ya presente en el runner.

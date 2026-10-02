@@ -189,6 +189,7 @@ kill_process_tree(proc.pid)  # /T = tree, mata tambien los hijos
 ```
 
 **Aplicado en:** `verify_app.py` y `verify_pyw.py` (función `kill_process_tree`).
+*(CYCLE-050: `verify_pyw.py` se movió a `basura/` porque verificaba `process_manager.pyw`, que ya no existe. `verify_app.py` sigue ahí y es la copia viva del patrón.)*
 
 **Aplicación futura:** Si en algún momento `process_manager.py` lanza procesos `Popen` no-bloqueantes (PowerShell para queries periódicas, watchers de procesos, etc.), el cleanup al cerrar la app debe usar `taskkill /F /T` también. Hoy es seguro porque todos los subprocess son `run()` bloqueantes que mueren al retornar, pero el patrón sigue aplicando.
 

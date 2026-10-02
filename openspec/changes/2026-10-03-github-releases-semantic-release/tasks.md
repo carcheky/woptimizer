@@ -6,7 +6,7 @@
 
 - [x] T1. `.releaserc.json` con ramas `main` (estable), `beta` (prerelease) y `N.x`/`N.N.x` (mantenimiento), `tagFormat` `v${version}` y `releaseRules` explicitas.
 - [x] T2. `package.json` minimo y `private: true` (el paquete de producto es Python; esto no se publica en npm).
-- [x] T3. `commitlint.config.json` autocontenido (sin `extends`, para que `npx @commitlint/cli` lo resuelva sin instalar un shareable config).
+- [x] T3. `.commitlintrc.json` autocontenido (sin `extends`, para que `npx @commitlint/cli` lo resuelva sin instalar un shareable config). **El nombre importa:** `commitlint.config.json` NO es un nombre que commitlint busque, y entonces se le pasa por alto la config entera y falla. Verificado contra la [documentación oficial](https://commitlint.js.org/reference/configuration.html).
 - [x] T4. `.github/workflows/release.yml` con los cuatro jobs encadenados `commits -> verify -> release -> build`.
 - [x] T5. `.github/workflows/commitlint.yml` para PRs (en push directo lo cubre el job `commits`).
 - [x] T6. Retirado `.github/workflows/build.yml`.

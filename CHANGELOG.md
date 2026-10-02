@@ -4,6 +4,7 @@
 
 ### Añadido
 
+- 🆕 **Carpeta `basura/`, fuera de Git, para.quitar lo que sobra sin borrarlo.** Los ficheros que sobran se mueven ahí con su motivo escrito, y ya puedes borrarla entera de una vez cuando toque. Está en `.gitignore`, así que borrarla no genera ni un commit.
 - 🆕 **Ya hay ejecutables descargables en la pestaña Releases de GitHub, y el número de versión lo decide el código, no una persona.** A partir de ahora la versión sale del propio mensaje del commit: un `fix:` sube el último número, un `feat:` sube el medio, y un `BREAKING CHANGE:` sube el mayor. No hace falta crear ninguna etiqueta a mano ni acordarse de qué número va.
 - 🆕 **Rama `beta` para probar sin arriesgar la versión buena.** Cada merge a `beta` publica una versión de prueba marcada como *pre-release* en GitHub, con su `.exe` incluido. Cuando la cosa está fuma, se fusiona `beta` en `main` y se publica la versión estable.
 - 🆕 **Cada `.exe` se compila desde el commit al que apunta su versión.** Antes el ejecutable publicado se compilaba a mano y nada garantizaba que correspondiera al código de esa versión: era un desfase que nadie vigilaba. Ahora no puede ocurrir.
@@ -12,6 +13,7 @@
 ### Corregido
 
 - 🛡️ **Retirado el workflow que publicaba en la etiqueta del push.** Con el sistema nuevo, cada versión creada disparaba además el workflow antiguo, y los dos intentaban escribir la misma versión a la vez. Dos procesos peleándose por lo mismo no es una automatización: es una carrera.
+- 🛡️ **Seis ficheros de la raíz que ya no servían para nada** se han ido a `basura/`: tres verificadores de la versión 2, su fichero de pruebas, un script que sacaba la versión de un archivo que lleva tiempo borrado, y un CSV de procesos que ya se había migrado. **Los seis tenían un motivo escrito**, y las cuatro páginas de documentación que los nombraban se han actualizado para que no affirmen cosas que ya no son ciertas.
 - 🛡️ **El ejecutable ya no puede ir por detrás del código fuente** en la pestaña de instalación. Se ha quitado el aviso que lo advertía porque la causa ya no existe.
 
 ### Lo que no cambia

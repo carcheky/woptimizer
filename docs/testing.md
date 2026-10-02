@@ -2,6 +2,18 @@
 
 > ⚠️ **REGLA DE ORO:** Nunca digas "listo" sin haber validado con un test real.
 
+> 🟡 **Este documento describe la v2 (`process_manager.py`, `ProcessManager.vbs`) y está
+>caducado.** No lo uses para validar cambios actuales. La guía vigente es
+>[`docs/ai/testing-guide.md`](ai/testing-guide.md), y la puerta de entrada es
+>`python run_tests.py` (suite headless, la única con cobertura viva) más
+>`python verify_ui_syntax.py`.
+>
+> Los que enumera abajo que **ya no están en la raíz**:
+> `verify_pyw.py`, `test_kill_real.py`, `test_harness.py` y `test_gaming_profile.py`
+> (los dos últimos están archivados en `docs/archive/legacy-root-tests/`; los otros
+> dos se movieron a `basura/` en CYCLE-050). Siguen aquí como registro de qué se
+> comprobaba, no como instrucciones ejecutables.
+
 ## Scripts de validación incluidos
 
 ### `verify_app.py`

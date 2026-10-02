@@ -71,3 +71,9 @@ miniapps/
 
 scratch/
 *.bak
+
+# Carpeta de cuarentena del propietario: aqui se mueve lo que sobra en vez de
+# borrarlo, para que el DUEÑO lo borre de una vez cuando toque. Fuera del indice
+# a proposito: si se versionara, "borrar la basura" seria otro commit.
+# NO es `docs/archive/`, que es un archivo con valor historico y SI se versiona.
+basura/
