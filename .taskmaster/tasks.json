@@ -1239,18 +1239,31 @@
       "dependencies": [
         "TASK-058"
       ],
-      "module": "validate_docs.py",
+      "module": "openspec/changes/2026-10-02-check-deuda-con-anclas/proposal.md",
       "acceptance_criteria": [
-        "_comprobar_deuda_con_anclas(root, errors, ok) extraida CON RAIZ, alcanzable desde un test (mismo motivo que _comprobar_recuento_de_tests en TASK-037)",
-        "Una fila viva cuyo ancla no resuelve da FAIL nombrando la fila y el ancla rota: el caso real es la fila 85, que nombraba 'la raiz' cuando los ficheros hace 35 dias estan en docs/archive/legacy-root-tests/",
-        "Una fila marcada cerrada con el mismo ancla roto da PASS. ESTE es el escenario que discrimina: sin el, el check podria pasar por exigir anclas a todo y el test no distinguiria el fix de un check roto",
-        "Una fila viva cuyo numero contradice el recuento derivado de run_tests.py con ast da FAIL. MATA el mutante que deriva la verdad del propio STATUS.md en vez del codigo",
-        "Un panel sintetico con solo filas cerradas da PASS: control negativo obligatorio, porque un guard que marca todo no vigila nada",
-        "La lista del check 7 se extiende con docs/index.md y el patron que ese fichero usa de verdad, no el de los otros tres (mismo principio ya escrito en validate_docs.py:128-133: un validador que no encuentra lo que valida no es un validador)",
-        "mutacion-auditor cierra los dos mutantes: quitar la exencion de cerradas (mueren A/B) y sustituir la derivacion ast por una lectura del propio panel (muere C). Sin PASS de ese agente la tarea no se cierra",
-        "validate_docs.py en verde y run_tests.py pasa 104/104 tras el cambio"
+        "_comprobar_deuda_con_anclas(root, errors, ok) existe SIN defaults y SIN parametros extra (todo se deriva de root) y se llama una vez desde validar(root), entre _comprobar_recuento_de_tests y el return",
+        "Marcador de cierre: re.search('CERRAD', re.sub('`[^`]*`', ' ', fila)) -- quitar el sub de codigo inline es el fix, sin el la fila del criterio (STATUS.md:101) se autoexime por llevar el token dentro de comillas invertidas",
+        "Medido el dia 1: 15 filas, 7 exentas (87, 90, 93, 94, 96, 97, 99) y 8 vivas (88, 89, 91, 92, 95, 98, 100, 101). La lista escrita en STATUS.md:101 (87, 88, 90, 91, 94, 97, 99) es FALSA en 6 de 14 entradas",
+        "Cinco fuentes de verdad, todas fuera del panel: S1 ruta que existe (SIN numero de linea), S2 identificador presente dentro del fichero, S3 TASK-NNN con status legible en tasks.json, S4 CYCLE-NNN en CHANGELOG.md o rd_journal.json, S5 numero igual al recuento derivado con ast de run_tests.py (103)",
+        "Una fila viva necesita >=1 fuente resoluble Y >=1 que no sea una TASK completed: una fila cerrada reabierta sin decirlo (borrando su CERRADA) debe salir en rojo",
+        "NUNCA se verifica un numero de linea. Medido: las citas que nombran funcion o test son exactas (run_tests.py:12348, :12381, validate_docs.py:238 y :267, docs/index.md:25) y lo unico desviado es el bloque intra-panel de la fila 101, por UNA UNIDAD en sus cinco entradas, con el error ya propagado a docs/ai/sandbox-rules.md:120",
+        "Suelo de gravedad derivado: si un fichero de S1 sigue declarando 0 para WOPT_COMMIT_OK y para WOPT_NOOP (.taskmaster/git_safe_commit.py:13-14), una fila viva que se declare AMARILLO sale en rojo. Es el S1 del ciclo #48: bajar la gravedad sin cerrar es fail-open",
+        "MUTACION 1 (borrar el ancla de una fila viva) -> FAIL con 'VIVA sin ancla resoluble'",
+        "MUTACION 2 (ancla a fichero inexistente) -> FAIL nombrando el fichero que no existe",
+        "MUTACION 3 (mover una cita para que ya no apunte a lo que dice) -> FAIL nombrando el identificador ausente",
+        "MUTACION 4 (reabrir una fila cerrada sin decirlo) -> FAIL con 'su UNICA fuente es una TAREA YA CERRADA'",
+        "MUTACION 5 (rebajar la ROJO de la 89 sin cerrarla) -> FAIL con el motivo del suelo",
+        "MUTACION 6 (el panel se autoderiva: 103 -> 96) -> FAIL citando el 103 derivado con ast",
+        "MUTACION 7 (autoeximirse poniendo CERRADA fuera de comillas invertidas) -> FAIL",
+        "MUTACION 8 (borrar el encabezado de la seccion) -> FAIL, y la seccion vacia tambien",
+        "Los diez mensajes son ASCII PURO (trampa #16, cp1252) y la gravedad se imprime como ROJO/AMARILLO/VERDE en palabras, nunca con simbolo",
+        "NACIMIENTO: se toca UNA fila de 15 (STATUS.md:91 gana el ancla de src/woptimizer/services/pack_service.py). NO se exempan las filas 91, 92 ni 98 poniendoles CERRADA en mayusculas: costaria 0 filas y dejaria tres sin vigilar",
+        "El reparto 93 backend + 10 headless va en el CHECK 7, no en el 8: se deriva con ast alrededor del marcador run_tests.py:12919 (medido 93 antes / 10 desde / 103 total) y si el marcador no aparece se falla con el motivo literal, nunca 0+0 en verde",
+        "Un solo test en run_tests.py sobre STATUS.md sintetico en tempfile.mkdtemp() con ocho escenarios (A-H) y el total derivado con ast del ARBOL SINTETICO, no del repo real",
+        "docs/ai/sandbox-rules.md documenta el check 8 Y los siete limites residuales de proposal.md seccion 7; la limitacion residual se escribe, no se omite",
+        "CERO cambios en src/woptimizer/**"
       ],
-      "notes": "Especificacion completa en openspec/changes/2026-10-02-sanear-deuda-status/proposal.md seccion 5 y tasks.md. Coste medido: ~40 lineas de validador mas un test, la misma forma del check 7 que ya existe y ya ha cazado un fallo real de este mismo tipo. Beneficio: el panel es la entrada de mayor palanca del bucle y un '0 FAIL' sobre el no prueba hoy nada."
+      "notes": "Ciclo #49. Es el arreglo de fondo del PARTIAL del ciclo #48 (TASK-058), donde 8 de 9 mutaciones sobrevivieron porque nada vigilaba la seccion: validate_docs.py tiene 0 coincidencias de 'Deuda' y menciona STATUS.md una sola vez (validate_docs.py:116). HALLAZGO 1: la enumeracion escrita en STATUS.md:101 no es reproducible. Medido, las 7 filas sin marcador CERRAD en mayusculas fuera de codigo inline son 88, 89, 91, 92, 95, 98, 100 y 101, no 87, 88, 90, 91, 94, 97 y 99: la lista escrita mete como sin marcador a 87, 90, 94 y 97 que si lo llevan, y se come a la 89 (la ROJO del spawn EPERM). HALLAZGO 2: la premisa de que las filas 87 y 94 no tienen ancla fichero:linea es FALSA. La 87 cita 4 ficheros que existen y la 94 cita validate_docs.py:238 y :267, y ambos son EXACTOS hoy (_ciclos_de_commits y _comprobar_ancla_de_commits siguen ahi). La unica fila viva sin ninguna ruta que resuelve es la 91. HALLAZGO 3: el reparto 93+10 SI es derivable con ast (marcador en run_tests.py:12919), contra lo que se creyo. HALLAZGO 4: la regla de que la cita por linea caduca se confirma pero la causa es INSERCION, no crecimiento, y solo donde el panel se cita a si mismo: el bloque intra-panel de la fila 101 dice 87/88/94/99/100 donde son 88/89/95/100/101, y el mismo error salio del panel a docs/ai/sandbox-rules.md:120. Por eso el check resuelve por CONTENIDO y nunca verifica un numero de linea. DECISIONES: opt-out, no opt-in (borrar el CERRADA convierte la fila en vigilada y el check avisa; en opt-in la dejaria sin vigilar y en verde). P1 tal como esta escrita exigiria tocar las 15 filas: medido, 0 de 15 tienen marcador en el offset 0. El reparto va en el check 7 para que un rojo no diga dos cosas. Contrato: openspec/changes/2026-10-02-check-deuda-con-anclas/"
     },
     {
       "id": "TASK-061",
