@@ -12378,7 +12378,7 @@ def test_el_ancla_sobre_un_arbol_sintetico_tabla_de_escenarios():
     `GIT_DIR`. Anadir un hallazgo futuro cuesta una fila de esta tabla, no un
     test nuevo de 40 lineas con su propia copia del arbol.
 
-    LAS SIETE FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla es el contrato):
+    LAS OCHO FILAS Y EL MUTANTE QUE CADA UNA MATA (esta tabla es el contrato):
 
     - (a) historial SIN marcadores + journal con ciclos -> `"NO aporta ningun
       ciclo"`. Mata A1: desactivar la rama `if not ciclos and journal_cycles:`.

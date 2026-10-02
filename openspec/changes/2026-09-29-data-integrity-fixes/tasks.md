@@ -44,7 +44,7 @@
       puntos anteriores están.
 - [ ] **Auditoría de deuda**: documentar que TASK-011 figura `status: completed`
       (`tasks.json:126-135`), que `v3.1-quality-of-life/tasks.md:5` tiene el `[x]` puesto y que
-      `CHANGELOG.md:91` afirma la rotación, y que **ninguno de los tres es cierto**.
+      `.taskmaster/CHANGELOG.md:1399` afirma la rotación, y que **ninguno de los tres es cierto**.
 
 ## 3. FIX-005 — literal canónico `⚪ Otros` en TRES sitios · **PRIORIDAD 3**
 

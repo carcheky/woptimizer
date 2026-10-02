@@ -8,7 +8,7 @@
 - Paso 3 (Ejecutar): openspec-dev — TASK-058 (STATUS.md + docs/index.md + 2 changelogs + tasks.json)
 - Paso 4 (Auditar tests): **NO APLICA** — sin cambios en `src/`, `run_tests.py` ni `validate_docs.py`; no hay fix de código que mutar. Sustituido por un comprobador propio que resuelve cada ancla escrita por contenido.
 
-> **Convención de anclas de esta entrada: números de línea FÍSICOS.** El contrato del change numera las filas contando el encabezado de la sección como la 85, así que sus números son estos menos uno (`openspec/changes/2026-10-02-sanear-deuda-status/mutation-report.md:118` lo documenta). Todas las filas de la tabla de arriba son líneas reales de `STATUS.md` y se comprueban por contenido, no por memoria. Dos anclas falsas que traía esta entrada y se corrigieron en el cierre: la del `spawn EPERM` llevaba el número de la fila anterior, y la del hito del **ciclo #11** llevaba el del **ciclo #10** (`model_copy`), que está una línea por encima. Ambas se han reescrito contra la línea real del panel y se comprueban por contenido, no por memoria.
+> **Convención de anclas de esta entrada: números de línea FÍSICOS.** El contrato del change numera las filas contando el encabezado de la sección como la 85, así que sus números son estos menos uno (`openspec/changes/2026-10-02-sanear-deuda-status/mutation-report.md:118` lo documenta). Todas las filas de la tabla de arriba son líneas reales de `STATUS.md` y se comprueban por contenido, no por memoria. Dos anclas falsas que traía esta entrada y se corrigieron en el cierre: la del `spawn EPERM` llevaba el número de la fila anterior, y la del hito del **ciclo #11** llevaba el del **ciclo #10** (`model_copy`), que está una línea por encima. Ambas se han reescrito contra la línea real del panel y se comprueban por contenido, no por memoria. **Y la REGLA que esta cuarta ronda obliga a escribir, porque se va a repetir: una cita `fichero:línea` a un fichero que crece por arriba se caduca sola.** No hace falta que nadie la toque para que mienta: este fichero inserta cada ciclo al principio, de modo que todo número de línea citado en él envejece con cada entrada nueva, y lo mismo le pasa a cualquier log o informe al que se le prependan entradas. Medido en esta misma ronda sobre 6 citas de `openspec/changes/`: desviaciones reales de 130 a 1240 líneas, y **ninguna** de las 6 se rompió por las 68 líneas que añade esta entrada. Por eso arreglar 6 números no las arregla: son la muestra, no el conjunto.
 
 ### Ficheros tocados (y los que NO, por auditoría)
 | Fichero | Cambio |
@@ -156,6 +156,44 @@ Salida literal completa en `mutation-report.md` §6.
    S48-2 añadida a `mutation-report.md` (también sobrevive al validador, que es el otro semi-veredicto del toolchain).
 
 **Cero cambios en `src/`, `run_tests.py`, `validate_docs.py` y `verify_ui_syntax.py`**; la suite sigue en **103 tests**.
+
+### Cuarta ronda: el FAIL era documental, y eran tres documentos
+
+La reauditoría volvió a dar **FAIL estrecho**: las tres razones de la ronda anterior están **cerradas** una a una
+(`TASK-061` existe con lo afirmado, la fila 88 nombra al dueño, las cinco filas vivas son correctas, la unificación
+de anclas funcionó y el aislamiento de la cámara del `mutation-auditor` evitó la contaminación por tercera vez).
+Quedan tres hallazgos, **ninguno bloquea** la decisión de diseño de `TASK-061`, y los tres son el mismo defecto:
+**una cifra o una cita que no se comprobó contra lo que dice el fichero.**
+
+1. **La especificación de `TASK-060` subcuantificaba su propia trampa, y la fila que la llevaba era la 🔴.** Decía que
+   la búsqueda ingenua de `cerrad` marcaba como cerradas «la 94 y la 100». **Medido con ese mismo clasificador sobre
+   las cinco filas vivas: marca TRES — la 88, la 94 y la 100.** En la 88 el subradical es «ciclo cerra**do** sin
+   commit». Importa más de lo que parece: con la enumeración de dos, quien ejecute `TASK-060` acota el trabajo a 94/100
+   y **deja sin cubrir la fila 88, que es la 🔴**. Y en la misma frase había otra cifra falsa del mismo tipo: la fila
+   100 decía de sí misma «sus seis apariciones»: **catorce** en el texto que se corrigió y **diecisiés** en el ya reescrito (contadas con `re.findall(r"cerrad", fila, re.I)`), porque **la cuenta es autorreferente** y al reescribir la frase la frase se cuenta a sí misma.
+   **Corregido en las tres** —esta entrada, `CHANGELOG.md` y la fila 100— a las tres, y **añadida la explicitación de
+   que la enumeración es ILUSTRATIVA y lo que manda es P1** (marcador de cierre estructural): sin depender de buscar
+   una palabra, la exención no puede clasificar mal ninguna fila. Así el dato de la enumeración deja de ser crítico
+   aunque vuelva a quedarse corto.
+2. **Seis citas de ancla falsas en `openspec/changes/`, sin declarar, con causalidad falsa.** Se parchearon a los
+   números reales (resueltos por contenido, no por desplazamiento) y se corrigió la causa: **ya apuntaban al mismo
+   contenido equivocado en `HEAD~1`**, con diferencias reales de 130 a 1240 líneas, no de las 68 líneas que esta entrada añade (medido con `git show HEAD~1` de solo lectura, y con un caso que no admite discusión: la cita de `multi-favorites` apunta a `src/woptimizer/ui/views/process_manager_view.py`, fichero que este ciclo no toca, luego su desviación es previa por construcción).
+   Ver el detalle medido en la raíz del changelog.
+3. **El «7» vivo, y se arregla en vez de carve-out.** El encabezado de la tabla de escenarios decía «LAS SIETE FILAS»
+   con **ocho** filas reales `(a)`–`(h)`, su propia nota de límite ya decía «las ocho filas», y el panel arrastraba el
+   «7». Con esa redacción, la regla «🟡 mientras no haya afirmación falsa viva» **tenía una afirmación falsa viva**:
+   el propio 7. Un carve-out para exceptuar una falsehood concreta sería más deuda que la falsehood, así que se
+   corrigen las dos cosas y la fila 94 pasa a decir «las ocho filas».
+
+**Deuda de contrato anotada y NO implementada (decisión del arquitecto, no de este agente):** un log que crece por
+arriba no se cita por línea. Medido en esta misma ronda: los cuatro ficheros tocados tienen finales distintos
+(`STATUS.md`, `CHANGELOG.md`, `run_tests.py` y `.taskmaster/tasks.json` en CRLF; este fichero, `run_tests.py`'s
+docstrings neighbours y los `proposal.md` de `openspec/` en LF), y **una única inserción al principio de esta entrada
+desplaza todas las anclas que apuntan a las líneas de abajo**. La arreglo semántico sería citar **por ciclo +
+encabezado** en vez de por línea física. Queda anotado aquí para que quien lo herede lo decida; no se implementa en
+este ciclo porque cambiar la convención de anclas del repo es un cambio de contrato, no una corrección de este ciclo.
+
+**Y no son seis, son una muestra.** Las mismas dos citas rotas (`CHANGELOG.md:91` y `CHANGELOG.md:536`) aparecen además en `openspec/changes/2026-09-29-data-integrity-fixes/tasks.md:47` y en `openspec/changes/2026-09-30-task028-debt-cleanup/proposal.md:173`, y se corrigen por la misma causa y con el mismo método. Quedan dos sitios que **no** se tocan y se declaran: esta misma entrada, en su bloque histórico de `CYCLE-017`, y las notas de `TASK-011` en `.taskmaster/tasks.json`; los dos son registro de lo que se creía, y reescribirlos sería la misma mentira que se está corrigiendo. Y una cita más de la misma familia queda **fuera de este encargo** y anotada: `openspec/changes/2026-09-30-close-mutation-survivors/proposal.md:17` cita `CHANGELOG.md:57-67` como «sección CYCLE-017» y no resuelve ni contra el changelog de la raíz ni contra el técnico (medido: `CYCLE-017` está al final de ambos, no al principio).
 
 ---
 ## [CYCLE-047] 2026-10-01 23:59 - validator-independent-anchor

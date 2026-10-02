@@ -231,7 +231,7 @@ Y sin embargo el proyecto **afirma tres veces** que la rotación existe:
 
 - `tasks.json:126-135` — TASK-011 `"status": "completed"`, descripción *"auto-backup de perfiles al guardar"*.
 - `openspec/changes/2026-09-29-v3.1-quality-of-life/tasks.md:5` — `- [x] Modificar PackService.save() para que cree un archivo profiles.json.bak de forma segura`.
-- `.taskmaster/CHANGELOG.md:91` — *"Rotación segura de backups `profiles.json.bak`"*.
+- `.taskmaster/CHANGELOG.md:1399` — *"Rotación segura de backups `profiles.json.bak`"*.
 
 **No es redundante: es una feature documentada que nunca se escribió** (o que se perdió en la
 reescritura v3). El único código `.bak` del repo está en los ficheros de test legacy muertos

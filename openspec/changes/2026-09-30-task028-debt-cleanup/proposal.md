@@ -163,14 +163,14 @@ ya se ejecutó, y hacerlo tal cual **revierte una decisión de seguridad deliber
   la DB es la curada (navegadores, chat, launchers, media, sync, productividad, 2 de sistema) y el CSV es
   sobre todo bloatware de servicio (`aac3572dramhal_x86`, `aggregatorhost`, `apcent`, `audiodg`...).
 
-**La migración ya se hizo en el ciclo 13 (TASK-024).** `.taskmaster/CHANGELOG.md:530-536` lo documenta:
+**La migración ya se hizo en el ciclo 13 (TASK-024).** `.taskmaster/CHANGELOG.md:1670-1695` (la entrada `CYCLE-013`, `2026-09-29-real-bloatware-scan`) lo documenta:
 *"Escaneo real: 131 nombres de proceso únicos, 48 registrados, 122 sin registrar"* y *"**25 entradas
 añadidas** (48 → 73)"*. Los 131 nombres del CSV son exactamente el material de aquel escaneo.
 
 ### Por qué ejecutarla tal cual es un **vector de anti-brick**
 Las decisiones del ciclo 13 **sobreescribieron a propósito** la columna `Seguridad` del CSV. La columna dice
 `Verde` para la pila de control de hardware que el arquitecto del ciclo 13 puso en 🔴 **deliberadamente**
-(`CHANGELOG.md:536`): *"La pila de control de Armoury Crate (armourycrate, armsvc, asus_framework, ...) a
+(`.taskmaster/CHANGELOG.md:1686`): *"La pila de control de Armoury Crate (armourycrate, armsvc, asus_framework, ...) a
 🔴 none en vez de verde: es el equivalente a icue/razer/lghub, que en esta misma base ya están en 🔴 por
 perfiles de ventilación y RGB. Cerrarlos deja el equipo sin perfil de juego."*
 

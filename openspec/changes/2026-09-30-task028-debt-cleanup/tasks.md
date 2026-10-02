@@ -75,9 +75,9 @@ salvo los listados abajo.
 
 ### R1. FIX-013 — migración `procesos.csv` → `assets/process_db.json` ⛔
 **Fuera de alcance.** Premisa falsa: la migración **ya se ejecutó** en el ciclo 13
-(`.taskmaster/CHANGELOG.md:530-536`, 48 → 73 entradas). Importar el CSV revertiría decisiones de
+(`.taskmaster/CHANGELOG.md:1682`, 48 → 73 entradas). Importar el CSV revertiría decisiones de
 seguridad deliberadas (la pila Armoury Crate / ASUS / GIGABYTE volvería de 🔴 a 🟢 killable:
-"el equipo se queda sin perfil de RGB y ventilación", CHANGELOG:536), y el CSV tiene **11 de 131
+"el equipo se queda sin perfil de RGB y ventilación", `.taskmaster/CHANGELOG.md:1686`), y el CSV tiene **11 de 131
 filas malformadas** con la descripción sin comillas.
 
 - [ ] **NO** modificar `procesos.csv` ni `assets/process_db.json` en esta tarea.

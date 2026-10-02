@@ -125,12 +125,17 @@ ejecute ese contrato al pie de la letra reintroduce dos anclas falsas.
 | Ancla del contrato | Donde apunta de verdad | Ancla correcta |
 |---|---|---|
 | `STATUS.md:37` (el hito del ciclo #11) | `STATUS.md:37` es el hito del **ciclo #10** (`model_copy()` shallow). El del ciclo #11 esta **una linea mas abajo** | `STATUS.md:38` |
-| `.taskmaster/CHANGELOG.md:1555` (evidencia del `spawn EPERM`) | Esa linea habla de `model_copy()` shallow, **no de `spawn EPERM`**. La entrada que documenta el fallo intermitente del shell esta mucho mas abajo | `.taskmaster/CHANGELOG.md:1685` |
+| `.taskmaster/CHANGELOG.md:1525` (evidencia del `spawn EPERM`) | Esa linea habla de `model_copy()` shallow, **no de `spawn EPERM`**. La entrada que documenta el fallo intermitente del shell esta mucho mas abajo | `.taskmaster/CHANGELOG.md:1723` |
 
-El desplazamiento viene de que el contrato numera las filas contando el encabezado de la seccion como
-la fila 85, mientras que el numero de linea real del panel es esa cifra mas uno. **Las filas de
-`STATUS.md` que se citan aqui son numeros de linea reales del fichero**, y se comprueban por
-contenido, no por memoria.
+**Y las dos tienen causas DISTINTAS, que es lo que faltaba.** El de `STATUS.md:37` a `:38` SI
+viene de que el contrato numera las filas contando el encabezado de la seccion como la fila 85,
+mientras que el numero de linea real del panel es esa cifra mas uno: un off-by-one de esa
+convencion, y solo de ahi. El de `.taskmaster/CHANGELOG.md` **no**, y ninguna convencion de
+numeracion de filas del panel lo explica: ese fichero inserta cada ciclo al principio, de modo
+que una cita de linea envejece por si sola con cada entrada nueva (130 lineas de desviacion,
+medidas contra `HEAD~1` con `git show` de solo lectura). **Las filas de `STATUS.md` que se
+citan aqui son numeros de linea reales del fichero**, y todas las anclas de esta tabla se
+comprueban por contenido, no por memoria.
 
 ## 6. Verificaciones (comando y salida real, no «se verifico»)
 
