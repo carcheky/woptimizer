@@ -1,7 +1,7 @@
 ## [CYCLE-048] 2026-10-02 03:10 - sanear-deuda-status
 **Área**: Documentación & Arquitectura
 **Change**: openspec/changes/2026-10-02-sanear-deuda-status/
-**Estado**: COMPLETED — **VEREDICT: PASS** (0 cambios de producto; recuento estable en 103). `validate_docs.py` sale con **110 OK / 1 FAIL** *despues* del commit, y el unico FAIL es **causado por este commit, no por el panel**: ver la nota de verificacion.
+**Estado**: PRIMERA RONDA — **VERDICT de la auditoría: FAIL**, corregido en la «ronda de cierre» de esta misma entrada (más abajo). La primera ronda escribió aquí `PASS` y era falso. 0 cambios de producto; recuento estable en 103. El `110 OK / 1 FAIL` que se registra más abajo era el residuo (a) de la fila 93 ante el journal sin el ciclo 48, y **ya está resuelto**: el journal lo registró y el validador vuelve a **110 OK / 0 FAIL** (medido el 2026-10-02).
 **Models**:
 - Paso 1 (Buscar): orchestrator (backlog: `active_task_id` TASK-058)
 - Paso 2 (Planear): architect-review — Auditoría fila por fila de las 13 filas de Deuda Conocida; **3 falsas, 2 caducadas, 1 imprecisa** detectadas con evidencia, y 2 premisas del encargo refutadas
@@ -39,6 +39,94 @@
 - `STATUS.md:80` («Commits pendientes de los ciclos #14 a #20») arrastra la misma afirmación caducada que se corrigió en la fila 88. **No se reescribió** por quedar fuera del alcance; se señaló desde la fila 88. Decisión pendiente del propietario si se extiende el alcance.
 - `STATUS.md:13` cita `ae53be7` como último commit; el HEAD real ya es `96c349f`. No es una falsedad («al día en git» es cierto) y lo rota el orquestador al cerrar el ciclo.
 
+
+### Ronda de cierre (tras el FAIL de la auditoría)
+
+La auditoría de `mutation-auditor` devolvió **FAIL** sobre la primera ronda de este ciclo, y el
+bucle volvió al Paso 3 con el informe. Dos hallazgos, que son los que se arreglan aquí:
+
+| # | Hallazgo | Qué se ha hecho |
+|---|---|---|
+| **S1** | La fila del `spawn EPERM` (`STATUS.md:88`) tenía la gravedad **bajada a 🟡** «porque la frase ya no era falsa», sin cerrar el problema. Eso es **documentación fail-open**: un panel que infravalora una deuda hace que el bucle la trate como resuelta y la abandone. En el ciclo #11 esa misma intermitencia hizo que `git_safe_commit.py` saliera con **código 0 ante cualquier fallo de commit** | **Vuelta a 🔴**, y **no se cierra**. Con su ancla y su comprobable, medidos (§ abajo) |
+| **S2** | **Nada verifica las filas de esta sección.** La propia fila lo admite en su cara: «nadie vigila ese `96`», y a la vez nadie vigila que ella misma diga la verdad | Fila nueva en el panel con el **criterio entero** de `TASK-060`, para que el ciclo #49 se ejecute sin volver a preguntar nada |
+
+**Lo medido de la fila 87, contra el repo y no de memoria** (el detalle entero, con comandos y
+salidas, en `openspec/changes/2026-10-02-sanear-deuda-status/mutation-report.md`):
+
+- El **invariante** es que *un fallo de git tiene que salir con un código distinto de 0*. **Se
+  cumple hoy en el código**: con un repo temporal cuyo `pre-commit` sale con 1, el wrapper devuelve
+  **1** y `WOPT_FAIL commit` (`WOPT_FAIL commit sin detalle`, exit 1, medido dos veces: antes y
+  después de mutar).
+- **El código que hoy se confunde con el de commit OK es el `0`**: está sobrecargado —
+  `WOPT_COMMIT_OK` (commit real) y `WOPT_NOOP` (nada que comitear) salen los dos con `0`
+  (`git_safe_commit.py:13-14`, tabla en `docs/ai/sandbox-rules.md:55-56`). Medido en el repo real
+  con el árbol limpio: `WOPT_NOOP arbol limpio (status --porcelain vacio)`, **exit 0**, sin escribir
+  nada. Quien solo lea el código de salida no puede distinguir «se ha versionado» de «no había nada
+  que versionar».
+- **Nadie lo prueba.** `run_tests.py:1352 test_git_safe_commit_fail_safe` solo exige `3` y `2`
+  (aserciones en `:1399`, `:1413`, `:1423` y `:1435`); ninguna de sus invocaciones llega a un
+  `WOPT_FAIL`. **Mutante medido** sobre el `git_safe_commit.py` real: `sys.exit(CODE_FAIL)` →
+  `sys.exit(CODE_OK)` en el camino de commit (`:229-230`) deja la suite **103/103 en verde con exit
+  0**. El mutante se confirmó **por hash** (`c248f694…` → `ddac118f…`) **y por comportamiento**, y el
+  fichero se restauró byte a byte (hash `c248f694…` de nuevo, y el wrapper volvió a salir 1).
+- **Por qué nadie lo escribió, medido también:** `get_env()` respeta un `GIT_DIR` del entorno pero
+  **impone `GIT_WORK_TREE = REPO_ROOT` sin condición** (`git_safe_commit.py:78`), así que una
+  invocación con un `GIT_DIR` desechable sigue haciendo `add -A` y `commit` **sobre el árbol de
+  trabajo real**. El hook que `docs/ai/sandbox-rules.md:78-80` llama «tests herméticos» es hermético
+  **en el repo, no en el árbol de trabajo**, y por eso el test existente solo toca las dos puertas
+  que devuelven antes de cualquier `add`. Cerrarlo exige una decisión de diseño y después su test.
+  Anotado en `docs/ai/sandbox-rules.md` (regla 7 y «Cobertura»), que hasta ahora afirmaba la
+  cobertura sin decir qué **no** prueba.
+
+**Barrido de las demás filas que tocó la primera ronda (S1 en dirección inversa):** **ninguna más
+tenía la gravedad rebajada sin cierre**, y **ninguna fila marcada cerrada sigue viva**. Las seis se
+volvieron a comprobar contra el repo: 11 `test_*.py` en `docs/archive/legacy-root-tests/` y **0** en
+la raíz, con `ast.Import` sobre los 11 · 10 importan `process_manager` y
+`test_powershell_direct.py` solo importa `os, subprocess, sys, time` · guard en `run_tests.py:11590`
+· `git_safe_commit.py --verify` → `WOPT_REPO_OK` exit 0 · `TASK-031` y `TASK-054` `completed` en
+`.taskmaster/tasks.json` · `docs/api.md:1` = «Referencia de API (v3)» con **cero** residuos `is_admin`
+y `taskkill`, test en `run_tests.py:11478` · `_ciclos_de_commits` en `validate_docs.py:238` y
+`_comprobar_ancla_de_commits` en `:267`.
+
+**Fila nueva del panel (deuda de `TASK-060`, 🔴 → 🟡 preventiva):** el check 8 no existe y
+`validate_docs.py` **no contiene ni una coincidencia de `Deuda`** (medido), así que un `0 FAIL`
+sobre este panel no prueba nada. Se escribe con el criterio completo: qué filas deben llevar ancla,
+por qué la verdad se deriva de **fuera** del panel, por qué las cerradas quedan **exentas**,
+`_comprobar_deuda_con_anclas(root, errors, ok)` extraída con `root` y el motivo, los cuatro
+escenarios del test (A/B/C/D), los dos mutantes que debe cerrar la auditoría, el **quinto testigo**
+(`docs/index.md` declara un número de tests que el check del recuento no vigila) y la única decisión
+que queda abierta (dos filas vivas llevan ancla en forma de fichero sin `fichero:línea`; si la regla
+exige línea, el check nace fallando).
+
+**Ficheros tocados en el cierre:** `STATUS.md` (fila 88 devuelta a 🔴 + fila nueva del check 8),
+`docs/ai/sandbox-rules.md` (regla 7 y «Cobertura»), `openspec/changes/2026-10-02-sanear-deuda-status/mutation-report.md`
+(nuevo), `CHANGELOG.md` (raíz) y este fichero. **Cero cambios en `src/`, en `run_tests.py` y en
+`validate_docs.py`; suite estable en 103.**
+
+**Dos trampas de medición que casi dieron un veredicto falso (para el próximo):**
+
+1. **El VFS miente si solo miras el hash.** La primera sonda aplicó la mutación y reimprimió el
+   SHA-256 del fichero mutado: **salió idéntico al original**, o sea la mutación no llegó al disco
+   (este árbol está en un directorio sincronizado con Virtual Files). Iba a imprimir `SOBREVIVE` y a
+   dar por bueno un mutante sin medir. Regla que sale de ahí: **en este repo, confirmar un mutante
+   por hash no basta — hay que confirmarlo por comportamiento.**
+2. **Trampa #16, vivida otra vez:** la consola es `cp1252` y un emoji en un `print()` de sonda
+   revienta con `UnicodeEncodeError` (🧬 en el panel). Todo lo que se imprime en una sonda de este
+   repo pasa por `.encode("ascii", "replace")`.
+
+**Afirmaciones de la primera ronda corregidas por ser falsas** (esta entrada y la del `CHANGELOG.md`
+de la raíz las tenían): el `VERDICT: PASS`, que fue `FAIL`; y la descripción de la bajada de
+gravedad de la fila 87 como si fuera un arreglo, que era el problema. También se alineó a 🟡 el
+título del bloque de `docs/index.md` en el changelog legible, que decía 🔴 mientras la fila y su
+criterio son 🟡.
+
+**Una conclusión de la auditoría que era falsa, medida para que no se repita:** `test_profiles_task1.json`
+no es un artefacto de este ciclo: lo añadió **`8efc0ae`** y está en `git ls-files`. Lo mismo
+`_matrix_c26.py` (`b7e5f54`). **No se toca ninguno de los dos.**
+
+**Verificaciones del cierre:** `python verify_ui_syntax.py` → EXITO, exit 0 · `python run_tests.py`
+→ `ALL TESTS PASSED.`, exit 0 (103) · `python validate_docs.py` → **110 OK / 0 FAIL**, exit 0.
+Salida literal completa en `mutation-report.md` §6.
 ---
 ## [CYCLE-047] 2026-10-01 23:59 - validator-independent-anchor
 **Área**: Arquitectura & Calidad

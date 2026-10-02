@@ -78,6 +78,14 @@ Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
 7. **Precedencia de `GIT_DIR`:** si el entorno ya lo trae, se respeta y no se sobrescribe (es la
    vía documentada arriba y además el hook que permite tests herméticos). Si no, se usa
    `%LOCALAPPDATA%\woptimizer_git\.git`. La validación se aplica igual en ambos casos.
+   **Matiz medido el 2026-10-02 (ciclo #48), porque «tests herméticos» era media verdad:** ese
+   hook hermetiza **el repositorio, no el árbol de trabajo**. `get_env()` respeta el `GIT_DIR`
+   del entorno pero **impone `GIT_WORK_TREE = REPO_ROOT` sin condición** (`git_safe_commit.py:78`),
+   así que una invocación con un `GIT_DIR` desechable sigue haciendo `add -A` y `commit`
+   **sobre el árbol de trabajo real**. Medido: una sonda con `GIT_DIR` temporal stageó y
+   commiteó el árbol real dentro del repo temporal (el historial real quedó intacto, porque
+   `GIT_DIR` era el temporal). Por eso el test de la sección siguiente solo ejercita las dos
+   puertas que devuelven **antes de cualquier `add`**.
 8. **Todas las cadenas de `print()` del wrapper son ASCII puro** (trampa #16: la consola es
    cp1252). Los comentarios y docstrings sí llevan acentos.
 
@@ -98,6 +106,19 @@ si no. Es el mecanismo de diagnóstico cuando el pipeline recibe un `!= 0` sin e
 `GIT_DIR` apuntado a rutas temporales inválidas y exige los códigos exactos del contrato
 (`3` y `2`). Es un test que **discrimina**: revierte el fix del código de salida y falla. No toca
 el repositorio real ni su historial.
+
+**Lo que esta cobertura NO prueba, medido el 2026-10-02 (ciclo #48):** ninguna de las invocaciones
+del test llega a un `WOPT_FAIL`; sus aserciones son `returncode == 3` (`run_tests.py:1399`,
+`:1413`, `:1423`) y `== 2` (`:1435`). El código `1` —**el del fallo de git**, que es el invariante
+que el ciclo #11 rompió devolviendo `0`— **no lo comprueba nadie.** Mutante medido sobre el
+`git_safe_commit.py` real (`sys.exit(CODE_FAIL)` -> `sys.exit(CODE_OK)` en el camino de commit,
+líneas 229-230): **la suite entera queda 103/103 en verde con exit 0**, y el wrapper imprime
+`WOPT_FAIL commit` mientras sale con `0`, así que un consumidor que lee el código de salida —que
+es lo que el contrato declara normativo— se lleva el falso verde. El invariante **se cumple hoy en
+el código** (medido: repo temporal con un `pre-commit` que sale con 1 -> `WOPT_FAIL commit` + exit
+1), pero **nadie lo ata a un test**: por eso vive como 🔴 en la fila del `spawn EPERM` de
+`STATUS.md:88`. Cerrarla exige decidir antes qué se hace con `GIT_WORK_TREE` (regla 7) y después
+escribir su test.
 
 ## Ancla de trazabilidad en el historial (TASK-057, ciclo 47)
 
