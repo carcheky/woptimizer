@@ -57,6 +57,28 @@ Peticion del propietario: "veo mucha basura en el repo", con carpeta de cuarente
 
 **Documentacion reparada en la misma pasada** (si no, quedan 4 documentos afirmando cosas falsas): `docs/ai/data-models.md:722` (nota de `commit_version.bat`), `docs/archive/legacy-root-data/README.md:52` (la fila que decia que `test_profiles_task1.json` "se queda"), `docs/known-issues.md:191` (cita a `verify_pyw.py`) y `docs/testing.md`, que resulto ser un documento **v2 entero** (`process_manager.py`, `ProcessManager.vbs`, cuatro scripts que ya no estan en la raiz) y lleva ahora un aviso al principio que dice cual es la guia vigente.
 
+### Corrida 2 en GitHub: el test de arranque de apps tumbaba el job `verify`
+Segundo fallo real, y este **si** era del repo. El job `commits` paso (el renombrado a `.commitlintrc.json` era el arreglo correcto) y fallo `Suite headless`:
+
+```
+AssertionError: el temporal C:\Users\RUNNER~1\AppData\Local\Temp\wopt_fix003_fcqy_7g3
+cae fuera de las raices de arranque: los casos (b) y (g) se rechazarian por
+contencion y no por lo que dicen probar
+```
+
+**Causa, MEDIDA y no supuesta.** En el runner `%TEMP%` llega en forma **corta 8.3** (`C:\Users\RUNNER~1\...`) mientras que las variables de las raices de arranque salen del perfil en forma **larga** (`C:\Users\runneradmin\...`). `_dentro_de_alguna` es **lexica por diseno** —para que el rechazo por junction lo haga su propia regla y no la contencion— y `os.path.commonpath` de esas dos formas colapsa a `C:\Users`. El temporal parecia estar fuera de toda raiz y la precondicion del test tumbaba el test entero.
+
+**Reproducido aqui antes de arreglar nada** (el 8.3 esta deshabilitado para el perfil de este host, asi que se fabrico un directorio con alias corto propio y se puso `TEMP`/`TMP` ahi). Con esa `TEMP`, la suite Fallaba en **tres** sitios distintos, no en uno: la contencion del test de arranque, la del test de junction y la del test de hard link. Los tres por la misma razon.
+
+**Arreglo en tres partes, y la que importa es la primera:**
+1. **Canonicalizar `%TEMP%` una sola vez** al principio de `run_tests.py` con `os.path.realpath`, que expande el 8.3 al nombre largo **sin resolver junctions** —que es justo lo que hace falta—. Se fija `tempfile.tempdir`, no solo las variables de entorno, porque `tempfile` cachea su directorio y no vuelve a mirar `%TEMP%`. Arregla la clase entera, no el síntoma.
+2. Los dos tests de arranque **colocan** su temporal en una raiz escribible (`LOCALAPPDATA` primero, porque las de Program Files piden privilegios) en vez de **asumir** que el TEMP del entorno cae dentro: disposicion, no casualidad de la maquina.
+3. La precondicion del test de junction afirmaba un **proxy** (`_ruta_real(tmp) == normpath(tmp)`, o sea "la forma lexica coincide con la real") cuando lo que exige es el **requisito** ("la ruta real del temporal cae dentro de las raices"). Se afirma el requisito: con un ancestro en 8.3 las dos formas difieren sin que el temporal salga de su raiz.
+
+**Verificado en los dos sentidos:** 105/105 con `TEMP` en forma 8.3 y 105/105 con `TEMP` normal. Un arreglo que solo funciona en el caso bueno no es un arreglo.
+
+**Lo que NO se ha tocado y por que:** `src/`. Este es un defecto de **portabilidad de los tests**, no del producto. El producto rechaza por contencion una app expresada en 8.3, que es un falso positivo fail-closed **latente** (`GetLongPathName` lo arreglaria sin seguir junctions), pero arreglar la funcion de seguridad sin la auditoria de mutacion que este repo exige seria exactamente el fallo que el bucledles cierra: cambiar el muro sin comprobar que el test lo vigila. Queda como deuda, no como cambio a escondidas.
+
 ### Corrida 1 en GitHub: FALLO en el job `commits`, y no era del mensaje de commit
 El primer push a `beta` (run #1) cayo en `Comprobar los mensajes con commitlint`, y el mensaje de commit era perfectamente convencional. La causa era el **nombre del fichero de configuracion**: `commitlint.config.json` no esta entre los que commitlint busca. Segun su documentacion oficial, los ficheros que recoge son `.commitlintrc`, `.commitlintrc.json`, `.commitlintrc.yaml/.yml`, `.commitlintrc.js/.cjs/.mjs/.ts/.cts/.mts`, `commitlint.config.js/.cjs/.mjs/.ts/.cts/.mts` y el campo `commitlint` de `package.json` — **`.json` bajo el nombre `commitlint.config` no existe**. Cosmiconfig no lo encuentra, commitlint arranca sin reglas y falla. Renombrado a `.commitlintrc.json`.
 

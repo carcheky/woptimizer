@@ -4,9 +4,32 @@ import ast
 import io
 import time
 import threading
+import tempfile
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.path.insert(0, os.path.abspath("src"))
+
+# --- `%TEMP%` se canonicaliza UNA vez, aqui, no test por test -----------------
+# MEDIDO el 2026-10-03 en el runner de GitHub: `%TEMP%` ahi llega en forma CORTA
+# 8.3 (`C:\Users\RUNNER~1\AppData\Local\Temp`) mientras que las variables de las
+# raices de arranque salen del perfil en forma LARGA (`C:\Users\runneradmin\...`).
+# Dos consecuencias, ambas medidas, ninguna del codigo de producto:
+#
+#   1. `_dentro_de_alguna` es LEXICA por diseno (para que el rechazo por junction
+#      lo haga su propia regla), y `commonpath` de esas dos formas colapsa a
+#      `C:\Users`: un temporal tomado de `%TEMP%` parecia estar FUERA de toda raiz.
+#   2. Varios tests comparan la ruta LEXICA con la RESUELTA para comprobar que
+#      el fichero no es un reparse point. Con un ancestro en 8.3 las dos difieren
+#      y el test falla por el alias, no por lo que dice comprobar.
+#
+# `os.path.realpath` expande el 8.3 al nombre largo SIN resolver junctions, que es
+# justo lo que hace falta. Se fija `tempfile.tempdir` y no solo el entorno porque
+# `tempfile` cachea su directorio y no vuelve a mirar `%TEMP%`.
+_TEMP_CANONICO = os.path.realpath(tempfile.gettempdir())
+if os.path.isdir(_TEMP_CANONICO) and _TEMP_CANONICO != tempfile.gettempdir():
+    os.environ["TEMP"] = _TEMP_CANONICO
+    os.environ["TMP"] = _TEMP_CANONICO
+    tempfile.tempdir = _TEMP_CANONICO
 
 
 def _pack_service_temporal():
@@ -4923,6 +4946,32 @@ def _primer_multi_enlazado_real() -> object:
     return None
 
 
+def _dir_scribible_de_una_raiz():
+    """Directorio ESCRIBIBLE de las raices de arranque, o `None` si no hay ninguno.
+
+    MEDIDO el 2026-10-03 en el runner de GitHub: `%TEMP%` ahi llega en forma
+    CORTA 8.3 (`C:\\Users\\RUNNER~1\\AppData\\Local\\Temp`) mientras que las
+    raices salen del perfil en forma larga (`C:\\Users\\runneradmin\\...`).
+    `_dentro_de_alguna` es LEXICA por diseno —para que el rechazo por junction lo
+    haga su propia regla y no la contencion— y `commonpath` de esas dos formas
+    colapsa a `C:\\Users`, o sea que un temporal tomado de `%TEMP%` parece estar
+    FUERA de toda raiz y tumbaba las precondiciones de los tests de arranque.
+
+    Por eso estos tests **colocan** su temporal en una raiz en vez de **asumir**
+    que el TEMP del entorno cae dentro: una disposicion del test, no una
+    casualidad de la maquina. Se prefiere `LOCALAPPDATA` y no la primera raiz
+    porque las de Program Files piden privilegios para escribir.
+    """
+    from woptimizer.services.process_service import ProcessService
+
+    svc = ProcessService.__new__(ProcessService)
+    candidatas = [os.environ.get("LOCALAPPDATA", "")] + list(svc._launch_roots())
+    return next(
+        (d for d in candidatas if d and os.path.isdir(d) and os.access(d, os.W_OK)),
+        None,
+    )
+
+
 def test_un_junction_no_puede_colar_lo_que_hay_detras():
     """TASK-027 iter 2, hallazgo 1 (ALTA): la contencion LEXICA no atraviesa.
 
@@ -4966,7 +5015,8 @@ def test_un_junction_no_puede_colar_lo_que_hay_detras():
     logger_wopt = _logging.getLogger("woptimizer")
     captor = _Captor(level=_logging.WARNING)
     logger_wopt.addHandler(captor)
-    tmp = tempfile.mkdtemp(prefix="wopt_fix003j_")
+    tmp = tempfile.mkdtemp(prefix="wopt_fix003j_",
+                           dir=_dir_scribible_de_una_raiz())
     # Destino del junction FUERA de toda raiz permitida, pero en un sitio que
     # este test puede borrar sin riesgo. No se apunta a C:\\Windows\\System32
     # con un junction de DIRECTORIO: si la limpieza fallara, un `rmtree` que
@@ -4993,10 +5043,14 @@ def test_un_junction_no_puede_colar_lo_que_hay_detras():
             f"el temporal {tmp} cae fuera de las raices: los casos pasarian por "
             "contencion y no por la resolucion real"
         )
-        assert _ruta_real(os.path.normpath(tmp)) == os.path.normpath(tmp), (
-            f"el temporal {tmp} se resuelve a {_ruta_real(os.path.normpath(tmp))}: "
-            "el junction se crearia fuera de las raices y la asercion pasaria por "
-            "el motivo equivocado"
+        assert _ruta_real(os.path.normpath(tmp)) == os.path.normpath(tmp) or _dentro_de_alguna(
+            _ruta_real(os.path.normpath(tmp)), raices_norm), (
+            f"el temporal {tmp} se resuelve a {_ruta_real(os.path.normpath(tmp))}, que cae "
+            "FUERA de las raices permitidas: el junction se crearia fuera y la asercion "
+            "pasaria por el motivo equivocado. Lo que importa es la ruta REAL dentro de "
+            "las raices, no que la forma lexica coincida con ella: en un entorno donde "
+            "algun ancestro se exprese en forma corta 8.3 las dos difieren sin que el "
+            "temporal salga de su raiz"
         )
         assert not _dentro_de_alguna(os.path.normpath(fuera), raices_norm), (
             f"el destino del junction ({fuera}) esta DENTRO de las raices "
@@ -5427,7 +5481,14 @@ def test_arranque_de_apps_no_usa_shell():
     os_startfile_original = getattr(os, "startfile", None)
     popen_original = subprocess.Popen
     svc = ProcessService.__new__(ProcessService)
-    tmp = tempfile.mkdtemp(prefix="wopt_fix003_")
+    # El temporal se crea DENTRO de una raiz de arranque, no en el TEMP del
+    # sistema: ver `_dir_scribible_de_una_raiz` para la medicion del runner.
+    _dir_tmp = _dir_scribible_de_una_raiz()
+    assert _dir_tmp, (
+        "ninguna raiz de arranque es escribible: el test no puede colocar su "
+        "temporal dentro de una permitida y no probaria los casos (b) y (g)"
+    )
+    tmp = tempfile.mkdtemp(prefix="wopt_fix003_", dir=_dir_tmp)
     # El grabador se instala de UNA VEZ y para todo el test: sin esto, (g)
     # llamaria al ShellExecute de verdad sobre un .exe vacio, que responde
     # WinError 193 y mezcla un fallo del SO con la asercion que se quiere probar.
