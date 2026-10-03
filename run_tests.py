@@ -14241,9 +14241,10 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
     #   A1  ninguna pieza del acordeon cuelga de una condicion: ni por la forma de
     #       la condicion (da igual cual sea) ni por el iterable del bucle que la
     #       hospeda (una lista filtrada tambien la esconde).
-    #   A2  ninguna funcion que dibuje una pieza hace un `return` temprano
-    #       condicionado. El guard clause es la unica forma de gate que NO es
-    #       antecesor, y por eso se mide aparte.
+    #   A2  ninguna funcion que dibuje una pieza vuelve antes si se cumple algo
+    #       que dependa de si el pack es el de Gaming. El guard clause es la
+    #       forma de gate que NO es antecesor, y por eso se mide aparte; un
+    #       `return` early por otra causa es legitimo y este test lo permite.
     #
     # Que una condicion "de gaming" siga existiendo alrededor del badge `PRESET`,
     # del boton de restaurar, del texto del Gaming Mode y de los dos ternarios
@@ -14346,6 +14347,98 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
                     return True
         return False
 
+    # TASK-063 ronda 5. Estas tres piezas mas `_depende_de_is_gaming` son lo que
+    # hace TRANSITIVA la resolucion, y el motivo esta medido: la version
+    # anterior resolvia UN salto (el iterable y el valor de la asignacion al
+    # nombre que el bucle lee), y con un nombre mas entre medias la veia pasar.
+    # Medido, con la forma que escribe un humano --`cats_visibles = all_cats if
+    # pack.is_gaming else []`-- un pack normal se quedaba con 0 de 3 categorias y
+    # los 123 tests seguian en verde: es el fallo de U1 en dos lineas.
+    def _menciona_is_gaming(nodo):
+        """CUALQUIER lectura de `.is_gaming`, sin mirar la base.
+
+        Hace falta porque el gate puede dejar de nombrarse: si otra funcion
+        escribe `self._flag = p.is_gaming` y esta vista decide con `if not
+        self._flag`, la condicion ya no dice `is_gaming` pero SI depende de el.
+        Apropiarse del valor se propaga solo con esto.
+        """
+        return any(isinstance(s, ast.Attribute) and s.attr == "is_gaming"
+                   for s in ast.walk(nodo))
+
+    def _lecturas(nodo):
+        """Nombres y atributos que el nodo LEE; los que escribe no cuentan."""
+        _r = set()
+        for s in ast.walk(nodo):
+            if isinstance(s, ast.Name) and isinstance(s.ctx, ast.Load):
+                _r.add(s.id)
+            elif isinstance(s, ast.Attribute) and isinstance(s.ctx, ast.Load):
+                _r.add("." + s.attr)
+        return _r
+
+    def _destinos(escritura):
+        """A que nombres escribe una sentencia de asignacion."""
+        _cola = list(escritura.targets) if isinstance(
+            escritura, ast.Assign) else [escritura.target]
+        _r = set()
+        while _cola:
+            _t = _cola.pop()
+            if isinstance(_t, ast.Name):
+                _r.add(_t.id)
+            elif isinstance(_t, ast.Attribute):
+                _r.add("." + _t.attr)
+            elif isinstance(_t, (ast.Tuple, ast.List)):
+                _cola.extend(_t.elts)
+        return _r
+
+    # Que nombres dependen de `is_gaming` se decide a punto fijo y sobre TODO el
+    # modulo, no en una pasada: el orden de las lineas da igual y asi un nombre
+    # marcado en la linea 40 marca a los que lo usan en la 200. Cada vuelta
+    # marca al menos un nombre o para, asi que el numero de escrituras acota
+    # las vueltas y el bucle no puede colgarse.
+    ESCRITURAS = [n for n in ast.walk(arbol)
+                  if isinstance(n, (ast.Assign, ast.AugAssign, ast.AnnAssign))
+                  and n.value is not None]
+    TAINT = set()
+    for _ in range(len(ESCRITURAS) + 1):
+        _nuevas = set()
+        for _e in ESCRITURAS:
+            if not (_menciona_is_gaming(_e.value)
+                    or (_lecturas(_e.value) & TAINT)):
+                continue
+            _nuevas |= {d for d in _destinos(_e) if d not in TAINT}
+        if not _nuevas:
+            break
+        TAINT |= _nuevas
+
+    def _depende_de_is_gaming(nodo):
+        """El nodo es una funcion de si el pack es el de Gaming, directa o no."""
+        return _menciona_is_gaming(nodo) or bool(_lecturas(nodo) & TAINT)
+
+    def _escritura_gateada(escritura):
+        """La escritura va dentro de un `if` que depende de `is_gaming`.
+
+        Una escritura gateada no se ve leyendo su VALOR --`all_cats = set()`
+        dentro de `if not pack.is_gaming:` no menciona nada-- pero el nombre que
+        escribe si depende de la condicion, asi que la lista que lo hereda
+        tambien.
+        """
+        _padre = _PADRES.get(escritura)
+        while _padre is not None and not isinstance(
+                _padre, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+        ):
+            _test = getattr(_padre, "test", None)
+            if _test is not None and _depende_de_is_gaming(_test):
+                return True
+            _padre = _PADRES.get(_padre)
+        return False
+
+    def _ultima_asignacion(nombre, funcion, antes_de):
+        """La ultima escritura a `nombre` dentro de `funcion` y antes de la linea."""
+        _c = [a for a in ast.walk(funcion)
+              if isinstance(a, ast.Assign) and a.lineno < antes_de
+              and any(isinstance(t, ast.Name) and t.id == nombre for t in a.targets)]
+        return max(_c, key=lambda a: a.lineno) if _c else None
+
     def _funcion_que_alimenta(bucle):
         _padre = _PADRES.get(bucle)
         while _padre is not None and not isinstance(
@@ -14365,32 +14458,67 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
         if not isinstance(_bucle, ast.For):
             continue
         _fuente = _funcion_que_alimenta(_bucle)
-        # El iterable (y la asignacion que lo alimenta) no pueden depender de
-        # `is_gaming`: la rejilla se dibuja con la lista de categorias entera.
-        _cadena = [_bucle.iter]
-        for _s in ast.walk(_bucle.iter):
-            if not isinstance(_s, ast.Name) or _fuente is None:
+        if _fuente is None:
+            continue
+        # Se sigue la lista por los NOMBRES que usa, salto a salto y SIN limite
+        # de saltos: una lista que alimenta el acordeon no puede depender de
+        # `is_gaming` a traves de los saltos que haga falta.
+        _culpable = None
+        _vistos = set()
+        _pendientes = [_bucle.iter]
+        while _pendientes and _culpable is None:
+            _valor = _pendientes.pop()
+            if id(_valor) in _vistos:
                 continue
-            _asignaciones = [
-                a for a in ast.walk(_fuente)
-                if isinstance(a, ast.Assign) and a.lineno < _bucle.lineno
-                and any(isinstance(t, ast.Name) and t.id == _s.id for t in a.targets)
-            ]
-            if _asignaciones:
-                _cadena.append(max(_asignaciones, key=lambda a: a.lineno).value)
-        _filtrada = next((c for c in _cadena if _lee_is_gaming(c)), None)
-        assert _filtrada is None, (
+            _vistos.add(id(_valor))
+            if _depende_de_is_gaming(_valor):
+                _culpable = _valor
+                break
+            for _s in _lecturas(_valor):
+                # Se mira CADA escritura del nombre, no solo la ultima: la que
+                # gana puede ser la inocua y dejar la gateada una linea antes.
+                _escrituras = [a for a in ast.walk(_fuente)
+                               if isinstance(a, ast.Assign) and a.lineno < _bucle.lineno
+                               and any(isinstance(t, ast.Name) and t.id == _s
+                                       for t in a.targets)]
+                for _escritura in _escrituras:
+                    if _escritura_gateada(_escritura):
+                        _culpable = _escritura
+                        break
+                if _culpable is not None:
+                    break
+                _ganadora = _ultima_asignacion(_s, _fuente, _bucle.lineno)
+                if _ganadora is not None:
+                    _pendientes.append(_ganadora.value)
+        assert _culpable is None, (
             f"la casilla de L{_nodo.lineno} la dibuja el bucle de L{_bucle.lineno}, "
             "pero la lista de categorias que lo alimenta depende de `is_gaming`: "
-            f"L{_filtrada.lineno}. Un gate no tiene por que ser un `if` delante: "
-            "si la lista se filtra, el acordeon se dibuja vacio para un pack "
-            "normal y este test pasaria por no mirar nada"
+            f"L{_culpable.lineno}. Un gate no tiene por que ser un `if` delante: "
+            "puede ser la lista filtrada --en la asignacion o en cualquier salto "
+            "de la cadena--, o una escritura que va dentro de un `if` que depende "
+            "de `is_gaming`, y entonces el acordeon se dibuja vacio para un pack "
+            "normal con este test en verde"
         )
 
-    # --- A2: la funcion que dibuja una pieza no vuelve antes si algo se cumple --
+    # --- A2: la funcion que dibuja una pieza no vuelve antes si decide por el pack
     # `if not pack.is_gaming: return` al principio de un metodo propio es la
-    # unica forma de gate que NO es antecesor de la construccion, asi que A1 no
-    # la ve. Se mide en las funciones que dibujan una pieza.
+    # forma de gate que NO es antecesor de la construccion, asi que A1 no la ve,
+    # y por eso se mide aparte. Lo que se mira es la CONDICION, no que haya un
+    # `if`: un guard por otra causa es legitimo y esta version lo permite --
+    # `if not pack: return` (guard defensivo), `if not sorted_cats: return` (no
+    # pintar una rejilla vacia) y `if categorias: return`, que es el patron que
+    # esta misma clase ya usa mas abajo. Medido en la ronda 5: la version
+    # anterior rechazaba los tres y su mensaje de fallo decia estar midiendo una
+    # sola condicion, que no era cierto.
+    #
+    # Y la condicion se mira por su LECTURA DIRECTA, no por el valor del que
+    # viene. Medido en la ronda 6, no supuesto: propagar el taint hasta aqui
+    # rechazaba `if not card.winfo_exists(): return`, que es un guard de Tk
+    # legitimo, porque `card` nace de `border_width=2 if pack.is_gaming else 1`
+    # y por tanto su VALOR depende de `is_gaming`. El nombre de la condicion
+    # (`card`) no dice nada de Gaming, asi que ese codigo tiene que pasar: la
+    # propagacion por valor sirve para la LISTA, que es lo que A1b sigue, y
+    # aplicarla aqui se comeria un widget entero sin motivo.
     def _funcion_que_lo_dibuja(nodo):
         _padre = _PADRES.get(nodo)
         while _padre is not None and not isinstance(
@@ -14428,24 +14556,58 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
                     _condicion = _padre
                     break
                 _padre = _PADRES.get(_padre)
-            assert _condicion is None, (
+            _test = getattr(_condicion, "test", None)
+            assert _test is None or not _menciona_is_gaming(_test), (
                 f"{_funcion.name} (L{_funcion.lineno}) dibuja una pieza del acordeon "
                 f"y ademas vuelve en L{_ret.lineno} si se cumple "
-                f"{ast.unparse(_condicion.test)[:90]!r}: el guard clause "
-                "'if not pack.is_gaming: return' es la unica forma de gate que no "
-                "es antecesor de la construccion, y por eso se mira aparte. El "
-                "resultado para el usuario es el mismo: sin donde elegir categorias"
+                f"{ast.unparse(_test)[:90]!r}, que depende de si el pack es el de "
+                "Gaming: el guard clause 'if not pack.is_gaming: return' es la "
+                "forma de gate que NO es antecesor de la construccion, y por eso se "
+                "mide aparte. Un 'return' early por otra causa es legitimo y este "
+                "test lo permite; lo unico vetado es el que decide por el pack de "
+                "Gaming. El resultado para el usuario es el mismo: sin donde "
+                "elegir categorias"
             )
 
     # Lo que este test NO cubre, dicho para que la proxima ronda lo mida en vez
-    # de suponerlo: (a) un gate en el LUGAR DE LA LLAMADA --`if pack.is_gaming:
-    # self._render_pack_card(pack)`-- no se ve, porque `refresh_packs` YA
-    # condiciona de legitimo ("el Gaming primero", "el resto, sin repetir el
-    # Gaming") y ninguna regla de este test puede distinguir una de la otra sin
-    # ser otra vez un test de forma; (b) gatear la llamada a `.pack()`/`.grid()`
-    # que hace VISIBLE la rejilla, dejando las casillas construidas. Ninguno de
-    # los dos es una forma de reintroducir el gate original: las doce medidas
-    # envuelven la construccion, y esas A1 y A2 las cubren todas.
+    # de suponerlo. Las cinco se MIDIERON vivas (rondas 5 y 6) y ninguna se
+    # corrige aqui: cazarlas seria inventarse una regla mas que un dia
+    # rechazaria codigo legitimo, que es la trampa que este test lleva cinco
+    # rondas evitando.
+    #   (a) un gate en el LUGAR DE LA LLAMADA --`if pack.is_gaming:
+    #       self._render_pack_card(pack)`-- no se ve, porque `refresh_packs` YA
+    #       condiciona de legitimo ("el Gaming primero", "el resto, sin repetir el
+    #       Gaming") y ninguna regla de este test puede distinguir una de la otra
+    #       sin ser otra vez un test de forma. Lo mismo con la seccion extraida a
+    #       un `def` anidado cuya llamada se gatea: desaparece el acordeon, no la
+    #       tarjeta.
+    #   (b) gatear la llamada a `.pack()`/`.grid()` que hace VISIBLE la rejilla, o
+    #       el `.pack_forget()` del boton que la abre, dejando las casillas
+    #       construidas: el cableado y A1 siguen viendo la construccion entera.
+    #   (c) un `.destroy()` POSTERIOR sobre la casilla ya construida: A1 vigila la
+    #       construccion, y esa ya esta hecha. Nada mira lo que pasa despues.
+    #   (d) una lista filtrada que llega de OTRA funcion por una llamada --`cats =
+    #       self._categorias_visibles(pack)`--: la cadena sigue las ASIGNACIONES
+    #       del fichero que dibuja, no lo que devuelve una llamada. El GATE si se
+    #       propaga entre funciones, por `_depende_de_is_gaming` y por
+    #       `_escritura_gateada`; el VALOR que devuelve una llamada, no.
+    #   (e) un guard clause cuya condicion depende de `is_gaming` SOLO a traves de
+    #       un atributo que pone otra funcion --`self._flag = p.is_gaming` y luego
+    #       `if not self._flag: return`--: A2 mira la LECTURA DIRECTA en la
+    #       condicion, no el valor del que viene. Es una decision MEDIDA, no de
+    #       gusto: propagando el valor, ese guard caia, pero con el caia tambien
+    #       `if not card.winfo_exists(): return`, que es un guard de Tk legitimo
+    #       (`card` nace de `border_width=2 if pack.is_gaming else 1`). Se eligio
+    #       el predicado que no rechaza codigo legitimo y este es su precio. Si
+    #       ese atributo acaba alimentando la LISTA, A1b lo ve, porque la cadena si
+    #       propaga el valor: es el M3B, que la ronda 6 midio muerto por A1b.
+    # Ninguno de los cinco envuelve la construccion: (a), (b) y (c) la dejan
+    # hecha y la ocultan, y (d) y (e) ni la tocan. De las trece formas que
+    # midio el mutation-auditor, las DOCE que envuelven la construccion las mata
+    # A1 o A2 (once A1 y una A2); la treceava --el guard clause con el guard de
+    # TASK-062 sin desatar-- murio de otro test y por otro motivo: lo que
+    # detects fue "la seccion se movio de metodo", no que el acordeon estuviera
+    # gateado.
     with io.open(ruta, encoding="utf-8") as fh:
         cod = _codigo_ejecutable(fh.read())
     assert "categorias_disponibles" in cod, (

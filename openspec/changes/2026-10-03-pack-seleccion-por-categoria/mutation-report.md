@@ -872,3 +872,341 @@ primera pasada murio de `NameError` porque mi helper quedaba a nivel de clase, y
 primera pasada murio de `AttributeError` porque `self.pack` es el metodo de Tk; (b) el `Z1` de la
 primera pasada uso una constante de test. Los tres se detectaron porque `roto`/`assertion` los marcaron,
 se corrigieron y se **volvieron a medir**; los veredictos de §10.3 y §10.6 son los de la segunda pasada.
+
+---
+
+# 11. RONDA 5 - `mutation-auditor` re-audita `ae58fc2` (2026-10-03)
+
+**Commit auditado:** `ae58fc2` - "fix(tests): el acordeon se afirma por propiedad y no por forma de gate
+(TASK-063 ronda 4)".
+
+**Metodo:** 14 corridas de suite completa declaradas por el dev (confirmadas una a una) + **13 formas
+nuevas** + 2 sondas de A0 + 3 falsos positivos + 9 regresiones, en **camaras de `%TEMP%`** con
+`PYTHONDONTWRITEBYTECODE=1`, `__pycache__` purgado entre mutaciones (medido: **0** al final) y
+restauracion por `copyfile` desde un `pristine` propio. Ademas, una **pantalla rapida** que importa el
+test #3 REAL de `run_tests.py` y lo llama contra vistas mutadas en memoria: no replica el predicado, usa
+el codigo del test. **Nada reparado.** El arbol del proyecto **no se ha tocado** (§11.10).
+
+## 11.0 VEREDICTO
+
+# FAIL
+
+**Ningun superviviente en la zona anti-brick y ninguno en las barreras**: los 13 deaths que declara el
+dev **mueren todos**, cada uno por su asercion, y las 9 regresiones **siguen muriendo**. El fallo de esta
+ronda es de otro tipo y mas pequeno que el de las cuatro anteriores:
+
+> **Una garantia NOMBRADA por el test nuevo es falsa.** A1b afirma, en su comentario y en su mensaje de
+> fallo, que caza "la lista de categorias ya filtrada" y que si se filtra "el acordeon se dibuja vacio
+> para un pack normal y este test pasaria por no mirar nada". **Pasa.** Con **una** variable intermedia
+> entre el gate y el bucle, A1b no lo ve. Es el mismo fallo de la misma clase que las cuatro rondas
+> anteriores, y es de la misma familia que el `U1_AND` que la ronda 3 reporto: **una forma mas de la misma
+> cosa**.
+
+| Severidad | Id | Que se rompe si el codigo se rompe asi |
+|---|---|---|
+| 🟠 **ALTA** | **M1** | `cats_visibles = all_cats if pack.is_gaming else []` y el bucle come `cats_visibles`. Un pack normal se queda **con 0 categorias** y el servicio se las sigue preguntando. **123/123 en verde** |
+| 🟠 **ALTA** | **M2** | El mismo bug escrito como `if not pack.is_gaming: all_cats = set()` **antes** del bucle. **123/123 en verde** |
+| 🟠 **ALTA** | **M3B** | El gate entero en `refresh_packs` (otra funcion), dejando solo `self._muestra_categorias`. `_render_pack_card` **no menciona `is_gaming` ni una vez** para la lista. **123/123 en verde** |
+| 🟡 **MEDIA** | **M8** | `if not pack.is_gaming: cb.destroy()` **despues** de construir la casilla. La construccion y el cableado quedan intactos. **123/123 en verde** |
+| 🟡 **MEDIA** | **M4** | `if not pack.is_gaming: acc_btn.pack_forget()`: el boton que abre el acordeon desaparece para los packs normales |
+| 🟡 **MEDIA** | **FP1/FP2/FP3** | **NO son fallos: son codigo legitimo RECHAZADO.** A2 prohibe *cualquier* `return` condicionado, y su mensaje afirma que solo prohibe el de `is_gaming` |
+| 🟡 **BAJA** | M5, M6, M7B | Dentro del techo que el propio test declara: (b) visibilidad = **M5**; (a) lugar de la llamada = **M6**, y **M7B** es su variante quirurgica (solo el acordeon). **Medidos, no supuestos** |
+
+**Lo que esta ronda SI ha entregado, medido:** el re-enfoque del #3 es **real y no cosmético** - las trece
+formas que la ronda 4 dejo vivas **mueren las trece por su asercion**, y las dos sondas de codigo legitimo
+que la ronda 4 rechazo por error **pasan ahora la suite completa** (`rc=0`). Los dos falsos positivos de la
+ronda 4 (D_FP1, D_FP2) estan **cerrados de verdad**.
+
+## 11.1 AISLAMIENTO (medido antes de mutar nada)
+
+Trampa del gitlink confirmada por cuarta vez: el `.git` del arbol es un **FICHERO**, asi que
+`ignore_patterns(".git")` (ficheros **y** directorios) es lo unico que excluye; `robocopy /XD` no serviria.
+
+| Camara | Entradas `.git` dentro | `git rev-parse --git-dir` desde la camara |
+|---|---|---|
+| cam1..cam5 | `[]` (las cinco) | con `GIT_DIR` desechable: **rc=128, salida vacia**; **sin** `GIT_DIR`: **rc=128, salida vacia** |
+| repo real | - | `C:\Users\carch\AppData\Local\woptimizer_git\.git` (la suya) |
+
+`rc=128` y salida vacia con **y** sin `GIT_DIR` es la prueba de que la camara **no puede descubrir** el
+repo real. Ademas dentro de las camaras **no se invoco git para nada**: la restauracion es `copyfile` desde
+el `pristine`, asi que no hay ningun `GIT_DIR` que pueda derivar a otro sitio. **Ningun commit.**
+
+Las camaras se verificaron **fieles a `ae58fc2`** por `SHA256` de los 4 ficheros que se mutan, y el
+control de las cinco dio `ALL TESTS PASSED` antes de la primera mutacion.
+
+## 11.2 LO QUE PIDE EL ENCARGO, PUNTO 1: los 13 deaths declarados, UNO A UNO
+
+Los trece mueren **por la asercion del #3**, no por `ImportError`, `SyntaxError`, `IndentationError` ni
+`NameError` (el runner marca `ROTO(...)` si la primera excepcion es de ese tipo: **0 ROTO**).
+
+| Id | Forma | Veredicto | Motivo literal / linea de la asercion |
+|---|---|---|---|
+| **U1** | `if pack.is_gaming:` sobre la seccion | ✅ **MUERE** | A1. `el espejo (def create_command) (L403) cuelga de una condicion en L336: 'pack.is_gaming'` - `run_tests.py:14325` |
+| **U1_AND** | `... and pack.default_action == "kill"` | ✅ **MUERE** | A1, mismo literal, `... (L403) cuelga de una condicion en L336: "pack.is_gaming and pack.default_action == 'kill'"` |
+| **G_VAR** | `gaming = pack.is_gaming` + `if gaming:` | ✅ **MUERE** | A1, `... (L404) cuelga de una condicion en L337: 'gaming'` |
+| **G_ALIAS** | `p = pack` + `if p.is_gaming:` | ✅ **MUERE** | A1, `... (L404) cuelga de una condicion en L337: 'p.is_gaming'` |
+| **G_GETATTR** | `if getattr(pack, "is_gaming", False):` | ✅ **MUERE** | A1, `... (L403) cuelga de una condicion en L336: "getattr(pack, 'is_gaming', False)"` |
+| **G_PRED** | `if pack.id != "gaming":` | ✅ **MUERE** | A1, `... (L403) cuelga de una condicion en L336: "pack.id != 'gaming'"` |
+| **G_HELPER** | `if self._es_gaming(pack):` (el predicado en un metodo) | ✅ **MUERE** | A1, `... (L406) cuelga de una condicion en L339: 'self._es_gaming(pack)'` |
+| **G_OR** | `if pack.is_gaming or pack.is_favorite:` | ✅ **MUERE** | A1, `... (L403) ... : 'pack.is_gaming or pack.is_favorite'` |
+| **G_ISTRUE** | `if pack.is_gaming is True:` | ✅ **MUERE** | A1, `... (L403) ... : 'pack.is_gaming is True'` |
+| **G_ELSE** | la seccion va en el `else` | ✅ **MUERE** | A1, `... (L405) cuelga de una condicion en L336: 'not pack.is_gaming'` |
+| **G_LISTA** | la lista filtrada, sin `if` delante | ✅ **MUERE** | **A1b**. `la casilla de L442 la dibuja el bucle de L439, pero la lista de categorias que lo alimenta depende de 'is_gaming': L437` - `run_tests.py:14382` |
+| **G_GUARD2** | metodo propio con `if not pack.is_gaming: return` | ✅ **MUERE** | **A2**. `_seccion_acordeon (L338) dibuja una pieza del acordeon y ademas vuelve en L341 si se cumple 'not pack.is_gaming'` - `run_tests.py:14431` |
+
+**Ninguno muere por una Asercion tautologica ni por un error ajeno: `ROTO = 0`.** Y el detalle que
+importa: **A1 mata las once formas por el mismo motivo** - la construccion esta **dentro** de un `If`, sea
+cual sea su condicion. Eso es exactamente lo que el dev afirma, y es cierto: el re-enfoque dejo de Yardar
+formas.
+
+**Las dos mitades del punto 4 del encargo: los gates legitimos y las dos sondas que la ronda 4 rechazo.**
+
+| Sonda | Que se mete | Veredicto | Motivo literal |
+|---|---|---|---|
+| **D_FP1** | Una casilla **propia** del Gaming Mode dentro del badge `PRESET` | ✅ **PERMITIDO** | `rc=0`, **123/123 en verde**. La ronda 4 la rechazaba con *"una condicion que depende de is_gaming CONSTRUYE el acordeon"* |
+| **D_FP2** | Un texto de aviso legitimo que dice *"va a arrancar y apagar apps"* | ✅ **PERMITIDO** | `rc=0`, **123/123 en verde**. La ronda 4 la rechazaba buscando la palabra "arrancar" |
+
+Los **gates legitimos** del fichero (badge `PRESET` L210, ternarios del borde L173/L174, boton de
+restaurar L278, `es_pack_inerte(pack.is_gaming, ...)` L561, texto del Gaming Mode L604) **siguen
+permitidos**, y no por la lista del dev: **enumerados por mi cuenta con `ast`** (§11.4), son las **unicas 6
+lecturas de `pack.is_gaming`** del fichero, las seis permitidas, y **la septima no existe**.
+
+## 11.3 LO QUE PIDE EL ENCARGO, PUNTO 2: la FORMA 14 y la FORMA 15 (y la 16)
+
+Tres rondas seguidas, cada vez que se cerraba un agujero aparecia otro de la misma familia. Aqui hay
+**ocho** formas nuevas. **Ninguna es un equivalente**, y eso se midio antes de gastar las corridas
+(§11.3.2).
+
+### 11.3.1 Las ocho, y por que las usa el test
+
+| Id | La forma, tal cual se escribe | Que oculta | Veredicto |
+|---|---|---|---|
+| **M1** | `cats_visibles = all_cats if pack.is_gaming else []`<br>`sorted_cats = ordenar_categorias(cats_visibles)` | La rejilla entera, a un pack normal | 🔴 **SOBREVIVE** |
+| **M2** | `if not pack.is_gaming:`<br>`    all_cats = set()`<br>`sorted_cats = ordenar_categorias(all_cats)` | idem, escrito con un `if` **antes** del bucle | 🔴 **SOBREVIVE** |
+| **M3B** | el gate entero en `refresh_packs` (`self._muestra_categorias = p.is_gaming`) y en la vista un `if not self._muestra_categorias: all_cats = set()` | idem, y `_render_pack_card` **no dice `is_gaming`** | 🔴 **SOBREVIVE** |
+| **M8** | `cb.grid(...)` y luego `if not pack.is_gaming: cb.destroy()` | Las casillas, **despues** de construirlas | 🟡 **SOBREVIVE** |
+| **M4** | `acc_btn.pack(...)` y luego `if not pack.is_gaming: acc_btn.pack_forget()` | El **boton** que abre el acordeon | 🟡 **SOBREVIVE** |
+| **M5** | `grid.pack(...)` y luego `if not pack.is_gaming: grid.pack_forget()` | La rejilla visible | 🟡 **SOBREVIVE** (techo declarado (b)) |
+| **M6** | en `refresh_packs`: `if p.is_gaming: self._render_pack_card(p)` | La tarjeta entera | 🟡 **SOBREVIVE** (techo declarado (a)) |
+| **M7B** | la seccion extraida a un `def _construye_acordeon():` **anidado**, y la llamada `if self._acordeon_visible(pack): _construye_acordeon()` | **Solo el acordeon**, no la tarjeta | 🟡 **SOBREVIVE** |
+
+**Las ocho por su asercion de por que deberian morir, y quien las mata: ninguna.** Las ocho dan
+`ALL TESTS PASSED.` (123/123). Ninguna es `ROTO`.
+
+### 11.3.2 Ninguna es un equivalente: medido, no afirmado
+
+Se evalua el **iterable** del bucle de la rejilla con un pack real, control y cada forma
+(`categorias_disponibles` = 3 categorias):
+
+| Forma | `is_gaming=True` | `is_gaming=False` | Cambia |
+|---|---|---|---|
+| **CONTROL** | 3 casillas | 3 casillas | - |
+| **M1** (un salto) | 3 | **0** | **SI** |
+| **M2** (`if` antes) | 3 | **0** | **SI** |
+| `G_LISTA` (la del dev) | 3 | **0** | SI |
+
+O sea: un pack normal pasa de 3 categorias a **0**. Es **exactamente el fallo de U1** - el pack se queda
+sin donde elegir categorias mientras `execute_pack` y `start_pack_categories` se las preguntan igual - y
+se reproduce con dos lineas que no parecen un gate.
+
+### 11.3.3 POR QUE M1 escapa: la razon tecnica, en cuatro lineas
+
+A1b construye su cadena en `run_tests.py:14370-14381`:
+
+```python
+_cadena = [_bucle.iter]
+for _s in ast.walk(_bucle.iter):
+    ... busca la ultima asignacion a _s.id anterior al bucle ...
+    _cadena.append(max(_asignaciones, ...).value)
+_filtrada = next((c for c in _cadena if _lee_is_gaming(c)), None)
+```
+
+`_cadena` tiene **dos** elementos: el iterable y el valor de la asignacion de cada **nombre que aparece en
+el iterable**. **No es transitiva: no vuelve a resolver los nombres de ese valor.** El limite esta a
+**exactamente un salto** de la asignacion al bucle.
+
+- `G_LISTA` (la del dev) pone el gate **en la asignacion al nombre que el bucle lee** -> un salto -> se ve.
+- `M1` mete **un nombre mas** entre esa asignacion y el bucle -> dos saltos -> **no se ve**.
+
+**Y aqui hay un detalle que importa para juzgar cual de las dos formas es la real:** la sonda que el dev
+cerro con A1b es
+
+```python
+sorted_cats = ordenar_categorias([c for c in all_cats if pack.is_gaming] if pack.is_gaming else [])
+```
+
+que **repite `pack.is_gaming` dos veces** y nadie escribiria eso. `M1` es
+`all_cats if pack.is_gaming else []`, que es **lo que escribe un humano**. La sonda quecerraba el agujero
+era **menos natural que el agujero**.
+
+**Arreglo que necesita (no aplicado):** hacer la resolucion **transitiva** -Walk recursivo sobre el
+valor de cada asignacion, con conjunto de visitados para no ciclar-. Cuatro lineas, y no afloja nada: M1,
+M2 y M3B mueren por su misma asercion, y `G_LISTA` sigue muriendo.
+
+### 11.3.4 El techo DECLARADO, medido (y es mas estrecho de lo que el test dice)
+
+El test escribe (en `run_tests.py:14440-14448`) que **no** cubre: "(a) un gate en el LUGAR DE LA LLAMADA
+-`if pack.is_gaming: self._render_pack_card(pack)`- [...] (b) gatear la llamada a `.pack()`/`.grid()` que
+hace VISIBLE la rejilla". Esas dos las medí y **efectivamente sobreviven** (M6 y M5): **el techo
+declarado es real**.
+
+Pero el techo declarado **no cubre** lo que M1, M2, M3B y M8 hacen, y no es un problema de "fuera del
+fichero" o de "otra funcion":
+
+- **M1 y M2 estan en el mismo fichero, en la misma funcion, sobre la misma lista** que A1b dice vigilar.
+- **M3B esta en otra funcion**, pero **deja rastro en el fichero**, y por eso un arreglo de A1b que busque
+  `is_gaming` en la vista **no lo veria**: alli donde hay que mirar, `_render_pack_card`, no aparece.
+- **M8** no es ni `.pack()` ni `.grid()`: es un `.destroy()` posterior, y la construccion -la que A1
+  vigila- queda intacta.
+
+Por eso M1/M2/M3B/M8 **no son el techo**: son un agujero que el test afirma cubrir y no cubre.
+
+## 11.4 LO QUE PIDE EL ENCARGO, PUNTO 3: ¿A0 es un ancla real o decorativa?
+
+**Es un ancla real.** Se midio quitando cada mitad del ancla por separado, no leyendo el codigo:
+
+| Sonda | Que se quita | Veredicto | Motivo literal |
+|---|---|---|---|
+| **A0-SIN-ESPEJO** | `create_command` -> `_toggle_categoria` en todo el fichero | ✅ **MUERE** | `no aparece el ESPEJO (def create_command) en la vista: este test dejaria de mirar la seccion de categorias y un acordeon entero desaparecido pasaria por no mirarlo nada` - **exactamente en `run_tests.py:14299`**, que es la linea de su asercion |
+| **A0-SIN-CASILLAS** | los dos bucles de la rejilla (las 4 casillas) | ✅ **MUERE** | En la pantalla aislada (#3 solo): `no aparece ninguna casilla de categoria (CTkCheckBox con command=create_command(...)): la rejilla ha desaparecido de la vista y este test no lo veria`. **En la suite completa** la primera asercion que salta es de otro test -`test_orden_de_categorias_no_es_alfabetico` (`run_tests.py:5955`), *"no llama a `ordenar_categorias`"*-, porque borrar los bucles se lleva tambien la llamada. Se declara: **A0 no es decorativa**, pero su segunda asercion queda **sombreada** por un test anterior que detecta el mismo defecto por otra via |
+
+**Y A0 no puede ser vacua:** sin el espejo, A1 y A2 no tendrian nada que mirar, y el test lo dice el
+mismo. Medido: quitar el espejo **mata**.
+
+## 11.5 LO QUE PIDE EL ENCARGO, PUNTO 4: ¿el test se ha vuelto demasiado fuerte?
+
+**Si. En A2, y esta medido con tres sondas de codigo 100% legitimo** - las tres **RECHAZADAS**:
+
+| Sonda | Que se mete (y por que es legitimo) | Veredicto | Motivo literal |
+|---|---|---|---|
+| **FP1** | `if not pack: return` al principio de `_render_pack_card` (guard defensivo estandar) | 🔴 **RECHAZADO** | `_render_pack_card (L167) dibuja una pieza del acordeon y ademas vuelve en L169 si se cumple 'not pack': el guard clause 'if not pack.is_gaming: return' es la unica forma de gate que no es antecesor` - `run_tests.py:14431` |
+| **FP2** | `if not sorted_cats: return` (no construir una rejilla vacia) | 🔴 **RECHAZADO** | mismo aserto, `vuelve en L439 si se cumple 'not sorted_cats'` |
+| **FP3** | `if categorias: return` - **el patron que la propia clase ya usa** en `pack_manager_view.py:666` | 🔴 **RECHAZADO** | mismo aserto, `vuelve en L438 si se cumple 'categorias'` |
+
+**El mensaje de A2 MIENTE, y por ahi se sabe que el defecto es real:** dice *"el guard clause `if not
+pack.is_gaming: return` es la unica forma de gate que no es antecesor"*, o sea que afirma estar midiendo
+una sola condicion. **El codigo prohibe CUALQUIER `return` condicionado**, de cualquier clase. Y la
+propia clase **ya tiene seis `if pack is None: return`** (L466, L483, L512, L520, L593, L611) y el
+`if categorias:` de L666: un desarrollador que aplique a `_render_pack_card` la convencion que el
+fichero ya usa se encuentra el test en contra. Es **la misma trampa que la ronda 4 ya diagnostico** -"un
+test que obliga a aflojar es un test que garantiza que se afloje"-, aqui en A2 en vez de en A1.
+
+**En A1 no se ha encontrado ningun falso positivo plausible**, y se dice por que: A1 prohibe que la
+construccion tenga un **antecesor** condicional, y la unica forma legitima de eso seria "solo pintar la
+rejilla si hay categorias", que en una funcion que dibuja una tarjeta entera **solo** se puede escribir
+como `if ...: return` - es decir, cae en A2, no en A1.
+
+**Arreglo que necesitan las tres (no aplicado):** que A2 mire la **condicion** del `return` con el
+`_lee_is_gaming` que el propio test ya define (`run_tests.py:14340`), en vez de mirar solo que haya un
+condicional. **No afloja nada:** `G_GUARD2` sigue muriendo, porque su guard es `not pack.is_gaming`. Y el
+mensado deja de ser falso.
+
+## 11.6 LO QUE PIDE EL ENCARGO, PUNTO 5: LAS TRES CORRECCIONES DOCUMENTALES
+
+| Correccion | Afirmacion | Medido |
+|---|---|---|
+| **D4-bis** | `testing-guide.md:123` cita los **tres NOMBRES** de los tests que sobreescriben `_patrones_de_categoria` **y** sus lineas (`run_tests.py:14489`, `:14595`, `:14622`) | ⚠️ **MEDIO CIERTO.** Los **nombres** y el **actor** (los tres TESTS, por instancia) son correctos. Las **tres lineas siguen siendo FALSAS**: con `ast` las reales son **`L14485`**, **`L14591`** y **`L14618`**, y las tres citadas se quedan **cuatro lineas mas abajo**. Es el **mismo defecto que la ronda 4 reporto**, y ahora el propio texto admite *"los numeros se caducan con cada refactor del fichero, los NOMBRES no"*: la linea que el propio autor declara no fiable es precisamente la que esta mal |
+| **D5** | `STATUS.md:8` - 9 modulos | ✅ **CIERTO.** Dice 9 y **los enumera**; `verify_ui_syntax.py` compila 9: `app`, `main_window`, `confirmation`, `feedback`, `dashboard_view`, `pack_manager_view`, `process_manager_view`, `notification_service`, `__main__`. Medido ejecutando el script |
+| **D6** | `architecture.md:77` - `kill_pack_apps` esta **MUERTA a proposito y no debe reconectarse**, con **0 llamantes** en `src/` | ✅ **CIERTO, y las dos mitades.** Con `ast` sobre `src/`: `kill_pack_apps` tiene **0** llamantes; `execute_pack` tiene **5**, y son **exactamente** las cinco lineas que cita el documento (`dashboard_view.py:385,427,483`, `pack_manager_view.py:635`, `gaming_service.py:260`); `execute_gaming_pack` tiene **1**, y `ui/app.py:119` es literalmente `self.gaming_service.execute_gaming_pack(gaming_pack)` |
+
+### Y el recuento, derivado con `ast` (no leido)
+
+| Afirmacion | Medido |
+|---|---|
+| **123 tests = 95 backend + 28 headless** | ✅ CIERTO. Derivado sobre las **LLAMADAS** del bloque `__main__` (no las definiciones: los headless se registran al final). Marcador `print("\n--- Running Headless UI Tests ---")` en **`run_tests.py:15475`**; **95** antes, **28** despues, **123** en total |
+| **123 definidos y 123 invocados, ninguno huerfano** | ✅ CIERTO, medido: las dosenas coinciden exactamente, `DEFINIDAS PERO NO LLAMADAS: ninguna` |
+| **citar NOMBRES de tests en vez de lineas no rompe el validador** | ✅ **CIERTO.** `validate_docs.py` -> **119 OK / 0 FAIL** con el `GIT_DIR` real, y su check 7 sigue derivando el reparto y **reimprime el marcador vivo** (`run_tests.py:15475`). No comprueba numeros de linea, que es justo por lo que D4-bis se cuela |
+| **`verify_ui_syntax.py`** | ✅ EXITO, 9/9 modulos |
+| **CERO cambios en `src/`** | ✅ **CIERTO y por encima de lo que declara el dev**: `git show --name-only ae58fc2` **no lista ningun fichero bajo `src/`**, y `git diff e0f20db ae58fc2 -- src/` sale **vacio**. Los cinco commits del ciclo (`e0f20db` -> `d318fef` -> `9dcd8ed` -> `ae58fc2`) **no han tocado produccion ni una linea**: todos los hallazgos de las cinco rondas son de cobertura, no de codigo |
+
+## 11.7 LO QUE PIDE EL ENCARGO, PUNTO 6: LAS REGRESIONES
+
+Las nueve, contra `ae58fc2`. **Ninguna regresion**, y `Z1` por **quinta** vez equivalente.
+
+| Id | Que se rompe | Veredicto | Motivo literal / quien muere |
+|---|---|---|---|
+| **S1** | el filtro `get_safety_badge(c)["tier"] != "danger"` de `target_categories` | ✅ **MUERE** | `test_barrera_roja_sola_con_el_snapshot_y_la_db_en_discrepancia` (`run_tests.py:15146`): `solo el verde marcado debe llegar a kill_processes. Llego ['svchost.exe', 'onedrive.exe']` |
+| **S7** | `_pack_evaluable` escribe en el pack original | ✅ **MUERE** | `test_el_filtro_de_la_puerta_no_escribe_en_el_pack_original` (`:15200`): `el filtro de la barrera escribio en el pack del usuario: target_categories quedo en ['🟢 Sincronización'] cuando se marcó ['🔴 Sistema de Windows', '🟢 Sincronización']` |
+| **A5** | `_patrones_de_categoria` sin `.exe` | ✅ **MUERE** | `test_arranque_por_categoria_toma_los_nombres_de_la_db_real` (`:15271`): `los candidatos de una categoria tienen que ser Nombres con extension [...] salieron ['woptimizer_t063_db', 'woptimizer_t063_otro.com']` |
+| **S4** | G5: la barrera sobre `p.category` | ✅ **MUERE** | `test_execute_gaming_pack_integration` (`:798`): `skipped debe sumar los descartes del filtro (svchost y lsass): 1` |
+| **S5** | G4: el blindaje de nombres | ✅ **MUERE** | mismo aserto, mismo test |
+| **S6** | `force_refresh=True` -> `False` | ✅ **MUERE** | mismo test (`:787`): `G0 es obligatorio: sin force_refresh=True la cache TTL de 2 s puede dejar fuera lo que el usuario acaba de lanzar` |
+| **V7** | el Gestor vuelve a `kill_pack_apps(pack.apps)` | ✅ **MUERE** | `test_el_feedback_de_pack_dice_la_verdad` (`:9665`): `el pack se cierra por la puerta comun con SUS apps, no con un atajo ni con una lista vacia (llego ['C:\Juegos\juego.exe'])` |
+| **V8** | el worker llama a `restore_gaming_session()` | ✅ **MUERE** | `test_los_workers_de_pack_solo_publican_por_after` (`:8871`): `el worker toca la vista fuera de self.after(0, ...)` |
+| **Z1** | barrera roja duplicada en `execute_gaming_pack` | 🟡 **EQUIVALE** | `ALL TESTS PASSED`. **Quinta medicion.** El filtro de la puerta comun ya la aplica, y `ae58fc2` no toca `src/`, asi que **no podria** haber cambiado |
+| **PREMISA** | el snapshot del #16 lleva `svchost` ROJO (la premisa rota) | ✅ **MUERE** | `preCONDICION ROTA: este test solo mide la barrera de categoria si el snapshot y la DB DISCREPAN [...] sin G1 este test pasaria igual, es decir, no mediria nada` (`:15136`) |
+
+## 11.8 LOS ERRORES DE ESTA SONDA, DECLARADOS PARA QUE NADIE LOS LEA COMO EVIDENCIA
+
+Cinco. Todos se detectaron porque el veredicto no cuadraba con lo esperado, y todos se corrigieron y **se
+volvieron a medir**:
+
+1. **El mas grave, y mio: el `pristine` envenenado.** Mi primera pasada llamaba `pristine_de(camara)` en
+   cada forma, y esa funcion ** SOBREESCRIBE** el `pristine` con el fichero **ya mutado**: las
+   mutaciones se **acumulaban** y la segunda se media sobre la primera. Se manifesto porque la tercera
+   forma encontro su ancla **0 veces**. **Invalido cam1, cam2 y cam3 de la primera pasada**; las camaras
+   se restauraron desde el repo por `SHA256` y **los tres lotes se volvieron a correr**. (El runner del
+   dev lo hace bien: su `main()` solo crea el `pristine` si no existe.)
+2. **Consola cp1252 (Trampa #16).** El runner del dev imprime la asercion de S7, que lleva emojis, y
+   **CASCA** con `UnicodeEncodeError`. Perdio S7 en la primera pasada. Rehecho con `PYTHONIOENCODING=utf-8`.
+3. **El runner del dev se cuelga, y el PowerShell habria perdido los 13 resultados.** Con
+   `subprocess.run(capture_output=True)`, en Windows, si el hijo deja nietos con la tuberia abierta,
+   `communicate()` **se queda bloqueado para siempre** aunque el hijo este muerto: se quedo **14 minutos**
+   con 1,3 s de CPU en `D_FP2` (que solo cambia un string, o sea que el cuelgue es del host y no del
+   mutante). Y como el comando era `python ... | Out-String`, **todo lo anterior se habria perdido**.
+   Se sustituyo por un runner **sin pipe**: la salida va a un **fichero** y cada forma **anexa** su
+   resultado, asi que un cuelgue no borra lo ya medido.
+4. **M3 v1, sonda invalida:** `AttributeError` - puse `self._muestra_categorias` sin inicializarlo, y
+   `refresh_packs` pinta el pack de Gaming **antes** del bucle. No media nada. Corregido (M3B, con el
+   atributo inicializado): **SOBREVIVE**.
+5. **M7 v1, sonda invalida:** `UnboundLocalError` - generaba la llamada a `_construye_acordeon()` **antes**
+   del `def`. La suite la mato, que es justo su trabajo, pero no media lo que yo queria. Corregido (M7B,
+   `def` primero): **SOBREVIVE**.
+
+Ademas, una nota de alcance: **`cam6` del arnes heredado esta incompleta** (le faltan los tres ficheros de
+`src/`) y no se ha usado. Las cinco camaras `cam1..cam5` se han verificado una a una contra `ae58fc2`.
+
+## 11.9 QUE PIDE ESTA RONDA AL CICLO
+
+Ninguno de los tres primeros toca `src/` (que no se ha tocado en cinco rondas).
+
+| # | Accion | Severidad | Coste |
+|---|---|---|---|
+| 1 | **A1b transitivo**: resolver la cadena de asignaciones **recursivamente** (con conjunto de visitados), no a un solo salto. Mata M1, M2 y M3B por su asercion actual y no afloja `G_LISTA` | 🟠 | **Unas 4 lineas en el #3** |
+| 2 | **A2 por condicion**: que mire el `return` con el `_lee_is_gaming` que el test ya tiene, en vez de prohibir cualquier `return` condicionado. No afloja `G_GUARD2` y **deja de mentir el mensaje** | 🟠 | **Unas 3 lineas** |
+| 3 | **Anadir al techo declarado** del comentario del #3 las dos formas que el texto **no** nombra y que hoy sobreviven: el **`.destroy()` posterior** (M8) y la **lista filtrada a dos saltos** (M1/M2). El techo esta escrito, y esta bien: lo que falta es que sea **completo** | 🟠 | Commit de texto |
+| 4 | **D4-bis**: corregir las tres lineas a **L14485 / L14591 / L14618**, o borrar los numeros y dejar solo los nombres, que es lo que el propio texto dice que es lo fiable | 🟡 | Commit de texto |
+| 5 | Si se decide que M5/M6/M7B (visibilidad y lugar de la llamada) son formatos **aceptables**, **dejarlo escrito en el repo** y no solo en el informe: es un techo real, y un techo no declarado se vuelve a reportar cada ronda | 🟡 | Commit de texto |
+
+**Lo que NO hace falta tocar:** `src/` (intacto desde `e0f20db`), las barreras S1/S7/A5 (cerradas y
+re-medidas), la precondicion del #16 (correcta, con poder discriminante intacto: `PREMISA` muere y `S1`
+sigue muriendo por la asercion principal), `D5` y `D6` (ciertos), `Z1` (equivalente, quinta vez), y las
+**dos sondas de codigo legitimo** D_FP1 y D_FP2, que ahora pasan y estan **cerradas de verdad**.
+
+## 11.10 CONTRATO: QUE SE HA TOCADO EN EL ARBOL DEL PROYECTO
+
+Verificado desde la raiz del repositorio, **despues** de las 40 corridas y las 4 pantallas:
+
+```
+git log --oneline -1        ae58fc2 fix(tests): el acordeon se afirma por propiedad y no por forma de gate (TASK-063 ronda 4)
+git status --porcelain      (vacio)
+git diff --stat             (vacio)
+git diff --cached --stat    (vacio)
+git rev-parse --git-dir     C:\Users\carch\AppData\Local\woptimizer_git\.git
+```
+
+**Declaracion honesta:** las 40 corridas de suite y las 4 pantallas fueron **enteras** en copias de
+`%TEMP%`. **No escribi, no borre y no comitee nada** en
+`C:/Users/carch/Nextcloud/Scripts/woptimizer`, ni siquiera para revertir: no hizo falta, porque nunca
+escribi en el. **Cero commits.** `src/`, `run_tests.py` y los documentos estan **exactamente** como los
+dejo `ae58fc2`; lo unico modificado es **este mismo** fichero, que es el artefacto de este rol. **No he
+revertido nada porque no he tocado nada que revertir.**
+
+Lo que **si** se ha ejecutado **contra el repo real** son **tres validadores de solo lectura** -
+`validate_docs.py` (que no contiene ni una llamada a `open(...,'w')`, `write`, `remove` ni `shutil`, y se
+comprobo con `grep` antes de correrlo) y `verify_ui_syntax.py` -, y cuatro `git log`/`status`/`diff`/
+`rev-parse` de lectura.
+
+**Estado final de las camaras:** cam1..cam5 **restauradas y fieles a `ae58fc2` por SHA256**, con su
+`pristine` tambien fiel, y **0** ficheros `.pyc` y **0** directorios `__pycache__`. El control final,
+corrido **despues** del ultimo mutante en cam1, da **`ALL TESTS PASSED`** (123/123).
