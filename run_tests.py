@@ -14202,11 +14202,34 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
     categoria en las dos listas) se evita en la UI deseleccionando la gemela al
     marcar la otra.
 
-    Es una comprobacion ESTATICA a proposito: el arnes no abre ventana, y una
-    casilla de CustomTkinter sin `CTk`/`root` no se puede instanciar. Lo que se
-    congela es la PROPIEDAD del cableado, no su forma: que el espejo existe y
-    que ninguna pieza del acordeon cuelga de una condicion (A0, A1 y A2 mas
-    abajo). El comportamiento de los servicios lo miden los tests #1 a #11.
+    Es una comprobacion ESTATICA, y lo sigue siendo, pero la RAZON por la que se
+    escribio era FALSA y se corrige aqui, porque es la que ha invitado OCHO
+    rondas de reescritura. Decia: "el arnes no abre ventana, y una casilla de
+    CustomTkinter sin `CTk`/`root` no se puede instanciar". No es cierto, y esta
+    MEDIDO en el propio arnes: `test_headless_ui` levanta un `WOptimizerApp`
+    real con `app.run()`, y `test_main_window_navigation_transitions` monta un
+    `ctk.CTk()` real, lo retira con `withdraw()` y llega a un `PackManagerView`
+    DE VERDAD por `win._show_packs()`. El efecto es alcanzable desde aqui, y el
+    3-E (abajo, `test_todo_pack_ofrece_el_catalogo_completo_en_apagar_y_arrancar`)
+    lo mide con la vista montada de verdad.
+
+    Lo que se congela en ESTE test es otra cosa, y no es menos: la PROPIEDAD
+    DEL CABLEADO. Que el espejo existe, y que ninguna pieza del acordeon cuelga
+    de una condicion (A0, A1 y A2 mas abajo) es sobre el CODIGO; lo que el
+    usuario ve lo mide el 3-E, sobre la vista real. Los dos no se solapan y su
+    desacuerdo esta medido: el mutante `E_COSMETICA_IF`
+    (`cb.grid(row=i // (2 if pack.is_gaming else 1), ...)`) lo mata el techo (f)
+    de mas abajo, y el 3-E lo deja pasar, porque esa forma cambia la FILA y no
+    la CANTIDAD, que es justo lo que el propio techo declara que el pack no
+    puede decidir. Ahi el test de efecto tiene razon y este es mas estricto de
+    la cuenta. El comportamiento de los servicios lo miden los tests #1 a #18.
+
+    REGLA ANTI-RODADURA, la que impide la ronda 9: una familia nueva solo puede
+    anadirse a una capa si NINGUNA regla de la OTRA capa la mata ya, y el techo
+    se re-reparte de modo que cada eje declarado diga que capa lo posee. Por eso
+    A1, A2 y A3 estan CONGELADAS: no se anaden formas "por si acaso" y no se
+    tocan para "reforzar" lo que el 3-E ya mide, que seria la forma mas
+    burda de relajar. Los dos docstrings citan la misma regla por eso.
     """
     print("Testing acordeon en pack no gaming con espejo deshabilitado...")
     ruta = os.path.join("src", "woptimizer", "ui", "views", "pack_manager_view.py")
@@ -14310,6 +14333,10 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
     )
 
     # --- A1: ninguna pieza del acordeon cuelga de una condicion ----------------
+    # REGLA ANTI-RODADURA (docstring de este test): esta es la capa ESTATICA y
+    # la otra es el 3-E. Una forma nueva solo entra aqui si el 3-E no la mata
+    # ya, y al reves. A1/A2/A3 se CONGELAN por eso: no se ensanchan "por si
+    # acaso" y no se tocan para "reforzar" lo que el efecto ya mide.
     # Da igual QUE condicion sea. Una variable intermedia, un alias, `getattr`,
     # un helper, un predicado con otro nombre, el identificador de otra cosa o
     # un `assert` siguen siendo una condicion por delante de la construccion, y
@@ -15611,6 +15638,146 @@ def shutil_rmtree(ruta):
     shutil.rmtree(ruta, ignore_errors=True)
 
 
+def test_todo_pack_ofrece_el_catalogo_completo_en_apagar_y_arrancar():
+    """3-E. El invariante del acordeon afirmado por EFECTO, no por forma.
+
+    Por que discrimina: el estatico #3 (A0/A1/A2) pregunta "¿puede esta
+    sentencia impedir la construccion?", y esa pregunta es ALCANZABILIDAD: no
+    tiene respuesta sobre un solo fichero sin enumerar tipos de nodo, y cada
+    forma que se anade a la lista deja vivo un miembro de la siguiente. OCHO
+    rondas de mutacion lo midieron, cada una cerrando una familia y dejando
+    viva la siguiente. Aqui no se pregunta por la forma: se monta la vista REAL
+    y se mira QUE ETIQUETAS hay en cada tarjeta.
+
+    No es un duplicado de A1, y su desacuerdo esta MEDIDO: A1 afirma un ESPACIO
+    NEGATIVO sobre el codigo ("ninguna pieza cuelga de una condicion") y caza
+    cosas que E2 deja pasar a proposito, como `if pack.is_gaming or True:`; E2
+    afirma lo que el usuario VE, y le da la razon al efecto en la forma
+    `cb.grid(row=i // (2 if pack.is_gaming else 1), ...)`, que cambia la FILA y
+    no la CANTIDAD, que es lo que el propio techo del #3 declara.
+
+    El TOTAL NO se escribe, y es una decision de diseno, no una pereza: sale
+    solo (`2 * len(catalogo)`) y escribirlo reintroduce el numero magico, que
+    es lo que hace que la suite dependa del host --medido en este host: el
+    catalogo real de `categorias_disponibles()` trae 9, no las 6 del arnes
+    sintetico del auditor--. Lo que se comprueba por categoria es `exactamente
+    una` y `exactamente una`: asi una lista filtrada NO pasa por tener menos,
+    una tanda duplicada NO pasa por tener mas, y un control nuevo legitimo SI
+    pasa, porque su etiqueta es otra cadena.
+
+    Los dos falsos positivos que quedan son DELIBERADOS, y van en el motivo
+    del mensaje de E2, porque una asercion sin motivo obliga a aflojar y eso
+    garantiza que se afloje: (i) una tercera tanda espejo que reutilice las dos
+    etiquetas --se rechaza a proposito, son el contrato de las dos
+    direcciones--; (ii) una categoria que se llamara exactamente como otra mas
+    " (arrancar)", que mientras `process_service.py:863` descarte el centinela
+    no se puede construir. El que NO rompe E2 es el caso que forzo a reescribir
+    el estatico en la ronda 4 --una casilla propia del Gaming Mode dentro del
+    badge-- porque su etiqueta no es `c` ni `c + " (arrancar)"`.
+
+    REGLA ANTI-RODADURA (la del docstring del #3, aqui la copia que la hace
+    cumplir): una familia nueva solo se anade a esta capa si NINGUNA regla de la
+    capa estatica la mata ya, y al reves. El techo se re-reparte asi: el
+    ESTATICO posee "que se puede escribir ahi" y el EFECTO posee "que se ve ahi".
+
+    Lo que NO se afirma aqui, y es el residuo declarado: la VISIBILIDAD. Medido,
+    gatear el `.pack()` de `cat_body` deja las 18 casillas CONSTRUIDAS y E1/E2
+    en verde. Cerrarlo exige identificar el boton del acordeon en el arbol vivo
+    por su nombre o por su texto, que es exactamente el defecto que las ocho
+    rondas quitaron del estatico; la forma honesta es darle al acordeon un punto
+    de entrada identificable por comportamiento, y eso es `src/`, o sea otro
+    `change-id`.
+    """
+    print("Testing todo pack ofrece el catalogo completo en apagar y arrancar...")
+    import customtkinter as ctk
+    from woptimizer.ui.views.pack_manager_view import PackManagerView
+
+    def _etiquetas(widget, acc):
+        """Texto de TODAS las casillas del subarbol, en orden de construccion."""
+        if isinstance(widget, ctk.CTkCheckBox):
+            acc.append(widget.cget("text"))
+        for hijo in widget.winfo_children():
+            _etiquetas(hijo, acc)
+        return acc
+
+    pack_s, ruta = _pack_service_temporal()
+    root = None
+    try:
+        # Un pack de usuario ALlado al de Gaming: E1 se mide contra el REGISTRO,
+        # y con un registro de un solo pack "una tarjeta por pack" y "siempre una
+        # tarjeta" darian el mismo numero.
+        pack_s.create_user_pack("trabajo", "Trabajo", [])
+        packs = pack_s.get_all_packs()
+        ps = ProcessService()
+        catalogo = ps.categorias_disponibles()
+
+        # --- E0: sin catalogo, E2 no mira NADA y el usuario no ve casillas -----
+        assert len(catalogo) >= 1, (
+            f"el catalogo de `ProcessService.categorias_disponibles()` ha vuelto "
+            f"vacio en este host ({len(catalogo)} categorias). Sin el, E2 no tiene "
+            f"contra que comparar y este test pasaria en VERDE con el usuario sin "
+            f"una sola casilla que marcar. Mueren asi `G_CATALOGO_VACIO` y "
+            f"cualquier `return []` temprano"
+        )
+
+        root = ctk.CTk()
+        root.withdraw()
+        # --- E3: la construccion no revienta; si revienta, se RELANZA aqui ----
+        # Sin este `try`, un `assert pack.is_gaming` delante de la construccion
+        # tumba la suite con un `AssertionError` crudo en el que no se lee QUE
+        # invariante esta roto, y un fallo de puerta se confunde con un fallo de
+        # asercion del propio test.
+        try:
+            vista = PackManagerView(root, ps, pack_s)
+            root.update_idletasks()
+        except Exception as exc:
+            raise AssertionError(
+                f"E3: la vista no se pudo construir: {type(exc).__name__}: {exc}. "
+                f"El invariante de TASK-063 es que el catalogo se ofrezca para "
+                f"TODO pack, y una vista que no llega a construirse lo incumple "
+                f"entero: revienta al MONTAR, no despues"
+            ) from exc
+
+        tarjetas = vista.scroll_frame.winfo_children()
+
+        # --- E1: una tarjeta por pack, todas, ninguna gateada -----------------
+        assert len(tarjetas) == len(packs), (
+            f"la vista dibujo {len(tarjetas)} tarjetas para {len(packs)} packs "
+            f"({sorted(packs)}): alguna no llego a dibujarse. E1 mata el gate en "
+            f"el LUGAR DE LA LLAMADA --`refresh_packs`--, que A1 no ve porque el "
+            f"acordeon SI se construye: lo que falta es la tarjeta entera"
+        )
+
+        # --- E2: por cada tarjeta y cada categoria, una de APAGAR y una de ARRANCAR
+        for n_tarjeta, tarjeta in enumerate(tarjetas):
+            etiquetas = _etiquetas(tarjeta, [])
+            for cat in catalogo:
+                n_apagar = etiquetas.count(cat)
+                n_arrancar = etiquetas.count(f"{cat} (arrancar)")
+                base = (
+                    f"tarjeta {n_tarjeta} ({len(etiquetas)} casillas), categoria "
+                    f"{cat!r}: hay {n_apagar} casilla(s) de APAGAR y {n_arrancar} "
+                    f"de ARRANCAR. Las dos etiquetas son el CONTRATO de las dos "
+                    f"direcciones --una apaga, la otra arranca-- y por eso la "
+                    f"cuenta es exactamente una de cada y no 'al menos una': una "
+                    f"tanda filtrada se cuela por tener MENOS y una duplicada por "
+                    f"tener MAS. Si hace falta un TERCER control, no se reutilice "
+                    f"una de las dos etiquetas: dale la suya"
+                )
+                assert n_apagar == 1, f"E2 (apagar): {base}"
+                assert n_arrancar == 1, f"E2 (arrancar): {base}"
+    finally:
+        if root is not None:
+            try:
+                root.quit()
+                root.destroy()
+            except Exception:
+                pass
+        if os.path.exists(ruta):
+            os.unlink(ruta)
+    print("Todo pack ofrece el catalogo completo en apagar y arrancar OK (TASK-063).")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -15831,4 +15998,11 @@ if __name__ == "__main__":
     test_barrera_roja_sola_con_el_snapshot_y_la_db_en_discrepancia()     # #16
     test_el_filtro_de_la_puerta_no_escribe_en_el_pack_original()         # #17
     test_arranque_por_categoria_toma_los_nombres_de_la_db_real()          # #18
+    # TASK-063 T-9. El invariante del acordeon, afirmado por EFECTO y no por
+    # forma: la vista REAL montada headless, y por cada tarjeta y por cada
+    # categoria del catalogo exactamente una casilla de apagar y exactamente
+    # una de arrancar. La razon esta en el docstring y en el del #3: el estatico
+    # pregunta alcanzabilidad, que no se responde enumerando tipos de nodo, y
+    # por eso se congela aqui. Suite: 123 -> 124 (95 backend + 29 headless).
+    test_todo_pack_ofrece_el_catalogo_completo_en_apagar_y_arrancar()     # #3-E
     print("\nALL TESTS PASSED.")
