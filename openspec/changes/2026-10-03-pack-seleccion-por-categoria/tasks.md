@@ -107,9 +107,53 @@ T-1 puerta común con barreras DENTRO
 ### T-8 · Cierre verificable: recuento, validador y mutaciones
 
 - `run_tests.py`: los tests de esta tarea están escritos.
+- **Los cuatro ficheros de recuento, en la MISMA pasada, y con la cifra que MANDA:** la derivan `validate_docs.py` y el check 7 con `ast` (`validate_docs.py:13-74` y `:508-563`), contando las llamadas `test_*()` alrededor del marcador estructural `run_tests.py:15782`. Hoy son **123 = 95 backend + 28 headless**, declarados en `STATUS.md:9`, `AGENTS.md:69`, `README.md:62` y `docs/ai/testing-guide.md:170`, y la tabla de la guía tiene **una fila por test** (`validate_docs.py:148-158`). T-9 **también** mueve la cifra, y por eso su número es 124 = 95 + 29.
 - **Las cuatro cifras sincronizadas en la MISMA pasada:** `STATUS.md`, `AGENTS.md`, `README.md` y la tabla de `docs/ai/testing-guide.md`. El check 7 de `validate_docs.py` deriva el número con `ast` y compara contra los cuatro: añadir un test sin sincronizarlos da FAIL.
 - `validate_docs.py` en **0 FAIL**.
 - **`mutation-auditor` en PASS** sobre las mutaciones de la tabla de abajo. Sin ese PASS, el ciclo no se cierra: `run_tests.py` en verde dice que el código hace lo que el test comprueba, **no** que el test compruebe algo.
+
+### T-9 · La invariante del acordeón, afirmada por **EFECTO** (cierra el FAIL del ciclo 51)
+
+**Por qué existe esta subtarea.** El test #3 es una red **estática** sobre un único fichero, y lleva nueve rondas de mutación: cada arreglo cerró una FAMILIA de formas de gate y dejó vivo un miembro de la siguiente (`U1` → `U1_AND` → variable/helper/guard/alias/`getattr`/predicado → gate en el lugar de la llamada → lista filtrada a dos saltos → techo declarado → casilla en una comprehension → `assert` delante). El análisis del dev es la razón de fondo y **no se discute**: sobre un solo fichero, "¿puede esta sentencia impedir la construcción?" es **alcanzabilidad**, y toda propiedad semántica no trivial lo es. `_CONDICIONALES` no se puede cerrar por dentro: **añadir un tipo de nodo a una lista no acerca la invariante, solo desplaza el borde.**
+
+**La decisión.** El invariante se deja de preguntar por la **forma** y se pregunta por el **efecto**: *la vista real, montada de verdad, da a cada pack el catálogo completo en las dos direcciones*. Y hay tres hechos medidos que lo sostienen:
+
+1. **La premisa del docstring del #3 es FALSA.** `run_tests.py:14205-14206` justifica el método estático con que «el arnés no abre ventana, y una casilla de CustomTkinter sin `CTk`/`root` no se puede instanciar». Pero `test_headless_ui` (`run_tests.py:268-288`) monta un `WOptimizerApp` real con `app.run()`, y `test_main_window_navigation_transitions` (`run_tests.py:8352-8382`) monta un `ctk.CTk()` real, lo hace `withdraw()` y llega a un `PackManagerView` **de verdad** con `win._show_packs()`. La premisa es superable, y **esa frase es la que ha inviteado nueve rondas**: hay que corregirla en la misma pasada o invita la décima.
+2. **El camino hasta las casillas existe y es corto** (medido en una cámara en `%TEMP%`, copia de `src`, repo intacto): `PackService(data_path=tmp)` + `create_user_pack(...)` + `ProcessService()` real → `PackManagerView(root, ps, pack_s)` → `root.update_idletasks()` → `vista.scroll_frame.winfo_children()`. **Sin `mainloop`, sin `after`, sin bombeo.** Destruye en `finally`.
+3. **No son seis casillas.** Medido en este host: `categorias_disponibles()` devuelve **9** categorías (`process_service.py:842-866` une `_db_map` con `CATEGORY_ORDER` y quita `⚪ Otros`), y la vista construye **18** casillas por tarjeta (dos tandas espejo). Un test escrito con el «6» del encargo —o con el «6» del arnés sintético del auditor— **falla hoy** en este host, y uno escrito con el número del arnés pasa **por el motivo equivocado**.
+
+**Qué afirma, y con qué variante muere cada una (medido, no supuesto).**
+
+| Aserción | Qué mide | Mutante | Medido |
+|---|---|---|---|
+| **E0** | `len(catálogo) >= 1` antes de assertar nada | `G_CATALOGO_VACIO` (`categorias_disponibles()` devuelve `[]`) | **MUERE**: sin esto, un catálogo vacío hace que E2 sea vacuo y el usuario no ve nada con el test en verde |
+| **E3** | la construcción de la vista **no revienta**; se re-lanza como `AssertionError` nombrando la invariante | `C_ASSERT_GATE` (`assert pack.is_gaming` delante de `:391`) | **MUERE por aserción**, no por excepción cruda: medido, el render del pack normal revienta con `AssertionError` dentro de `_render_pack_card`, y sin el `try/except` la suite aborta sin que ninguna aserción haya dicho **por qué** está rota la invariante |
+| **E1** | `len(tarjetas) == len(packs)` | `A_GATE_EN_LA_LLAMADA` (`refresh_packs`: `if p_id != "gaming" and p.is_gaming:`) | **MUERE por E1**: 1 tarjeta de 2 |
+| **E2** | por **cada** tarjeta y por **cada** categoría `c` del catálogo: exactamente una casilla con texto `c` y exactamente una con texto `f"{c} (arrancar)"` | `B_LISTA_FILTRADA` (`sorted_cats = ordenar_categorias(all_cats) if pack.is_gaming else []`) | **MUERE por E2**: 0 casillas / 9 faltan en la tarjeta normal |
+| **E2** | ídem | `F_LAMBDA_MAP` (`def _caja` + comprehension gateada) | **MUERE por E2**: 27 casillas / 9 faltan |
+| **E2** | ídem | `H_RENOMBRAR` (`" (arrancar)"` → `" (arrancar más tarde)"`) | **MUERE por E2**: la etiqueta **es** el contrato con el usuario |
+
+Base: `REPO` → E1=E2=True, 18 casillas y 0 faltan en las dos tarjetas.
+
+**Por qué esto cierra la familia y no solo la siguiente forma.** E2 no mira **cómo** está escrito el código: mira **qué etiquetas hay**. Con eso mueren de golpe el `if` delante, el guard clause, la lista filtrada en la asignación o en cualquier salto de la cadena, la comprehension filtrada, el `map`/`lambda`, el `assert` delante y la lista que llega de otra función por una llamada — las familias de las nueve rondas, sin una entrada más en ninguna lista. Y el coste es **un test**, no un tipo de nodo.
+
+**El número es un invariante, no una cifra mágica.** E2 **no** comprueba un total. Comprueba, por categoría, `exactamente una` y `exactamente una`: así (a) una lista filtrada a tres de seis **no** pasa por tener menos, (b) una tanda duplicada **no** pasa por tener más, y (c) un control legítimo nuevo **sí** pasa, porque su etiqueta es otra cadena. El total sale solo (`2 × len(catálogo)`) y **no se escribe en el test**: escribirlo reintroduce el número mágico, que es lo que hace que la suite dependa del host.
+
+**El falso positivo, mirado ANTES de escribir el test (es la mitad del trabajo).** El riesgo real de un test de efecto es rechazar código legítimo, y aquí está medido: el falso positivo que forzó a reescribir el estático en la ronda 4 —*una casilla propia del Gaming Mode dentro del acordeón*— **no rompe E2**, porque su etiqueta no es `c` ni `c + " (arrancar)"`; el estático sí lo rechaza. Los dos que **sí** quedan son: (i) una tercera tanda espejo que **reutilice** las dos etiquetas (se rechaza a propósito: son el contrato de las dos direcciones, y quien quiera una tercera le da su propio sufijo), (ii) una categoría del catálogo que se llamara exactamente `otra + " (arrancar)"` (imposible mientras `⚪ Otros` no se ofrezca, y `process_service.py:863` lo impide). **El mensaje de E2 tiene que decir el motivo** —el contrato de las dos direcciones— y el remedio, porque un aserción sin motivo obliga a aflojar y eso garantiza que se afloje.
+
+**Qué pasa con A1/A2/A3: se CONGELAN, no se tocan ni se borran.** Y no son una copia de E2: **(a) no afirman lo mismo** —lo estático afirma «ninguna construcción del acordeón depende de `is_gaming`» (espacio negativo, y caza minas de comportamiento neutro como `if pack.is_gaming or True:`, que E2 deja pasar **y está bien que deje pasar**), lo de efecto afirma «cada tarjeta ofrece el catálogo completo en las dos direcciones»; **(b) borrarlas porque otra cosa también pasa sería el movimiento de «relajar» en su forma más pura**; y **(c) hay prueba medida de que no se solapan**: el mutante `E_COSMETICA_IF` (`cb.grid(row=i // (2 if pack.is_gaming else 1), ...)`) lo mata el techo (f) del estático (`run_tests.py:14716-14736`) y **E2 lo deja pasar**, porque esa forma cambia la **fila**, no la **cantidad** — y el motivo que el propio techo declara es «lo que el pack no puede decidir es la CANTIDAD de casillas». En esa forma, **el test de efecto tiene razón y el estático es más estricto de la cuenta**. Son complementarios, y su desacuerdo está medido.
+
+> 🔴 **LA REGLA ANTI-RODADURA, que es lo que impide la ronda 10** (va en el docstring de los dos tests, no aquí): *una familia nueva solo puede añadirse a una capa si NINGUNA regla de la otra capa la mata ya, y el techo se re-reparte de modo que cada eje declarado diga qué capa lo posee.* Sin esa frase, las dos capas se separan y la más difícil de mantener muere sola sin que nadie lo note.
+
+**El residuo, declarado y NO arreglado: el eje (b).** Medido: gatear el `.pack()`/`pack_forget()` de `cat_body` (`pack_manager_view.py:362-368`) deja las 18 casillas **construidas** y E1/E2 **en verde** (`D_PACK_FORGET` → PASA). No se cierra en esta pasada, y el motivo es de arquitectura, no de pereza: para afirmar la **visibilidad** hay que **pulsar** el botón del acordeón, y en el árbol vivo ese botón se identifica **por su nombre o por su texto** — que es exactamente el defecto que las nueve rondas quitaron del test estático. La forma honesta de cerrarlo es **darle al acordeón un punto de entrada identificable por comportamiento** (un método público de la vista que alterne el cuerpo de un `pack_id`), que es un cambio en `src/` y por tanto **otro `change-id`**, no esta tarea. Queda escrito como eje (b) con su precio.
+
+**Los cuatro ficheros de recuento, en la misma pasada** (T-8 los nombra; aquí van los números): `123 → 124` y `28 → 29` headless, `95` backend sin cambio; la tabla de `docs/ai/testing-guide.md` gana la **fila 124**. Y la fila `STATUS.md` del recuento (`STATUS.md:9`) tiene que decir el reparto nuevo, porque el check 7 deriva con `ast` y compara contra los cuatro.
+
+**Test a escribir (NO se escribe aquí):**
+
+| # | Test | Por qué discrimina |
+|---|---|---|
+| 3-E | `test_todo_pack_ofrece_el_catalogo_completo_en_apagar_y_arrancar` | Vista **real** montada headless, con `PackService` temporal: por cada tarjeta y por cada categoría del catálogo hay exactamente una casilla de apagar y exactamente una de arrancar. *Falla sin el fix* en las seis familias medidas (gate en la llamada, lista filtrada, comprehension, `map`/`lambda`, guard clause, `assert` delante), y sin la vista real ninguna de ellas se puede construir. Va **después** del marcador `run_tests.py:15782`, o no cuenta como headless |
 
 ---
 
