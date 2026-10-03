@@ -1,7 +1,8 @@
 ## [CYCLE-051] 2026-10-03 - pack-seleccion-por-categoria
 
 **Area**: Gaming y Telemetria UX. **Change**: `openspec/changes/2026-10-03-pack-seleccion-por-categoria/`
-**Estado**: IMPLEMENTADO. `TASK-063` en `completed`. El **Paso 4 esta en curso**: diez rondas de auditoria.
+**Estado**: **COMPLETED.** `TASK-063` en `completed`. El **Paso 4 dio `PASS` en la ronda 11 de once**: el cambio de la FORMA al EFECTO cerro las diez familias de gate de una, y los dos ultimos supervivientes eran de otra clase (cableado cruzado y completitud del catalogo) y quedaron cerrados con E4 y E5.
+**LO QUE NO SE VERIFICO, declarado y no medido:** el shell del host cayo en `spawn EPERM` al final de la ronda 11, asi que quedaron sin re-medir `K_CATEGORIA_SOLO_DB`, `PREMISA` y `D_C_ASSERT_GATE`, las regresiones `G_VAR`, `G_ALIAS`, `G_HELPER`, `F_MAP_LAMBDA`, `S1_SOLO` y `Z1` (que el dev midio en la ronda 10, sin cambios desde entonces), y la lectura final de `git status`/`log`/`diff` del arbol real. Ninguna es un punto del encargo ni un rojo.
 **Models**:
 - Paso 1 (Buscar): orchestrator. `active_task_id` apuntaba a TASK-059; se toma TASK-063 (high, sin dependencias, valor visible para el usuario)
 - Paso 2 (Planear): `architect-review`, commit `dc4b430`. **Seis hallazgos medidos** y el orden forzado T-1..T-8. Corrigio la especificacion preexistente en vez de crearla, y el hallazgo H1 (nuevo) es que `_last_closed_apps` se sobrescribe sin mirar quien pide el apagado
@@ -31,6 +32,11 @@
 | G_CATALOGO_VACIO | catalogo de categorias vacio | **MUERE** (E0) | `el catalogo de categorias ha vuelto vacio en este host (0 categorias)` |
 | A_GATE_EN_LA_LLAMADA | gate en `refresh_packs` | **MUERE** (E1) | `la vista dibujo 1 tarjetas para 2 packs` |
 | B / F / H | lista filtrada, `map`+lambda, etiqueta renombrada | **MUEREN** (E2) | `hay 0 casilla(s) de APAGAR` / `hay 3 casilla(s) de APAGAR` / `1 de APAGAR y 0 de ARRANCAR` |
+| K_CATALOGO_CORTO | una categoria verde sale del catalogo | **MUERE** (E4, ronda 11) | `E4: el catalogo que la vista consume se ha quedado CORTO: le faltan 1 de las 9 categorias que el servicio clasifica` |
+| W_VAR_CRUZADA | `variable=arrancar_var` -> `apagar_var` | **MUERE** (E5a, ronda 11) | `E5 (arrancar, 'Media y Streaming'): la casilla esta en 1 y el pack tiene ['Overlays e Info'] en start_categories, o sea esperaba 0` |
+| W_SIN_E5A | E5a borrado del test, 33 lineas fuera | **MUERE** (E5b) | `E5 (clic arrancar, 'Antivirus y Seguridad'): el registro quedo en target_categories=[...]` |
+| W_ESTADO_SOLO_E5A | E5b borrado, 62 lineas fuera | **MUERE** (E5a sola) | ninguna de las dos mitades depende de que la otra exista |
+| T_TAUTOLOGIA | E4 leyendo `set(catalogo)` + el bug de produccion | **VERDE** | la muerte de E4 viene de derivar de dos fuentes, no de casualidad |
 
 ### Lo que realmente agrego este ciclo
 

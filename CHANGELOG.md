@@ -2,6 +2,8 @@
 
 **Gaming y Telemetría UX** - `TASK-063` (Selección por categoría para TODOS los packs)
 
+**Estado**: **terminado y auditado.** El ciclo pasó por **once rondas de revisión** antes de cerrarse, y esa parte de la historia es tan importante como el resultado.
+
 ### Añadido
 
 - Ahora puedes elegir **qué apagar y qué arrancar por categoría en cualquier pack**, no solo en el de Gaming. El selector ya existía como dato, pero las tres puertas de apagado pasaban por la lista de apps e ignoraban las categorías: aunque se le añadieras a un pack normal, no habría hecho nada. Ahora los packs normales también lo tienen, con dos listas (apagar y arrancar), y no puedes marcar en las dos la misma categoría, porque el selector desactiva la casilla de la otra.
@@ -25,9 +27,13 @@ El diagnóstico llegó al final y se resume fácil: **la pregunta que hace el te
 
 La salida fue cambiar la pregunta: no "¿está escrito de una forma prohibida?", sino **"¿un pack normal ve todas sus casillas?"**. Eso se mide de verdad: se monta la pantalla, se repinta y se cuentan las casillas. Da igual cómo esté escrito el código por dentro, y por eso mata las nueve familias de una vez.
 
+**Y así se cerró.** Ese test nuevo murió a las diez familias de golpe. En las dos rondas siguientes aparecieron dos huecos que **no eran** nuevas formas de escribir la condición: el cableado de un interruptor a la lista equivocada, y una categoría que podía desaparecer del catálogo dejando a un proceso sin casilla donde marcarlo. Los dos se cerraron con dos comprobaciones que derivan sus números de las mismas fuentes que usa la aplicación, sin escribir ni un nombre de categoría en el test. **La undécima ronda dio verde.**
+
+Y dos cosas que quedaron claras al hacerlo. La primera: **ninguno de los dos fallos era de la aplicación** —el interruptor estaba bien cableado; lo que faltaba era la comprobación—, que es el orden correcto para averiguarlo: medir antes de proponer un arreglo. La segunda: el residuo que **sí** queda abierto, ocultar el panel de una casilla concreta, no lo cierra nadie, y cerrarlo exigiría volver a depender del nombre del botón, que es exactamente el defecto que este ciclo quitó. Se queda declarado, con su tamaño.
+
 **Lo que aprendimos los que lo revisamos, y que vale más que el arreglo:**
 
-- El comentario del propio test decía que la casilla no se podía montar sin ventana real. **Era falso**, y dos tests del repo ya montaban la pantalla de verdad. Esa frase la había puesto el orquestador al encargar el trabajo, y fue la que-azicar- a los nueve revisores a dar vueltas: cada uno la leyó como cierta. Un comentario falso en el sitio equivocado cuesta más que un fallo, porque nadie lo discute.
+- El comentario del propio test decía que la casilla no se podía montar sin ventana real. **Era falso**, y dos tests del repo ya montaban la pantalla de verdad. Esa frase la había puesto el orquestador al encargar el trabajo, y fue la que provocó las nueve rondas: cada actor la leyó como cierta. Un comentario falso en el sitio equivocado cuesta más que un fallo, porque nadie lo discute. Y en la misma situación un número: se le pasó al dev que el validador daba 120 comprobaciones. **Son 119**, y el 120 no aparece en ningún sitio del repo.
 - Un test puede ser **demasiado estricto**. Una versión intermedia rechazaba código que funcionaba, y el mensaje de error mentía sobre el motivo. Eso es peor que no tener test: el siguiente que llega afloja la comprobación para que pase, y reabre el agujero sin darse cuenta.
 - Cuando un límite no se puede cerrar por dentro, **se declara con su tamaño real y se explica por qué**. Un límite honesto con su medidor es mucho más útil que un límite que se hace pasar por cerrado.
 

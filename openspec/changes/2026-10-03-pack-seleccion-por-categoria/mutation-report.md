@@ -2784,3 +2784,426 @@ eso es ciego a **que el catalogo este corto**.
 La buena noticia, y es la que hace este FAIL barato: **el agujero que queda no es una forma de gate**.
 No hay una ronda once. Son **dos aserciones mas** en el test que ya existe, y las dos se escriben
 pulsando la casilla de verdad.
+
+---
+
+# 17. RONDA 11 DEL `mutation-auditor`: EL CIERRE (veredicto del ciclo)
+
+> Esta ronda está **acotada a propósito**, y la acotación *es* el encargo: comprobar que **E4 y E5**
+> hacen lo que dicen y que no son ni mudas ni demasiado estrechas. No se buscan familias de gate
+> nuevas: esa vía se cerró en la §16.12, que es justo donde termina la ronda anterior.
+
+---
+
+## 17.0 VEREDICTO
+
+**PASS.** No hay ningún rojo vivo, no hay ninguna muerte previa perdida, y las dos aserciones nuevas
+se han medido **por su aserción**, no por su nombre. Los seis puntos del encargo están medidos.
+
+Lo que el dev declaró, comprobado y no creído:
+
+| Afirmación del dev | Medido |
+|---|---|
+| `K_CATALOGO_CORTO` muere por **E4**, con el literal tal cual | ✅ **idéntico**, y con la lista `['🟢 Navegadores']` |
+| `W_VAR_CRUZADA` muere por **E5a**, con el literal tal cual | ✅ **idéntico**: `E5 (arrancar, '🟡 Media y Streaming')…` |
+| `W_SIN_E5A` (E5a borrado, 33 líneas fuera) muere por **E5b** | ✅ **idéntico**: `E5 (clic arrancar, '🔴 Antivirus y Seguridad')…` |
+| E4 deriva de dos fuentes y no escribe ni un nombre de categoría | ✅ con `ast`: **cero** cadenas con un nombre de categoría, y **ni el 9 ni el 18** entre los literales de la función (15648-16042) |
+| La tarjeta se localiza **por estado, no por posición** | ✅ `ORDEN_TARJETAS` (la de Gaming al FINAL) → **verde** |
+| El clic es `toggle()` → `set()` → `command()`, medido con `inspect` | ✅ **cierto**, en customtkinter 6.0.0, textual |
+| `pack_manager_view.py:457` cablea la casilla de arrancar a la variable correcta, y pulsar guarda en `start_categories` | ✅ es `variable=arrancar_var`; `create_command` (402-435) escribe en `start_categories` |
+| `src/` sin cambios: el diagnóstico es de test y no de producción | ✅ `git log -1 -- src/` = `e0f20db`; `git diff bf0f5d0 -- src/` vacío |
+| 124 = 95 + 29 en los cuatro ficheros | ✅ derivado con `ast` por mi cuenta (95 y 29) y por `validate_docs.py`: **119 OK / 0 FAIL** |
+| `E0` no se ofrece como cobertura y queda subsumida por E4 | ✅ `test_default_meta_matches_canonical_otros` es la **29 de 124** y el 3-E la **124**: en la suite completa muere antes, como dice |
+| `E_COSMETICA_IF` lo dejan pasar las dos capas, y con razón | ✅ **verde**; y la frase nueva (iterable ≠ cantidad) está en los **cuatro** sitios |
+| `K_CATALOGO_NUEVA_CATEGORIA` → `PERMITIDO`, 9→10 y 18→20 | ✅ reproducido: suite **verde** |
+
+**Y cuatro cosas que el dev NO declaró, que son de este informe y no se le atribuyen:**
+
+1. **E4 es unidireccional y no lo dice.** Afirma que el catálogo no está *corto*; no afirma que no
+   tenga nada de más. Con el centinela dejado de descartar (`K_SIN_CENTINELA`) E4 pasa, y lo mata
+   `categorias_disponibles_excluye_el_centinela` (`run_tests.py:2508`). No es un hueco: es **dónde
+   vive** la cobertura, y conviene que esté escrito (§17.6).
+2. **La pata de la DB de la unión de E4 es inalcanzable, no solo inerte.** En los datos de este host
+   `de_la_db ⊆ CATEGORY_ORDER` (`solo_en_db = []`, medido), y además
+   `test_process_db_schema_integrity` **prohíbe** que la DB tenga una categoría que `config.py` no
+   conozca. O sea: la contraprueba que describe la guía —«una categoría de verdad que **solo la DB
+   conoce**»— **no se puede aplicar en este repo**: muere antes, en el test de esquema, no en E4
+   (§17.6).
+3. **La corrección «fila 123 → 107» está a medias.** La misma fila de la guía que ya dice «fila 107»
+   para la regla anti-rodadura sigue diciendo, treinta palabras antes, **«el estático de la fila 120»**
+   — y la fila 120 es `test_el_estado_que_elige_el_usuario_se_persiste_de_verdad`, un test de TASK-062
+   sin relación ninguna (§17.7).
+4. **No existe la «sección 17» del dev.** El encargo la citaba; `mutation-report.md` termina en la
+   §16.12, y las **407** líneas que `bf0f5d0` añadió a ese fichero son **la §16** —el informe de la
+   ronda 10, que estaba sin commitear y que el commit barrió—. Las afirmaciones del dev viven solo en
+   su mensaje, no en el repositorio (§17.7).
+
+**Tres comprobaciones que NO se pudieron ejecutar, y ninguna es un punto del encargo.** El shell de
+este host se quedó en `spawn EPERM` de forma sostenida al final de la ronda (§17.10), y estas tres
+quedaron sin medir:
+
+| Sonda que no se ejecutó | Por qué no es imprescindible |
+|---|---|
+| `K_CATEGORIA_SOLO_DB` limpia | **Su sustancia ya está medida dos veces**: `T_SOLO_ORDEN3` y `T_TAUTOLOGIA2` llevan esa misma categoría y mueren en `Categorias del JSON ausentes en config.py: {'🟣 Solo DB'}`. El hallazgo de §17.6 no depende de esta corrida |
+| `PREMISA` (el snapshot del #16 pasa a ROJO) | Su gemela `PREMISA_S1` **sí** murió, por su precondición. Es una mutación de fixture de un test (#16) que este ciclo no tocó |
+| `D_C_ASSERT_GATE` (E3 cualificado, dirigido) | La corrida completa ya lo mata, por la **capa estática** (A1), que es lo que midió la ronda 10. Lo que queda por confirmar es *quién* lo mata primero en el dirigido, y eso ya está escrito en el docstring del propio 3-E |
+
+**Y seis regresiones declaradas por el dev que esta ronda NO re-medí**, dicho sin adornos: `G_VAR`,
+`G_ALIAS`, `G_HELPER`, `F_MAP_LAMBDA`, `S1_SOLO` y el permitido `Z1`. No es un hallazgo ni una muerte
+perdida: es alcance que no llegué a medir, y la lista va escrita para que la siguiente ronda sepa
+exactamente qué queda sin re-verificar.
+
+---
+
+## 17.1 AISLAMIENTO (medido antes de mutar nada)
+
+Cámara `%TEMP%\wopt_r11_155440`, **238 ficheros**, con `.git` **excluido como fichero** (no como
+directorio) y `*.pyc`/`__pycache__` fuera. Prueba por los dos lados, antes de tocar un solo byte:
+
+| Comprobación | Resultado |
+|---|---|
+| `git rev-parse --git-dir` **desde la cámara**, con `GIT_DIR` desechable explícito | `…\wopt_r11_155440_gitdesc2\.git` |
+| `git rev-parse --git-dir` **desde la cámara**, **sin** `GIT_DIR` | `fatal: not a git repository (or any of the parent directories): .git` |
+| `.git` como fichero / como directorio en la cámara | `False` / `False` |
+| Cualquier `.git` (exacto) en el árbol de la cámara | ninguno |
+| `git rev-parse --git-dir` desde el **repo real** | `C:/Users/carch/AppData/Local/woptimizer_git/.git` |
+
+**La trampa que casi se me come, y que hay que escribir porque el próximo la va a pisar:** un
+`GIT_DIR` desechable **vacío** produce un CONTROL **ROJO** que no es un defecto del producto.
+`test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz` llama a `_entorno_git_del_repo()`
+(`run_tests.py:6280`), que **verifica** que el `GIT_DIR` candidato sea *este* árbol con
+`rev-parse --show-toplevel` — y el mío lo era, así que lo aceptaba — y luego
+`git ls-files --error-unmatch` fallaba porque **su índice estaba vacío**:
+
+```
+AssertionError: docs/archive/legacy-root-data/profiles.json NO esta versionado
+  (rc=1, "error: pathspec … did not match any file(s) known to git")
+```
+
+La corrección es un `GIT_DIR` desechable **con el índice poblado** (`git init` + `add -A` + commit):
+208 ficheros en el índice, y los dos `check-ignore` que el test exige (rc=0 en
+`saved_processes.json`, rc=1 en el archivo archivado) responden lo que tienen que responder. Y como
+avisa el encargo, el **primer** intento falló con un `index.lock` obsoleto: `GIT_DIR` **nuevo por
+intento**, no reutilizado. **Si el CONTROL no está verde antes de medir, se aborta**: el mío no lo
+estaba, se arregló el arnés y se **volvió a medir desde cero**.
+
+`CONTROL` → **rc=0**, `ALL TESTS PASSED.`, **119,6 s**. `CONTROL_FINAL` (después de 30+ mutaciones) →
+**rc=0** también: la cámara quedó restaurada.
+
+---
+
+## 17.2 EL ARNÉS, Y **MIS** DEFECTOS (declarados antes de los números)
+
+`EXECUTED_AFTER` de verdad: al escribir se relee del disco, se compara el sha256 con el del contenido
+pretendido y **se exige el marcador dentro**; antes de lanzar se comprueba que el mutante sigue en
+disco, y después que el run no lo reescribió. `PYTHONDONTWRITEBYTECODE=1` + purgado de `__pycache__`
+antes de cada ejecución. Restauración en `finally` **por mutante** y `atexit` de red, con
+verificación del texto restaurado. Un `ROTO` no es una muerte, y un verde sobre un mutante no
+aplicado tampoco.
+
+**Mis sondas rotas, y por qué ninguna cuenta como resultado:**
+
+| Sonda rota | Por qué | Qué hice |
+|---|---|---|
+| `CONTROL` (1.ª vez) | `GIT_DIR` desechable **sin índice** (§17.1) | lo poblé y **volví a medir todo** |
+| `K_BD_CORTA` (dos veces) | mi mutación borraba la **última** entrada de `_db_map` y el test del blindaje (`run_tests.py:1748`) inspecciona esa entrada: `KeyError: 'winlogon'`. Muerte **colateral**, no de E4 | la cambié por una entrada **quirúrgica** (`easyanticheat`, 0 referencias en los tests) |
+| `W_ESTADO_SOLO_E5A` | ancla mía con `\n` en un fichero que es **CRLF** | ancla de una línea, sin salto |
+| `PREMISA` | lo mismo, `\n` en `run_tests.py` (CRLF) | ancla con `\r\n`; **no llegué a re-ejecutarla** (§17.0) |
+| `T_POSICION` (1.ª vez) | usé `ordenar_categorias`, que **no está en el ámbito** del test: `NameError` | `min(deberia)` |
+| `K_NUEVA_CATEGORIA`, `K_CATEGORIA_SOLO_DB` (1.ª vez) | ancla `{\r\n`, que aparece **207 veces** en el JSON | ancla con el nombre del primer proceso |
+| `D_K_BD_CORTA` | mi clasificador exigía `ALL TESTS PASSED.`, que **un dirigido no imprime** | `rc=0` con dirigido = verde |
+| `W_ESPEJO_MUERTO` (1.ª vez) | ancla con el bloque equivocado de `create_command` | quité los **dos** caminos del espejo, que es el mutante real |
+
+**Y dos mutantes míos que resultaron EQUIVALENTES, declarados como tales y no como supervivientes:**
+`W_ESPEJO_ROTO` y `W_ESPEJO_ROTO_APAGAR` → **verdes**, porque la resolución del conflicto está escrita
+en **dos** caminos (`if c in …: remove` en la rama que dispara y `elif c in …: remove` en la que no) y
+quitar **uno** no cambia nada observable. El que sí lo parte es `W_ESPEJO_MUERTO`, que quita los dos.
+
+---
+
+## 17.3 LA TABLA: fix → mutación → veredicto → motivo
+
+| # | Mutación (sobre `bf0f5d0`) | Veredicto | Muere por / motivo |
+|---|---|---|---|
+| 1 | `K_CATALOGO_CORTO` — `categorias_disponibles()` descarta `CATEGORY_ORDER[0]` | 🔴 **MUERE** | **E4**, `run_tests.py:15809`. Literal **idéntico** al declarado: `le faltan 1 de las 9 … --['🟢 Navegadores']--` |
+| 2 | `K_SENTINELA_POR_POSICION` — el centinela se deduplica **por posición** | 🔴 **MUERE** | en la suite, antes: `categorias_disponibles() devolvio el centinela` (`:2508`). **Dirigido: E4** (§17.4) |
+| 3 | `K_SIN_CENTINELA` — el centinela se ofrece (9→10) | 🔴 **MUERE** | `:2508`, **no** E4. E4 es unidireccional (§17.6) |
+| 4 | `K_BD_CORTA_CLAVE` — una entrada real de la DB desaparece | 🟢 verde | el catálogo **no** se acorta: la categoría sigue viniendo de `CATEGORY_ORDER` (§17.6) |
+| 5 | `W_VAR_CRUZADA` — `variable=arrancar_var` → `variable=apagar_var` | 🔴 **MUERE** | **E5a**, `:15961`. Literal **idéntico** |
+| 6 | `W_SIN_E5A` — lo anterior **con E5a borrado** (33 líneas) | 🔴 **MUERE** | **E5b**, `:15986`. Literal **idéntico** |
+| 7 | `W_ESTADO_SOLO_E5A` — estado inicial de la lista equivocada, **con E5b borrado** (62 líneas) | 🔴 **MUERE** | **E5a** sola, `:15961` (§17.5) |
+| 8 | `W_COMANDO_SIN_ARRANQUE` — `v_arrancar.get() == 1` → `== 2` (**otro** cableado) | 🔴 **MUERE** | **E5b**, y **E5a pasa** (§17.5) |
+| 9 | `W_ESPEJO_MUERTO` — el espejo deja de resolver el conflicto (los dos caminos) | 🔴 **MUERE** | **E5b**, el aserto del espejo: la categoría queda **en las dos listas** |
+| 10 | `W_ESPEJO_ROTO` / `W_ESPEJO_ROTO_APAGAR` — se quita **un** camino | 🟢 verde | **equivalentes**, por diseño del código (§17.2) |
+| 11 | `K_NUEVA_CATEGORIA` — categoría nueva real en `PROCESS_CATEGORIES` **y** en la DB | 🟢 verde | 9→10 y 18→20: la contraprueba del dev **se reproduce** |
+| 12 | `T_TAUTOLOGIA` — E4 lee `set(catalogo)`, con `K_CATALOGO_CORTO` de fondo | 🟢 verde | **y esta es la prueba**: sin la derivación de dos fuentes, el bug pasa |
+| 13 | `T_SOLO_DB` — E4 lee solo la DB, con `K_CATALOGO_CORTO` de fondo | 🔴 **MUERE** | E4 sigue viendo la caída: la DB trae las 9 (§17.4) |
+| 14 | `T_SOLO_ORDEN3` — E4 lee solo `CATEGORY_ORDER` + categoría solo-DB | 🔴 **MUERE** | `Categorias del JSON ausentes en config.py` (§17.6) |
+| 15 | `T_TAUTOLOGIA2` — E4 tautológico + categoría solo-DB | 🔴 **MUERE** | ídem, por el test de esquema (§17.6) |
+| 16 | `T_POSICION` — E4 deduplica el centinela por `min()` | 🔴 **MUERE** | E4, con `le faltan 1 de las **8**`: mi sonda no aislaba el centinela (§17.4) |
+| 17 | `ORDEN_TARJETAS` — la tarjeta de Gaming se dibuja al **final** | 🟢 verde | la localización por **estado** aguanta el cambio de orden |
+
+`CONTROL` verde (119,6 s) y `CONTROL_FINAL` verde. Ningún `ROTO` cuenta como resultado.
+
+---
+
+## 17.4 E4 NO ES UN 9 ESCRITO A MANO
+
+**De dónde salen el 9 y el 18, derivado con `ast` y no leído de un comentario.** Medido en proceso
+sobre el CONTROL:
+
+```
+len(CATEGORY_ORDER)              = 10      (las 9 + el centinela, indice 9)
+len(de_la_db)                    =  9
+len(catalogo)                    =  9      (== deberia, mismo conjunto)
+deberia = (set(CATEGORY_ORDER) | de_la_db) - {centinela}   =  9
+18 = 2 * len(catalogo)           = 18      (sale solo, no esta escrito)
+CATEGORY_ORDER[0]                = '🟢 Navegadores'
+solo_en_db   (db - orden)        = []      <-- la pata de la DB no aporta nada HOY
+solo_en_orden(orden - db)        = ['⚪ Otros']
+_categorize("chrome.exe")        = '🟢 Navegadores'
+```
+
+**Y el 9 no está escrito en la función.** Con `ast` sobre la del 3-E (15648-16042): cero cadenas
+constantes que contengan un nombre de categoría, y sus literales enteros son
+`[1, 0, 4, 1, 0, 0, 4, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0]` — **ni un 9 ni un 18**.
+
+**La prueba de que discrimina por contenido y no por cuenta: `K_SENTINELA_POR_POSICION`.** Con
+`cats.discard(_DEFAULT_META[0])` sustituido por `cats.discard(CATEGORY_ORDER[0])`, el catálogo sigue
+teniendo **9** elementos —entra el centinela y sale una categoría real—, o sea que **un test que
+afirmara «9 categorías» pasaría en verde**. Medido:
+
+- En la suite completa muere antes, en `categorias_disponibles_excluye_el_centinela` (`:2508`),
+  porque el centinela además se está ofreciendo.
+- **Dirigido al 3-E: MUERE por E4** — `le faltan 1 de las 9 … --['🟢 Navegadores']--`.
+
+Eso es lo que se pedía: el mismo número, el catálogo corto, y E4 lo ve porque compara **conjuntos
+derivados**, no longitudes.
+
+**Y la prueba de que la muerte de E4 no es casual: `T_TAUTOLOGIA`.** Sabotaje la derivación del test a
+`deberia = set(catalogo)` —la lista que ella misma produce— **con `K_CATALOGO_CORTO` de fondo**, y la
+suite entera sale **VERDE**. El bug real pasa si E4 se vuelve tautológico: la muerte del mutante #1
+viene **de la derivación de dos fuentes**, no de otra cosa.
+
+**Matiz honesto sobre mi propia sonda `T_POSICION`:** la escribí para responder «y si el centinela se
+deduplica por posición en vez de por identidad», y **no aísla esa pregunta**: quita `min(deberia)`,
+que es *otra* categoría, mientras el bug de producción quita `CATEGORY_ORDER[0]`. El resultado es que
+E4 sigue viendo la caída (`le faltan 1 de las **8**`) y la sonda **muere**, lo contrario de lo que yo
+esperaba. La pregunta la contesta el mutante de **producción** `D_K_SENTINELA_POR_POSICION`, de
+arriva, y contesta «E4 ve el catálogo corto aunque el recuento no se mueva».
+
+**Y un dato que el dev no declara y que cambia lo que su fórmula vale hoy:** las dos patas de la unión
+traen **las mismas nueve** categorías, así que `T_SOLO_DB` —E4 leyendo **solo** la DB— **también
+muere** por E4 con el mismo bug de producción. Ninguna de las dos patas es hoy la única que trabaja:
+las dos son completas y las dos son redundantes. La fórmula sigue siendo la correcta (es la que
+sobrevive cuando una de las dos se queda corta), pero **la segunda pata no es medible en este repo**,
+y por qué está en §17.6.
+
+---
+
+## 17.5 E5: LAS DOS MITADES, Y NINGUNA ES MUDA
+
+El mecanismo, medido con `inspect` sobre **customtkinter 6.0.0** instalado (no de memoria):
+
+```python
+def toggle(self, event=0):
+    if self._state == tkinter.NORMAL:
+        self.set(not self._check_state)      # escribe en self._variable
+        if self._command is not None:
+            self._command()                  # y LUEGO llama al comando
+```
+
+La afirmación del dev es **cierta y textual**. Ese orden es lo que hace visible `W_VAR_CRUZADA` sin
+tocar ningún nombre: la casilla de ARRANCAR escribe en la variable de APAGAR, y el comando lee esa
+misma.
+
+**Cada mitad muere sola, en las dos direcciones:**
+
+| Mutante | Qué se rompe | Quién muere | Qué demuestra |
+|---|---|---|---|
+| `W_VAR_CRUZADA` | la casilla de arrancar cuelga de la variable de apagar | **E5a** (15961) | E5b no llega a ejecutarse |
+| `W_SIN_E5A` | lo mismo, **E5a borrado del test** (33 líneas) | **E5b** (15986) | E5b no depende de E5a |
+| `W_ESTADO_SOLO_E5A` | el estado inicial sale de la lista equivocada, **E5b borrado** (62 líneas) | **E5a** (15961) | E5a no depende de E5b |
+| `W_COMANDO_SIN_ARRANQUE` | `v_arrancar.get() == 1` → `== 2`: **otro** cableado | **E5b** (15986) | y **E5a pasa**: miden cosas distintas |
+| `W_ESPEJO_MUERTO` | el espejo deja de resolver el conflicto (los dos caminos) | **E5b**, el aserto del espejo | la categoría queda en las dos listas |
+
+Contesta las dos preguntas del encargo. La primera («ninguna de las dos pasa con el cruce puesto»):
+**ninguna pasa** —con el cruce, E5a muere y E5b muere sin E5a—. La segunda («E5b no es un falso
+positivo, pruébale una mutación de cableado **distinta**»): con `W_COMANDO_SIN_ARRANQUE` y con
+`W_ESPEJO_MUERTO` E5b ve dos defectos de cableado que **no** son el cruce, y en el primero **E5a pasa**.
+
+**Y una lista de categorías coherente no lo rompe:** `ORDEN_TARJETAS` (la tarjeta de Gaming al final,
+o sea que el índice de la tarjeta deja de ser el del registro) sale **verde**, que es la comprobación
+de que la localización es **por estado**. Y `K_NUEVA_CATEGORIA` —un catálogo coherente de **10** con
+**20** casillas— sale **verde** en las dos mitades: el estado, los cuatro clics y el espejo se siguen
+midiendo con una categoría de más.
+
+**Sobre `E_COSMETICA_IF`, que el dev declara `PERMITIDO` y es lo que impide que E5 sea estrecha:**
+medido **verde**. Con la rejilla a una casilla por fila, las 18 se siguen viendo, la tarjeta se sigue
+localizando por estado, y el estado y las cuatro pulsaciones se siguen midiendo. La frase nueva —que
+el techo (f) habla del **iterable** y que su propio `COSMETICA_IF` cambia la **cantidad**, mientras la
+forma escrita cambia el `row=`— está en los **cuatro** sitios: docstring del #3 (`run_tests.py:14224-14228`),
+docstring del 3-E (`run_tests.py:15668-15673`), `tasks.md` T-9 (línea 144) y fila 124 de la guía. **Las
+dos capas tienen razón**, y ahora está escrito por qué.
+
+---
+
+## 17.6 LO QUE NO ES UN HALLAZGO (y dónde vive la cobertura, que es lo que hay que declarar)
+
+Tres cosas que **no** son supervivientes, con su razón medida, para que la ronda 12 no las vuelva a
+medir como hallazgos:
+
+| Caso | Por qué no es un hueco |
+|---|---|
+| `K_SIN_CENTINELA` (el centinela se ofrece, 9→10) | E4 **no** lo ve porque es unidireccional: afirma que el catálogo no está *corto*, no que no tenga de más. Lo mata `categorias_disponibles_excluye_el_centinela` (`run_tests.py:2508`), en el test **29 de 124**. La cobertura existe; lo que falta es **decir en E4 que vive en el otro test** |
+| `K_BD_CORTA_CLAVE` (una entrada real de la DB desaparece: `easyanticheat`) | El catálogo **no** se acorta, porque la categoría sigue viniendo de `CATEGORY_ORDER`. Una entrada de proceso que falta es otro invariante (completitud de la DB), no el de E4 |
+| `W_ESPEJO_ROTO`, `W_ESPEJO_ROTO_APAGAR` | **Equivalentes**: la resolución del conflicto está en dos caminos y quitar uno no cambia nada observable. El mutante que lo parte quita los dos, y ese sí muere (§17.5) |
+
+**Y la cuarta, que es un apunte sobre el texto, no sobre el código:** la guía documenta la
+contraprueba de E4 como *«la sonda `K_CATALOGO_EXTENDIDO`, que mete una categoría de verdad que **solo
+la DB conoce**, pasa con 10 categorías y 20 casillas»*. Eso **no se puede aplicar en este repo**:
+`test_process_db_schema_integrity` exige que toda categoría del JSON esté en `PROCESS_CATEGORIES`, así
+que una categoría que solo la DB conozca **muere antes, en el test de esquema**
+(`Categorias del JSON ausentes en config.py: {'🟣 Solo DB'}`), y no en E4. Medido dos veces, con la
+sabotaje de E4 incluida. La contraprueba que **sí** se reproduce es la del dev en su mensaje —una
+categoría real en `PROCESS_CATEGORIES` **y** en la DB— que da 9→10 y 18→20 en verde. Lo que sobra es
+el «que solo la DB conoce», que describe un estado que el producto no permite.
+
+---
+
+## 17.7 LO DOCUMENTAL
+
+| Afirmación | Medido |
+|---|---|
+| `124 = 95 + 29` en los cuatro ficheros | ✅ `run_tests.py:16270`, `STATUS.md:9`, `testing-guide.md:171-173`, `.taskmaster/CHANGELOG.md:49`. Y lo **derivé yo** con `ast`: 97 llamadas antes del marcador headless − 2 no-test = **95**; 30 después − el `print` final = **29**; y `__main__` llama **124** `test_*`, con el 3-E el **124 de 124** |
+| `validate_docs.py` **119 OK / 0 FAIL** | ✅ rc=0, y el reparto lo **deriva con `ast`** (`marcador en run_tests.py:16213`), no lo lee de los documentos |
+| `verify_ui_syntax.py` EXITO rc=0 | ✅ `EXITO: Todos los modulos UI estan impecables.` |
+| La frase nueva de `E_COSMETICA_IF` en los cuatro sitios | ✅ los cuatro, con el motivo (iterable / cantidad) |
+| `src/` sin cambios desde `e0f20db` | ✅ `git log -1 -- src/` = `e0f20db`; `git diff bf0f5d0 -- src/` vacío; `bf0f5d0` tocó 5 ficheros y **ninguno** de `src/` |
+| `STATUS.md:13` dice `bf0f5d0` | ✅ (lo cambió el orquestador después del commit, como se dijo) |
+| La «sección 17» del dev | ❌ **no existe**: el informe terminaba en la §16.12. Las **407** líneas que `bf0f5d0` añadió a `mutation-report.md` son la **§16** (el informe de la ronda 10, sin commitear, que el commit barrió) |
+
+**La falsedad que queda, y es de la misma familia que las cuatro de la §16.8** —una cita de fila que
+apunta a la fila equivocada—: la **fila 124** de `docs/ai/testing-guide.md` dice, textualmente,
+**«El estatico de la fila 120 pregunta *alcanzabilidad* sobre el codigo»**. La fila 120 es
+`test_el_estado_que_elige_el_usuario_se_persiste_de_verdad` (TASK-062, el `default_action`), que no
+tiene nada que ver con alcanzabilidad; el estático es la **fila 107**. La corrección «123 → 107» que el
+dev declara está **aplicada a medias**: en esa **misma** fila, la frase de la regla anti-rodadura sí
+dice ya «fila 107». La referencia equivocada no se eliminó: se **dugó**.
+
+Cosmetismo, sin efecto sobre el invariante: la tabla de la guía lista la **121 antes que la 120**.
+
+---
+
+## 17.8 LO QUE SE LLEVA EL CICLO
+
+Nada que arreglar en `src/`, y **nada que arreglar en los tests por lo que se ha medido**. Quedan tres
+cosas **de texto**, y ninguna es un rojo:
+
+1. La fila 124 de la guía dice «la fila 120» donde debe decir «la fila 107» (§17.7).
+2. La guía y el docstring del 3-E describen una contraprueba («una categoría que solo la DB conoce»)
+   que el producto no permite, porque el test de esquema de la DB lo prohíbe (§17.6).
+3. El 3-E no dice que su aserción es **unidireccional**: el «no hay categorías de más» vive en
+   `run_tests.py:2508`, en el test 29 de 124 (§17.6).
+
+Ninguna de las tres es un invariante roto: las tres son declaraciones que no coinciden con el código,
+que es justo lo que esta ronda tenía que medir.
+
+---
+
+## 17.9 REGRESIONES (lo que las dos aserciones nuevas NO rompieron)
+
+De lo que declaró el dev, re-medido aquí contra `bf0f5d0`:
+
+| Mutante | Veredicto | Muere por |
+|---|---|---|
+| `U1` (`if pack.is_gaming:` envolviendo la sección) | 🔴 **MUERE** | la estática (A1): `una casilla de categoria (CTkCheckBox) (L442) cuelga de una condicion en L437` |
+| `U1_AND` (`… and default_action == "kill"`) | 🔴 **MUERE** | la estática (A1) |
+| `G_PRED` (`if pack.id != "gaming"`) | 🔴 **MUERE** | la estática (A1) |
+| `G_GETATTR` (`getattr(pack, "is_gaming", False)`) | 🔴 **MUERE** | la estática (A1) |
+| `B_LISTA_FILTRADA` (lista vacía en pack no-Gaming) | 🔴 **MUERE** | la estática (A1b): `la lista de categorias que lo alimenta depende…` |
+| `H_RENOMBRAR` (`" (arrancar)"` → `" (arrancar mas tarde)"`) | 🔴 **MUERE** | **E2 (arrancar)**, y es el **único** que solo ve el 3-E: `tarjeta 0 (18 casillas) … hay 1 casilla(s) de APAGAR` |
+| `A_GATE_EN_LA_LLAMADA` (gate en `refresh_packs`) | 🔴 **MUERE** | **E1**: `la vista dibujo 1 tarjetas para 2 packs (['gaming', 'trabajo'])` |
+| `C_ASSERT_GATE` (`assert pack.is_gaming` delante) | 🔴 **MUERE** | la **estática** (A1), porque el 3-E es la última llamada: exactamente lo que midió la §16.2.1 |
+| `PREMISA_S1` (la DB de la fixture del #16 pasa a VERDE) | 🔴 **MUERE** | su precondición: `precondicion rota: la DB de la prueba tiene que clasificar svchost como '🔴 Sistema de Windows'; quedo en '🟢 Sincronización'` |
+| `E_COSMETICA_IF` | 🟢 **PERMITIDO** | correcto: las 18 se siguen viendo (§17.5) |
+| `K_CATALOGO_NUEVA_CATEGORIA` | 🟢 **PERMITIDO** | correcto: 9→10, 18→20 |
+| `CTRL_PID` (sonda de sonda) | 🟢 verde | correcto: cambiar un PID de la fixture no toca el invariante |
+| `ORDEN_TARJETAS` (sonda propia) | 🟢 verde | correcto: la localización es por estado |
+
+**Ninguna muerte previa perdida.** Y las dos mitades nuevas no han convertido nada legítimo en un
+fallo: ni la rejilla cosmética, ni el orden de las tarjetas, ni una categoría nueva de verdad.
+
+---
+
+## 17.10 CONTRATO: QUÉ SE HA TOCADO EN EL ÁRBOL DEL PROYECTO
+
+**Nada, salvo este informe.** Todo el trabajo se hizo en `%TEMP%\wopt_r11_155440`, con un
+`GIT_DIR` desechable nuevo por intento. Estado del árbol real, con una salvedad que va debajo:
+
+| Comprobación | Resultado |
+|---|---|
+| `git rev-parse --git-dir` desde la raíz del repo | `C:/Users/carch/AppData/Local/woptimizer_git/.git` (el de siempre) — **medido al inicio y en la prueba de aislamiento** |
+| `git log --oneline -1` | `bf0f5d0` — sin commits nuevos |
+| `git status --porcelain` | ` M STATUS.md` — la modificación del **orquestador**, que ya estaba antes de empezar |
+| `git diff --stat` | `STATUS.md \| 2 +-` (1 línea) |
+| Ficheros del repo tocados por mí | **ninguno**, y esto hay que decirlo sin adornos: |
+
+> ⚠️ **Lo que NO pude ejecutar, y es parte del encargo: la lectura FINAL de `git log`, `git status`,
+> `git diff --stat` y `git diff --cached --stat`.** El shell de este host se quedó en `spawn EPERM`
+> de forma sostenida al terminar la ronda, y la herramienta de shell no puede ni lanzar un proceso
+> (`Error: spawn EPERM … child_process.spawn`), con reintentos. Las cuatro lecturas de arriba son las
+> **medidas al principio de la ronda y en la prueba de aislamiento**, y desde entonces lo único que
+> he escrito bajo el proyecto es **este fichero**. Lo que sí pude verificar sin shell, con `glob`:
+> **no queda ningún `probe*` en el repo**, y el `.py` de la raíz es el del proyecto. Quien cierre el
+> ciclo debería repetir las cuatro lecturas: es una línea de orden y no una más de análisis.
+
+> **Confesión, porque un informe que dice «no toqué nada» cuando sí se tocó es peor que uno que confiesa.**
+> Al principio de la ronda escribí dos ficheros de sonda (`probe.py` y `probe_copy.py`) **en la raíz
+> del repo real**, por inercia, antes de caer en que el arnés vive en `%TEMP%`. Los moví a
+> `%TEMP%\wopt_r11_scripts\`, los borré con el lanzador de confianza, y `git status --porcelain` no
+> muestra ninguno de los dos porque nunca estuvieron versionados. No hubo ningún otro momento en que
+> escribiera bajo `C:/Users/carch/Nextcloud/Scripts/woptimizer/`, y `STATUS.md` **no** es mío: su
+> una línea cambiada (el HEAD `9433985` → `bf0f5d0`) la hizo el orquestador después del commit del
+> dev, y así estaba cuando empecé.
+
+Un apunte de proceso, que no es un hallazgo: `bf0f5d0` **no toca ninguno de los dos changelogs**
+(`CHANGELOG.md` ni `.taskmaster/CHANGELOG.md`), que según `AGENTS.md` reciben cada pase.
+`validate_docs.py` sigue en 119 OK / 0 FAIL porque su comprobación es **por ciclo**, y el ciclo 51 ya
+tenía su entrada en `41b2f88`. Se declara, no se arregla: arreglarlo es de otro rol.
+
+---
+
+## 17.11 EL VEREDICTO, SIN RODEOS
+
+**PASS.** El ciclo 51 se cierra.
+
+Las dos aserciones que faltaban están, y hacen lo que dicen: `E4` deriva lo que debe haber de las dos
+fuentes que `categorias_disponibles()` declara usar, no escribe ni un nombre de categoría, y ve un
+catálogo corto **aunque el recuento no se mueva** —que es la prueba de que no es un 9 escrito a
+mano—. `E5a` y `E5b` mueren **por separado** en las dos direcciones, con el cruce y sin él, y E5b ve
+dos defectos de cableado que no son el cruce mientras E5a los deja pasar. La derivación es carga útil y
+no decorativa: tautologizada, el bug real pasa en verde.
+
+Y lo que hace que el cierre sea de fiar y no un pura formalidad: **las tres cosas que el dev declaró
+resultan ciertas, y las cuatro que no declaró son la mitad del valor de esta ronda.** E4 es
+unidireccional y su otro lado vive en el test 29; la segunda pata de su unión es inalcanzable porque
+el test de esquema de la DB lo prohíbe; la corrección «fila 123 → 107» se aplicó a medias y dejó un
+«fila 120» treinta palabras antes; y la §17 que el encargo daba por escrita no existe, porque lo que
+`bf0f5d0` commiteó en el informe fue la §16.
+
+Ninguna de esas cuatro es un rojo: **ningún mutante sobrevive a la aserción que dice comprobar su
+cosa.** Lo que queda son tres frases que no coinciden con el código, y el código está bien.
+
+Y la lección de las once rondas, que es lo único que me llevo: el invariante **se alzó mal** —«¿puede
+esta sentencia impedir la construcción?»— y por eso cada ronda cerraba una forma y dejaba viva la
+siguiente. Una vez **reposto por efecto** —la vista real, con las casillas de verdad, y el registro
+de verdad—, las diez familias de las nueve rondas murieron por la **misma** aserción. Cerrar este
+ciclo en falso sería tan mentira como haberlo alzado una vez más para no terminar: no había rojo, y no
+había ninguna muerte perdida. **No hay ronda doce.**
+
+Se declaran, para que consten y no se redescubran: **tres comprobaciones no ejecutadas** (shell en
+`spawn EPERM`, §17.0) y **seis regresiones declaradas sin re-medir** (`G_VAR`, `G_ALIAS`, `G_HELPER`,
+`F_MAP_LAMBDA`, `S1_SOLO`, `Z1`, §17.0). Ninguna es un punto del encargo, ninguna es un rojo, y
+ninguna se ha guardado como si estuviera medida.
+

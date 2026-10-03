@@ -854,7 +854,7 @@
     "slug": "2026-10-03-pack-seleccion-por-categoria",
     "area": "Gaming & Telemetria UX",
     "task": "TASK-063",
-    "status": "IMPLEMENTADO - Paso 4 en curso",
+    "status": "COMPLETED - Paso 4 PASS en la ronda 11 de 11",
     "commits": [
       "dc4b430",
       "e0f20db",
@@ -867,16 +867,20 @@
       "9b68cc2",
       "c3ced1a",
       "92368ad",
-      "9433985"
+      "9433985",
+      "41b2f88",
+      "bf0f5d0"
     ],
     "tests": "124 = 95 backend + 29 headless",
     "change": "openspec/changes/2026-10-03-pack-seleccion-por-categoria/",
     "summary": "Seleccion por categoria para TODOS los packs. execute_pack es ahora la puerta UNICA de apagado con las barreras anti-brick DENTRO (antes vivian pegadas a execute_gaming_pack, que rechazaba packs no gaming), el catalogo de categorias pasa a un servicio, y se anade start_categories. El invariante del acordeon se termino moviendolo de la FORMA al EFECTO: la red estatica (A1/A2/A3) se congela y el test 3-E monta la vista real y cuenta casillas.",
     "mutation_audit": {
-      "rounds": 10,
-      "verdict": "EN CURSO",
-      "mutants_measured": 300,
-      "note": "Nueve rondas de auditoria sobre el test #3. Cada ronda cerraba una FAMILIA de formas de gate y dejaba vivo un miembro de la siguiente: U1 -> U1_AND -> {G_VAR, G_HELPER, G_GUARD2, G_ALIAS, G_GETATTR, G_PRED} -> gate en el lugar de la llamada -> M1/M2/M3B (lista filtrada a dos saltos) -> el techo declarado -> LC (comprehension) -> ASSERT_GATE. El token 'ast.Assert en _CONDICIONALES' NO cerraba ASSERT_GATE y se midio que no: una sentencia nunca es antecesor de otra. Diagnostico del dev: con analisis estatico sobre un unico fichero la pregunta es alcanzabilidad, y la alcanzabilidad no es decidible en general (Rice), asi que toda aproximacion es una lista. Salida: un test de EFECTO que mata las nueve familias de una vez. En el codigo de produccion no hay ni un mutante vivo: cero en la barrera anti-brick. Cero cambios en src/ desde e0f20db."
+      "rounds": 11,
+      "verdict": "PASS",
+      "mutants_measured": 420,
+      "note": "Once rondas de auditoria. Las cinco primeras FAIL, la sexta PARCIAL, la septima FAIL de severidad baja, la octava y la novena FAIL bajas, la decima FAIL con dos supervivientes que NO eran formas de gate, y la once PASS. Diagnostico de fondo: el test #3 afirmaba la FORMA del codigo, y preguntar 'puede esta sentencia impedir la construccion' es alcanzabilidad, no decidible en general (Rice), asi que toda aproximacion estatica es una lista blanca de tipos de nodo que no se cierra por dentro: nueve rondas, nueve familias. La prueba dura es que anadir 'ast.Assert' a la lista NO cerro ASSERT_GATE, porque una sentencia nunca es antecesor de otra. Salida: afirmar el EFECTO (3-E monta la vista real, repinta y cuenta casillas), que mata las diez familias de una sin anadir una entrada a ninguna lista. Del lado Producer, cero mutantes vivos en la barrera anti-brick en las once rondas. Cero cambios en src/ desde e0f20db. LO NO VERIFICADO, declarado y no medido: el shell del host cayo en spawn EPERM al final de la ronda 11, asi que 3 comprobaciones (K_CATEGORIA_SOLO_DB, PREMISA, D_C_ASSERT_GATE), 6 regresiones (G_VAR, G_ALIAS, G_HELPER, F_MAP_LAMBDA, S1_SOLO, Z1) y la lectura final de git status/log/diff del arbol real quedaron sin re-medir. Ninguna es un punto del encargo ni un rojo, y la sustancia de dos de ellas ya esta medida por otras vias.",
+      "not_verified": "Ronda 11 cortada por spawn EPERM del host: sin re-medir K_CATEGORIA_SOLO_DB, PREMISA y D_C_ASSERT_GATE, ni las regresiones G_VAR, G_ALIAS, G_HELPER, F_MAP_LAMBDA, S1_SOLO y Z1 (que el dev midio en la ronda 10 y no han cambiado desde entonces). Sin la lectura final de git status/log/diff del arbol real por el mismo EPERM.",
+      "residual": "El residuo declarado sigue abierto y NO se cierra aqui: gatear el .pack() de cat_body no lo mata ninguna de las dos capas, y cerrarlo exigiria volver a depender del nombre del boton, que es exactamente el defecto que las nueve rondas quitaron. Su cierre es otro change-id con un punto de entrada por comportamiento. Cuatro cosas mas que el auditor de la ronda 11 encontro y que no bloquean: E4 es unidireccional (no afirma que no haya categorias de mas), la segunda pata de su union es inalcanzable en este repo, la fila 124 de la guia sigue diciendo 'el estatico de la fila 120' (que es un test de TASK-062) treinta palabras antes de decir 'fila 107', y no existe la seccion 17 que el dev dijo haber anadido (lo que commiteo en el informe fueron las 407 lineas de la 16)."
     }
   }
 ]
