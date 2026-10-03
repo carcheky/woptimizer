@@ -14216,13 +14216,20 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
     Lo que se congela en ESTE test es otra cosa, y no es menos: la PROPIEDAD
     DEL CABLEADO. Que el espejo existe, y que ninguna pieza del acordeon cuelga
     de una condicion (A0, A1 y A2 mas abajo) es sobre el CODIGO; lo que el
-    usuario ve lo mide el 3-E, sobre la vista real. Los dos no se solapan y su
-    desacuerdo esta medido: el mutante `E_COSMETICA_IF`
-    (`cb.grid(row=i // (2 if pack.is_gaming else 1), ...)`) lo mata el techo (f)
-    de mas abajo, y el 3-E lo deja pasar, porque esa forma cambia la FILA y no
-    la CANTIDAD, que es justo lo que el propio techo declara que el pack no
-    puede decidir. Ahi el test de efecto tiene razon y este es mas estricto de
-    la cuenta. El comportamiento de los servicios lo miden los tests #1 a #18.
+    usuario ve lo mide el 3-E, sobre la vista real. El desacuerdo esta
+    MEDIDO, pero el mutante que se citaba como prueba se MIDIO MAL y se corrige
+    aqui, porque era FALSO y lo era por el texto del propio techo:
+    `E_COSMETICA_IF` (`cb.grid(row=i // (2 if pack.is_gaming else 1), ...)`) NO
+    lo mata el techo (f) de mas abajo, ni el 3-E. El techo (f) declara
+    "un bucle ENCIMA de la construccion cuyo ITERABLE es una eleccion de
+    `is_gaming`" y su propio `COSMETICA_IF` es
+    `if (2 if pack.is_gaming else 1) == 2:`, que cambia la CANTIDAD de
+    widgets; la forma escrita cambia el `row=` y no la cantidad, de modo que
+    cae FUERA de (f) por su propia definicion. MEDIDO con la suite entera:
+    124/124 en VERDE. Los dos tienen razon en dejarla pasar, porque con ella
+    las 18 casillas se siguen viendo, una por fila, y rechazarla seria el
+    falso positivo del otro lado. El comportamiento de los servicios lo miden
+    los tests #1 a #18.
 
     REGLA ANTI-RODADURA, la que impide la ronda 9: una familia nueva solo puede
     anadirse a una capa si NINGUNA regla de la OTRA capa la mata ya, y el techo
@@ -15652,9 +15659,39 @@ def test_todo_pack_ofrece_el_catalogo_completo_en_apagar_y_arrancar():
     No es un duplicado de A1, y su desacuerdo esta MEDIDO: A1 afirma un ESPACIO
     NEGATIVO sobre el codigo ("ninguna pieza cuelga de una condicion") y caza
     cosas que E2 deja pasar a proposito, como `if pack.is_gaming or True:`; E2
-    afirma lo que el usuario VE, y le da la razon al efecto en la forma
-    `cb.grid(row=i // (2 if pack.is_gaming else 1), ...)`, que cambia la FILA y
-    no la CANTIDAD, que es lo que el propio techo del #3 declara.
+    afirma lo que el usuario VE.
+
+    CORRECCION DE UNA AFIRMACION FALSA, que esta aqui y en el docstring del #3
+    y era la que justificaba la ronda 10: se decia que el techo (f) del
+    estatico mataba a `E_COSMETICA_IF`
+    (`cb.grid(row=i // (2 if pack.is_gaming else 1), ...)`). MEDIDO con la
+    suite ENTERA, NO lo mata, y el 3-E tampoco. El techo (f) declara, textual,
+    "un bucle ENCIMA de la construccion cuyo ITERABLE es una eleccion de
+    `is_gaming`", y su propio `COSMETICA_IF` es
+    `if (2 if pack.is_gaming else 1) == 2:`, que cambia la CANTIDAD de
+    widgets; la forma escrita cambia el `row=` y no la cantidad, asi que cae
+    FUERA de (f) por el texto del propio techo. Los dos tienen razon en
+    dejarla pasar: con ella las 18 casillas se siguen viendo, una por fila, y
+    rechazarla seria el falso positivo del otro lado. Se declara viva en las
+    dos capas y con el motivo.
+
+    LAS DOS ASERCIONES QUE FALTABAN, E4 y E5, y por que NO son una familia mas.
+    E2 mira la ETIQUETA, y con eso es ciego a dos cosas que el usuario nota:
+    (a) a QUE variable esta atada cada casilla --el cableado, que es el que
+    decide que lista se persiste-- y (b) a que el catalogo este CORTO y no
+    solo no vacio. MEDIDO, las dos con 124/124 en VERDE antes de escribirlas:
+    `W_VAR_CRUZADA` deja al usuario marcando arrancar y guardando apagar, y
+    `K_CATALOGO_CORTO` tira una categoria real del catalogo (18 -> 16
+    casillas) mientras `_categorize` sigue metiendo ahi al proceso del usuario.
+    Ninguna es una forma de gate nueva, asi que ninguna entra en la red
+    estatica: se cierran mirando el ESTADO (que lista crece, que casilla esta
+    marcada) y la COMPLETITUD (lo que hay contra lo que deberia), no
+    enumerando formas. E4 deriva lo que deberia de las DOS fuentes que el
+    propio `categorias_disponibles()` declara usar --la DB cargada y
+    `CATEGORY_ORDER`-- y no escribe ni un nombre de categoria, asi que anadir
+    una categoria nueva al producto no obliga a tocar este test. E5 localiza
+    la tarjeta por ESTADO y no por POSICION, porque `refresh_packs` pone
+    "gaming" delante y despues los demas en orden de registro.
 
     El TOTAL NO se escribe, y es una decision de diseno, no una pereza: sale
     solo (`2 * len(catalogo)`) y escribirlo reintroduce el numero magico, que
@@ -15674,6 +15711,14 @@ def test_todo_pack_ofrece_el_catalogo_completo_en_apagar_y_arrancar():
     no se puede construir. El que NO rompe E2 es el caso que forzo a reescribir
     el estatico en la ronda 4 --una casilla propia del Gaming Mode dentro del
     badge-- porque su etiqueta no es `c` ni `c + " (arrancar)"`.
+
+    LO QUE AFIRMA, en una linea por asercion, porque hay que poder nombrarlas:
+    E0 el catalogo no esta vacio (precondicion, no cobertura, y E4 la subsume);
+    E1 una tarjeta por pack; E2 por cada tarjeta y cada categoria, exactamente
+    una casilla de apagar y una de arrancar; E3 la construccion no revienta;
+    E4 el catalogo no esta CORTO, comparado contra la DB y `CATEGORY_ORDER`;
+    E5 el cableado, por comportamiento: que checkbox esta marcado y que lista
+    crece al pulsar. E0 a E3 son las de la ronda 9; E4 y E5 las de esta.
 
     REGLA ANTI-RODADURA (la del docstring del #3, aqui la copia que la hace
     cumplir): una familia nueva solo se anade a esta capa si NINGUNA regla de la
@@ -15706,18 +15751,73 @@ def test_todo_pack_ofrece_el_catalogo_completo_en_apagar_y_arrancar():
         # Un pack de usuario ALlado al de Gaming: E1 se mide contra el REGISTRO,
         # y con un registro de un solo pack "una tarjeta por pack" y "siempre una
         # tarjeta" darian el mismo numero.
-        pack_s.create_user_pack("trabajo", "Trabajo", [])
+        trabajo_id = "trabajo"
+        pack_s.create_user_pack(trabajo_id, "Trabajo", [])
         packs = pack_s.get_all_packs()
         ps = ProcessService()
         catalogo = ps.categorias_disponibles()
 
         # --- E0: sin catalogo, E2 no mira NADA y el usuario no ve casillas -----
+        # NO es COBERTURA y no se ofrece como tal: `run_tests.py:2511`
+        # (`categorias_disponibles_excluye_el_centinela`, el helper que
+        # comparten el test de migracion del centinela y el del catalogo) ya
+        # afirma `assert cats`, y en la suite COMPLETA ese test se ejecuta
+        # ANTES que este y es el que muere primero (medido). E0 se queda por
+        # una razon mas debil y honesta: es la PRECONDICION que hace legible
+        # este test, para que E2 y E4 no se ejecuten contra nada, y para que
+        # 3-E siga siendo autocontenido al correrlo dirigido. Ademas E0 esta
+        # SUBSUMIDA por E4, que es la que lleva la cobertura de verdad.
         assert len(catalogo) >= 1, (
             f"el catalogo de `ProcessService.categorias_disponibles()` ha vuelto "
             f"vacio en este host ({len(catalogo)} categorias). Sin el, E2 no tiene "
             f"contra que comparar y este test pasaria en VERDE con el usuario sin "
-            f"una sola casilla que marcar. Mueren asi `G_CATALOGO_VACIO` y "
-            f"cualquier `return []` temprano"
+            f"una sola casilla que marcar. Ojo con lo que esta asercion es y lo "
+            f"que no es: es la precondicion de este test, no una linea mas de "
+            f"cobertura --la que cubre el catalogo es E4, de abajo, y la que "
+            f"ya lo afirmaba en la suite completa es `run_tests.py:2511`. "
+            f"MUEREN aqui, y solo al correr este test dirigido, "
+            f"`G_CATALOGO_VACIO` y cualquier `return []` temprano"
+        )
+
+        # --- E4: el catalogo COMPLETO, no solo el que esta vista consume ------
+        # E2 compara las casillas contra `categorias_disponibles()`, o sea
+        # contra la MISMA fuente que las produce, asi que sobre el CONTENIDO
+        # del catalogo E2 es tautologico: si el catalogo pierde una categoria,
+        # la vista pierde sus dos casillas y E2 ve 8/8 y 8/8 y dice que todo
+        # esta bien. MEDIDO con el mutante `K_CATALOGO_CORTO`: 9 -> 8
+        # categorias y 18 -> 16 casillas, con 124/124 en VERDE, mientras
+        # `_categorize("chrome.exe")` sigue diciendo "Navegadores" -- un
+        # proceso del usuario SIN casilla donde marcarlo, que es exactamente
+        # el bug que este ciclo dice haber cerrado. E0 no lo tapa porque solo
+        # impide el caso VACIO, no el CORTO.
+        #
+        # Asi que aqui lo que hay se compara contra lo que DEBERIA haber, y lo
+        # que deberia sale de las DOS fuentes que el propio metodo declara usar
+        # y que son independientes de la lista que devuelve: la DB ya cargada
+        # y `CATEGORY_ORDER`. Las dos se leen del servicio y de la
+        # configuracion, y NINGUNA se escribe aqui, asi que anadir una
+        # categoria nueva al producto no obliga a tocar este test (medido: la
+        # sonda `K_CATALOGO_EXTENDIDO`, que mete una categoria de verdad en la
+        # DB, pasa con 10 categorias y 20 casillas). El centinela se importa
+        # del propio servicio y no se deduce por posicion.
+        from woptimizer.config import CATEGORY_ORDER
+        from woptimizer.services.process_service import _DEFAULT_META
+        centinela = _DEFAULT_META[0]
+        de_la_db = {meta[0] for meta in ps._db_map.values() if meta and meta[0]}
+        deberia = (set(CATEGORY_ORDER) | de_la_db) - {centinela}
+        faltan = sorted(deberia - set(catalogo))
+        assert not faltan, (
+            f"E4: el catalogo que la vista consume se ha quedado CORTO: le "
+            f"faltan {len(faltan)} de las {len(deberia)} categorias que el "
+            f"servicio clasifica --{faltan}-- y el usuario se queda sin casilla "
+            f"donde marcar un proceso que `_categorize` sigue metiendo ahi. "
+            f"E2 no lo ve y no por un descuido: compara las casillas contra "
+            f"ESTA misma lista, asi que si el catalogo pierde una categoria "
+            f"la vista pierde sus dos casillas y el recuento le sigue cuadrando. "
+            f"Lo que tiene que haber sale de las dos fuentes que "
+            f"`categorias_disponibles()` declara usar --la DB cargada ("
+            f"{len(de_la_db)} categorias) y `CATEGORY_ORDER` ("
+            f"{len(CATEGORY_ORDER)})-- y ninguna de las dos esta escrita aqui"
         )
 
         root = ctk.CTk()
@@ -15766,6 +15866,170 @@ def test_todo_pack_ofrece_el_catalogo_completo_en_apagar_y_arrancar():
                 )
                 assert n_apagar == 1, f"E2 (apagar): {base}"
                 assert n_arrancar == 1, f"E2 (arrancar): {base}"
+
+        # --- E5: el CABLEADO de las dos casillas, por comportamiento --------
+        # E2 cuenta ETIQUETAS, y la etiqueta es el contrato visible; el
+        # CABLEADO --el `variable=` de cada casilla-- es el que decide que
+        # lista se persiste, y ninguna de las dos capas lo mira. MEDIDO con
+        # el mutante `W_VAR_CRUZADA` (`variable=arrancar_var` ->
+        # `variable=apagar_var` en la segunda tanda): las dos etiquetas
+        # siguen siendo las dos correctas, una vez cada una, 124/124 en
+        # VERDE, y el usuario marca "arrancar navegadores" y la app GUARDA
+        # "apagar navegadores". El mecanismo NO es un intercambio: la
+        # casilla queda atada a una variable que se queda COLGANDO y la del
+        # `command` es otra, asi que la asercion no puede mirar nombres de
+        # variables --mira QUE LISTA crece y que checkbox esta marcado.
+        #
+        # La tarjeta se localiza por ESTADO y no por POSICION:
+        # `refresh_packs` pone "gaming" delante y despues los demas en
+        # orden de registro, asi que el indice de la tarjeta NO es el indice
+        # del registro. Se busca la unica tarjeta con la casilla de APAGAR de
+        # una categoria marcada de verdad, y por el lado de APAGAR a proposito:
+        # es la direccion que el cableado cruzado no toca, para que un fallo
+        # de mapeo salga aqui con su mensaje y no se confunda con un fallo de
+        # cableado.
+        registro = pack_s.get_all_packs()
+        trabajo = registro[trabajo_id]
+        libres = [c for c in catalogo
+                  if not any(c in p.target_categories or c in p.start_categories
+                             for otro_id, p in registro.items()
+                             if otro_id != trabajo_id)]
+        assert len(libres) >= 4, (
+            f"hacen falta 4 categorias libres para medir el cableado y solo "
+            f"hay {len(libres)}: el catalogo son {len(catalogo)} y las de "
+            f"otros packs ya estan marcadas. No es un fallo de producto, es "
+            f"que este host no da margen para las dos direcciones y las dos "
+            f"listas a la vez"
+        )
+        cat_apagada, cat_arrancada, cat_nueva_arrancar, cat_nueva_apagar = libres[:4]
+        trabajo.target_categories = [cat_apagada]
+        trabajo.start_categories = [cat_arrancada]
+        pack_s.update_pack(trabajo)
+        vista.refresh_packs()
+        root.update_idletasks()
+
+        def _casillas_de(tarjeta, texto):
+            """Widgets de casilla con EXACTAMENTE ese texto en la tarjeta."""
+            halladas = []
+
+            def _baja(widget):
+                if isinstance(widget, ctk.CTkCheckBox) and widget.cget("text") == texto:
+                    halladas.append(widget)
+                for hijo in widget.winfo_children():
+                    _baja(hijo)
+
+            _baja(tarjeta)
+            return halladas
+
+        tarjetas = vista.scroll_frame.winfo_children()
+        candidatas = [t for t in tarjetas
+                      if _casillas_de(t, cat_apagada)
+                      and _casillas_de(t, cat_apagada)[0].get() == 1]
+        assert len(candidatas) == 1, (
+            f"el pack {trabajo_id!r} tiene {cat_apagada!r} marcada para apagar y "
+            f"el arbol tiene {len(candidatas)} tarjetas con esa casilla marcada; "
+            f"se esperaba 1 (hay {len(tarjetas)} tarjetas para "
+            f"{len(registro)} packs). O la tarjeta no se dibujo, o la casilla "
+            f"no sale del estado guardado --las dos cosas son el mismo fallo "
+            f"de producto para el usuario--"
+        )
+        tarjeta = candidatas[0]
+
+        # E5a: el ESTADO de las dos casillas es el espejo de las dos listas.
+        p = pack_s.get_all_packs()[trabajo_id]
+        for cat in catalogo:
+            apag = _casillas_de(tarjeta, cat)
+            arr = _casillas_de(tarjeta, f"{cat} (arrancar)")
+            assert len(apag) == 1 and len(arr) == 1, (
+                f"E5: en la tarjeta de {trabajo_id!r}, categoria {cat!r}, hay "
+                f"{len(apag)} casilla(s) de APAGAR y {len(arr)} de ARRANCAR "
+                f"despues de redibujar. E2 ya lo afirmo sobre el primer "
+                f"render; este lo repite porque `refresh_packs` reconstruye "
+                f"las tarjetas y el widget es el que hace falta para E5a"
+            )
+            v_apag, v_arr = apag[0].get(), arr[0].get()
+            e_apag = 1 if cat in p.target_categories else 0
+            e_arr = 1 if cat in p.start_categories else 0
+            assert v_apag == e_apag, (
+                f"E5 (apagar, {cat!r}): la casilla esta en {v_apag} y el pack "
+                f"tiene {p.target_categories!r} en target_categories, o sea "
+                f"esperaba {e_apag}. Cada casilla tiene que colgar de la "
+                f"variable de SU lista: es el cableado el que decide que se "
+                f"guarda, y no se mira por nombre de variable porque no hay "
+                f"nombre que pueda mirar"
+            )
+            assert v_arr == e_arr, (
+                f"E5 (arrancar, {cat!r}): la casilla esta en {v_arr} y el pack "
+                f"tiene {p.start_categories!r} en start_categories, o sea "
+                f"esperaba {e_arr}. Si esto se rompe con la lista bien "
+                f"guardada, la casilla de ARRANCAR esta colgada de la variable "
+                f"de APAGAR: el usuario ve arrancar, el registro dice apagar, "
+                f"y la etiqueta --lo unico que E2 mira-- sigue siendo la "
+                f"correcta. Medido: 124/124 en verde con el cableado cruzado"
+            )
+
+        # E5b: la DIRECCION del clic. Pulsar ARRANCRAR guarda en
+        # start_categories y NO en target_categories, y al reves; y las dos
+        # listas no se pisan entre si al tocar una categoria distinta.
+        #
+        # El clic es `CTkCheckBox.toggle()` y no un invento del test: es lo que
+        # CustomTkinter dispara desde `<Button-1>`, y lo que hace es
+        # `set(not _check_state)`, que escribe en el `variable=` del widget, y
+        # LUEGO llama al `command`. O sea el orden real: primero la casilla
+        # escribe en su variable y despues el comando la lee. Por eso el
+        # mutante `W_VAR_CRUZADA` se ve aqui sin tocar ningun nombre: la
+        # casilla de ARRANCAR escribe en la variable de APAGAR, el comando lee
+        # esa misma, y la categoria se guarda en la lista equivocada. MEDIDO en
+        # customtkinter 6.0.0 con `inspect`, no de memoria.
+        _casillas_de(tarjeta, f"{cat_nueva_arrancar} (arrancar)")[0].toggle()
+        p = pack_s.get_all_packs()[trabajo_id]
+        assert cat_nueva_arrancar in p.start_categories and cat_nueva_arrancar not in p.target_categories, (
+            f"E5 (clic arrancar, {cat_nueva_arrancar!r}): el registro quedo en "
+            f"target_categories={p.target_categories!r} start_categories="
+            f"{p.start_categories!r}. El usuario pidio ARRANCAR esa categoria y "
+            f"la app guardo APAGAR: con eso el Gaming Mode le cierra al usuario "
+            f"lo que acaba de pedirle que le abra"
+        )
+        assert cat_apagada in p.target_categories and cat_arrancada in p.start_categories, (
+            f"E5 (coherencia): al marcar {cat_nueva_arrancar!r} para arrancar "
+            f"se perdio lo que ya estaba marcado: target_categories="
+            f"{p.target_categories!r} start_categories={p.start_categories!r}. "
+            f"Las dos listas son del MISMO pack y una pulsacion solo puede "
+            f"tocar la categoria de SU casilla"
+        )
+        _casillas_de(tarjeta, cat_nueva_apagar)[0].toggle()
+        p = pack_s.get_all_packs()[trabajo_id]
+        assert cat_nueva_apagar in p.target_categories and cat_nueva_apagar not in p.start_categories, (
+            f"E5 (clic apagar, {cat_nueva_apagar!r}): el registro quedo en "
+            f"target_categories={p.target_categories!r} start_categories="
+            f"{p.start_categories!r}. La direccion de APAGAR se midio antes "
+            f"con el estado inicial, pero el CLIC es otra llamada"
+        )
+        assert (cat_nueva_arrancar in p.start_categories
+                and cat_arrancada in p.start_categories
+                and cat_apagada in p.target_categories), (
+            f"E5 (coherencia, segunda pulsacion): target_categories="
+            f"{p.target_categories!r} start_categories={p.start_categories!r}. "
+            f"Marcar una categoria nueva para APAGAR no puede borrar lo que "
+            f"ya estaba marcado en las dos listas"
+        )
+        # Y el ESPEJO, que es la otra mitad de la coherencia: la categoria
+        # que estaba para arrancar, marcada para apagar, se IMPONE y sale de
+        # la lista de arranque. Gana apagar, que es lo que declara
+        # `create_command` y lo que resuelve despues
+        # `ProcessService.start_pack_categories`.
+        _casillas_de(tarjeta, cat_arrancada)[0].toggle()
+        p = pack_s.get_all_packs()[trabajo_id]
+        assert (cat_arrancada in p.target_categories
+                and cat_arrancada not in p.start_categories), (
+            f"E5 (espejo, {cat_arrancada!r}): estaba en start_categories y se "
+            f"ha marcado para APAGAR, asi que el registro tiene que decidir "
+            f"por ella: target_categories={p.target_categories!r} "
+            f"start_categories={p.start_categories!r}. Una misma categoria en "
+            f"las dos listas no se puede dejar: es la ambiguedad que el mismo "
+            f"comando declara resolver, y sin esto el arranque y el apagado se "
+            f"pisan en silencio"
+        )
     finally:
         if root is not None:
             try:

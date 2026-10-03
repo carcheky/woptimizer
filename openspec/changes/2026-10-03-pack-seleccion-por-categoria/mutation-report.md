@@ -2377,3 +2377,410 @@ entrada en una lista** y **una frase en el techo (e)**.
 Ese es el veredicto, sin rodeos: el ciclo **no puede cerrar en esta ronda**, pero
 esta vez lo que falta es lo mas barato que se ha encontrado en ocho rondas, y
 las dos cosas que quedan son texto mas un token.
+
+---
+
+# 16. RONDA 10 DEL `mutation-auditor`: EL INVARIANTE POR EFECTO (veredicto del ciclo)
+
+**Commit auditado:** `41b2f88` (registro) sobre `9433985` (T-9, el test de efecto). El unico commit
+que toca `src/` sigue siendo `e0f20db`; verificado con `git show --name-only`, **cero ficheros bajo
+`src/`** en toda la cadena.
+
+**Que se audita.** Diez rondas sobre la misma asercion, y en la decima el objeto cambio: el invariante
+dejo de afirmarse por la FORMA del codigo y paso a afirmarse por su **EFECTO** (la vista real montada
+headless, contando casillas por sus etiquetas). La pregunta de siempre: *¿el test se entera si el
+codigo esta mal?*
+
+**Metodo:** 20 mutantes, cada uno aplicado sobre una copia en `%TEMP%`, uno a uno. Por mutante se
+corrieron **las dos cosas**: el 3-E **dirigido** (para ver su veredicto sin que otro test se adelante)
+y la **suite completa** de 124 (para saber si la muerte se pierde en otro sitio). `PYTHONDONTWRITEBYTECODE=1`
+en todas las corridas, `__pycache__` = **0** medido al final en las seis camaras. Nada reparado.
+
+---
+
+## 16.0 VEREDICTO
+
+# FAIL
+
+**Y el FAIL es de un tipo que no se ha visto en este ciclo: no es una forma de gate nueva.** El
+diagnostico de fondo (alcanzabilidad, Rice) queda **vindicado por medicion**: las diez familias de las
+nueve rondas y los cuatro mutantes de T-9 mueren, cada uno **por la asercion del 3-E que dice
+comprobar su cosa**. Lo que queda son **dos formas en que las dos direcciones de las casillas estan
+intercambiadas o desaparecidas mientras el 3-E sigue en verde**, y ninguna de las dos esta en un techo
+declarado.
+
+| Severidad | Id | Que se rompe si el codigo se rompe asi | Medido |
+|---|---|---|---|
+| 🔴 **ALTA** | **`W_VAR_CRUZADA`** | La casilla de ARRANCAR se cablea a la variable de APAGAR. El usuario marca "arrancar" y **se guarda como APAGAR**. **124/124 en verde** | §16.5.1 |
+| 🔴 **ALTA** | **`K_CATALOGO_CORTO`** | Una categoria real se cae del catalogo: **18 -> 16 casillas** y la DB sigue clasificando `chrome.exe` en ella, o sea un proceso del usuario **sin casilla donde marcarlo**. **124/124 en verde** | §16.5.2 |
+| 🟡 **BAJA** | `E_COSMETICA_IF` | `cb.grid(row=i // (2 if pack.is_gaming else 1))`: la rejilla pasa a **una casilla por fila**. Cosmético: el conteo no cambia y las 18 se ven. **124/124 en verde**, y E2 tiene razón en dejarlo pasar | §16.6 |
+
+**Lo que esta ronda SI entrega, y es lo que decide si el cambio de enfoque valia la pena:**
+
+| Lo que se afirmaba | Ronda 1-9 | **Ronda 10** |
+|---|---|---|
+| Las **diez** familias de gate sobre el 3-E | nueve vivas, una por ronda | **10/10 MUEREN por E2** |
+| Los **cuatro** mutantes de T-9 | - | **4/4 MUEREN**, cada uno por su asercion (E0/E1/E2) |
+| `C_ASSERT_GATE` muere por **E3**, no por un `AssertionError` crudo | - | ✅ **CIERTO, medido** |
+| El fixture dibuja casillas **de verdad** | - | ✅ **9 categorias, 18 casillas, 2 tarjetas, 9/9 + 9/9** |
+| Riesgo de entorno nuevo | - | ✅ **Ninguno**: `ctk.CTk()` + `withdraw()` ya se usa en **cinco** sitios preexistentes |
+
+**Una linea:** el paso de la FORMA al EFECTO **funciono** y hay que decirlo sin rodeos, porque es la
+primera vez en diez rondas que una capa mata una familia entera en vez de desplazar el borde. Lo que
+impide cerrar el ciclo ya **no es la pregunta por la forma**: es que el 3-E mira **las etiquetas** y
+no mira **a quien estan cableadas** ni **de donde salio el catalogo**.
+
+---
+
+## 16.1 EL ARNES, Y **MIS** CUATRO DEFECTOS PROPIOS (declarados antes de los numeros)
+
+En las nueve rondas los dos actores tuvisteis fallos de sonda. Yo tuve **cuatro**, y dos de ellos
+habrian producido evidencia FALSA si no los hubiera detectado:
+
+| # | Defecto mio | Como lo detecte | Que habria pasado sin el control |
+|---|---|---|---|
+| **1** | **El mutante NO se aplicaba y salia verde.** Los mutantes de tipo `wrap` (los que envuelven un bloque en un `if`) no dejaban la firma `MUT r10`, y mi propio guard los rechazaba con `NO_APLICADO` | El guard propio: si la firma no queda en el fichero, `NO_APLICADO` y **no cuenta como verde ni como muerte** | Habria reportado `U1` y `U1_AND` como "vivos" sin haberlos medido nunca. Es el fallo mas caro posible |
+| **2** | **El ejecutor dirigido producia una muerte falsa.** Doble `TextIOWrapper` sobre `sys.stdout` (`run_tests.py:9` ya lo envuelve) -> `ValueError: I/O operation on closed file` al salir | `clasificar` marca `ROTO` si la primera excepcion no es la del test, y el literal impreso delata el `ValueError` | `G_VAR`, `G_ALIAS` y `G_HELPER` habrían muerto "por otra cosa" y yo lo habría apuntado como muerte legitima |
+| **3** | **Dos camaras quedaron MUTADAS al morir el runner.** Un `UnicodeEncodeError` de cp1252 (Trampa #16: el emoji 🟢 del mensaje) aborto el harness **entre aplicar y restaurar** | Barrido final: `MUT r10` presente en 2 de 6 camaras | Si hubiera reutilizado esas camaras, el siguiente mutante habria nacido sobre codigo ya mutado. Es el fallo de "un `run_tests.py` que quedo mutado porque una corrida revento antes de restaurar", y lo cometi yo |
+| **4** | **Una sonda mia era tautologica.** Comprobei que un texto que yo acababa de escribir no se 교체ara, o sea que mi "fix" no habia hecho nada y asi lo declares como verificado | Lo vi al notar que el `SyntaxError` seguia apareciendo | Habria declarado "arreglado" un archivo intacto |
+
+Las tres comprobaciones propias que si se hicieron, y sus resultados:
+
+| Comprobacion | Resultado |
+|---|---|
+| `.git` como **FICHERO**: `shutil.copytree(ignore_patterns(".git", "*.pyc", "__pycache__", "dist", "build"))` | **0 entradas `.git`** en las 6 camaras, **`.gitignore` presente** (o sea que el comodin `.git*` no se uso: habria producido las 48 muertes falsas de la ronda 7) |
+| Aislamiento con `GIT_DIR` **desechable y explicito** | `git rev-parse --git-dir` -> la camara. **Sin** `GIT_DIR`: `rc=128` y salida vacia, o sea que la camara **no puede descubrir** el repo real. `GIT_DIR` **nuevo** por camara (6) |
+| **CONTROL** por camara antes de medir, y **CONTROL FINAL** despues del ultimo mutante | **6/6 `rc=0` antes**, y `rc=0 PASSED` al final en la camara `a`. Y sonda de sonda: `CTRL_PID` (cambia un PID, no toca el invariante) -> **SUITE PASSED**. Sin ese control, "verde" no significa nada |
+| `EXECUTED_AFTER` + SHA256 antes/despues | `exec_after=True` y `sha distinta=True` en **los 20** mutantes |
+| Restauracion | Las **6** camaras fieles a su `pristine` por SHA256, `__pycache__` = **0** |
+
+---
+
+## 16.2 LOS CUATRO MUTANTES DE T-9, UNO A UNO
+
+Los cuatro mueren **por la asercion del 3-E que dice comprobar su cosa**, confirmado con el
+ejecutor **dirigido** (sin que ningun otro test se adelante). `ROTO = 0`.
+
+| Id | Que se rompe | Veredicto | Motivo literal (del 3-E dirigido) |
+|---|---|---|---|
+| **`G_CATALOGO_VACIO`** | `categorias_disponibles()` devuelve `[]` | ✅ **MUERE por E0** | `AssertionError: el catalogo de \`ProcessService.categorias_disponibles()\` ha vuelto vacio en este host (0 categorias). Sin el, E2 no tiene contra que comparar y este test pasaria en VERDE con el usuario sin una sola casilla que marcar.` |
+| **`A_GATE_EN_LA_LLAMADA`** | `refresh_packs`: `if p_id != "gaming" and p.is_gaming:` | ✅ **MUERE por E1** | `AssertionError: la vista dibujo 1 tarjetas para 2 packs (['gaming', 'trabajo']): alguna no llego a dibujarse.` |
+| **`B_LISTA_FILTRADA`** | `sorted_cats = ordenar_categorias(all_cats) if pack.is_gaming else []` | ✅ **MUERE por E2 (apagar)** | `AssertionError: E2 (apagar): tarjeta 1 (0 casillas), categoria 'Navegadores': hay 0 casilla(s) de APAGAR y 0 de ARRANCAR.` |
+| **`F_MAP_LAMBDA`** | `map`+`lambda` gateado en la 2a tanda (arrancar) | ✅ **MUERE por E2 (arrancar)** | `AssertionError: E2 (arrancar): tarjeta 1 (9 casillas), categoria 'Navegadores': hay 1 casilla(s) de APAGAR y 0 de ARRANCAR.` |
+| **`H_RENOMBRAR`** | `" (arrancar)"` -> `" (arrancar mas tarde)"` | ✅ **MUERE por E2 (arrancar)** | `AssertionError: E2 (arrancar): tarjeta 0 (18 casillas), ... hay 1 casilla(s) de APAGAR y 0 de ARRANCAR.` |
+| **`C_ASSERT_GATE`** | `assert pack.is_gaming` delante de la seccion | ✅ **MUERE por E3** | `AssertionError: E3: la vista no se pudo construir: AssertionError: . El invariante de TASK-063 es que el catalogo se ofrezca para TODO pack, y una vista que no llega a construirse lo incumple entero: revienta al MONTAR, no despues` |
+| **`G_CATALOGO_APLICA`** | el catalogo se filtra por las marcadas **en el pack de Gaming** | ✅ **MUERE por E2 (apagar)** | `AssertionError: E2 (apagar): tarjeta 0 (10 casillas), categoria 'Media y Streaming': hay 0 casilla(s) de APAGAR y 0 de ARRANCAR.` |
+
+### 16.2.1 `C_ASSERT_GATE` por E3, que es lo que se pedia comprobar
+
+El encargo pedia que este mutante muera **por E3** y no por el `AssertionError` sin cualificar. **Es
+cierto, y se ve en el propio literal**: el mensaje empieza por `E3: la vista no se pudo construir` y
+**conserva el motivo de dentro** (`AssertionError:`) como causa. El `try/except` de `run_tests.py:15730-15739`
+hace su trabajo: sin el, la suite abortaria con un `AssertionError` crudo en `_render_pack_card` y
+nadie leeria **que** invariante esta roto.
+
+**Un matiz honesto sobre E3, y es de rigor, no de cortesia:** en la **suite completa**, `C_ASSERT_GATE`
+lo mata **antes** la entrada `ast.Assert` de `_CONDICIONALES` (el `A3` que anadio `c3ced1a`), con el
+literal *"la sentencia de L346 ('assert pack.is_gaming') ABORTA si se cumple algo que depende de si el
+pack es el de Gaming"*. O sea: **las dos capas lo matan, y en la suite gana la estatica** porque `3-E`
+es la **ultima** llamada del `__main__` (`run_tests.py:16007`). E3 no es redundante, pero **tampoco es
+la primera red** para esta forma.
+
+---
+
+## 16.3 LAS DIEZ FAMILIAS DE LAS NUEVE RONDAS, SOBRE EL 3-E
+
+La pregunta que decide el cierre. **Las diez mueren, las diez por E2.** Cada una aplicada como la
+escribiria un desarrollador: la seccion entera (118 lineas, casillas incluidas) envuelta en la
+condicion.
+
+| Familia | Forma | Veredicto | Motivo literal (3-E dirigido) |
+|---|---|---|---|
+| **U1** | `if pack.is_gaming:` | ✅ **MUERE** | `E2 (apagar): tarjeta 1 (0 casillas) ... hay 0 casilla(s) de APAGAR y 0 de ARRANCAR` |
+| **U1_AND** | `if pack.is_gaming and pack.default_action == "kill":` | ✅ **MUERE** | el mismo literal |
+| **G_VAR** | `gaming = pack.is_gaming` + `if gaming:` | ✅ **MUERE** | el mismo literal |
+| **G_ALIAS** | `p = pack` + `if p.is_gaming:` | ✅ **MUERE** | el mismo literal |
+| **G_GETATTR** | `if getattr(pack, "is_gaming", False):` | ✅ **MUERE** | el mismo literal |
+| **G_HELPER** | `if self._es_gaming(pack):` (metodo nuevo) | ✅ **MUERE** | el mismo literal |
+| **G_PRED** | `if pack.id != "gaming":` | ✅ **MUERE** | `E2 (apagar): **tarjeta 0** (0 casillas)` -- esta esconde la del **Gaming**, no la de un pack normal |
+| **A_GATE_EN_LA_LLAMADA** | el gate en `refresh_packs` | ✅ **MUERE por E1** | `la vista dibujo 1 tarjetas para 2 packs` |
+| **B / F / LC** | lista filtrada, `map`+`lambda`, comprehension | ✅ **MUEREN por E2** | §16.2 |
+| **`C_ASSERT_GATE`** | `assert` delante | ✅ **MUERE por E3** | §16.2.1 |
+
+**Por que esto no es "la lista siguiente":** las diez mueren por **E2**, que no mira **como** esta
+escrito el codigo sino **que etiquetas hay**. Las siete primeras (gate en cualquier sintaxis) mueren
+con el **mismo** literal y por la **misma** razon: la tarjeta del pack normal se queda con **0
+casillas**. No hay una entrada mas en ninguna lista: un test de efecto no se cierra por dentro
+porque no enumera nada.
+
+**Y no es que el 3-E haya sustituido a la capa estatica: las dos siguen verdes y las dos hacen
+trabajo.** En la suite completa, `B_LISTA_FILTRADA`, `G_CATALOGO_APLICA` y `C_ASSERT_GATE` los mata
+**primero** el estatico, y `H_RENOMBRAR` los mata **solo** el 3-E (ver §16.4).
+
+---
+
+## 16.4 LO QUE EL 3-E APORTA QUE NADA MAS APORTA (la anti-redadura, medida)
+
+La regla anti-redadura del dev dice: *una familia nueva solo se anade a una capa si NINGUNA regla de
+la otra la mata ya*. Medida, capa por capa:
+
+| Mutante | Estatico (#3, A1/A1b/A2/A3) | **Efecto (3-E)** | Quien es el duenno |
+|---|---|---|---|
+| **`H_RENOMBRAR`** (la etiqueta de arrancar cambia) | **no lo ve** | **E2 (arrancar)**, y es la **primera** asercion de la suite | **3-E, solo suyo** |
+| **`A_GATE_EN_LA_LLAMADA`** (gate en `refresh_packs`) | **no lo ve** (el acordeon SI se construye) | **E1**, y es la **primera** asercion de la suite | **3-E, solo suyo** |
+| `B_LISTA_FILTRADA` | A1b, la primera | E2 tambien | las dos, sin conflicto |
+| `C_ASSERT_GATE` | A3, la primera | E3 tambien | las dos |
+| `G_CATALOGO_VACIO` | (ver 16.4.1) | E0 | las dos |
+| `E_COSMETICA_IF` | no lo ve | **no lo ve, y esta bien** | ninguna, y §16.6 lo explica |
+
+**Es decir: la congelacion de A1/A2/A3 esta justificada por medicion.** El estatico no ve dos de las
+cuatro familias de T-9 (`H_RENOMBRAR` y `A_GATE_EN_LA_LLAMADA`), y el 3-E no ve ninguna forma de
+gate. Se complementan, y el desacuerdo esta medido en los dos sentidos.
+
+### 16.4.1 E0 es correcta pero **redundante**, y eso hay que decirlo
+
+**`run_tests.py:2511`, preexistente y de TASK-063/FIX-005, ya afirma exactamente lo mismo:**
+`assert cats, "el catalogo no puede estar vacio ni con la DB cargada ni sin ella"`, dentro del helper
+`categorias_disponibles_excluye_el_centinela()` que usan dos tests. O sea:
+
+- El 3-E **sí** muere por E0 con el mutante puesto (`MUERE:E0`, medido).
+- Pero en la **suite completa** la primera asercion que salta es **la de `2511`**, no la de E0. Medido:
+  `AssertionError: el catalogo no puede estar vacio ni con la DB cargada ni sin ella`.
+- O sea: **E0 duplica una regla que ya existia**, y la tabla de T-9 que dice "MUERE: `G_CATALOGO_VACIO`
+  (E0)" es, en la suite, falsa: lo mata una asercion de antes.
+
+**No es un fallo** (E0 es correcta, y su mensaje es mas util que el de `2511`). Pero es el unico punto
+donde el 3-E **anade una asercion cuya regla ya tenia el suite**, y por la propia regla anti-redadura
+del dev deberia haberse declarado. Se declara aqui.
+
+---
+
+## 16.5 LOS DOS SUPERVIVIENTES: LAS DIRECCIONES, NO LAS FORMAS
+
+Ninguno es un equivalente, y los dos se miden por su **efecto en el estado guardado**, no contando
+`ast` ni leyendo codigo.
+
+### 16.5.1 🔴 `W_VAR_CRUZADA` -- el usuario pide ARRANCAR y se guarda APAGAR
+
+**La mutacion (una palabra, `pack_manager_view.py:457`):**
+`variable=arrancar_var` -> `variable=apagar_var` en la **segunda tanda** (la de arrancar).
+
+**Lo que ve el 3-E: nada.** Las dos etiquetas siguen siendo `cat` y `cat + " (arrancar)"`, una vez
+cada una. **124/124 en verde**, y el 3-E dirigido tambien (`PERMITIDO`).
+
+**Lo que ocurre de verdad**, pulsando la casilla de "🟢 Navegadores (arrancar)" en la tarjeta de un
+pack **normal**, con el `PackService` real sobre JSON temporal:
+
+| | `target_categories` (APAGAR) | `start_categories` (ARRANCAR) | |
+|---|---|---|---|
+| **CONTROL** | `[]` | `['🟢 Navegadores']` | ✅ correcto |
+| **`W_VAR_CRUZADA`** | **`['🟢 Navegadores']`** | **`[]`** | 🔴 **BUG** |
+
+El usuario configura "arranca mis navegadores al entrar en el Gaming Mode" y la app **guarda que los
+mate**. Peor: el `create_command` de la linea 402 resuelve el conflicto espejo con `if v_apagar.get()
+== 1` **primero**, asi que la categoria queda **exclusivamente** en la lista de apagado, sin ambiguedad
+posible. Y con `python -O` no cambia nada, porque aqui no hay `assert`: es un fallo de datos puro.
+
+**Por que el 3-E no lo ve, y cual es la regla que falta:** E2 cuenta **etiquetas**
+(`widget.cget("text")`). La etiqueta es el **contrato visible**; el **cableado** (`variable=`) es el
+que decide que lista se persiste, y **ninguna de las dos capas lo mira**. La red estatica tampoco: A1
+vigila la *construccion*, y la construccion es correcta. **El arreglo que necesita (no aplicado):** una
+asercion de que las dos casillas de una misma categoria estan atadas a **variables distintas** y de
+que la variable de la casilla de ARRANCAR es la que lee la rama `if v_arrancar.get() == 1` del
+`create_command`. Se puede afirmarlo por comportamiento (pulsar y mirar la lista, como aqui) sin tocar
+el nombre de ningun widget: **es la misma forma de test que el 3-E ya usa.**
+
+### 16.5.2 🔴 `K_CATALOGO_CORTO` -- una categoria entera desaparece y nadie se entera
+
+**La mutacion (`process_service.py:863`):** se descarta del catalogo una categoria **verde** real
+(`cats.discard(next(c for c in cats if 'Navegadores' in c))`).
+
+| | CONTROL | `K_CATALOGO_CORTO` |
+|---|---|---|
+| `len(categorias_disponibles())` | **9** | **8** |
+| casillas por tarjeta | **18** | **16** |
+| `_categorize("chrome.exe")` | `🟢 Navegadores` | **`🟢 Navegadores`** (la DB no cambia) |
+| casilla para `🟢 Navegadores` | **si** | **NO** |
+
+**124/124 en verde.** El usuario tiene `chrome.exe` clasificado en "🟢 Navegadores" y **no tiene ni
+una casilla donde marcarlo**, ni para apagarlo ni para arrancarlo. Es exactamente el bug que el
+`CHANGELOG.md` del ciclo 51 dice haber cerrado ("*el desfase sale como un proceso en 'Otros' que nadie
+sabe donde marcarlo*"), reintroducido por la otra mitad.
+
+**Por que E2 no lo ve, y aqui hay que ser preciso con el alcance:** E2 compara las casillas de la
+tarjeta **contra `ps.categorias_disponibles()`**, o sea contra **la misma fuente que consume la
+vista**. Sobre el contenido del catalogo, E2 es **tautologico**: si el catalogo pierde una categoria,
+la vista pierde sus dos casillas y E2 ve `8/8` y `8/8` y dice que todo esta bien. E0 solo impide el
+caso **vacio** (`>= 1`), no el **corto**.
+
+> **Precision con el encargo.** Este **no** es un agujero del mismo invariante que las nueve familias:
+> esas preguntan si el pack puede perder casillas, y este pregunta si el catalogo puede ser corto. E2
+> cumple su palabra. El invariante de **producto** ("toda categoria que el servicio clasifica tiene
+> casilla") no lo afirma **nadie** hoy, y por eso el arreglo es **una asercion nueva** (E4), no un
+> relajamiento de E2. Lo que no se puede es declararlo techo, porque **no esta escrito en ningun sitio**.
+
+---
+
+## 16.6 `E_COSMETICA_IF`: SUPERVIVIENTE, PERO LAS DOS CAPAS TIENEN RAZON
+
+La sonda que el dev uso para justificar que A1/A2/A3 se congelan. **La medicion no es la que se
+declaro.**
+
+| Lo que se afirmaba (T-9, linea 144) | Medido |
+|---|---|
+| *"el mutante `E_COSMETICA_IF` (`cb.grid(row=i // (2 if pack.is_gaming else 1), ...)`) **lo mata el techo (f) del estatico** (`run_tests.py:14716-14736`)"* | ❌ **FALSO: 124/124 en verde.** El techo (f) **no** lo mata, y el 3-E tampoco |
+| *"E2 lo deja pasar **con razon**, porque esa forma cambia la **fila**, no la **cantidad**"* | ✅ **CIERTO, y verificado**: 18 casillas antes y despues, todas visibles |
+
+**Por que el techo (f) no lo mata, y la razon importa:** el techo (f) declara, textual, *"un bucle
+**ENCIMA** de la construccion cuyo **iterable** es una eleccion de `is_gaming`"*, y su propio `COSMETICA_IF`
+es **`if (2 if pack.is_gaming else 1) == 2:`** (`run_tests.py:14749-14750`), o sea una condicion que
+**cambia la cantidad de widgets** (`repo 6/6, COSMETICA_FOR 9/6, COSMETICA_IF 6/3`, medido alli con el
+contador de casillas **construidas**). La forma que escribio el dev es **otra cosa**: el valor de
+`row=`, no un gate. **O sea que el dev escribio una sonda distinta de la que el techo cubre y le
+atribuyo el veredicto del techo.** Por el texto del propio techo, esa forma esta **fuera** de (f):
+"lo que el pack no puede decidir es la **CANTIDAD** de casillas, y en eso esta todo".
+
+**Veredicto: 🟡 superviviente cosmetico, y las dos capas hacen bien en dejarlo pasar.** Con la
+mutacion, las 18 casillas siguen construidas, visibles y con sus dos etiquetas: solo la rejilla pasa a
+una casilla por fila. Rejectarlo seria el falso positivo del otro lado. No es un (a) ni un (b): es una
+**forma cosmetica que cae fuera de todo techo por la razon correcta**, y que ademas **no existe en
+`src/`** (medido: la vista tiene **0** ocurrencias de `getattr`, **0** de `assert`, **0** de `or True`).
+
+---
+
+## 16.7 EL RIESGO REAL DE UN TEST DE EFECTO: VACIO O QUE NO LLEGA
+
+El riesgo de un test de efecto es que no mida nada. Medido en las dos mitades.
+
+| Pregunta | Medido |
+|---|---|
+| **¿Dibuja las casillas de verdad o un doble?** | **De verdad.** `ctk.CTk()` real + `withdraw()` + `PackManagerView` real + `ProcessService` real + `PackService` real sobre JSON temporal. `_etiquetas` cuenta `isinstance(widget, ctk.CTkCheckBox)` de **`CTkCheckBox`**, no de un doble |
+| **¿Cuantas hay?** | **catalogo 9, 2 tarjetas (gaming + trabajo), 18 casillas por tarjeta, 9/9 de APAGAR y 9/9 de ARRANCAR.** Las cuatro cifras del dev son **ciertas** |
+| **¿Puede fallar en un entorno limpio?** | **No, por tres razones medidas.** (a) `ctk.CTk()` + `withdraw()` **ya se usaba en cinco sitios preexistentes** (`run_tests.py:8353`, `:9152`, `:11387`, `:11610`, `:11722`): el 3-E no anade riesgo de entorno. (b) E0 no puede fallar en limpio: `categorias_disponibles()` mete `set(CATEGORY_ORDER)` siempre y solo descarta **un** centinela. (c) E2 no compara contra una cifra: el total sale de `2 x len(catalogo)` |
+| **¿Y no se engaqa con una excepcion para evitar un rojo?** | **No.** `CTRL_PID` (cambia un PID, no toca el invariante) sale **SUITE PASSED**. Un atajo que "tampoco se dejaria pasar sin mutar" habria muerto aqui |
+| **La premisa FALSA del docstring del #3, ¿se corrigio?** | ✅ **Si, y bien.** `run_tests.py:14207-14214` dice ahora, textual, *"Decia: 'el arnes no abre ventana...' **No es cierto**, y esta MEDIDO en el propio arnes"*, y cita los dos tests reales. Cerraba la invitacion a la ronda 10 |
+
+**Un fragility que queda, 🟡 y no es un fallo:** `_etiquetas` cuenta sobre **todo** el subarbol de la
+tarjeta. Si alguna vez un widget con `text=` igual a un nombre de categoria aparece en la tarjeta (una
+app del pack que se llame como una categoria, una etiqueta nueva), `n_apagar` valdra **2** y E2
+fallara por un motivo que no es el suyo. Es el precio de contar por etiqueta, y el mensaje de E2 dice
+el motivo, que es lo que hacia falta para que aflojar sea una decision y no un reflejo.
+
+---
+
+## 16.8 LO DOCUMENTAL: 4 FALSEDADES, y las cuatro son (c)
+
+### Lo que el dev afirmo y resulto cierto (comprobado, no creido)
+
+| Afirmacion | Medido |
+|---|---|
+| **124 = 95 backend + 29 headless** en los **cuatro** ficheros | ✅ `STATUS.md:9`, `AGENTS.md:69`, `README.md:62`, `docs/ai/testing-guide.md:171`, los cuatro lo dicen. Derivado con `ast`: **124** `def test_*`, **124** llamadas, marcador en `run_tests.py:15949` |
+| **La tabla de la guia tiene una fila por test** | ✅ `validate_docs.py`: "124 filas de test, una por test definido". Fila 124 = `test_todo_pack_ofrece_el_catalogo_completo_en_apagar_y_arrancar` |
+| **`verify_ui_syntax.py` 9/9, EXITO** | ✅ 9 modulos, `rc=0` |
+| **Cero cambios en `src/`** | ✅ `git show --name-only` en los 12 commits: ninguno lista un fichero bajo `src/` desde `e0f20db` |
+| **`D4-bis` cerrado** | ✅ **SI, y bien**: la guia **ya no cita numeros de linea**, cita los **tres tests** (filas 108, 110, 111), y los tres son los que de verdad asignan `._patrones_de_categoria` (medido con `ast`: L14819 en `test_start_categories_arranca_y_cuenta_honestamente` = fila 108, L14925 = fila 110, L14952 = fila 111). La media falsehood de la ronda 8 esta cerrada |
+| **`STATUS.md:8` dice 9 modulos** | ✅ (D5 de la ronda 8, corregido) |
+| **La premisa falsa del #3 corregida** | ✅ §16.7 |
+
+### Las cuatro que son falsas
+
+| # | Donde | Se afirma | Medido |
+|---|---|---|---|
+| **C1** 🟡 | **`tasks.md:144`** y los **docstrings** de los dos tests | *"`E_COSMETICA_IF` **lo mata el techo (f)** del estatico (`run_tests.py:14716-14736`)"* | ❌ **FALSO: 124/124 en verde.** El techo (f) declara "bucle ENCIMA de la construccion cuyo **iterable** es una eleccion de `is_gaming`" y su `COSMETICA_IF` es `if (2 if pack.is_gaming else 1) == 2:`, que **cambia la cantidad**. La forma escrita en T-9 cambia el `row=` y no la cantidad: esta **fuera** de (f) por el texto del propio techo (§16.6) |
+| **C2** 🟡 | **`run_tests.py:14205-14214`** y `tasks.md:121` | la cita de la premisa superada remite a `test_headless_ui` (`run_tests.py:268-288`) y `test_main_window_navigation_transitions` (`:8352-8382`) | ✅ **las dos existen y hacen lo que se dice** (`:8353` `root = ctk.CTk()` + `:8354` `withdraw()`). **Sin novedad**: no es una falsedad, lo anoto para que conste que se comprobo |
+| **C3** 🟡 | **Commit `41b2f88`** | el asunto del commit de registro | ❌ **El asunto esta **corrupto**: `... y el invarianteDigest de forma a efecto`**. La palabra `digest` esta pegada a `invariante`. Es el commit que el encargo llama "el commit de registro", y su primer texto es lo que se lee en `git log` |
+| **C4** 🟡 | **`STATUS.md:13`** | *"**Al dia en git (`9433985` ...)"* | ⚠️ El HEAD es **`41b2f88`**, no `9433985`. Se puede defender (el commit de codigo es el ultimo que toca `src/`), pero el panel dice "al dia en git" con un commit que **no** es el HEAD |
+
+### 16.8.1 Cuatro **premisas del encargo** que no se sostienen contra el arbol (no son del dev)
+
+Se declaran aparte porque no son falsedades del ciclo: son del material que llego a esta ronda, y
+haberlas usado tal cual habria producido un informe con cosas que no existen.
+
+| Lo que|Division llega | Medido |
+|---|---|
+| *"**La seccion 16 la escribio el dev con T-9**"* | ❌ **NO EXISTE.** `mutation-report.md` **termina en §15.8** (2380 lineas; los unicos titulos de nivel 1 son 0-15). Lo que el dev escribio con T-9 esta en **`tasks.md:115-156`** (T-9 entero) y en `rd_journal.json`. Se audito eso |
+| *"El dev afirma que la mayoria las mata via **`PREMISA_PID`**, que es una asercion de premisa"* | ❌ **`PREMISA_PID` no existe en ningun `.py` del repo.** Es el nombre de un **mutante** del §15.3 de este mismo informe, y pertenece al test **#16**, no al 3-E. La unica asercion de premisa del 3-E es **E0**, y se midio (§16.2): **no es un atajo** |
+| *"`GLOSARIO` en `run_tests.py:15602-15611` re-resuelve las etiquetas a cada red de seguridad"* | ❌ **`GLOSARIO` no existe** en `run_tests.py` ni en ningun documento. Las lineas 15602-15611 son `test_el_filtro_de_la_puerta_no_escribe_en_el_pack_original` y la clase `_PackServiceFalso_`. Ojo: **`_PackServiceFalso_` y `shutil_rmtree` (definidos en 15626 y 15636) no los usa nadie** en el 3-E: `shutil_rmtree` si se usa antes (`:15120`, `:15494`) |
+| *"`validate_docs.py` **120 OK / 0 FAIL** (subio de 119 a 120 con la entrada del ciclo 51 en el journal)"* | ❌ **FALSO: son 119 OK / 0 FAIL.** Medido con el `GIT_DIR` real. La cadena **`120 OK` no aparece en NINGUN sitio** del repo; las nueve mediciones historicas de este informe dicen 119, y la entrada del journal no anade ninguna comprobacion nueva |
+
+---
+
+## 16.9 TECHOS: LO DECLARADO, MEDIDO
+
+| Techo | Donde | Medido |
+|---|---|---|
+| **(a)-(f) del estatico** | `run_tests.py:14699-14765+` | Los seis siguen vivos y con su texto fiel. `E_COSMETICA_IF` cae **fuera** de (f) por su texto, no por un descuido (§16.6) |
+| **El residuo (b) del 3-E: la VISIBILIDAD** | docstring del 3-E, `run_tests.py:15683-15689` | **Declarado con su precio y es cierto**: gatear el `.pack()` de `cat_body` deja las 18 **construidas**. El cierre exige identificar el boton por nombre o texto, que es el defecto que las nueve rondas quitaron, asi que **no cuenta como (a)** |
+| **Los dos falsos positivos deliberados de E2** | docstring, `run_tests.py:15668-15676` | **Declarados y razonados.** (ii) es imposible mientras `process_service.py:863` descarte el centinela: **verificado**. (i) es una decision de contrato, no un descuido |
+| **El gaming-only que NO rompe E2** | docstring | ✅ **Cierto**, y por el motivo que dice: la etiqueta no es `c` ni `c + " (arrancar)"` |
+
+---
+
+## 16.10 CONTRATO: QUE SE HA TOCADO EN EL ARBOL DEL PROYECTO
+
+Verificado desde la raiz, **despues** de las 20 corridas y las sondas:
+
+```
+git log --oneline -1        41b2f88 docs(ciclo 51): registrar la seleccion por categoria ...
+git status --porcelain      (vacio)
+git diff --stat             (vacio)
+git diff --cached --stat    (vacio)
+git rev-parse --git-dir     C:\Users\carch\AppData\Local\woptimizer_git\.git
+```
+
+**Declaracion honesta:** las 20 corridas y todas las sondas fueron **enteras** en seis copias de
+`%TEMP%`, con `GIT_DIR` **desechables y explicitos** (uno nuevo por camara) y `git init` propio, sin
+`remote` ni `alternates`. No escribi, no borre y no comitee nada en
+`C:/Users/carch/Nextcloud/Scripts/woptimizer`, ni siquiera para revertir: no hizo falta, porque nunca
+escribi en el. `validate_docs.py` se ejecuto con el `GIT_DIR` real pero el **work tree de la camara**,
+para que cualquier escritura hubiera caído ahi.
+
+**Lo unico escrito en el arbol es esta seccion 16**, que es el artefacto de este rol. **Ningun commit.**
+`src/`, `run_tests.py` y los documentos estan **exactamente** como los dejo `41b2f88`.
+
+**Estado final de las camaras:** las **seis** restauradas y fieles a su `pristine` por SHA256, y
+`__pycache__` = **0** en las seis. Dos de ellas quedaron **mutadas** al morir mi runner por el defecto
+proprio #3, y lo vi y las restauré antes de volver a usarlas: es exactamente el fallo que este informe
+lleva nueve rondas midiendo, y lo cometi yo.
+
+---
+
+## 16.11 QUE PIDE ESTA RONDA AL CICLO
+
+Ordenado por lo que cuesta. **Ninguno de los tres primeros toca `src/`.**
+
+| # | Accion | Severidad | Por que |
+|---|---|---|---|
+| 1 | **Congelar el cableado de las dos casillas** con una asercion **por comportamiento**: pulsar la casilla de ARRANCAR de una categoria en un pack normal y afirmar que lo que se guarda es `start_categories` y **no** `target_categories`. Es la misma forma que el 3-E ya usa, y es lo que mata `W_VAR_CRUZADA` | 🔴 | El usuario pide arrancar y la app guarda apagar, **en verde** |
+| 2 | **Anadir la asercion de catalogo**: afirmar que `categorias_disponibles()` contiene al menos una categoria **verde** conocida, o que su tamano no es menor que el de `CATEGORY_ORDER` menos el centinela. Mata `K_CATALOGO_CORTO` | 🔴 | Un proceso del usuario sin casilla donde marcarlo, **en verde**, y es el bug que el ciclo 51 dice haber cerrado |
+| 3 | **C1**: corregir la afirmacion de que el techo (f) mata `E_COSMETICA_IF`, en `tasks.md:144` y en los dos docstrings. **Decir la verdad tambien sobre lo que NO se caza** | 🟡 | Una justificacion de congelar A1/A2/A3 que esta a medias |
+| 4 | **E0 declarado redundante**: o se deja como esta y **se dice** que `run_tests.py:2511` ya afirma lo mismo, o se quita E0. No es un fallo, es la unica asercion del 3-E cuya regla ya tenia el suite | 🟡 | La propia regla anti-redadura del dev |
+| 5 | **C3**: el asunto de `41b2f88` lleva `invarianteDigest` pegado. No se puede reescribir un commit ya escrito sin reescribir historia; basta con que la seccion 16 lo diga | 🟡 | Es lo primero que se lee en `git log` |
+| 6 | **C4**: `STATUS.md:13` dice "al dia en git (`9433985`)" con HEAD en `41b2f88` | 🟡 | El panel debe apuntar al HEAD |
+
+**Lo que NO hace falta tocar:** `src/` (cero cambios desde `e0f20db`, y correcto), el residuo (b) de la
+visibilidad (declarado, con su precio, y su cierre es otro `change-id`), los dos falsos positivos
+deliberados de E2, y **A1/A2/A3**, cuya congelacion queda **confirmada por medicion** (§16.4).
+
+---
+
+## 16.12 EL VEREDICTO, SIN RODEOS
+
+El paso de la **forma** al **efecto** ha hecho su trabajo, y esta es la prueba y no una opinion: **las
+diez familias de las nueve rondas y los cuatro mutantes de T-9 mueren, cada uno por la asercion del
+3-E que dice comprobar su cosa**, y el 3-E no se ha vuelto demasiado estricto -- la sonda legitima del
+dev (`E_COSMETICA_IF`) la deja pasar, que es lo correcto. El fixture dibuja casillas de verdad, con
+las cifras que el dev declaro (9, 18, 2 tarjetas), y no anade riesgo de entorno. **Nada de esto es una
+`mujerte perdida` y nada de esto es el hueco de la barrera anti-brick**, que sigue con cero mutantes
+vivos.
+
+Pero **no se puede cerrar el ciclo**, por la razon mas simple que han pedido las nueve rondas: hay
+**dos supervivientes rojos que no estan en ningun techo declarado**, y uno de ellos rompe
+**exactamente el contrato que el mensaje de E2 dice proteger** -- *"las dos etiquetas son el CONTRATO de
+las dos direcciones, una apaga, la otra arranca"*. El 3-E cuenta las etiquetas y por eso es ciego a
+**a quien estan cableadas**; y compara las casillas contra **la misma fuente que las produce**, y por
+eso es ciego a **que el catalogo este corto**.
+
+La buena noticia, y es la que hace este FAIL barato: **el agujero que queda no es una forma de gate**.
+No hay una ronda once. Son **dos aserciones mas** en el test que ya existe, y las dos se escriben
+pulsando la casilla de verdad.
