@@ -100,6 +100,19 @@ Sin esa verificacion una ruta que no es la correcta daria verde por el motivo
 equivocado. Si ninguna candidata es este arbol, falla fuerte y con el motivo a la
 vista, en vez de skipear en silencio.
 
+### Corridas 7 a 9: el pipeline metido a prueba por el propio ciclo
+Tres hallazgos mas, y estos son los que hacen que el pipeline sea de fiar:
+
+**Corrida 7 — el job `commits` paro MI commit.** La cabecera del commit de documentacion se paso de 120 caracteres, que es justo el limite que fija `.commitlintrc.json`. El guard que escribimos este ciclo cayo sobre quien lo escribio. **El arreglo fue acortar el mensaje, no relajar la regla:** un guard que se relaja para que pase el que lo escribio ya no guarda nada. Queda en la tabla de diagnostico de `docs/ai/release-pipeline.md`.
+
+**Corrida 8 — un unico force-push dejaba el pipeline ROJO PARA SIEMPRE.** Al reescribir la cabecera (commit `9d8fd00`) con `--force-with-lease`, el `github.event.before` del evento siguiente apuntaba al commit viejo, que ya no era alcanzable y que `actions/checkout` con `fetch-depth: 0` no trae:
+```
+fatal: Invalid revision range d69c06b..HEAD
+```
+El peligro no es ese fallo: es que `before` habria seguido apuntando al mismo commit huerfano **en cada push posterior**, de modo que reescribir historia dejaba el repositorio sin poder publicar nada hasta el siguiente force-push. Blindado en `79eb136`: el job comprueba `git cat-file -e "${ANTES}^{commit}"` y cae a `HEAD~1`. El mismo fallo aparece con un squash o un rebase, o sea que tarde o temprano.
+
+**Corrida 9 — verificado en vivo el criterio de aceptacion que faltaba.** Con un commit `ci()` (sin tipo publicable): `commits` success, `verify` success, `release` success **sin crear tag**, y `build` **skipped**. Releases tras la corrida: siguen siendo 2, `v1.0.0` y `v1.0.0-beta.1`. Ni un `1.0.1`, ni un `1.0.0.2`. Confirma el M2 de la tabla de mutaciones y confirma que **la 1.0.0 es la ultima version publicada**, que es lo que pedia el encargo.
+
 ### Corridas 5 y 6: VERDE. `v1.0.0-beta.1` y `v1.0.0` publicadas
 Las dos ultimas corridas salieron los cuatro jobs en `success`, y esto es lo que se habia pedido:
 
