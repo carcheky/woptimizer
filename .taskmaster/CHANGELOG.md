@@ -1,3 +1,60 @@
+## [CYCLE-051] 2026-10-03 - pack-seleccion-por-categoria
+
+**Area**: Gaming y Telemetria UX. **Change**: `openspec/changes/2026-10-03-pack-seleccion-por-categoria/`
+**Estado**: IMPLEMENTADO. `TASK-063` en `completed`. El **Paso 4 esta en curso**: diez rondas de auditoria.
+**Models**:
+- Paso 1 (Buscar): orchestrator. `active_task_id` apuntaba a TASK-059; se toma TASK-063 (high, sin dependencias, valor visible para el usuario)
+- Paso 2 (Planear): `architect-review`, commit `dc4b430`. **Seis hallazgos medidos** y el orden forzado T-1..T-8. Corrigio la especificacion preexistente en vez de crearla, y el hallazgo H1 (nuevo) es que `_last_closed_apps` se sobrescribe sin mirar quien pide el apagado
+- Paso 3 (Ejecutar): `openspec-dev`. `e0f20db` y cinco rondas de fix; T-9 lo escribio el arquitecto en `92368ad` y lo implemento el dev en `9433985`
+- Paso 4 (Auditar tests): `mutation-auditor`. **Diez rondas**: las cinco primeras FAIL, la sexta PARCIAL, la septima FAIL de severidad baja, la octava y la novena FAIL bajas, la decima con la via de efecto
+
+### Mutaciones auditadas (Paso 4, resumen de las diez rondas)
+
+| Fix | Mutacion | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| S1 (barrera roja de `_pack_evaluable`) | borrar el filtro `tier != danger` | **MUERE** (#16) | `solo el verde marcado debe llegar a kill_processes. Llego ['svchost.exe', 'onedrive.exe']` |
+| A5 (`.exe` en los candidatos de arranque) | `patron + ".exe"` -> `patron` | **MUERE** (#18) | `los candidatos de una categoria tienen que ser Nombres con extension` |
+| S7 (el filtro escribe en el pack original) | `model_copy` -> el pack del usuario | **MUERE** (#17) | `el filtro de la barrera escribio en el pack del usuario` |
+| U1 (gate simple) | `if pack.is_gaming:` envuelve el acordeon | **MUERE** (A1, `14326`) | `hay un 'if pack.is_gaming' que CONSTRUYE el acordeon` |
+| U1_AND (gate compuesto) | `if pack.is_gaming and pack.default_action == 'kill':` | **MUERE** (A1) | `una condicion que depende de is_gaming CONSTRUYE el acordeon` |
+| G_VAR / G_ALIAS / G_GETATTR / G_PRED | variable intermedia, alias, `getattr`, `id !=` | **MUEREN** (A1) | las cuatro, misma asercion |
+| G_GUARD2 | `if not pack.is_gaming: return` | **MUERE** (A2, `14599`) | `vuelve en L341 si se cumple 'not pack.is_gaming'` |
+| M1 / M2 / M3B / M10 / C5 | lista filtrada a 2 y a 5 saltos | **MUEREN** (A1b, `14530`) | `la lista de categorias que lo alimenta depende de 'is_gaming'` |
+| LC | casilla en `ListComp` gateada | **MUERE** (A1b) | `la casilla de L466 ... depende de is_gaming: L476` |
+| LC_SOLO_UM / LC_ANIDADA | el mismo filtro, dos formas mas | **MUEREN** (A1b) | la misma asercion |
+| ASSERT_GATE | `assert pack.is_gaming` delante | **MUERE** (A3, `14651`) | `el espejo no llega a construirse: la sentencia de L336` |
+| 12 formas de la seccion 11.2 | gates, alias, predicados, listas | **MUEREN** | `14326` / `14530` / `14599` |
+| S4/S5/S6/V7/V8 (regresion) | invariantes de servicio y vista | **MUEREN** | literales identicos a la ronda 1 |
+| Z1 | barrera duplicada en `execute_gaming_pack` | **EQUIVALENTE** (x10) | el codigo ya filtra en `execute_pack`: duplicarla no cambia nada |
+| SOLETE | ocho mutaciones que nadie mira | **EQUIVALENTE** | reduccion de la tarea anadida: `se_crean_windows()` ya existe |
+| Las nueve familias de gate | las nueve rondas anteriores | **MUEREN en el 3-E** | el invariante se afirmo por EFECTO, no por forma |
+| G_CATALOGO_VACIO | catalogo de categorias vacio | **MUERE** (E0) | `el catalogo de categorias ha vuelto vacio en este host (0 categorias)` |
+| A_GATE_EN_LA_LLAMADA | gate en `refresh_packs` | **MUERE** (E1) | `la vista dibujo 1 tarjetas para 2 packs` |
+| B / F / H | lista filtrada, `map`+lambda, etiqueta renombrada | **MUEREN** (E2) | `hay 0 casilla(s) de APAGAR` / `hay 3 casilla(s) de APAGAR` / `1 de APAGAR y 0 de ARRANCAR` |
+
+### Lo que realmente agrego este ciclo
+
+**El hallazgo de fondo, y por que hubo diez rondas.** El invariante del test #3 (el acordeon de categorias no se esconde tras un gate de solo-Gaming) se reescribio nueve veces. Cada reescritura cerraba una **familia** de formas de escribir el gate y dejaba vivo un miembro de la siguiente. Esa firma es la de una especificacion incompleta, no la de un test malo, y el `openspec-dev` lo dijo sin rodeos: la pregunta que hace el test es **alcanzabilidad**, no decidible en general (Rice); con analisis estatico sobre un unico fichero toda aproximacion es una lista, y las listas no se cierran por dentro.
+
+**La prueba, que es el dato mas util del ciclo:** se pidio anadir `ast.Assert` a la lista de tipos y **no cerro `ASSERT_GATE`**. El dev lo midio antes de decidir nada: una sentencia nunca puede ser antecesor de otra, asi que el `assert` es hermano y la cadena de padres no lo contiene. Anadir un nodo a una lista no acerca al invariante: desplaza el borde.
+
+**La salida: preguntar por el efecto, no por la forma.** El invariante real es "un pack normal ve todas sus casillas" (en este host son nueve categorias y dieciocho casillas por tarjeta), y eso se mide montando la vista real, repintando y contando. Mata las nueve familias de una, porque no le importa como este escrito el codigo. La red estatica A1/A2/A3 **se congela**, y hay prueba medida de que no se solapan: `cb.grid(row=i // (2 if pack.is_gaming else 1))` lo mata el techo (f) estatico y el efecto lo deja pasar **con razon**, porque cambia la fila y no la cantidad. Regla anti-redundancia escrita en los dos docstrings: *una familia solo se anade a una capa si ninguna regla de la otra la mata ya*.
+
+**La premisa falsa que salio de releer la especificacion midiendo.** El docstring del test #3 decia que una casilla de CustomTkinter sin `CTk` ni `root` no se puede instanciar. Es falso: `test_headless_ui` y `test_main_window_navigation_transitions` montan root y vista reales. **Esa frase la puso el orquestador al delegar**, y fue la que provoco las nueve rondas: cada actor la leyo como cierta. Corregida en `run_tests.py:14205-14233`, `:14336`, `:15678` y en la fila 107 de `docs/ai/testing-guide.md`.
+
+**El residuo, declarado y no inventado.** Gatear el `.pack()` de `cat_body` no lo mata ninguna de las dos capas; cerrarlo exigiria identificar el boton en el arbol vivo, o sea dependencia de nombre o de texto, que es exactamente el defecto que las nueve rondas quitaron. Su cierre es otro change-id con entrada por comportamiento.
+
+### Outcome
+- Commits: `dc4b430`, `e0f20db`, `d318fef`, `9dcd8ed`, `ae58fc2`, `5f96671`, `9ebeabc`, `72e98dc`, `9b68cc2`, `c3ced1a`, `92368ad`, `9433985`
+- Tests: **124 = 95 backend + 29 headless**, 0 fallos. `verify_ui_syntax.py` 9/9. `validate_docs.py` con 0 FAIL una vez escritos el journal y los dos changelogs
+- Docs: `docs/ai/architecture.md` (la puerta unica), `docs/ai/data-models.md` (`start_categories` y su contrato), `docs/ai/ui-design-system.md` (las cuatro guardas, el acordeon, el conflicto espejo, la tabla de puertas), `docs/ai/testing-guide.md` (tabla de recuento, filas nuevas, invariante anti-redundancia)
+- `src/` sin tocar desde `e0f20db`: los once commits siguientes son tests y documentacion. La feature completa cabe en un commit, y es lo correcto, porque un commit intermedio con la barrera anti-brick abierta es el ladrillo del ciclo 14
+
+### Impact
+Cierra el TASK-063 y deja una leccion reutilizable: **un invariante de forma, comprobado con un test de forma, se reescribe indefinidamente; y un limite que no se puede cerrar por dentro hay que declararlo con su tamano real, no disfrazarlo de cerrado.**
+
+---
+
 ## [CYCLE-050] 2026-10-03 01:10 - github-releases-semantic-release
 **Área**: Infraestructura & Distribución
 **Change**: openspec/changes/2026-10-03-github-releases-semantic-release/

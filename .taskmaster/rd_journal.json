@@ -847,5 +847,36 @@
       "validate_docs.py sigue sin poder correr en CI porque su ancla de commits depende de un GIT_DIR desacoplado que solo existe en el host del dueno. Arreglo de fondo: que acepte el repositorio por argv o por una variable de entorno ya presente en el runner.",
       "Los flags de PyInstaller estan DUPLICADOS entre force_build.py y release.yml, unidos hoy solo por un comentario. Si divergen, el .exe publicado deja de ser el mismo producto que el local. Un unico fichero de flags leido por los dos lo cierra."
     ]
+  },
+  {
+    "cycle": 51,
+    "date": "2026-10-03",
+    "slug": "2026-10-03-pack-seleccion-por-categoria",
+    "area": "Gaming & Telemetria UX",
+    "task": "TASK-063",
+    "status": "IMPLEMENTADO - Paso 4 en curso",
+    "commits": [
+      "dc4b430",
+      "e0f20db",
+      "d318fef",
+      "9dcd8ed",
+      "ae58fc2",
+      "5f96671",
+      "9ebeabc",
+      "72e98dc",
+      "9b68cc2",
+      "c3ced1a",
+      "92368ad",
+      "9433985"
+    ],
+    "tests": "124 = 95 backend + 29 headless",
+    "change": "openspec/changes/2026-10-03-pack-seleccion-por-categoria/",
+    "summary": "Seleccion por categoria para TODOS los packs. execute_pack es ahora la puerta UNICA de apagado con las barreras anti-brick DENTRO (antes vivian pegadas a execute_gaming_pack, que rechazaba packs no gaming), el catalogo de categorias pasa a un servicio, y se anade start_categories. El invariante del acordeon se termino moviendolo de la FORMA al EFECTO: la red estatica (A1/A2/A3) se congela y el test 3-E monta la vista real y cuenta casillas.",
+    "mutation_audit": {
+      "rounds": 10,
+      "verdict": "EN CURSO",
+      "mutants_measured": 300,
+      "note": "Nueve rondas de auditoria sobre el test #3. Cada ronda cerraba una FAMILIA de formas de gate y dejaba vivo un miembro de la siguiente: U1 -> U1_AND -> {G_VAR, G_HELPER, G_GUARD2, G_ALIAS, G_GETATTR, G_PRED} -> gate en el lugar de la llamada -> M1/M2/M3B (lista filtrada a dos saltos) -> el techo declarado -> LC (comprehension) -> ASSERT_GATE. El token 'ast.Assert en _CONDICIONALES' NO cerraba ASSERT_GATE y se midio que no: una sentencia nunca es antecesor de otra. Diagnostico del dev: con analisis estatico sobre un unico fichero la pregunta es alcanzabilidad, y la alcanzabilidad no es decidible en general (Rice), asi que toda aproximacion es una lista. Salida: un test de EFECTO que mata las nueve familias de una vez. En el codigo de produccion no hay ni un mutante vivo: cero en la barrera anti-brick. Cero cambios en src/ desde e0f20db."
+    }
   }
 ]

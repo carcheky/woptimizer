@@ -1,3 +1,42 @@
+## CYCLE-051 - 2026-10-03
+
+**Gaming y Telemetría UX** - `TASK-063` (Selección por categoría para TODOS los packs)
+
+### Añadido
+
+- Ahora puedes elegir **qué apagar y qué arrancar por categoría en cualquier pack**, no solo en el de Gaming. El selector ya existía como dato, pero las tres puertas de apagado pasaban por la lista de apps e ignoraban las categorías: aunque se le añadieras a un pack normal, no habría hecho nada. Ahora los packs normales también lo tienen, con dos listas (apagar y arrancar), y no puedes marcar en las dos la misma categoría, porque el selector desactiva la casilla de la otra.
+- **Arrancar por categoría.** El pack puede decir "arranca la categoría de navegadores" y el sistema busca el ejecutable, lo abre, y si no lo encuentra lo cuenta como fallido en vez de darse por bueno. El contador de la interfaz no se inventa: cuenta solo lo que arrancó de verdad.
+- **La lista de categorías sale de un único sitio.** Antes cada vista leía el fichero de la base de datos por su cuenta y repetía a mano los ocho nombres. Ahora hay un servicio que la devuelve, así que añadir una categoría es tocar un sitio y no cuatro.
+
+### Corregido
+
+- 🔴 **La protección que impedía matar procesos del sistema estaba pegada al pack de Gaming, no al apagado.** Si se ampliaba el apagado por categorías sin moverla primero, la barrera quedaba abierta justo en el commit intermedio: es el fallo que ya se había cerrado en el ciclo 14, entrando por otra puerta. Ahora la barrera vive **dentro** de la única puerta de apagado, y los tres caminos pasan por ahí.
+- 🔴 **Apagar un pack normal destruía una restauración de Gaming pendiente.** Al apagar se guardaba la lista de apps para poder reabrirlas después **sin mirar quién había pedido el apagado**. Apagar un pack corriente se comía esa lista y enseñaba un botón de "Reabrir" que, al pulsarlo, ya no tenía sentido. La lista ahora solo se sobrescribe cuando el apagado es del pack de Gaming.
+- 🛡️ **La confirmación ya no dice "apagar 0 apps".** Con un pack sin apps y con tres categorías marcadas, el botón decía literalmente "apagar 0 apps" y luego no pasaba nada. Ahora cuenta lo que la puerta va a hacer de verdad.
+- 🛡️ **El acordeón de categorías ya no se esconde solo en el pack de Gaming**, en las dos vistas. Y en la pantalla principal, un pack configurado para arrancar ya no recibe el aviso de "Gaming inerte", que era lo que salía antes.
+
+### El invariante del acordeón: de la forma al efecto
+
+Esta parte no se ve desde fuera y ocupó la mayor parte del ciclo, así que la cuento entera porque explica por qué hubo nueve rondas de revisión.
+
+Había un test que vigilaba que nadie volviera a esconder el selector detrás de "solo para el pack de Gaming". Se reescribió **nueve veces**. Cada reescritura tapaba una forma de escribir esa condición y dejaba pasar otra: un "si" simple, un "si" con condición, el valor guardado en una variable, la comprobación escondida dentro de un método, un filtro en la llamada, un filtro a dos saltos, una lista por comprensión, una afirmación delante del bloque.
+
+El diagnóstico llegó al final y se resume fácil: **la pregunta que hace el test —"¿puede esto impedir que se construya?"— es alcanzabilidad, y la alcanzabilidad no se puede decidir a mano en general.** Cualquier forma de comprobarlo es una lista, y las listas se alargan. La prueba más clara: se pidió añadir un tipo de sentencia a la lista y **no funcionó**; se midió por qué, y el motivo es que una sentencia nunca puede ser antecesora de otra.
+
+La salida fue cambiar la pregunta: no "¿está escrito de una forma prohibida?", sino **"¿un pack normal ve todas sus casillas?"**. Eso se mide de verdad: se monta la pantalla, se repinta y se cuentan las casillas. Da igual cómo esté escrito el código por dentro, y por eso mata las nueve familias de una vez.
+
+**Lo que aprendimos los que lo revisamos, y que vale más que el arreglo:**
+
+- El comentario del propio test decía que la casilla no se podía montar sin ventana real. **Era falso**, y dos tests del repo ya montaban la pantalla de verdad. Esa frase la había puesto el orquestador al encargar el trabajo, y fue la que-azicar- a los nueve revisores a dar vueltas: cada uno la leyó como cierta. Un comentario falso en el sitio equivocado cuesta más que un fallo, porque nadie lo discute.
+- Un test puede ser **demasiado estricto**. Una versión intermedia rechazaba código que funcionaba, y el mensaje de error mentía sobre el motivo. Eso es peor que no tener test: el siguiente que llega afloja la comprobación para que pase, y reabre el agujero sin darse cuenta.
+- Cuando un límite no se puede cerrar por dentro, **se declara con su tamaño real y se explica por qué**. Un límite honesto con su medidor es mucho más útil que un límite que se hace pasar por cerrado.
+
+### Lo que no cambia
+
+- El pack de Gaming sigue siendo el único protegido: no se puede borrar. Y el icono de la bandeja sigue preparando el Gaming Mode, como siempre.
+
+---
+
 ## CYCLE-050 - 2026-10-03
 
 **Infraestructura & Distribución** - `TASK-062` (Publicar las releases del `.exe` con semantic-release)
