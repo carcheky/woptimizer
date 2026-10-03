@@ -35,15 +35,28 @@ jobs:
         with:
           node-version: '24'
 
-      # Rango real del push. `github.event.before` es todo-ceros en el primer push
-      # de una rama nueva y en `workflow_dispatch`, y en ese caso se cae al commit
-      # anterior (o a la raiz) en vez de romper el rango.
+      # Rango real del push. `github.event.before` no siempre sirve, y cuando no
+      # sirve el pipeline se queda ROJO PARA SIEMPRE, porque `before` seguiria
+      # apuntando al mismo commit huerfano en cada push posterior. Los dos casos
+      # que lo rompen:
+      #   1. Primer push a una rama nueva: `before` es todo-ceros.
+      #   2. MEDIDO el 2026-10-03 (corrida 8, en este repo): tras un force-push,
+      #      un squash o un rebase, ese sha deja de ser alcanzable y
+      #      `actions/checkout` con fetch-depth 0 no lo trae ->
+      #      `fatal: Invalid revision range d69c06b..HEAD`. Aqui se dio al
+      #      reescribir la cabecera de un commit que habia pasada de 120
+      #      caracteres y habia tumbado el propio job `commits`.
       - name: Resolver el rango de commits del push
         id: rango
         run: |
           ANTES="${{ github.event.before }}"
-          if [ -z "$ANTES" ] || [ "$ANTES" = "0000000000000000000000000000000000000000" ]; then
+          VACIO="0000000000000000000000000000000000000000"
+          if [ -z "$ANTES" ] || [ "$ANTES" = "$VACIO" ]; then
             ANTES="$(git rev-parse HEAD~1 2>/dev/null || git rev-list --max-parents=0 HEAD)"
+            echo "El evento no trae \`before\` utilizable: se usa HEAD~1"
+          elif ! git cat-file -e "${ANTES}^{commit}" 2>/dev/null; then
+            ANTES="$(git rev-parse HEAD~1 2>/dev/null || git rev-list --max-parents=0 HEAD)"
+            echo "El \`before\` del evento no es un commit alcanzable de este checkout (force-push, squash o rebase): se usa HEAD~1"
           fi
           echo "desde=$ANTES" >> "$GITHUB_OUTPUT"
 

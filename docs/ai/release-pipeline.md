@@ -66,6 +66,8 @@ Su ancla de commits deriva el repo de `%LOCALAPPDATA%\woptimizer_git\.git` (`val
 | `ERELEASEBRANCHES` | La rama no esta en `branches` de `.releaserc.json` | Anadirla. No es un fallo de semantic-release, es una rama no declarada |
 | `Git push failed ... 403` | `main` tiene branch protection y `GITHUB_TOKEN` no puede escribir | Publicar desde una GitHub App, o relajar la proteccion para el job `release` |
 | La Release sale sin `.exe` | El job `build` fallo ( casi siempre PyInstaller ) | Re-run del job fallido en la pestana Actions. Reconstruye **el mismo tag** |
+| `fatal: Invalid revision range <sha>..HEAD` en el job `commits` | `github.event.before` apunta a un commit que ya no es alcanzable: tras un force-push, un squash o un rebase | Ya esta blindado: el job comprueba `git cat-file -e` y cae a `HEAD~1`. Si aun asi falla, revisa que el push no haya reescrito historia |
+| Commitlint falla con `header-max-length` | Cabecera de mas de 120 caracteres | Acortala. La regla no se relaja: un guard que se relaja para que pase el que lo escribio ya no guarda |
 | No sale ninguna release y el pipeline esta verde | Ningun commit `feat`/`fix`/`perf` en el push | Correcto, no es un fallo. `docs:` y `chore:` no publican |
 | El job `build` se salta | No hubo tag nuevo en esta corrida | Correcto: no hay release que adjuntar |
 | `run_tests.py` falla en `test_logging_va_a_fichero_y_no_a_stderr` con `WinError 32` | El `.log` esta bloqueado **en el host**, no en CI | Ver abajo |
