@@ -14609,9 +14609,9 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
             )
 
     # Lo que este test NO cubre, dicho para que la proxima ronda lo mida en vez
-    # de suponerlo. Las cinco se MIDIERON vivas (rondas 5 y 6) y ninguna se
+    # de suponerlo. Las seis se MIDIERON vivas (rondas 5, 6 y 8) y ninguna se
     # corrige aqui: cazarlas seria inventarse una regla mas que un dia
-    # rechazaria codigo legitimo, que es la trampa que este test lleva siete
+    # rechazaria codigo legitimo, que es la trampa que este test lleva ocho
     # rondas evitando. La (f) es el PRECIO del arreglo de la ronda 7 y tambien
     # esta medida, no supuesta.
     #   (a) un gate en el LUGAR DE LA LLAMADA --`if pack.is_gaming:
@@ -14621,6 +14621,28 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
     #       sin ser otra vez un test de forma. Lo mismo con la seccion extraida a
     #       un `def` anidado cuya llamada se gatea: desaparece el acordeon, no la
     #       tarjeta.
+    #       Y la EXTRACCION no tiene que ser un `def`. MEDIDO en la ronda 8 con
+    #       las TRES formas de esta misma decision, las tres con el gate en la
+    #       llamada o en el iterable: `def _caja(cat)` + `list(map(_caja, cats
+    #       if pack.is_gaming else []))`, la MISMA cosa con un `lambda` en vez de
+    #       un `def`, y `(lambda c: CTkCheckBox(...))(c)` DENTRO de la
+    #       comprehension cuyo iterable si esta gateado. Las tres dejan el pack
+    #       normal con 3 de las 6 casillas y las tres salen PERMITIDAS. El
+    #       motivo es UNO y no es la palabra `def`: una casilla construida dentro
+    #       de un `Lambda` no la ve NINGUNA de las dos reglas, porque el
+    #       `Lambda` es un CUERPO para A1b --la busqueda de bucles ancestros se
+    #       para ahi y con ella se pierde la comprehension que la alimenta-- y
+    #       porque el gate de A1 no le es ANTECESOR: esta en el argumento de
+    #       `map()` o en el `iter` de la comprehension, que son subarboles
+    #       HERMANOS de la casilla, no antecesores. Asi que el invariante que
+    #       queda declarado es "ninguna pieza del acordeon se construye dentro de
+    #       un `Lambda`", y el caso que de verdad faltaba en el texto era el
+    #       TERCERO: sin `def`, sin extraccion y con la comprehension GATEADA,
+    #       que es justo el bucle que el arreglo de la ronda 7 dice medir. Las
+    #       dos primeras ya caian aqui por el MOTIVO --la llamada se gatea, la
+    #       seccion desaparece-- y no por la palabra, asi que el texto nombra el
+    #       caso y no ensancha la lista de palabras: `MAP_LAMBDA_2`, que mete el
+    #       `if` en el cuerpo del `lambda` de fuera, sigue MUERIENDO en A1.
     #   (b) gatear la llamada a `.pack()`/`.grid()` que hace VISIBLE la rejilla, o
     #       el `.pack_forget()` del boton que la abre, dejando las casillas
     #       construidas: el cableado y A1 siguen viendo la construccion entera.
@@ -14641,23 +14663,39 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
     #       el predicado que no rechaza codigo legitimo y este es su precio. Si
     #       ese atributo acaba alimentando la LISTA, A1b lo ve, porque la cadena si
     #       propaga el valor: es el M3B, que la ronda 6 midio muerto por A1b.
-    #   (f) MEDIDO en la ronda 7 y es el precio de contar las comprehensions
-    #       como bucles: un bucle ENCIMA de la construccion cuyo iterable es una
-    #       eleccion de `is_gaming` se rechaza, aunque solo cambie el numero de
-    #       columnas --`for _n in (2 if pack.is_gaming else 1):` envolviendo el
-    #       grid--. Las dos formas de la misma decision se midieron: con `for`
-    #       y con `if`, y las dos mueren. La del `if` ya la rechazaba A1 antes de
-    #       este cambio, asi que no es una regla nueva sino la MISMA invariante
-    #       escrita con la sintaxis del bucle: "ninguna pieza del acordeon cuelga
-    #       de algo que dependa de si el pack es el de Gaming". Se eligio porque
-    #       la alternativa medida era peor: resolver solo el bucle mas interior
-    #       dejaba viva la forma `LC_ANIDADA` (la casilla en una comprehension
-    #       limpia dentro de un `for` gateado), que el test de `5f96671` mataba.
-    #       Perder una muerte es peor que declarar un limite.
+    #   (f) MEDIDO en la ronda 7 y Remedido en la 8, y es el precio de contar
+    #       las comprehensions como bucles: un bucle ENCIMA de la construccion
+    #       cuyo iterable es una eleccion de `is_gaming` se rechaza. El motivo
+    #       NO es cosmetico --la ronda 7 lo decia y era FALSO, y por eso se
+    #       corrige--: con el `for` --`for _n in range(2 if pack.is_gaming else
+    #       1):` envolviendo la fila-- el pack de Gaming construye NUEVE
+    #       casillas y la fila sale DUPLICADA, y con el `if` --`if (2 if
+    #       pack.is_gaming else 1) == 2:`-- el pack NORMAL se queda con TRES de
+    #       las seis, o sea pierde entera la tanda de arrancar. Medido con el
+    #       ejecutor de casillas CONSTRUIDAS, no contando `ast`: repo 6/6,
+    #       `COSMETICA_FOR` 9/6, `COSMETICA_IF` 6/3. Las dos cambian lo que el
+    #       usuario ve y no hay version legitima de un bucle cuya cantidad de
+    #       widgets la decide el pack, asi que las dos tienen que morir. La del
+    #       `if` ya la rechazaba A1 antes de este cambio: no es una regla nueva
+    #       sino la MISMA invariante escrita con la sintaxis del bucle, "ninguna
+    #       pieza del acordeon cuelga de algo que dependa de si el pack es el de
+    #       Gaming". Se eligio porque la alternativa medida era peor: resolver
+    #       solo el bucle mas interior dejaba viva la forma `LC_ANIDADA` (la
+    #       casilla en una comprehension limpia dentro de un `for` gateado), que
+    #       el test de `5f96671` mataba. Perder una muerte es peor que declarar
+    #       un limite.
+    #       Y el limite es estrecho DE VERDAD, no por cortesia: lo que el pack
+    #       no puede decidir es la CANTIDAD de casillas, y en eso esta todo. Si
+    #       puede decidir cuantos BUCLES la envuelven --`FP_DOS_TANDAS`, dos
+    #       `for` anidados con el de fuera sobre la constante `(False, True)`--
+    #       o en que columna se coloca cada una --`FP_COLUMNAS`, `column=i % (2
+    #       if pack.is_gaming else 1)` DENTRO de `.grid()`-- el codigo es
+    #       legitimo y pasa: las dos sondas se MIDIERON PERMITIDAS en la ronda 8.
     # Ninguno de los seis envuelve la construccion construyendola: (a), (b) y
     # (c) la dejan hecha y la ocultan, (d) y (e) ni la tocan, y (f) la envuelve
-    # en un bucle que si la construye, solo que con una lista o un numero de
-    # columnas elegido por el pack.
+    # en un bucle que SI la construye, pero con la CANTIDAD de casillas --la
+    # lista o el numero de vueltas-- decidida por el pack: 9/6 con el `for` y
+    # 6/3 con el `if`, medido con el ejecutor, no supuesto.
     # De las trece formas que midio el mutation-auditor, las DOCE que envuelven
     # la construccion las mata A1 o A2 (once A1 y una A2); la treceava --el
     # guard clause con el guard de TASK-062 sin desatar-- murio de otro test y
@@ -15446,8 +15484,8 @@ def test_arranque_por_categoria_toma_los_nombres_de_la_db_real():
     Los tests #4, #6 y #7 NO lo veian porque cada uno sobreescribe
     `_patrones_de_categoria` POR INSTANCIA con nombres que ya traian `.exe`:
     el arnés tapaba justo la linea que decide. MEDIDO el 2026-10-03 con `ast`:
-    los que la sobreescriben son los tres TESTS (`run_tests.py:14318` del #4,
-    `:14414` del #6 y `:14441` del #7), no la clase: `_ServicioDeArranque`
+    los que la sobreescriben son los tres TESTS (`run_tests.py:14741` del #4,
+    `:14847` del #6 y `:14874` del #7), no la clase: `_ServicioDeArranque`
     sobreescribe OTRAS dos cosas (`_resolver_app` y `_lanzar`, que es lo que
     dice su docstring) y esta seccion. Este test NO la sobreescribe --pide los
     nombres a la DB de verdad, cargada por `_load_local_db`-- y ademas usa el

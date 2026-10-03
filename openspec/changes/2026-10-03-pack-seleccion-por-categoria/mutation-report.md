@@ -1571,8 +1571,12 @@ una muerte es peor que declarar un limite, asi que el `while` sube por los
 
 Con la vista real no cambia nada: sus casillas viven en dos `for` y no hay
 ninguna comprehension en el camino, asi que la lista de bucles de cada casilla
-tiene **un** elemento y el recorrido es el de antes. El arreglo son **+39 lineas**
-en `run_tests.py`, CRLF preservado (`ast.parse` en verde en los tres parches).
+tiene **un** elemento y el recorrido es el de antes. El arreglo son **+57 lineas**
+en `run_tests.py` entre `5f96671` y `9ebeabc` (15689 -> 15746, marcador 15637 ->
+15694; `git diff --numstat` da 114 inserciones y 57 borrados). La cifra de la
+primera redaccion de esta linea, "+39", era falsa y la corrigio el
+`mutation-auditor` en su seccion 14.6. CRLF preservado (`ast.parse` en verde en
+los tres parches).
 
 ## 13.2 LO QUE PIDE EL ENCARGO, PUNTO 1: LC Y LOS DOS CONTROLES
 
@@ -1745,9 +1749,282 @@ rechaza en vez de|Verde|la.
 - `src/` **sin tocar**, como en `5f96671`. Lo unico modificado: `run_tests.py`
   (el test #3 y su techo), `docs/ai/testing-guide.md` (filas 107 y 123) y este
   informe.
-- `run_tests.py`: **+39 lineas**, CRLF preservado (15746 CRLF, 0 LF sueltos),
-  `ast.parse` en verde. Las lineas de las aserciones quedan en `14326` (A1),
-  `14530` (A1b) y `14599` (A2).
+- `run_tests.py`: **+57 lineas** (no +39: cifra corregida en la ronda 8), CRLF
+  preservado (15746 CRLF, 0 LF sueltos), `ast.parse` en verde. Las lineas de las
+  aserciones quedan en `14326` (A1), `14530` (A1b) y `14599` (A2).
 - **Veredicto de la ronda 7: el rojo de LC esta cerrado y el techo esta
   ampliado, no acortado.** Queda vivo lo que el techo (a)-(f) declara, y queda
   declarado con su forma medida.
+
+---
+
+# 14. RONDA 7 DEL MUTATION-AUDITOR (la que decide el cierre)
+
+Medido sobre `9ebeabc`, en copia de `%TEMP%`, con repo git **propio y
+desechable** por camara. **52 mutantes**, todos en suite completa, todos con el
+CONTROL verde primero.
+
+## 14.0 EL ARNES, Y SUS TRES DEFECTOS PROPIOS (declarados)
+
+Los declaro porque en las dos ultimas rondas los dos arnes Coventry una muerte
+falsa, y este tambien fallo antes de producir un solo numero:
+
+1. **DEFECTO QUE PRODUJO 48 MUERTES FALSAS.** Mi `copytree` llevaba
+   `ignore_patterns(".git*")` creyendo que cubria mas variantes del gitlink. Eso
+   excluye tambien `.gitignore`. Sin `.gitignore` en la camara, el CONTROL
+   NEGATIVO de `test_el_archivo_legacy_esta_versionado_y_no_vuelve_a_la_raiz`
+   (`git check-ignore` no puede responder "ignorado") falla **siempre**, y los 48
+   mutantes salieron "muertos" con un `AssertionError` ajeno al mutante. Solo se
+   excluye `.git` exacto, y ahora se **comprueba que `.gitignore` esta** al crear
+   la camara, o `ABORTO`.
+2. **El arnes se midio sobre una base roja y no lo savia.** Anadido: si el
+   `CONTROL` no sale `PERMITIDO`, el arnes **aborta** y no mide nada. Y si un
+   mutante muere con la **misma asercion que el CONTROL**, se marca
+   `MUERE_IGUAL_QUE_EL_CONTROL` y no cuenta como muerte.
+3. **`comparativa.py` capture mal la variable del mutante** (cargo
+   `VISTA_MUTADA` una vez y la reusé para las cuatro filas), asi que las cuatro
+   filas de la 14.2 son en realidad **la misma mutacion, `LC_ANIDADA`, medida
+   contra los dos test**. La conclusion que sostienen es la que importa y no
+   cambia, pero las etiquetas "forma=LC" de esa tabla **no son correctas** y no
+   hay que leerlas como si lo fueran.
+
+Ademas: cerrojo por camara con `O_CREAT|O_EXCL` (una segunda tanda se NIEGA),
+`restaurar()` verificado por SHA256 con `ABORTO` si no vuelve, `ERROR_DE_SONDA`
+si un patron aplica cero cambios, y `PYTHONDONTWRITEBYTECODE=1` + purga de
+`__pycache__` entre mutaciones. Los 48 patrones se autocomprobaron **en memoria**
+antes de gastar una sola corrida: 8 estaban rotos (asignacion `cb =` dentro de
+una comprehension, entre otros) y se corrigieron.
+
+**Por que la camara necesita repo:** sin `.git` propio, la suite cae en
+`%LOCALAPPDATA%\woptimizer_git\.git` --**el repo real**-- para las pruebas de
+git. Cada camara lleva el suyo (`git init` + `add` + `commit`), y se verifico
+que no tiene `alternates` ni `remote` y que sin `GIT_DIR` resuelve a si misma.
+El repo real no se toco: `9ebeabc`, arbol limpio, y los cuatro SHA256 de los
+ficheros vigilados iguales a los de antes de empezar.
+
+## 14.1 LAS DOS AFIRMACIONES IMPORTANTES, EN LAS DOS DIRECCIONES
+
+**(A) `LC` y `LC_ANIDADA` mueren.** Medido, `rc=1`, por la asercion de `14530`:
+
+| Forma | Veredicto | Asercion |
+|---|---|---|
+| `LC` casilla en ListComp | **MUERE** | `la casilla de L451 la dibuja el bucle de L450, pero la lista de categorias que lo alimenta depende de is_gaming` |
+| `LC_ANIDADA` comprehension limpia dentro de un `for` gateado | **MUERE** | `la casilla de L452 la dibuja el bucle de L450, ...` |
+| `LC_SOLO_UM` el mismo filtro en un `for` normal | **MUERE** | `la casilla de L455 la dibuja el bucle de L452, ...` |
+| `LC_LIMPIA` comprehension **sin** filtro (codigo legitimo) | **PERMITIDO** | -- |
+
+**(B) El arreglo NO ha perdido ninguna muerte previa.** Esta es la que mas
+importaba, y se midio montando cada version del test contra la misma vista
+mutada:
+
+| Test | Mutante | Veredicto | Asercion |
+|---|---|---|---|
+| `5f96671` (el de antes) | `LC_ANIDADA` | **MUERE** | `la casilla de L452 la dibuja el bucle de L450, ...` |
+| `9ebeabc` (el nuevo) | `LC_ANIDADA` | **MUERE** | la misma, literal |
+
+**La afirmacion del dev se sostiene: `LC_ANIDADA` la mataba `5f96671` y la sigue
+matando el arreglo.** Ademas las **12 de la 11.2** y `M1`, `M2`, `M3B`, `M10`,
+`C5` (cinco saltos) **siguen muriendo cada una por su asercion** (vease 14.5),
+las dos mitades de la premisa del #16 mueren con `preCONDICION ROTA`, y `Z1` sale
+**VERDE por septima medicion**. Cero muertes perdidas.
+
+## 14.2 EL TECHO (f): MEDIDO, Y SI MENTIA
+
+`COSMETICA_FOR` y `COSMETICA_IF` **mueren** los dos, como declara el dev. Pero su
+justificacion **no se sostiene tal como esta escrita**, y por un motivo que
+refuerza al dev en vez de debilitarlo:
+
+| Forma | Veredicto | Cuantas casillas construye (mi extractor) |
+|---|---|---|
+| repo sin mutar | -- | gaming **6**, normal **6** |
+| `COSMETICA_FOR` `for _n in (2 if pack.is_gaming else 1):` | **MUERE** en `14530` | gaming **9**, normal 6 |
+| `COSMETICA_IF` `if (2 if pack.is_gaming else 1) == 2:` | **MUERE** en `14326` | gaming **6**, normal **3** |
+
+El techo dice que el `for` "solo cambia el numero de columnas" y que "las
+casillas se dibujan igual para todos". **Eso es falso:** con el `for` el pack de
+Gaming construye **9** casillas --la fila entera **duplicada**--, y con el `if`
+el pack normal **pierde** las 3 de "arrancar". O sea, **ninguna de las dos formas
+es cosmetica**: las dos cambian el comportamiento, y por eso las dos deben morir.
+El argumento de simetria ("la del `if` ya la rechazaba A1, asi que no es una
+regla nueva") es cierto pero no es el que sostiene el limite. El que lo sostiene
+es mas simple y mas fuerte: **un bucle sobre la construccion cuyo iterable
+depende de `is_gaming` o la duplica o la deja de dibujar, y no hay version
+legitima de el.**
+
+**Y el limite no se ha vuelto demasiado fuerte.** Dos formas de codigo
+**legitimo** que la regla nueva podria haber rechazado y **no** rechaza:
+
+| Sonda legitima | Veredicto |
+|---|---|
+| `FP_COLUMNAS` elijiendo el numero de columnas por el pack **dentro de `.grid()`** (`column=i % (2 if pack.is_gaming else 1)`) | **PERMITIDO** |
+| `FP_DOS_TANDAS` la casilla dentro de **dos `for` anidados** (el de fuera sobre la constante `(False, True)`, el de dentro sobre `enumerate(sorted_cats)`) | **PERMITIDO** |
+
+`FP_DOS_TANDAS` es la sonda directa a "todos los bucles que envuelven la casilla":
+dos bucles, ninguno manchado, y la regla nueva los mira a los dos y **deja
+pasar**. Con eso, **el techo (f) es un techo y no un falso positivo rotulado.**
+
+## 14.3 LA EQUIVALENCIA DE LC, EJECUTADA CON MI PROPIO EXTRACTOR
+
+Sin su `equiv.py` (ya declara un defecto). Extraigo el bloque real del acordeon
+por marcadores, lo `exec` contra un `ctk` de mentira y **cuento las casillas
+CONSTRUIDAS**:
+
+| Vista | gaming | normal | |
+|---|---|---|---|
+| repo sin mutar | **6** | **6** | referencia |
+| `LC` | 6 | **3** | el pack normal pierde las 3 de "arrancar" |
+| `LC_ANIDADA` | 6 | **3** | igual |
+| `LC_SOLO_UM` / `GENEXP_GATE` / `SETCOMP_GATE` / `COMPR_TRES` | 6 | **3** | igual |
+| `LC_LIMPIA` | 6 | **6** | equivalente |
+
+**La conclusion del dev se reproduce exactamente: `LC` hace que el pack normal
+pierda las casillas.** Lo que **no** reproduce son sus cifras absolutas: el
+informe dice `LC` = **12/6** y `LC_LIMPIA` = **12/12**; a mi me salen **6/3** y
+**6/6**. La razon es la misma en los dos casos (los numeros del informe son el
+doble de los mios), lo que ademas implica que su `LC_LIMPIA` --que se presenta
+como "la forma legitima de esta misma decision"-- construye **12** casillas donde
+el repo construye 6, es decir que **duplica widgets tambien en la forma que se
+declara legitima**. Corregir la tabla a 6/3 y 6/6.
+
+## 14.4 LO QUE SI ENCUENTRE: TRES SUPERVIVIENTES, UNA SOLA CAUSA
+
+Todos son el **mismo agujero de anclaje**: una casilla construida dentro de un
+`Lambda` **no se reconoce como casilla**, asi que ni A1 ni el A1b nuevo llegan a
+mirarla. Medido, y los tres verificados **no equivalentes** con mi extractor
+(los tres: gaming 6, **normal 3**):
+
+| Mutante | Forma | Veredicto | En el techo? |
+|---|---|---|---|
+| `MAP_LAMBDA_FN` | `def _caja(cat): return CTkCheckBox(...)` + `list(map(_caja, sorted_cats if pack.is_gaming else []))` | **PERMITIDO** | **si**, es (a) literal: "la seccion extraida a un `def` anidado cuya llamada se gatea" |
+| `MAP_LAMBDA` | la misma cosa con un `lambda` en vez de un `def` | **PERMITIDO** | (a) **por el motivo, no por la palabra**: el techo nombra `def`, y aqui no hay `def` ni "llamada gateada": el gate esta en el **argumento** de `map()` |
+| `LISTA_LAMBDA_APLICADA` | `(lambda c: CTkCheckBox(...))(cat)` **dentro de la comprehension**, cuyo iterable si es `sorted_cats if pack.is_gaming else []` | **PERMITIDO** | **no**. No hay `def`, no hay extraccion, y la comprehension **si** es el bucle que alimenta la casilla: es justo lo que el arreglo nuevo dice mirar |
+| `MAP_LAMBDA_2` | el `if` metido en el cuerpo del `lambda` de fuera | **MUERE** en `14326` | -- |
+
+**Severidad: BAJA, y conviene decirlo.** El patron`(lambda c: ...)(cat)` dentro
+de una comprehension no lo escribe nadie; `MAP_LAMBDA_FN` ya estaba declarado y
+`MAP_LAMBDA` es el mismo mecanismo con otra sintaxis. **No toca la barrera
+anti-brick**: no hay ningun mutante vivo en `gaming_service.py`, `process_service.py`
+ni la barrera de categoria. Lo que queda vivo es "el pack normal pierde 3
+casillas de la tanda arrancar" en una forma de codigo que hay que escribir a
+propósito.
+
+**Lo mas barato para cerrarlo es una palabra:** en el techo (a), "la seccion
+extraida a un **`def` o `lambda`** anidado". Con eso los tres quedan dentro de un
+limite **medido** y el ciclo cierra. La otra via es que `_es_casilla_del_acordeon`
+reconozca un `CTkCheckBox` dentro de un `Lambda`, y entonces mueren los tres.
+
+## 14.5 LA REGRESION COMPLETA (12 + 5 + 2 + 9), TODAS POR SU ASERCION
+
+| Forma | Asercion que la mato |
+|---|---|
+| `U1` | `14326` -- `una casilla de categoria (CTkCheckBox) (L455) cuelga de una condicion en L450` |
+| `U1_AND` | `14326` |
+| `G_VAR` | `14326` (L456) |
+| `G_ALIAS` | `14326` (L456) |
+| `G_GETATTR` | `14326` (L455) |
+| `G_PRED` | `14326` (L455) |
+| `G_HELPER` | `14326` (L459) -- `cuelga de una condicion en L454: 'self._es_gaming(pack)'` |
+| `G_OR` | `14326` (L455) |
+| `G_ISTRUE` | `14326` (L455) |
+| `G_ELSE` | `14326` (L457) |
+| `G_LISTA` | `14530` (L441 / bucle L438) |
+| `G_GUARD2` | `14599` -- `_seccion_acordeon (L439) dibuja una pieza del acordeon` |
+| `M1` | `14530` (L442 / L439) |
+| `M2` | `14530` (L443 / L440) |
+| `M3B` | `14530` (L442 / L439) |
+| `M10` (cuatro saltos) | `14530` (L445 / L442) |
+| `C5` (cinco saltos) | `14530` (L446 / L443) |
+| `PREMISA` | `preCONDICION ROTA: este test solo mide la barrera de categoria si el snapshot y la DB DISCREPAN` |
+| `PREMISA_S1` | la misma |
+| `S1` | `solo el verde marcado debe llegar a kill_processes. Llego [...]` |
+| `S4` / `S5` | `skipped debe sumar los descartes del filtro (svchost y lsass): 1` |
+| `S6` | `G0 es obligatorio: sin force_refresh=True la cache TTL de 2 [s]` |
+| `S7` | `el filtro de la barrera escribio en el pack del usuario: tar...` |
+| `A5` | `los candidatos de una categoria tienen que ser Nombres con e...` |
+| `V7` | `el pack se cierra por la puerta comun con SUS apps, no con u...` |
+| `V8` | `el worker toca la vista fuera de self.after(0, ...)` |
+| `GG2` | `14599` -- `_seccion_acordeon2 (L439)` |
+| `ALIAS_GUARD` | `14599` -- `_seccion_acordeon3 (L439)` |
+| `Z1` | **PERMITIDO**, septima medicion verde |
+
+**La contraprueba, en el orden pedido:** `FP1`, `FP2`, `FP3`, `D_FP1`, `D_FP2`,
+`GUARD_TK` **PERMITIDOS**, `CONTROL` verde 123/123, y despues `GG2` y
+`ALIAS_GUARD` **MUERTOS**. No salio.
+
+**Formas nuevas que medi y el arreglo NO debe ver** (ademas de las de la
+familia lambda): `GENEXP_GATE` **MUERE**, `SETCOMP_GATE` **MUERE**, `COMPR_TRES`
+(tres niveles de comprehension, el gate en el mas exterior) **MUERE**. Los tres
+confirman que la resolucion de "todos los bucles que envuelven la casilla" es
+**realmente recursiva** y no solo "el siguiente hacia fuera".
+
+## 14.6 LO DOCUMENTAL
+
+**Reproducido con `ast`, sin creerse al dev:**
+
+- Las **tres** lineas de D4-bis: `L14704` (def `L14688`), `L14810` (def
+  `L14797`), `L14837` (def `L14824`), y **son tres, no hay una cuarta**. La fila
+  123 de `testing-guide.md` las cita ya bien: **esta vez la correccion es
+  verdadera.**
+- Los cuatro recuentos: **123** definidos = **123** invocados, ninguno huerfano,
+  y el reparto **95 backend + 28 headless** con el marcador en
+  `run_tests.py:15694`. `validate_docs.py` da **119 OK / 0 FAIL** (`rc=0`) y su
+  linea 125 ya dice `(marcador en run_tests.py:15694)`.
+- `verify_ui_syntax.py`: **9 modulos, EXITO, rc=0**.
+- `src/` sin tocar desde `5f96671`: confirmado, el diff de `9ebeabc` no toca
+  `src/`.
+- Aserciones en `14326` (A1), `14530` (A1b), `14599` (A2): confirmadas.
+- `run_tests.py`: 15746 lineas, 15746 CRLF, 0 LF sueltos: confirmado.
+
+**Tres falsedades, las tres de texto (c):**
+
+1. **"`+39 lineas`" es falso.** `run_tests.py` entre `5f96671` y `9ebeabc` es
+   **+57** lineas: 15689 -> 15746, marcador 15637 -> 15694, y `git diff --numstat`
+   da **114 inserciones y 57 borrados** (171 lineas tocadas). Ni el neto ni el
+   total dan 39.
+2. **"`COSMETICA_FOR` solo cambia el numero de columnas"** es falso (14.2): el
+   pack de Gaming acaba con 9 casillas en vez de 6, la fila duplicada.
+3. **El techo se cuenta a si mismo mal en dos sitios.** `run_tests.py:14612` dice
+   "Las cinco se MIDIERON vivas" y `run_tests.py:14657` dice "Ninguno de los
+   seis"; `testing-guide.md` fila 107 dice "Ninguno de los **cinco**" con seis
+   ejes enumerados. Son seis.
+
+**No he encontrado ninguna falsedad nueva en la 13.** La 13.4, la 13.5, la 13.6 y
+la 13.7 se sostienen con lo que he medido, con las tres correcciones de arriba.
+
+## 14.7 VEREDICTO DE LA RONDA 7
+
+**FAIL, y solo por una cosa, y no es una muerte perdida.**
+
+- **(a) Fallo real de cobertura: UNO, `LISTA_LAMBDA_APLICADA`.** Vive, no es
+  equivalente (el pack normal pierde 3 casillas de "arrancar") y **no esta en el
+  techo declarado**: no hay `def`, no hay extraccion, y la comprehension es
+  justamente el bucle que el arreglo nuevo dice mirar. Se cierra con una palabra
+  en el techo (a) ("`def` o `lambda`") o haciendo que
+  `_es_casilla_del_acordeon` reconozca la casilla dentro de un `Lambda`, y entonces
+  mueren los tres de la familia. Es de severidad **baja** y explicito que
+  **no toca la barrera anti-brick**: no hay ningun mutante vivo en
+  `gaming_service.py`, `process_service.py` ni en la barrera de categoria.
+- **(b) Techo declarado y medido: SEIS, y el (f) es honesto.** Los seis estan en
+  el propio test con su mutante. Y conteste a la pregunta del encargo: el (f) **no
+  prohibe codigo legitimo**. Lo he medido con dos sondas que la regla nueva
+  rechazaba o podria rechazar (`FP_COLUMNAS`, `FP_DOS_TANDAS` con dos bucles
+  anidados) y **las deja pasar**. La redaccion de (f) esta mal justificada
+  (14.2), pero su **contenido es mas estrecho** de lo que el texto sugiere, que es
+  la direccion buena.
+- **(c) Texto documental: TRES** lineas (14.6).
+
+**Y lo mas importante de la ronda, en una linea: el arreglo del dev NO ha
+perdido ninguna muerte.** `LC_ANIDADA` la mataba `5f96671` y la sigue matando; las
+12 de la 11.2, `M1`, `M2`, `M3B`, `M10`, `C5`, las dos mitades de la premisa, las
+nueve de servicio/vista, `GG2` y `ALIAS_GUARD` siguen muriendo cada una por su
+asercion, y `Z1` sigue verde por septima vez. Tras siete rondas, lo que queda no
+es un agujero de la barrera: es una palabra en el techo.
+
+**Repo real: NO TOCADO.** `git log --oneline -1` = `9ebeabc`, `git status
+--porcelain` vacio, `git diff --stat` y `git diff --cached --stat` vacios,
+`rev-parse --git-dir` = `%LOCALAPPDATA%\woptimizer_git\.git`, y los cuatro
+SHA256 de los ficheros vigilados iguales a los de antes de empezar. Lo unico que
+he escrito en el arbol es **esta seccion 14**, que el dev commiteará. Las 12
+camaras de mutacion quedan **restauradas y verificadas 4/4 por SHA256**; las 4
+`cmp_*` de la comparativa quedan, por diseno, con la mutacion puesta (son de un
+solo uso y asi se nombran).
