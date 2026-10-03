@@ -14447,59 +14447,98 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
             _padre = _PADRES.get(_padre)
         return _padre
 
+    # Una COMPREHENSION tambien es un bucle, y esto no es inventar una regla:
+    # sus generadores son nodos `ast.comprehension`, cada uno con su `iter` y sus
+    # `ifs`, y `[c for c in cats if pack.is_gaming]` es EXACTAMENTE la lista
+    # filtrada que A1b mide, escrita con otra sintaxis. Medido en la ronda 7 con
+    # la forma `LC`: sin esto la casilla construida dentro de una comprehension
+    # se perdia al buscar el `For` ancestro --una `ListComp` no es `ast.For`, ni
+    # una funcion, asi que la busqueda subia hasta el `FunctionDef` y el
+    # `continue` de la ronda 5 la descartaba SIN MIRARLA-- y el acordeon se
+    # dibujaba vacio para un pack normal con los 123 en verde. No era que la
+    # cadena resolviera mal: es que nunca se le preguntaba.
+    _BUCLES = (ast.For, ast.ListComp, ast.SetComp, ast.DictComp,
+               ast.GeneratorExp)
+    _CUERPO = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+    _COMPRENSIONES = _BUCLES[1:]
+
+    def _lo_que_alimenta(bucle):
+        """Los valores que meten elementos en el bucle.
+
+        En un `for` es su `iter`. En una comprehension son los `iter` de sus
+        generadores Y sus `ifs`, porque `for c in cats if <gate>` es una lista
+        filtrada: el filtro es una condicion mas, no una lectura menos.
+        """
+        if isinstance(bucle, _COMPRENSIONES):
+            return ([g.iter for g in bucle.generators]
+                    + [c for g in bucle.generators for c in g.ifs])
+        return [bucle.iter]
+
     for _nodo, _etiqueta in ANCLAJES:
         if "casilla de categoria" not in _etiqueta:
             continue
-        _bucle = _PADRES.get(_nodo)
-        while _bucle is not None and not isinstance(
-                _bucle, (ast.For, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
-        ):
-            _bucle = _PADRES.get(_bucle)
-        if not isinstance(_bucle, ast.For):
-            continue
-        _fuente = _funcion_que_alimenta(_bucle)
-        if _fuente is None:
-            continue
-        # Se sigue la lista por los NOMBRES que usa, salto a salto y SIN limite
-        # de saltos: una lista que alimenta el acordeon no puede depender de
-        # `is_gaming` a traves de los saltos que haga falta.
-        _culpable = None
-        _vistos = set()
-        _pendientes = [_bucle.iter]
-        while _pendientes and _culpable is None:
-            _valor = _pendientes.pop()
-            if id(_valor) in _vistos:
+        # Se resuelven TODOS los bucles que envuelven la casilla, del mas
+        # interior al mas exterior, y no solo el primero. Medido en la ronda 7
+        # con la forma `LC_ANIDADA` y en las DOS direcciones: resolver solo el
+        # mas interior --la comprehension-- hacia que la casilla sobreviviera,
+        # y esa misma forma la mataba el test de antes. Perder una muerte es
+        # peor que declarar un limite, asi que se miran todos. Con la vista
+        # real no cambia nada: sus casillas viven en dos `for` y no hay
+        # comprehension en el camino, asi que la lista tiene un elemento.
+        _bucles = []
+        _padre = _PADRES.get(_nodo)
+        while _padre is not None and not isinstance(_padre, _CUERPO):
+            if isinstance(_padre, _BUCLES):
+                _bucles.append(_padre)
+            _padre = _PADRES.get(_padre)
+        for _bucle in _bucles:
+            _fuente = _funcion_que_alimenta(_bucle)
+            if _fuente is None:
                 continue
-            _vistos.add(id(_valor))
-            if _depende_de_is_gaming(_valor):
-                _culpable = _valor
-                break
-            for _s in _lecturas(_valor):
-                # Se mira CADA escritura del nombre, no solo la ultima: la que
-                # gana puede ser la inocua y dejar la gateada una linea antes.
-                _escrituras = [a for a in ast.walk(_fuente)
-                               if isinstance(a, ast.Assign) and a.lineno < _bucle.lineno
-                               and any(isinstance(t, ast.Name) and t.id == _s
-                                       for t in a.targets)]
-                for _escritura in _escrituras:
-                    if _escritura_gateada(_escritura):
-                        _culpable = _escritura
-                        break
-                if _culpable is not None:
+            # Se sigue la lista por los NOMBRES que usa, salto a salto y SIN
+            # limite de saltos: una lista que alimenta el acordeon no puede
+            # depender de `is_gaming` a traves de los saltos que haga falta.
+            _culpable = None
+            _vistos = set()
+            _pendientes = _lo_que_alimenta(_bucle)
+            while _pendientes and _culpable is None:
+                _valor = _pendientes.pop()
+                if id(_valor) in _vistos:
+                    continue
+                _vistos.add(id(_valor))
+                if _depende_de_is_gaming(_valor):
+                    _culpable = _valor
                     break
-                _ganadora = _ultima_asignacion(_s, _fuente, _bucle.lineno)
-                if _ganadora is not None:
-                    _pendientes.append(_ganadora.value)
-        assert _culpable is None, (
-            f"la casilla de L{_nodo.lineno} la dibuja el bucle de L{_bucle.lineno}, "
-            "pero la lista de categorias que lo alimenta depende de `is_gaming`: "
-            f"L{_culpable.lineno}. Un gate no tiene por que ser un `if` delante: "
-            "puede ser la lista filtrada --en la asignacion o en cualquier salto "
-            "de la cadena--, o una escritura que va dentro de un `if` que depende "
-            "de `is_gaming`, y entonces el acordeon se dibuja vacio para un pack "
-            "normal con este test en verde"
-        )
-
+                for _s in _lecturas(_valor):
+                    # Se mira CADA escritura del nombre, no solo la ultima: la
+                    # que gana puede ser la inocua y dejar la gateada una linea
+                    # antes.
+                    _escrituras = [a for a in ast.walk(_fuente)
+                                   if isinstance(a, ast.Assign)
+                                   and a.lineno < _bucle.lineno
+                                   and any(isinstance(t, ast.Name) and t.id == _s
+                                           for t in a.targets)]
+                    for _escritura in _escrituras:
+                        if _escritura_gateada(_escritura):
+                            _culpable = _escritura
+                            break
+                    if _culpable is not None:
+                        break
+                    _ganadora = _ultima_asignacion(_s, _fuente, _bucle.lineno)
+                    if _ganadora is not None:
+                        _pendientes.append(_ganadora.value)
+            assert _culpable is None, (
+                f"la casilla de L{_nodo.lineno} la dibuja el bucle de "
+                f"L{_bucle.lineno}, pero la lista de categorias que lo alimenta "
+                f"depende de `is_gaming`: L{_culpable.lineno}. Un gate no tiene "
+                "por que ser un `if` delante: puede ser la lista filtrada --en la "
+                "asignacion o en cualquier salto de la cadena--, o una escritura "
+                "que va dentro de un `if` que depende de `is_gaming`, y entonces "
+                "el acordeon se dibuja vacio para un pack normal con este test en "
+                "verde. El bucle puede ser un `for` o una comprehension, que "
+                "tambien es un bucle: `[c for c in cats if pack.is_gaming]` "
+                "filtra igual que un `for` con la lista ya filtrada"
+            )
     # --- A2: la funcion que dibuja una pieza no vuelve antes si decide por el pack
     # `if not pack.is_gaming: return` al principio de un metodo propio es la
     # forma de gate que NO es antecesor de la construccion, asi que A1 no la ve,
@@ -14572,8 +14611,9 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
     # Lo que este test NO cubre, dicho para que la proxima ronda lo mida en vez
     # de suponerlo. Las cinco se MIDIERON vivas (rondas 5 y 6) y ninguna se
     # corrige aqui: cazarlas seria inventarse una regla mas que un dia
-    # rechazaria codigo legitimo, que es la trampa que este test lleva cinco
-    # rondas evitando.
+    # rechazaria codigo legitimo, que es la trampa que este test lleva siete
+    # rondas evitando. La (f) es el PRECIO del arreglo de la ronda 7 y tambien
+    # esta medida, no supuesta.
     #   (a) un gate en el LUGAR DE LA LLAMADA --`if pack.is_gaming:
     #       self._render_pack_card(pack)`-- no se ve, porque `refresh_packs` YA
     #       condiciona de legitimo ("el Gaming primero", "el resto, sin repetir el
@@ -14601,13 +14641,30 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
     #       el predicado que no rechaza codigo legitimo y este es su precio. Si
     #       ese atributo acaba alimentando la LISTA, A1b lo ve, porque la cadena si
     #       propaga el valor: es el M3B, que la ronda 6 midio muerto por A1b.
-    # Ninguno de los cinco envuelve la construccion: (a), (b) y (c) la dejan
-    # hecha y la ocultan, y (d) y (e) ni la tocan. De las trece formas que
-    # midio el mutation-auditor, las DOCE que envuelven la construccion las mata
-    # A1 o A2 (once A1 y una A2); la treceava --el guard clause con el guard de
-    # TASK-062 sin desatar-- murio de otro test y por otro motivo: lo que
-    # detects fue "la seccion se movio de metodo", no que el acordeon estuviera
-    # gateado.
+    #   (f) MEDIDO en la ronda 7 y es el precio de contar las comprehensions
+    #       como bucles: un bucle ENCIMA de la construccion cuyo iterable es una
+    #       eleccion de `is_gaming` se rechaza, aunque solo cambie el numero de
+    #       columnas --`for _n in (2 if pack.is_gaming else 1):` envolviendo el
+    #       grid--. Las dos formas de la misma decision se midieron: con `for`
+    #       y con `if`, y las dos mueren. La del `if` ya la rechazaba A1 antes de
+    #       este cambio, asi que no es una regla nueva sino la MISMA invariante
+    #       escrita con la sintaxis del bucle: "ninguna pieza del acordeon cuelga
+    #       de algo que dependa de si el pack es el de Gaming". Se eligio porque
+    #       la alternativa medida era peor: resolver solo el bucle mas interior
+    #       dejaba viva la forma `LC_ANIDADA` (la casilla en una comprehension
+    #       limpia dentro de un `for` gateado), que el test de `5f96671` mataba.
+    #       Perder una muerte es peor que declarar un limite.
+    # Ninguno de los seis envuelve la construccion construyendola: (a), (b) y
+    # (c) la dejan hecha y la ocultan, (d) y (e) ni la tocan, y (f) la envuelve
+    # en un bucle que si la construye, solo que con una lista o un numero de
+    # columnas elegido por el pack.
+    # De las trece formas que midio el mutation-auditor, las DOCE que envuelven
+    # la construccion las mata A1 o A2 (once A1 y una A2); la treceava --el
+    # guard clause con el guard de TASK-062 sin desatar-- murio de otro test y
+    # por otro motivo: lo que detecto fue "la seccion se movio de metodo", no
+    # que el acordeon estuviera gateado. Y ninguna de las trece es un death de
+    # la tabla de 11.2, que tiene DOCE filas de gate mas dos sondas legitimas.
+
     with io.open(ruta, encoding="utf-8") as fh:
         cod = _codigo_ejecutable(fh.read())
     assert "categorias_disponibles" in cod, (
