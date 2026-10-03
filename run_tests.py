@@ -14212,10 +14212,42 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
     with open(ruta, encoding="utf-8") as fh:
         arbol = ast.parse(fh.read())
 
+    # TASK-063 iteracion 3 (mutation-auditor: U1_AND SOBREVIVIO). El predicado de
+    # la iteracion 2 exigia que el test del `if` FUERA `pack.is_gaming`:
+    #
+    #     t = nodo.test if isinstance(nodo, ast.If) else nodo
+    #     return isinstance(t, ast.Attribute) and t.attr == "is_gaming" ...
+    #
+    # Eso es un predicado de IGUALDAD TEXTUAL, y por eso `if pack.is_gaming and
+    # pack.default_action == "kill":` --la forma mas natural que un desarrollador
+    # escribiria para reintroducir el gate-- se le escapaba entero: su test es un
+    # `ast.BoolOp`, no un `ast.Attribute`, el gate no entraba en la lista, y los
+    # 123 tests se quedaban en verde con el acordeon gateado. Peor que U1: como
+    # `default_action` nace en "start" (`models.py:83`), ese gate compuesto le
+    # esconderia el acordeon al PROPIO pack de Gaming.
+    #
+    # El invariante real no es una forma de condicion, es una DEPENDENCIA:
+    # "ninguna construccion del acordeon puede quedar bajo una condicion que
+    # dependa de `is_gaming`". Asi que lo que se pregunta es si la condicion
+    # CONTIENE la lectura de `is_gaming`, y da igual si viene sola, con un
+    # `and`, con un `or`, negada con `not` o pasada como argumento. Un test que
+    # solo reconoce UNA forma de gate es un test que la siguiente forma ciega.
+    def _lee_is_gaming(nodo):
+        """`True` si el subarbol CONTIENE una lectura de `is_gaming` del pack."""
+        for n in ast.walk(nodo):
+            if not isinstance(n, ast.Attribute) or n.attr != "is_gaming":
+                continue
+            base = n.value
+            if ((isinstance(base, ast.Name) and base.id == "pack")
+                    or (isinstance(base, ast.Attribute) and base.attr == "pack")):
+                return True
+        return False
+
     def _es_gate_de_gaming(nodo):
-        t = nodo.test if isinstance(nodo, ast.If) else nodo
-        return (isinstance(t, ast.Attribute) and t.attr == "is_gaming"
-                and isinstance(t.value, ast.Name) and t.value.id == "pack")
+        """`if` o ternario cuya CONDICION depende de `is_gaming`, sea del tipo que sea."""
+        if not isinstance(nodo, (ast.If, ast.IfExp)):
+            return False
+        return _lee_is_gaming(nodo.test)
 
     # El gate puede SEGUIR existiendo para lo que de verdad es solo del Gaming
     # (el badge `PRESET`, el boton de restaurar, el texto "preparar el Gaming
@@ -14261,22 +14293,25 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
 
     gates = [n for n in ast.walk(arbol) if _es_gate_de_gaming(n)]
     assert gates, (
-        "no se encontro ningun `if pack.is_gaming` en el fichero: si el gate de "
-        "este test desaparece, este test pasa por no mirarlo nada"
+        "no se encontro ninguna condicion que dependa de `is_gaming` en el "
+        "fichero: si el gate de este test desaparece, este test pasa por no "
+        "mirarlo nada"
     )
     for gate in gates:
         construccion = _construye_acordeon(gate)
         assert construccion is None, (
-            f"hay un `if pack.is_gaming` que CONSTRUYE el acordeon ({construccion}): "
-            f"L{gate.lineno}. El gate se elimino de la seccion de categorias, no de "
-            "todo el fichero; devolverlo dejaria un pack normal sin donde elegir "
-            "categorias, con un servicio que se las pregunta igual"
+            f"una condicion que depende de `is_gaming` CONSTRUYE el acordeon "
+            f"({construccion}): L{gate.lineno}. Da igual que la condicion sea "
+            "`pack.is_gaming` a secas o `pack.is_gaming and <algo>`: el gate se "
+            "elimino de la seccion de categorias, no de todo el fichero; "
+            "devolverlo dejaria un pack normal sin donde elegir categorias, con "
+            "un servicio que se las pregunta igual"
         )
         textos = _cadenas_de(gate)
         no_es_acordeon = not any("Configurar" in t or "arrancar" in t for t in textos)
         assert no_es_acordeon, (
-            "hay un `if pack.is_gaming` con texto del acordeon dentro: "
-            f"L{gate.lineno}. Los tres gates legitimos (badge PRESET, boton "
+            "una condicion que depende de `is_gaming` tiene texto del acordeon "
+            f"dentro: L{gate.lineno}. Los gates legitimos (badge PRESET, boton "
             "restaurar y el texto 'preparar el Gaming Mode') no lo llevan"
         )
     with io.open(ruta, encoding="utf-8") as fh:
@@ -14346,10 +14381,20 @@ def test_la_barrera_roja_sigue_dentro_de_la_puerta_comun():
     Por que discrimina, y por que el snapshot lleva `svchost` REAL: si la
     barrera se quedase pegada a `execute_gaming_pack` y la puerta comun no la
     repitiese, TODOS los tests de gaming seguirian verdes --el Gaming entra por
-    la puerta restringida, que conserva la barrera-- y solo este caeria. Y como
+    la puerta restringida, que conserva la barrera--. Y como
     `is_system_protected('svchost')` es `False`, el blindaje de NOMBRES no lo
     salva: la unica red que puede cazarlo es la categoria roja. Un nombre
     inventado no discriminaria nada, porque el filtro caeria por otra parte.
+
+    MEDIDO y corregido el 2026-10-03 (iteracion 3, mutation-auditor): este
+    docstring decia que con la barrera solo pegada a `execute_gaming_pack`
+    "solo este caeria". ES FALSO, y el falso era el mutante S1Z1 de la ronda 1:
+    dejo 120/120 en verde. La razon real es la que se dice mas abajo y en la fila
+    109 de `testing-guide.md`: aqui el snapshot trae `svchost` con la categoria
+    ROJA, de modo que la falta de G1 la tapa G5 sobre `p.category`. Lo que mata
+    a S1Z1 es caer G1 **y** G5 a la vez, o el test 121, que pone el snapshot y
+    la DB en desacuerdo. Si vuelve a decir "solo este", es que nadie ha leido
+    esto.
     """
     print("Testing la barrera roja sigue dentro de la puerta comun...")
     from woptimizer.services.gaming_service import GamingService
@@ -14946,6 +14991,23 @@ def test_barrera_roja_sola_con_el_snapshot_y_la_db_en_discrepancia():
             "precondicion rota: la DB de la prueba tiene que clasificar svchost "
             f"como {_CAT_ROJO!r}; quedo en {spy._categorize('svchost.exe')!r}"
         )
+        # LA PREMISA DE ESTE TEST, CONGELADA (iteracion 3). Todo el poder
+        # discriminante del #16 esta en que las DOS FUENTES digan cosas
+        # distintas: el snapshot trae verde y la DB trae rojo. Sin esa
+        # discrepancia el test no mide G1, porque `target_categories` lleva la
+        # ROJA y la del snapshot tambien, y el proceso se descarta por G5
+        # aunque G1 no exista. Medido (T16_SIN_DISC): con las dos de acuerdo el
+        # test sigue VERDE con la barrera de categoria BORRADA, o sea que se
+        # vuelve decorativo sin que nada se entere. Por eso la discrepancia se
+        # comprueba, no se supone: si alguien "limpia" el test y la quita, esto
+        # falla en vez de dejar el mutante pasar.
+        assert spy._categorize("svchost.exe") != spy.snapshot[0].category, (
+            "preCONDICION ROTA: este test solo mide la barrera de categoria si el "
+            "snapshot y la DB DISCREPAN. Aqui coinciden en "
+            f"{spy._categorize('svchost.exe')!r}, y entonces el proceso lo "
+            "descarta G5 aunque G1 no exista: sin G1 este test pasaria igual, "
+            "es decir, no mediria nada"
+        )
 
         gs.execute_pack(pack)
         nombres = [p.full_name for p in spy.capturados]
@@ -15030,11 +15092,16 @@ def test_arranque_por_categoria_toma_los_nombres_de_la_db_real():
     Sin ese `.exe`, "arrancar por categoria" no arranca NADA: todos los nombres
     se rechazan y la categoria entera se va a `failed`.
 
-    Los tests #4, #6 y #7 NO lo veian porque `_ServicioDeArranque` sobreescribe
-    `_patrones_de_categoria` con nombres que ya traian `.exe`: el arnés tapaba
-    justo la linea que decide. Este test NO la sobreescribe --pide los nombres a
-    la DB de verdad, cargada por `_load_local_db`-- y ademas usa el criterio de
-    abajo, que es lo que un usuario ve: no "que se llamo", sino si arranco algo.
+    Los tests #4, #6 y #7 NO lo veian porque cada uno sobreescribe
+    `_patrones_de_categoria` POR INSTANCIA con nombres que ya traian `.exe`:
+    el arnés tapaba justo la linea que decide. MEDIDO el 2026-10-03 con `ast`:
+    los que la sobreescriben son los tres TESTS (`run_tests.py:14318` del #4,
+    `:14414` del #6 y `:14441` del #7), no la clase: `_ServicioDeArranque`
+    sobreescribe OTRAS dos cosas (`_resolver_app` y `_lanzar`, que es lo que
+    dice su docstring) y esta seccion. Este test NO la sobreescribe --pide los
+    nombres a la DB de verdad, cargada por `_load_local_db`-- y ademas usa el
+    criterio de abajo, que es lo que un usuario ve: no "que se llamo", sino si
+    arranco algo.
     """
     print("Testing arranque por categoria toma los nombres de la db real...")
     import json as _json
