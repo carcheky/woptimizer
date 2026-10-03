@@ -15484,8 +15484,8 @@ def test_arranque_por_categoria_toma_los_nombres_de_la_db_real():
     Los tests #4, #6 y #7 NO lo veian porque cada uno sobreescribe
     `_patrones_de_categoria` POR INSTANCIA con nombres que ya traian `.exe`:
     el arnés tapaba justo la linea que decide. MEDIDO el 2026-10-03 con `ast`:
-    los que la sobreescriben son los tres TESTS (`run_tests.py:14741` del #4,
-    `:14847` del #6 y `:14874` del #7), no la clase: `_ServicioDeArranque`
+    los que la sobreescriben son los tres TESTS (`run_tests.py:14742` del #4,
+    `:14848` del #6 y `:14875` del #7), no la clase: `_ServicioDeArranque`
     sobreescribe OTRAS dos cosas (`_resolver_app` y `_lanzar`, que es lo que
     dice su docstring) y esta seccion. Este test NO la sobreescribe --pide los
     nombres a la DB de verdad, cargada por `_load_local_db`-- y ademas usa el
