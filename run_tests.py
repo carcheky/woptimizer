@@ -14249,7 +14249,7 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
     # Que una condicion "de gaming" siga existiendo alrededor del badge `PRESET`,
     # del boton de restaurar, del texto del Gaming Mode y de los dos ternarios
     # del borde es CORRECTO y este test lo permite: no se asserta nada de ellas.
-    _CONDICIONALES = (ast.If, ast.IfExp, ast.While, ast.Try, ast.Match)
+    _CONDICIONALES = (ast.If, ast.IfExp, ast.While, ast.Try, ast.Match, ast.Assert)
 
     # Tabla de padres: lo que hace posible razonar sobre antecesentes sin
     # importar el modulo entero en memoria.
@@ -14311,9 +14311,9 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
 
     # --- A1: ninguna pieza del acordeon cuelga de una condicion ----------------
     # Da igual QUE condicion sea. Una variable intermedia, un alias, `getattr`,
-    # un helper, un predicado con otro nombre o el identificador de otra cosa
-    # siguen siendo un `if`/`while`/`try` por delante de la construccion, y el
-    # resultado para el usuario es el mismo: un pack normal sin donde elegir
+    # un helper, un predicado con otro nombre, el identificador de otra cosa o
+    # un `assert` siguen siendo una condicion por delante de la construccion, y
+    # el resultado para el usuario es el mismo: un pack normal sin donde elegir
     # categorias, con un servicio que se las pregunta igual.
     for _nodo, _etiqueta in ANCLAJES:
         _condicion = None
@@ -14608,6 +14608,56 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
                 "elegir categorias"
             )
 
+    # --- A3: ninguna sentencia ANTERIOR puede impedir la construccion ---------
+    # Un `assert` NO puede ser el antecesor de la construccion --una sentencia no
+    # contiene a otra--, asi que el que se pone delante de la seccion es un
+    # HERMANO, y la cadena de padres que mira A1 lo salta entera. MEDIDO en la
+    # ronda 8 (`ASSERT_GATE`) y reproducido en la 9: con `ast.Assert` dentro de
+    # `_CONDICIONALES` y nada mas, el mutante seguia VERDE, tambien con el
+    # `assert` dentro del bucle de las casillas, porque la cadena real de la
+    # casilla (`Call <- Assign <- For <- _render_pack_card`) no contiene ni un
+    # `Assert` -- cero, medido con `ast`. Meter el nodo en la tupla no era el
+    # arreglo, era una entrada que no puede funcionar; se queda porque un
+    # `assert` que CONSTRUYA si es antecesor, y esa forma A1 la ve con el.
+    #
+    # La PROPIEDAD que faltaba es otra, y no es una forma mas: ninguna sentencia
+    # ejecutada ANTES de la construccion puede impedir que se llegue a ella. La
+    # que lo hacen son las que TRANSFIEREN el control, y de ellas solo interesan
+    # las que dependen de si el pack es el de Gaming. Un `if` anterior no estorba
+    # (se ejecuta antes y no impide nada), uno que construya lo mide A1 y uno que
+    # devuelva, A2. Una llamada que reviente no se ve, y eso lo dice el fallo.
+    _TRANSFIEREN = (ast.Assert, ast.Raise, ast.Return, ast.Continue, ast.Break)
+
+    def _impide_llegar(nodo):
+        """La sentencia previa que TRANSFIERE el control y depende del pack."""
+        _n = nodo
+        while True:
+            _p = _PADRES.get(_n)
+            if _p is None or isinstance(_p, ast.Module):
+                return None
+            _cuerpo = getattr(_p, "body", None)
+            if isinstance(_cuerpo, list):
+                for _s in _cuerpo:
+                    if _s is _n:
+                        break
+                    if isinstance(_s, _TRANSFIEREN) and _depende_de_is_gaming(_s):
+                        return _s
+            if isinstance(_p, _CUERPO):
+                return None
+            _n = _p
+
+    for _nodo, _etiqueta in ANCLAJES:
+        _impide = _impide_llegar(_nodo)
+        assert _impide is None, (
+            f"{_etiqueta} (L{_nodo.lineno}) no llega a construirse: la sentencia "
+            f"de L{_impide.lineno} ({ast.unparse(_impide)[:70]!r}) ABORTA si se "
+            "cumple algo que depende de si el pack es el de Gaming, y va POR "
+            "DELANTE de la construccion como hermana, no como antecesor, que es "
+            "lo que A1 no mira. La forma medida es `assert pack.is_gaming` "
+            "delante de la seccion: el pack normal se queda sin donde elegir "
+            "categorias, y con `python -O` no se dibuja en silencio"
+        )
+
     # Lo que este test NO cubre, dicho para que la proxima ronda lo mida en vez
     # de suponerlo. Las seis se MIDIERON vivas (rondas 5, 6 y 8) y ninguna se
     # corrige aqui: cazarlas seria inventarse una regla mas que un dia
@@ -14654,15 +14704,15 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
     #       propaga entre funciones, por `_depende_de_is_gaming` y por
     #       `_escritura_gateada`; el VALOR que devuelve una llamada, no.
     #   (e) un guard clause cuya condicion depende de `is_gaming` SOLO a traves de
-    #       un atributo que pone otra funcion --`self._flag = p.is_gaming` y luego
-    #       `if not self._flag: return`--: A2 mira la LECTURA DIRECTA en la
-    #       condicion, no el valor del que viene. Es una decision MEDIDA, no de
-    #       gusto: propagando el valor, ese guard caia, pero con el caia tambien
-    #       `if not card.winfo_exists(): return`, que es un guard de Tk legitimo
-    #       (`card` nace de `border_width=2 if pack.is_gaming else 1`). Se eligio
-    #       el predicado que no rechaza codigo legitimo y este es su precio. Si
-    #       ese atributo acaba alimentando la LISTA, A1b lo ve, porque la cadena si
-    #       propaga el valor: es el M3B, que la ronda 6 midio muerto por A1b.
+    #       una LECTURA INDIRECTA, con TRES exponentes, los tres MEDIDOS vivos: un
+    #       atributo que pone otra funcion (`self._flag = p.is_gaming`, LIMITE_E),
+    #       un ALIAS LOCAL (`_g = pack.is_gaming`, ALIAS_GUARD) y un PREDICADO EN
+    #       UN METODO (`self._es_gaming(pack)`, GUARD_METODO). Los tres caen por el
+    #       motivo del eje, no por la palabra: A2 mira la LECTURA DIRECTA de la
+    #       condicion, no el valor. Decision MEDIDA: al propagarlo caian los tres,
+    #       pero con el caia tambien `if not card.winfo_exists(): return`, guard
+    #       de Tk legitimo (`card` nace de `border_width=2 if pack.is_gaming else
+    #       1`). Si el valor acaba alimentando la LISTA, A1b lo ve: es el M3B.
     #   (f) MEDIDO en la ronda 7 y Remedido en la 8, y es el precio de contar
     #       las comprehensions como bucles: un bucle ENCIMA de la construccion
     #       cuyo iterable es una eleccion de `is_gaming` se rechaza. El motivo

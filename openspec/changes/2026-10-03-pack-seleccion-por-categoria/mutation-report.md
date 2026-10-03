@@ -2028,3 +2028,352 @@ he escrito en el arbol es **esta seccion 14**, que el dev commiteará. Las 12
 camaras de mutacion quedan **restauradas y verificadas 4/4 por SHA256**; las 4
 `cmp_*` de la comparativa quedan, por diseno, con la mutacion puesta (son de un
 solo uso y asi se nombran).
+
+---
+
+# 15. RONDA 8 DEL `mutation-auditor` (veredicto final del ciclo)
+
+Medido sobre `9b68cc2`, en copia de `%TEMP%`, con repo git **propio y
+desechable** por camara. **43 mutantes**: los 37 de la vista en el subconjunto
+dirigido (#1, #2, #3, #14, #18), los de render en los tests que **ejecutan** la
+vista, y los de la premisa del #16 en su test. **0 ROTO** sobre lo medido, **0
+ERROR_DE_SONDA**, y un `ROTO` declarado y descartado (15.0.4).
+
+## 15.0 EL ARNES, Y SUS CUATRO DEFECTOS PROPIOS (declarados antes de los numeros)
+
+Los declaro primero porque **cuatro** mediciones de este informe se apoyaron en
+que no los hubiera, y dos de ellas habrían dado un numero falso:
+
+1. **UN VERDE QUE NO SE MIDIO, Y CASI CUENTA COMO MEDICION.** `Z1` salio
+   "PERMITIDO" en **1,4 s**. La suite completa tarda **118,7 s**. Motivo: mi
+   runner recibia `tests=[]` para `Z1` y lo leia como "cero tests", o sea como
+   verde automatico. Ahora `tests=[]` significa "suite COMPLETA", y `Z1` se
+   remidio: **118,7 s, verde, octava medicion**. Un verde sobre un mutante que
+   no se ejecuto no cuenta, y es el mismo error que motivo las 48 muertes falsas
+   de la ronda 7.
+2. **UNA EXCEPCION AL IMPRIMIR DEJO LA CAMARA SUCIA.** La Trampa #16 (consola
+   cp1252) revento el `print` del literal de la asercion de `PREMISA_S1` con un
+   `UnicodeEncodeError` **despues** de mutar y **antes** de restaurar. La tanda
+   siguiente arranco con `run_tests.py` todavia mutado y su CONTROL salio rojo
+   con `precondicion rota: la DB de la prueba tiene que clasificar svchost...`.
+   Lo detecto la guarda de "CONTROL rojo -> ABORTO" sola, que es exactamente
+   para lo que existe; el bucle muta->mide->restaura va ahora en un
+   `try/finally`, y la camara se restauro copiando el fichero del repo y
+   verificandolo por SHA256 antes de reanudar.
+3. **`G_ELSE` NO ES LA FORMA DE LA TABLA, y lo digo.** La forma "la seccion va
+   en el `else`" exige reescribir el `if` entero; la que monte es
+   `if not pack.is_gaming: return` seguido de `if True:` delante de la seccion.
+   **MUERE por A1**, que es lo que importa, pero el literal que imprime es
+   `'True'` y no el `'not pack.is_gaming'` de la tabla de la 11.2. No lea las dos
+   cadenas como la misma medicion.
+4. **UN ROTO DECLARADO Y DESCARTADO.** `WITH_GATE` (un `with` cuyo gestor se
+   decide por el pack) salio **`ROTO`**: mi patron no sangro la seccion y el
+   `IndentationError` lo mato por un motivo ajeno. No cuenta como muerte ni
+   como supervivencia. Y ademas lo **descarto por el fondo**: un `with` con
+   `nullcontext` contra `suppress` **no deja de construir** nada, o sea que no
+   es un gate y su hipotetico superviviente habria sido un equivalente. No es un
+   hallazgo que se pueda reportar en ninguno de los dos sentidos.
+
+Ademas, y como en la ronda 7: los **43 patrones se autocomprobaron en memoria**
+antes de gastar una sola corrida (los 43 compilan y cambian el SHA), `ERROR_DE_
+SONDA` si un patron no aplica el numero exacto de reemplazos, `ROTO` si la
+primera excepcion es de las seis que invalidan una muerte, restauracion
+verificada por SHA256, `PYTHONDONTWRITEBYTECODE=1` y purga de `__pycache__`
+antes de cada corrida. La camara lleva `git init` propio: sin `alternates`, sin
+`remote`, y `rev-parse --git-dir` **sin `GIT_DIR`** devuelve `.git` (el suyo).
+Sin esto la prueba de git de la suite cairia en
+`%LOCALAPPDATA%\woptimizer_git\.git`, que es **el repo real**.
+
+## 15.1 EL TECHO (a): CUBRE EL CASO QUE FALTABA **POR SU MOTIVO**
+
+No me crei el motivo: lo medi sobre el AST de cada mutante, leyendo el padre
+DIRECTO de la casilla y la cadena real que A1b recorre (`_CUERPO` en
+`run_tests.py:14462`).
+
+| Mutante | padre DIRECTO de la casilla | A1b se para en | camino real | gate antecesor? |
+|---|---|---|---|---|
+| `MAP_LAMBDA_FN` | `Assign` | `FunctionDef` (`_caja`) | `Assign <- _caja <- _render_pack_card` | **no** |
+| `MAP_LAMBDA` | **`Lambda`** | `Lambda` | `Lambda <- Assign <- _render_pack_card` | **no** |
+| `LISTA_LAMBDA_APLICADA` | **`Lambda`** | `Lambda` | `Lambda <- Call <- ListComp <- Assign <- _render_pack_card` | **no** |
+| `MAP_LAMBDA_2` | `IfExp` | `Lambda` | `IfExp <- Lambda <- Assign <- ...` | **si** |
+
+**Las dos afirmaciones del dev sobre el (a) se sostienen, y la segunda es
+ci Certainada:** el `ListComp` que alimenta la casilla esta **en la cadena de
+ancestros**, una sola pieza por encima del `Lambda` (`Lambda <- Call <-
+ListComp`), y A1b **no llega a preguntarlo** porque la busqueda se para en el
+`Lambda`, que es `_CUERPO`. Y el gate -- el `IfExp` del `iter` de la
+comprehension -- **no le es antecesor**: es un subarbol **hermano**, igual que
+en las otras dos. El invariante que queda declarado, "ninguna pieza del acordeon
+se construye dentro de un `Lambda`", es correcto, y **la lista de palabras no se
+ha ensanchado**: el texto nombra el TERCER caso, que era el unico que no caia
+ya por el motivo de los otros dos.
+
+| Mutante | Veredicto | Asercion |
+|---|---|---|
+| `MAP_LAMBDA_FN` | **PERMITIDO** (techo a, "la seccion extraida a un `def`") | -- |
+| `MAP_LAMBDA` | **PERMITIDO** (techo a, **por el motivo**) | -- |
+| `LISTA_LAMBDA_APLICADA` | **PERMITIDO** (techo a, **por el motivo**) | -- |
+| `MAP_LAMBDA_2` | **MUERE** | A1 `run_tests.py:14326` -- `una casilla de categoria (CTkCheckBox) (L438) cuelga de una condicion en L438: 'pack.is_gaming'` |
+
+## 15.2 EL TECHO (f): LOS NUMEROS DEL DEV, REPRODUCIDOS CIFRA POR CIFRA
+
+Con **mi** ejecutor de casillas **CONSTRUIDAS** (no `ast`), tres categorias,
+extrayendo la seccion entera y ejecutandola contra un `ctk` de mentira:
+
+| Vista | gaming | normal | |
+|---|---|---|---|
+| repo sin mutar | **6** | **6** | referencia |
+| `COSMETICA_FOR` | **9** | **6** | la fila sale **duplicada** |
+| `COSMETICA_IF` | **6** | **3** | el normal **pierde** las 3 de "arrancar" |
+| `LC` | 6 | **3** | |
+| `LC_LIMPIA` | 6 | 6 | equivalente |
+| `FP_COLUMNAS` | 6 | 6 | sonda legitima |
+| `FP_DOS_TANDAS` | **9** | **9** | sonda legitima |
+
+Coincide **cifra por cifra** con lo que el dev escribe en `run_tests.py:14675`
+("repo 6/6, `COSMETICA_FOR` 9/6, `COSMETICA_IF` 6/3") y en `:14697-14698`. Las
+dos formas mueren y **las dos sondas legitimas siguen permitidas**: el techo (f)
+**no se ha endurecido**.
+
+| Mutante | Veredicto | Asercion |
+|---|---|---|
+| `COSMETICA_FOR` | **MUERE** | A1b `run_tests.py:14530` -- `la casilla de L442 la dibuja el bucle de L438, ...` |
+| `COSMETICA_IF` | **MUERE** | A1 `run_tests.py:14326` -- `... (L442) cuelga de una condicion en L438: '(2 if pack.is_gaming else 1) == 2'` |
+| `FP_COLUMNAS` | **PERMITIDO** | -- |
+| `FP_DOS_TANDAS` | **PERMITIDO** | -- |
+
+**Una salvedad honesta sobre `FP_DOS_TANDAS`, que NO es una falsedad.** Construye
+**9/9**: el `for` exterior **si duplica** la fila (3 -> 6 en esa tanda, 6 -> 9 en
+total). Lo que no hace es decidirlo por el pack, y la invariante que el (f)
+declara -- "lo que el pack no puede decidir es la CANTIDAD de casillas" -- aguanta,
+por eso la sonda es legitima. Pero el texto la presenta como "puede decidir
+cuantos BUCLES la envuelven", y un `for _t in (False, True):` que duplica una
+fila incondicionalmente no lo escribe nadie: la sonda **prueba que la regla no
+come codigo legitimo**, y su realismo como codigo real es bajo. `FP_COLUMNAS` si
+es una forma de produccion plausible y tambien pasa.
+
+## 15.3 LA REGRESION: NI UNA MUERTE PERDIDA
+
+Las doce de la 11.2, los cinco saltos, la familia LC, los dos del techo (f),
+`GG2` y las dos mitades de la premisa mueren **cada una por su asercion**:
+
+| Forma | Asercion que la mato |
+|---|---|
+| `U1` / `U1_AND` | `14326` -- `el espejo (def create_command) (L403) cuelga de una condicion en L336` |
+| `G_VAR` / `G_ALIAS` | `14326` -- `'gaming'` / `'p.is_gaming'` (L337) |
+| `G_GETATTR` | `14326` -- `"getattr(pack, 'is_gaming', False)"` |
+| `G_PRED` | `14326` -- `"pack.id != 'gaming'"` |
+| `G_HELPER` | `14326` -- `'self._es_gaming(pack)'` (L339) |
+| `G_OR` / `G_ISTRUE` | `14326` -- `'pack.is_gaming or pack.is_favorite'` / `'pack.is_gaming is True'` |
+| `G_ELSE` | `14326` -- `'True'` (ver 15.0.3: **mi** forma, no la de la tabla) |
+| `G_LISTA` | `14530` (A1b) |
+| `G_GUARD2` | `14599` (A2) -- `_seccion_acordeon (L341) ... vuelve en L343 si se cumple 'not pack.is_gaming'` |
+| `M1` / `M2` / `M3B` | `14530` (A1b) |
+| `M10` (cuatro saltos) / `C5` (cinco) | `14530` (A1b) |
+| `LC` / `LC_ANIDADA` / `LC_SOLO_UM` | `14530` (A1b) |
+| `LC_LIMPIA` | **PERMITIDO** (equivalente: 6/6, medido) |
+| `COSMETICA_FOR` | `14530` |
+| `COSMETICA_IF` | `14326` |
+| `GG2` | `14599` (A2) -- `_seccion_acordeon2 (L341)` |
+| `PREMISA` (el snapshot pasa a ROJO) | `15393` -- `preCONDICION ROTA: este test solo mide la barrera de categoria si el snapshot y la DB DISCREPAN` |
+| `PREMISA_S1` (la DB pasa a VERDE) | `15379` -- `precondicion rota: la DB de la prueba tiene que clasificar svchost como <ROJO>` |
+| `Z1` | **PERMITIDO**, suite completa, **118,7 s**, **octava** medicion |
+| `D_FP1` / `D_FP2` | **PERMITIDOS** (las dos sondas legitimas de la 11.2) |
+
+**Correccion a la tabla de la 14.5, y es mia:** decia que las dos mitades de la
+premisa mueren "con `preCONDICION ROTA` L15393". **No es asi:** la primera muere
+en `15393` y la segunda en **`15379`**, que es OTRA asercion y con otro literal
+("precondicion rota", en minusculas, la de la DB de la prueba). Las dos mueren,
+que es lo que importa, pero por dos aserciones distintas. Y anadi una tercera
+sonda de control, `PREMISA_PID` (cambia solo un PID y **no toca** la premisa):
+**PERMITIDO**. Eso es lo que demuestra que las dos muertes vienen de las
+aserciones de premisa y no de "cualquier edicion de esas lineas mata".
+
+## 15.4 LO QUE SI ENCONTRE: UN (a) DE VERDAD, Y UN (b) CON EL TEXTO TORCIDO
+
+### (a) `ASSERT_GATE`: VIVE, NO ES EQUIVALENTE, Y NO ESTA EN NINGUN TECHO
+
+Un `assert pack.is_gaming` delante de la seccion entera
+(`pack_manager_view.py`, justo antes del comentario
+`# --- SECCION ACORDEON CATEGORIAS`). **`ast.Assert` no esta en `_CONDICIONALES`**
+(`run_tests.py:14252`: `ast.If, ast.IfExp, ast.While, ast.Try, ast.Match`), y el
+`assert` es un statement **HERMANO** del bucle, no un antecesor: no lo ve A1, no
+lo ve A1b (mira solo los `iter` de los bucles) y no lo ve A2 (mira `return`).
+
+| Medicion | Resultado |
+|---|---|
+| Suite dirigida (#1, #2, #3, #14, #18) | **PERMITIDO**, rc=0 |
+| **Suite con los tests que EJECUTAN el render** (`test_headless_ui`, `test_main_window_navigation_transitions`, `test_dashboard_favorite_grid_adaptive_contracts`) | **PERMITIDO**, rc=0, y `test_headless_ui` reporta `OK` explicitamente |
+| No-equivalencia, con mi ejecutor de casillas construidas | repo **6/6**; con el `assert`, gaming **6** y **normal `AssertionError`**: la seccion no se dibuja **y el render revienta** |
+
+**No es equivalente y no lo cubre ningun techo (a)-(f):** no es una llamada
+gateada (a), no es `.pack()`/`.grid()`/`.destroy()` (b), (c), no es una lista
+filtrada ni una llamada (d), no es un guard clause (e) y no es un bucle cuya
+cantidad decida el pack (f). Es un **(a) de manual**.
+
+**Severidad: MEDIA.** Es la misma clase de dano que el invariante del ciclo --un
+pack normal sin donde elegir categorias-- y **no toca la barrera anti-brick**:
+no hay ningun mutante vivo en `gaming_service.py`, `process_service.py` ni en la
+barrera de categoria. Y dos matices honestos, en las dos direcciones:
+
+* **A favor de que es real:** con `python -O` el `assert` desaparece y la seccion
+  no se dibuja **en silencio**, que es peor que reventar. Y la conversion
+  `if pack.is_gaming: <seccion>` -> `assert pack.is_gaming; <seccion>` es
+  exactamente el gate que **este ciclo borro** (`pack_manager_view.py:338` lo
+  recuerda), reintroducido con otra sintaxis.
+* **En contra de que es realista:** medido con `grep`, **`src/` no tiene ni un solo
+  `assert`** hoy. No es una forma ya presente en el producto, asi que no es un
+  refactor que se haya hecho mal: es un "que pasaria si alguien escribiera uno".
+
+**El arreglo mas barato es una entrada:** `ast.Assert` en `_CONDICIONALES`
+(`run_tests.py:14252`). **Y la salvedad que hay que dejar escrita al hacerlo:**
+`_CONDICIONALES` es una **lista blanca de tipos de nodo**, asi que A1 sigue
+siendo, estructuralmente, un test de la FORMA del gate --justo lo que las rondas
+4 y 5 cerraron-- y anadir `ast.Assert` tapa esta instancia, no la clase. Si se
+quiere el invariante entero ("ninguna sentencia entre el ancla y la construccion
+puede abortarla"), es un cambio mas grande y de otro tipo. Lo dejo dicho para que
+nadie lea la entrada nueva como una lista completa.
+
+### (b) El eje (e) esta declarado pero su TEXTO es mas estrecho que el eje
+
+Dos formas del **mismo** eje que el techo (e) declara sobreviven, y el texto solo
+nombra una:
+
+| Mutante | Forma | Veredicto |
+|---|---|---|
+| `GUARD_METODO` | `if not self._es_gaming(pack): return` al inicio de la seccion extraida | **PERMITIDO** |
+| `ALIAS_GUARD` | `_g = pack.is_gaming` + `if not _g: return`, idem | **PERMITIDO** |
+
+Las dos son el mismo motivo que el (e) declara: **A2 mira la LECTURA DIRECTA de
+la condicion, no el valor del que viene** (`run_tests.py:14599`). Lo que pasa es
+que el texto del (e) (`run_tests.py:14656-14665`) nombra **un** exponente, "un
+atributo que pone otra funcion--`self._flag = p.is_gaming`--", y el eje real
+tiene **tres**: ese, un **alias local** y un **predicado en un metodo**. Los dos
+ultimos estan vivos y sin nombrar.
+
+**Lo clasifico como (b) con el texto torcido, y por que:** el eje esta
+declarado, con su motivo y con su precio explicito, y la ronda 5 ya clasifico
+`GG2_METODO` (el predicado en un metodo) como "(e), el mismo eje que el techo
+(e) literal". No es un agujero nuevo del invariante: es el techo **diciendo
+menos de lo que cubre**. Y **lo digo con las dos lecturas, para que el
+arqueto decida con el dato y no con mi criterio**: si el (e) se lee por su
+**texto** ("un atributo que pone otra funcion"), `ALIAS_GUARD` y `GUARD_METODO`
+son dos (a) mas; si se lee por su **motivo** (que es como esta escrito el
+resto del techo), son (b) con el texto incompleto. Con una palabra en el (e) --
+"cualquier lectura indirecta: un atributo de otra funcion, un alias local o un
+predicado en un metodo" -- la ambiguedad desaparece y las tres quedan nombradas.
+
+**Ademas, una afirmacion del dev que no se reproduce:** el encargo y la 14.5 dan
+`ALIAS_GUARD` por **MUERTO en `L14599`**. Con el literal mas natural de ese
+nombre --un guard clause de Gaming **aliaseado**-- **sobrevive**. El dev ya
+anticipo esta objeccion ("puede que las mutaciones que mato no sean identicas a
+las tuyas, aunque sean de la misma forma") y aqui no se trata de la forma: se
+trata de que la forma que da nombre al mutante **esta viva**, y lo que el
+apartado 14.5 registra como muerte es otra cosa. Con `GG2` si se reproduce
+(`_seccion_acordeon2`, `if not pack.is_gaming: return`, `L14599`).
+
+## 15.5 LAS FORMAS NUEVAS QUE INVENTE (encargo, punto 5)
+
+| Forma | Que es | Veredicto |
+|---|---|---|
+| `LC_DOS_GENERADORES` | la casilla en una comprehension de **dos** generadores, con el gate en el `iter` del **segundo** | **MUERE** `14530` |
+| `DICTCOMP_CASILLA` | la casilla construida como **valor** de una `DictComp` con el `iter` gateado | **MUERE** `14530` |
+| `LC_IFS_SEGUNDO` | el gate como `if` del **segundo** generador (los dos anteriores lo ponian en el `iter`) | **MUERE** `14530` |
+| `ASSERT_GATE` | `assert pack.is_gaming` delante de la seccion | **PERMITIDO** -- ver 15.4 |
+| `ALIAS_GUARD` | guard clause con **alias local** | **PERMITIDO** -- ver 15.4 |
+| `GUARD_METODO` | guard clause con el predicado en un metodo | **PERMITIDO** -- ver 15.4 |
+| `WITH_GATE` | `with` cuyo gestor se decide por el pack | **ROTO, descartado** (15.0.4) |
+
+Las tres primeras confirman que la resolucion de "todos los bucles que envuelven
+la casilla" es **realmente recursiva y really transversal**: mira los `iter` Y
+los `ifs` de **todos** los generadores, y atraviesa el `DictComp` de una casilla
+construida en su valor. **No se ha abierto ningun hueco nuevo en el (f)** mas
+alla del `assert`.
+
+## 15.6 LO DOCUMENTAL: LAS AFIRMACIONES DEL DEV, REPRODUCIDAS CON `ast`
+
+| Afirmacion | Veredicto |
+|---|---|
+| Las seis cifras `14726/14835/14862` (defs) y `14742/14848/14875` (asignaciones) | **CIERTO.** Los tres `def` caen donde dice; con `ast` hay **exactamente tres** asignaciones a `svc._patrones_de_categoria` y **no hay una cuarta** |
+| El marcador `L15732` | **CIERTO.** `validate_docs.py` lo **deriva** (`stmt.lineno`, `validate_docs.py:558`) e imprime `marcador en run_tests.py:15732`; la linea es la frontera headless |
+| `+57` en los dos sitios de la seccion 13 | **CIERTO** (`mutation-report.md:1574` y `:1752`), y `:1577` deja escrito que el "+39" era falso |
+| "los seis" en los tres sitios | **CIERTO**: `run_tests.py:14612` ("Las seis se MIDIERON vivas"), `:14694` ("Ninguno de los seis"), y `testing-guide.md` fila 107 ("las seis formas" / "Ninguno de los seis") |
+| Las cifras del docstring del test #18 (`run_tests.py:15486-15488`) | **CIERTO**: cita `14742`/`14848`/`14875`, y las de la ronda 4 (`14318/14414/14441`) **ya no estan** |
+| `validate_docs.py` **119 OK / 0 FAIL**, rc=0 | **CIERTO** |
+| `verify_ui_syntax.py` 9/9 y suite en 123, reparto 95+28 | **CIERTO** (9 modulos, `123 tests definidos = 123 invocados`, `95 backend + 28 headless`) |
+| Cero ficheros bajo `src/` | **CIERTO**: `git diff 5f96671 HEAD -- src/` vacio |
+
+**Busqueda de falsedades NUEVAS, incluida la que pudo introducing el
+ensanchamiento del techo al mover lineas: CERO.** Recorri `run_tests.py`,
+`docs/ai/testing-guide.md`, `STATUS.md`, `AGENTS.md`, `README.md`,
+`validate_docs.py`, los dos changelogs, `tasks.md` y `proposal.md` buscando las
+cifras caducadas de las rondas 4 a 7 (`14688 14797 14824 14704 14810 14837
+15694 15637 14318 14414 14441 14631 14740 14667`). **Solo aparecen tres, todas
+en `testing-guide.md:166`, y las tres son las de la ronda 4 citadas
+correctamente como las FALSAS que se corrigieron** ("las cifras de la ronda 4
+(`14631 / 14740 / 14667`) eran falsas en las tres"). O sea que la cita cuelga y es
+una cita. Ninguna otra.
+
+**Dos cosas que NO cuento como falsedad, y por que lo digo:**
+
+1. `mutation-report.md:1970-1971` (seccion **14**, mia) afirma que "su linea 125
+   ya dice `(marcador en run_tests.py:15694)`". Hoy `validate_docs.py` dice
+   `15732`. Es el **registro historico** de una medicion hecha sobre `9ebeabc`,
+   asi que **no hay que reescribirlo** (reescribir un informe fechado seria
+   falsear la historia), pero **no se lea en presente**: es la unica cita del
+   informe que envejece con el fichero, y el dev hizo bien en no tocarla.
+2. Los dos changelogs siguen en `CYCLE-050`: TASK-063 **no tiene entrada** todavia.
+   No es falsedad porque el ciclo sigue abierto (`openspec/changes/2026-10-03-
+   pack-seleccion-por-categoria` sin archivar) y `validate_docs.py` da 0 FAIL.
+
+## 15.7 AISLAMIENTO
+
+Camara `%TEMP%\wopt_mut_r8-b40094c7`: copia con
+`shutil.copytree(ignore_patterns(".git", "*.pyc", "__pycache__"))` -- **`.git`
+exacto**, no `.git*`, para no comerse el `.gitignore` (que es lo que produjo las
+48 muertes falsas de la ronda 7) y comprobados `.git` ausente y `.gitignore`
+presente antes de hacer nada. `git init` + `add` + `commit` propios, sin
+`remote` y sin `alternates`, y `rev-parse --git-dir` **sin `GIT_DIR`** devuelve
+`.git`. La VFS de Nextcloud no deja leer los `.pyc` del repo: excluidos de la
+copia y `PYTHONDONTWRITEBYTECODE=1` en cada corrida.
+
+**Repo real: NO TOCADO.** `git log --oneline -1` = `9b68cc2`, `git status
+--porcelain` vacio, `git diff --stat` y `git diff --cached --stat` vacios,
+`rev-parse --git-dir` = `%LOCALAPPDATA%\woptimizer_git\.git`. Camara
+**restaurada y verificada por SHA256** en los tres ficheros mutados
+(`run_tests.py`, `pack_manager_view.py`, `gaming_service.py`) y `git status
+--porcelain` sobre ellos vacio. Lo unico escrito en el arbol es **esta seccion
+15**, que el dev commiteara.
+
+## 15.8 VEREDICTO DE LA RONDA 8
+
+**FAIL, y por UNA cosa, y no es una muerte perdida.**
+
+- **(a) Fallo real de cobertura: UNO, `ASSERT_GATE`.** Vive, **no es equivalente**
+  (el pack normal se queda sin seccion **y el render revienta**), no lo caza ni
+  el test dirigido **ni los tests que ejecutan la vista**, y **no esta en ninguno
+  de los seis techos**. Se cierra con `ast.Assert` en `_CONDICIONALES`
+  (`run_tests.py:14252`), con la salvedad de 15.4 sobre lo que esa lista es y no
+  es. Severidad **media**, y **no toca la barrera anti-brick**.
+- **(b) Techo declarado y medido: SEIS, y los dos que se tocaron esta ronda
+  aguantan.** El (a) cubre el caso nuevo **por su motivo**, verificado sobre el
+  AST y no por la palabra; el (f) dice la verdad sobre su tamano (6/6, 9/6, 6/3,
+  reproducidos) y **sus dos sondas legitimas siguen pasando**, o sea que no se ha
+  endurecido. Y conteste a la pregunta del encargo sobre `ALIAS_GUARD`: **vive**,
+  con el texto del (e) mas estrecho que su eje (15.4).
+- **(c) Texto documental: CERO.** Las seis cifras, el marcador, el `+57`, los
+  tres "los seis", el docstring del #18 y el 119/0 son ciertos, y el barrido de
+  cifras caducadas en documentos vivos no encuentra **ninguna** cita colgando.
+
+**Y lo mas importante de la ronda, en una linea: el arreglo del dev NO ha
+perdido ninguna muerte y las tres falsedades de la ronda 7 estan de verdad
+corregidas.** Las doce de la 11.2, los cinco saltos, la familia LC, los dos del
+techo (f), `GG2` y las dos mitades de la premisa siguen muriendo cada una por
+su asercion; `Z1` sigue verde por octava vez; y `FP_COLUMNAS`, `FP_DOS_TANDAS`,
+`LC_LIMPIA`, `D_FP1` y `D_FP2` siguen permittingose. Tras ocho rondas sobre la
+misma asercion, lo que queda **no es un agujero de la barrera**: es **una
+entrada en una lista** y **una frase en el techo (e)**.
+
+Ese es el veredicto, sin rodeos: el ciclo **no puede cerrar en esta ronda**, pero
+esta vez lo que falta es lo mas barato que se ha encontrado en ocho rondas, y
+las dos cosas que quedan son texto mas un token.
