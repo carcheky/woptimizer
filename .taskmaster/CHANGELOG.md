@@ -79,6 +79,71 @@ contencion y no por lo que dicen probar
 
 **Lo que NO se ha tocado y por que:** `src/`. Este es un defecto de **portabilidad de los tests**, no del producto. El producto rechaza por contencion una app expresada en 8.3, que es un falso positivo fail-closed **latente** (`GetLongPathName` lo arreglaria sin seguir junctions), pero arreglar la funcion de seguridad sin la auditoria de mutacion que este repo exige seria exactamente el fallo que el bucledles cierra: cambiar el muro sin comprobar que el test lo vigila. Queda como deuda, no como cambio a escondidas.
 
+### Corrida 3 en GitHub: el `GIT_DIR` de las sondas git estaba fijo al desacople del VFS
+El arreglo 8.3 de la corrida 2 **funciono** (los tests de arranque pasaron) y el `verify` cayo despues en `run_tests.py:6373`:
+
+```
+AssertionError: CONTROL ROTO: `git check-ignore` deberia responder rc=0 sobre
+saved_processes.json y respondio rc=128
+("fatal: not a git repository: C:\Users\runneradmin\AppData\Local\woptimizer_git\.git")
+```
+
+`_entorno_git_del_repo()` montaba `GIT_DIR` con una ruta **FIJA**,
+`%LOCALAPPDATA%\woptimizer_git\.git`. Ese desacople no es una propiedad del
+proyecto: es una medida del VFS de Nextcloud en la maquina del dueno. En el
+runner no existe, el repo real es el `.git` del checkout y la sonda moria con
+rc=128. El test era correcto y la premisa del entorno era falsa.
+
+Arreglo: el `GIT_DIR` se **descubre** (el del entorno si viene, el desacoplado
+si existe, el `.git` del arbol) y se **verifica** con `rev-parse --show-toplevel`.
+Sin esa verificacion una ruta que no es la correcta daria verde por el motivo
+equivocado. Si ninguna candidata es este arbol, falla fuerte y con el motivo a la
+vista, en vez de skipear en silencio.
+
+### Corridas 5 y 6: VERDE. `v1.0.0-beta.1` y `v1.0.0` publicadas
+Las dos ultimas corridas salieron los cuatro jobs en `success`, y esto es lo que se habia pedido:
+
+| Release | Rama | `prerelease` | Asset |
+|---|---|---|---|
+| `v1.0.0-beta.1` | `beta` | `True` | `woptimizer.exe`, 25.673.311 bytes |
+| `v1.0.0` | `main` | `False` | `woptimizer.exe`, 25.673.970 bytes |
+
+**La graduacion funciono.** Al fusionar `beta` en `main` con `--ff-only`, semantic-release **no** creo un `1.0.0-beta.2` ni un `1.0.1`: finalizo el prerelease y publico la estable `1.0.0`. Ese era el mecanismo de el que dependia el encargo, y no se verifico por suposicion sino mirando lo que creo GitHub. Las notas de la release se generaron solas desde los mensajes de los commits (`### Bug Fixes`, con enlace a cada hash), o sea que el preset `conventionalcommits` esta leyendo los mensajes como debe.
+
+Los dos `.exe` pesan distinto (25.673.311 vs 25.673.970) y eso es lo correcto: cada uno se compilo desde el commit etiquetado, no desde el HEAD de una rama.
+
+### Corrida 4 en GitHub: `verify` en verde, y el preset no venia de serie
+Buen avance: el job `verify` **paso** (los arreglos del 8.3 y del `GIT_DIR`
+sirvieron) y el fallo se movio al job `release`:
+
+```
+Cannot find module 'conventional-changelog-conventionalcommits'
+  at @semantic-release/commit-analyzer/lib/load-parser-config.js:25:63
+```
+
+**Causa, y aqui una premisa mia que era falsa.** Habia puesto
+`"preset": "conventionalcommits"` a commit-analyzer **asumiendo** que era su
+preset por defecto. No lo es: el por defecto es **`angular`**. Verificado en su
+documentacion y despues leyendo su propio `load-parser-config.js`, que resuelve
+`conventional-changelog-${preset}` con `importFrom(cwd, ...)` y lo invoca con
+`presetConfig`. Con `angular` no habria reventado de forma ruidosa: habria
+**publicado mal**, que es peor que reventar.
+
+**Arreglo, con la mayor fijada por evidencia y no por costumbre.** El preset se
+anade al `npx` (`-p conventional-changelog-conventionalcommits@9`) y se pone
+`presetConfig: {}` explicitamente. La mayor es la **9** porque
+`@semantic-release/commit-analyzer@13.0.1` depende de `conventional-changelog-writer`
+(API clasica) mientras que el preset v10 ya reescrito depende de
+`@conventional-changelog/template`: la v10 no es "la ultima", es de otra API. Eso
+se comprobo leyendo las dependencias publicadas en npm, no suponiendo.
+
+**Leccion del ciclo:** las cuatro corridas fallidas no fueron cuatro versiones del
+mismo error. Tres eran **supuestos sobre el entorno** hechos en el sitio
+equivocado —el nombre de un fichero de config, la forma de una ruta temporal, la
+localizacion de un repositorio— y la cuarta un supuesto sobre el propio
+semantic-release. Todas se resolvieron mirando la fuente: el codigo del plugin,
+las dependencias publicadas. Dos se reprodujeron aqui antes de tocar nada.
+
 ### Corrida 1 en GitHub: FALLO en el job `commits`, y no era del mensaje de commit
 El primer push a `beta` (run #1) cayo en `Comprobar los mensajes con commitlint`, y el mensaje de commit era perfectamente convencional. La causa era el **nombre del fichero de configuracion**: `commitlint.config.json` no esta entre los que commitlint busca. Segun su documentacion oficial, los ficheros que recoge son `.commitlintrc`, `.commitlintrc.json`, `.commitlintrc.yaml/.yml`, `.commitlintrc.js/.cjs/.mjs/.ts/.cts/.mts`, `commitlint.config.js/.cjs/.mjs/.ts/.cts/.mts` y el campo `commitlint` de `package.json` — **`.json` bajo el nombre `commitlint.config` no existe**. Cosmiconfig no lo encuentra, commitlint arranca sin reglas y falla. Renombrado a `.commitlintrc.json`.
 

@@ -2,6 +2,19 @@
 
 **Infraestructura & Distribución** - `TASK-062` (Publicar las releases del `.exe` con semantic-release)
 
+### 🎉 Ya está publicada la versión 1.0.0
+
+Pinchá en **[Releases](https://github.com/carcheky/woptimizer/releases)** y descargá `woptimizer.exe`. Antes de tocar nada había que compilarla a mano y acordarse de subirla; ahora el proceso entero ocurre solo cuando llega un commit.
+
+Hay dos ramas y dos tipos de versión, y la diferencia se ve en la propia web:
+
+| Dónde busco | Qué obtengo |
+|---|---|
+| `main` | **1.0.0** — la versión buena y estable |
+| `beta` | **1.0.0-beta.1** — la de pruebas, marcada como *pre-release* en GitHub para que no se confunda con la buena |
+
+La `beta` sirve justamente para probar el proceso sin arriesgar la versión estable. Cuando lo que probaste te convence, se fusiona en `main` y sale la versión final.
+
 ### Añadido
 
 - 🆕 **Carpeta `basura/`, fuera de Git, para.quitar lo que sobra sin borrarlo.** Los ficheros que sobran se mueven ahí con su motivo escrito, y ya puedes borrarla entera de una vez cuando toque. Está en `.gitignore`, así que borrarla no genera ni un commit.
