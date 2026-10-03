@@ -24,8 +24,48 @@ class Pack(BaseModel):
     is_gaming: bool = Field(default=False, strict=True)     # Si es el preset protegido del sistema
     default_action: Literal["start", "kill"] = "start"  # Acción rápida por defecto
     keepers: List[str] = Field(default_factory=list) # Apps protegidas en gaming (ej: ['discord.exe'])
-    target_categories: List[str] = Field(default_factory=list) # Categorías a cerrar dinámicamente en Gaming
+    target_categories: List[str] = Field(default_factory=list) # Categorías a cerrar dinámicamente
+    start_categories: List[str] = Field(default_factory=list) # Categorías a ARRANCAR (TASK-063)
 ```
+
+### 1.1 `start_categories`: la tercera lista, y su contrato (TASK-063)
+
+Es el **simétrico de arranque** de `target_categories`, y no un renombramiento suyo.
+
+**Por qué NO se renombra `target_categories` a `stop_categories`:** ese sería el nombre simétrico
+y el más legible, pero ese campo **ya está** en el `profiles.json` de los usuarios
+(`pack_service.py` lo pone en el pack de fábrica). Renombrarlo exige una migración cuyo fallo
+**silencioso** deja el Gaming Mode cerrando de más o sin cerrar nada. Añadir un campo nuevo y
+dejar el viejo como estaba es justo lo que hace posible el `extra="allow"` del modelo: un build
+viejo lee un fichero nuevo (sobrevive al ciclo carga → guarda) y un build nuevo lee un fichero
+viejo (el default cubre la clave ausente).
+
+**Contrato —escrito aquí porque es lo que hace que `[]` signifique algo:**
+
+| Regla | Por qué |
+|---|---|
+| Default `[]`, y **ausente == vacío** a propósito | Es lo que deja que un `profiles.json` viejo cargue sin migración **y sin aviso** |
+| `[]` significa "no arrancar por categoría" | Igual que `target_categories=[]` significa hoy "no apagar por categoría" |
+| **NO** es `Optional[List]` ni `None` | Un `None` crearía un tercer estado (ausente / vacío / nulo) que ningún llamante necesita y que este `extra="allow"` dejaría pasar sin avisar |
+| `start_categories ∩ target_categories = ∅` | Se **impone** al escribir (la casilla espejo de la otra lista se desmarca) y se **resuelve en el servicio**, no en la UI |
+
+**El conflicto se resuelve a favor de `kill`:** apagar destruye estado (una sesión de trabajo, un
+juego a media partida), mientras que arrancar, como mucho, abre una ventana que el usuario cierra.
+Quién resuelve: `GamingService._pack_evaluable` (para el apagado) y
+`ProcessService.start_pack_categories`, que recibe `target_categories` **por parámetro** y por eso
+**no depende de `Pack`** — la dependencia va al revés, el pack llama al servicio, no al revés.
+
+**El techo del arranque por categoría es real y hay que poder decirlo:** la DB guarda
+`(categoría, prioridad, descripción)` y **ninguna ruta**. Así que "arrancar una categoría" =
+resolver cada nombre que la DB asocia a esa categoría con la **misma** validación de
+`start_pack_apps`. Hay categorías sin **ningún** ejecutable resoluble (las de procesos de fondo), y
+eso **no es un fallo del arranque**: es que no hay nada que lanzar. Por eso un rechazo cuenta como
+`failed` y **nunca** como `started`.
+
+**Sin migración, y esto es una medición:** la rama legacy de `load()` entrega el registro entero a
+`Pack` justamente para que "en cuanto `Pack` gane un campo, esta rama lo lea sin que nadie se acuerde",
+y las cinco copias del pack van con `model_copy(deep=True)`. Ninguna es campo a campo, así que un
+campo nuevo no necesita tocar ninguna.
 > `default_action` es un `Literal["start", "kill"]`, no un `str` cualquiera: un valor
 > fuera del enumerado es **corrupción**, no un pack válido (§4.4). Su valor por
 > defecto es **`"start"`**, no `"kill"`: el que usa el servicio es
@@ -462,8 +502,20 @@ clasificación, y el pintado de avisos en la UI sigue pendiente de cablear.
 `CATEGORY_ORDER[-1]` (`config.py:95`) y el default de `ProcessInfo.category` (`models.py:9`).
 `process_service._DEFAULT_META[0]` y el `props.get('category', ...)` de `_load_local_db` deben
 ser **idénticos**: un literal distinto saca el proceso de `CATEGORY_ORDER` y lo manda al
-centinela `999` del sort, y rompe el filtro que lo excluye de `target_categories` en
-`pack_manager_view.py`.
+centinela `999` del sort.
+
+> ⚠️ **TASK-063: el filtro que excluía el centinela del acordeón cambió de sitio, no se borró.**
+> Antes era `if "⚪ Otros" not in row.category` en `pack_manager_view.py`, y el acordeón lo
+> **leía de `process_db`**. Hoy la vista ya no ve la DB (el catálogo sale de
+> `ProcessService.categorias_disponibles()`), así que el filtro **no se puede escribir ahí**; lo
+> cumple el servicio, que descarta `_DEFAULT_META[0]`. El invariante —el centinela **no** es
+> seleccionable— es el mismo, y ahora lo vigila `test_default_meta_matches_canonical_otros`
+> **ejecutando** `categorias_disponibles()` y comprobando que no lo devuelve, además de fallar si
+> la vista vuelve a compararlo (sería una segunda política capaz de divergir).
+>
+> **Y no es cosmético:** el centinela es la categoría de **todo lo que la DB no conoce**, así que
+> ofrecerlo como casilla significaría que marcarla para apagar mata procesos que el usuario nunca
+> nombró, y marcarla para arrancar intenta arrancar "lo que sea".
 
 ### 6. Respaldo preventivo (Backups) — ver §4
 - `profiles.json.bak` es una **rotación de la versión anterior**, creada por `save()` antes de
@@ -536,7 +588,7 @@ alguien los registra por error en el JSON.
 #### Los 34 nombres, transcritos (TASK-028)
 
 `SYSTEM_PROTECTED_PROCESSES` es un `frozenset` de **34** entradas en
-`src/woptimizer/services/process_service.py:33-48` (rango medido con `ast`; el
+`src/woptimizer/services/process_service.py:35-50` (rango medido con `ast`; el
 encargo de TASK-028 citaba 23-38, que era otro tramo del fichero). Coincidencia
 **exacta** sobre el nombre normalizado, nunca por subcadena:
 

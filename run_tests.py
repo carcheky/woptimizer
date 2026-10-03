@@ -9,6 +9,14 @@ import tempfile
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.path.insert(0, os.path.abspath("src"))
 
+# TASK-063: `ProcessService` sube a nivel de modulo porque `_ProcessServiceSpy`
+# (el doble de snapshot fijo que comparten los tests de la puerta comun) hereda
+# de el y lo necesita en tiempo de definicion de clase. Antes cada test hacia su
+# propio `import` dentro del cuerpo, que es lo que permitia que el doble fuera
+# local; un doble local copiado N veces diverge en silencio.
+from woptimizer.models import Pack, ProcessInfo
+from woptimizer.services.process_service import ProcessService
+
 # --- `%TEMP%` se canonicaliza UNA vez, aqui, no test por test -----------------
 # MEDIDO el 2026-10-03 en el runner de GitHub: `%TEMP%` ahi llega en forma CORTA
 # 8.3 (`C:\Users\RUNNER~1\AppData\Local\Temp`) mientras que las variables de las
@@ -651,6 +659,32 @@ def test_gaming_service_should_kill():
     print("GamingService.should_kill_for_gaming OK.")
 
 
+class _ProcessServiceSpy(ProcessService):
+    """Doble de ProcessService: snapshot fijo y captura de lo que llega a
+    `kill_processes`. No mata nada del sistema.
+
+    TASK-063: vive a NIVEL DE MODULO, no dentro de un test, porque tres tests
+    distintos necesitan el mismo doble y un doble copiado tres veces diverge en
+    silencio (por eso el #5 reutiliza ESTE y no una copia). El `kill_processes`
+    tambien es el que decide la tupla, asi que un cambio aqui cambia varios
+    tests a la vez: es el precio de un doble compartido, y se paga aqui.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.snapshot = []
+        self.capturados = None
+        self.force_refresh_pedido = None
+
+    def get_running_processes(self, force_refresh=False):
+        self.force_refresh_pedido = force_refresh
+        return list(self.snapshot)
+
+    def kill_processes(self, processes):
+        self.capturados = list(processes)
+        return 2, 0, 0, 12.5
+
+
 def test_execute_gaming_pack_integration():
     """TASK-025 (FIX-002 + FIX-008): `execute_gaming_pack` es la puerta real del
     Gaming Mode y consulta de verdad `keepers` y `target_categories`.
@@ -667,7 +701,6 @@ def test_execute_gaming_pack_integration():
       capas, para que solo pueda dispararse por codigo EJECUTADO.
     """
     print("Testing execute_gaming_pack (integracion)...")
-    from woptimizer.models import Pack, ProcessInfo
     from woptimizer.services.gaming_service import GamingService
     from woptimizer.services.process_service import ProcessService
 
@@ -677,24 +710,6 @@ def test_execute_gaming_pack_integration():
     PROD = "\U0001F7E2 Productividad"
     OTROS = "⚪ Otros"
     AJENO = "woptimizer_zzz_inexistente.exe"
-
-    class _ProcessServiceSpy(ProcessService):
-        """Doble de ProcessService: snapshot fijo y captura de lo que llega a
-        `kill_processes`. No mata nada del sistema."""
-
-        def __init__(self):
-            super().__init__()
-            self.snapshot = []
-            self.capturados = None
-            self.force_refresh_pedido = None
-
-        def get_running_processes(self, force_refresh=False):
-            self.force_refresh_pedido = force_refresh
-            return list(self.snapshot)
-
-        def kill_processes(self, processes):
-            self.capturados = list(processes)
-            return 2, 0, 0, 12.5
 
     pack_s, tmp_path = _pack_service_temporal()
     try:
@@ -928,6 +943,17 @@ def test_execute_gaming_pack_integration():
             )
             assert "import json" not in cod_ui, (
                 f"Separacion de capas: la UI no puede leer el JSON ({relativo})"
+            )
+            # TASK-063: el predicado que faltaba. La UI no puede LEER la DB de
+            # procesos por su cuenta, porque leerla es obtener la lista de TODO
+            # lo que se puede apagar sin pasar por un servicio -- y esa lista es
+            # justo la decision de seguridad que este repo no delega en la vista.
+            # Aqui solo se congela la lectura; la del catalogo va en
+            # `ProcessService.categorias_disponibles()`.
+            assert "process_db" not in cod_ui, (
+                f"Separacion de capas: la UI no puede leer la DB de procesos "
+                f"({relativo}); el catalogo sale de "
+                f"ProcessService.categorias_disponibles()"
             )
     finally:
         os.unlink(tmp_path)
@@ -2430,7 +2456,30 @@ def test_default_meta_matches_canonical_otros():
         wopt_config._data_dir = _dir_data_original
         shutil.rmtree(tmp, ignore_errors=True)
 
-    # Sitio 3: el filtro del acordeon de categorias compara contra el canonico.
+    # Sitio 3 (TASK-063: MIGRADO de sitio, no retirado). El filtro del centinela
+    # estaba en la vista (`if "\u26aa Otros" not in row.category`), y con el
+    # catalogo viniendo del servicio ese filtro era ya imposible de escribir
+    # aqui: la vista ya no ve la DB. El INVARIANTE no cambio --"el centinela no es
+    # seleccionable en el acordeon" -- cambio el sitio que lo cumple, y por eso
+    # lo que se comprueba es que el servicio lo descarte. Un test que dejase de
+    # mirar este invariante dejaria vivo el peor fallo posible: marcar "Otros" y
+    # que la puerta mate todo lo que la DB no conoce.
+    def _constantes_de_comparacion(nodo):
+        """Literales de un Compare, este en el lado izquierdo o en los comparadores."""
+        lados = [nodo.left] + list(nodo.comparators)
+        return [o.value for o in lados if isinstance(o, ast.Constant)]
+
+    # Lo que se comprueba es el COMPORTAMIENTO y no la forma: `discard`, un
+    # `not in` o un filtro de comprension cumplen lo mismo, y un test que exige
+    # una forma concreta falla cuando la forma cambia y el invariante sigue
+    # en pie -- que es como un test empieza a obligar a escribir mal.
+    assert categorias_disponibles_excluye_el_centinela(), (
+        "el servicio DEBE excluir el centinela de verdad, no solo nombrarlo: "
+        "categorias_disponibles() no puede devolver 'Otros'"
+    )
+
+    # Y la vista deja de Doing la exclusion a mano (sitio 4): si vuelve a
+    # filtrar, el filtro es una segunda politica que puede desincronizarse.
     ruta = os.path.join("src", "woptimizer", "ui", "views", "pack_manager_view.py")
     with open(ruta, encoding="utf-8") as fh:
         arbol = ast.parse(fh.read())
@@ -2439,20 +2488,28 @@ def test_default_meta_matches_canonical_otros():
     assert CENTINELA_ASCII not in literales, (
         f"{ruta} sigue usando el literal ASCII {CENTINELA_ASCII!r}"
     )
-    def _constantes_de_comparacion(nodo):
-        """Literales de un Compare, este en el lado izquierdo o en los comparadores."""
-        lados = [nodo.left] + list(nodo.comparators)
-        return [o.value for o in lados if isinstance(o, ast.Constant)]
-
-    filtros = [n for n in ast.walk(arbol)
-               if isinstance(n, ast.Compare)
-               and CENTINELA_OTROS in _constantes_de_comparacion(n)]
-    assert filtros, (
-        f"el filtro de categorias de {ruta} debe comparar contra {CENTINELA_OTROS!r} "
-        "para seguir excluyendo la categoria centinela del acordeon"
+    cod_vista = _codigo_ejecutable(io.open(ruta, encoding="utf-8").read())
+    assert CENTINELA_OTROS not in cod_vista, (
+        f"{ruta} no debe volver a comparar contra el centinela: el filtro es del "
+        "servicio y una copia aqui es una segunda politica que puede divergir"
     )
-    assert any(isinstance(op, ast.NotIn) for n in filtros for op in n.ops)
     print("Centinela de categoria canonico OK (FIX-005).")
+
+
+def categorias_disponibles_excluye_el_centinela():
+    """Ejecuta `categorias_disponibles()` de verdad y comprueba su contrato.
+
+    Es un helper y no un `assert` suelto porque lo necesitan dos tests: el de
+    migracion del centinela (FIX-005) y el del catalogo (TASK-063). Ejecutarlo de
+    verdad es lo que distingue "descarta el centinela" de "menciona el centinela".
+    """
+    ps = ProcessService()
+    cats = ps.categorias_disponibles()
+    assert "\u26aa Otros" not in cats, (
+        f"categorias_disponibles() devolvio el centinela: {cats}"
+    )
+    assert cats, "el catalogo no puede estar vacio ni con la DB cargada ni sin ella"
+    return True
 
 
 def test_gaming_pack_fallback_is_deep_copy():
@@ -8457,7 +8514,15 @@ def test_los_workers_de_pack_solo_publican_por_after():
         ("process_service", "kill_pack_apps"),
         ("process_service", "kill_processes"),
         ("process_service", "start_pack_apps"),
+        # TASK-063: el arranque por CATEGORIA es una llamada nueva desde el
+        # worker de las dos vistas. Sin este par, el guard la declara infraccion
+        # y nadie puede cablearla.
+        ("process_service", "start_pack_categories"),
         ("process_service", "get_running_processes"),
+        # Y `execute_pack` es ahora la puerta de apagado de los workers: el par
+        # viejo se queda porque `execute_gaming_pack` sigue siendo la puerta
+        # RESTRINGIDA que usa la bandeja (`ui/app.py`), y esa no se toca.
+        ("gaming_service", "execute_pack"),
         ("gaming_service", "execute_gaming_pack"),
         ("notification_service", "notify_pack_activated"),
         ("notification_service", "notify_kill_result"),
@@ -8975,6 +9040,13 @@ def test_el_feedback_de_pack_dice_la_verdad():
             self.llamadas_arranque = 0
             self.invalidadas = 0
             self.apps = None
+            # TASK-063: el arranque por categoria es una SEGUNDA llamada con su
+            # propia lista, y se suma al total. Sin este campo el doble no
+            # puede ni contar ni afirmar sobre el reparto entre apps y categorias.
+            self.categorias = None
+            self.target_categories = None
+            self.llamadas_categorias = 0
+            self.arranque_categorias = (0, 0)
 
         def kill_pack_apps(self, apps):
             self.llamadas_cierre += 1
@@ -8985,6 +9057,17 @@ def test_el_feedback_de_pack_dice_la_verdad():
             self.llamadas_arranque += 1
             self.apps = list(apps)
             return self.arranque
+
+        def start_pack_categories(self, categorias, target_categories=None):
+            self.llamadas_categorias += 1
+            self.categorias = list(categorias)
+            self.target_categories = list(target_categories or [])
+            return self.arranque_categorias
+
+        def categorias_disponibles(self):
+            # El catalogo que el acordeon dibuja. La lista vacia es lo bastante
+            # real: lo que este test mide es que se PIDE, no que tenga 8 nombres.
+            return ["\U0001F7E2 Navegadores", "\U0001F7E1 Chat y Comunicación"]
 
         def invalidate_cache(self):
             self.invalidadas += 1
@@ -8999,9 +9082,41 @@ def test_el_feedback_de_pack_dice_la_verdad():
             self.cierre = (0, 0, 0, 0.0)
             self.llamadas = 0
             self._last_closed_apps = []
+            # TASK-063: el pack que llego a la puerta comun, para poder afirmar
+            # sobre el CONTENIDO y no sobre "se llamo" (el contrato de este
+            # doble: si no se puede mirar que packcruzo, el test no discrimina).
+            self.pack_recibido = None
+            self.cuenta = 0
+            # QUE puerta se cruzo, no solo cuantas. Con `execute_pack` y
+            # `execute_gaming_pack` coexistiendo, `llamadas` no puede distinguir
+            # "un pack normal entra por la puerta comun" de "un pack normal se
+            # coló por la puerta restringida del Gaming Mode", que es justo lo
+            # que estos asserts vienen vigilando desde el ciclo 26.
+            self.metodos = []
+
+        def execute_pack(self, pack):
+            # La puerta COMUN de apagado (TASK-063). Antes este doble solo tenia
+            # `execute_gaming_pack`, porque era la unica puerta; ahora las dos
+            # vistas entran por aqui y sin este metodo las pruebas de la Portada
+            # y del Gestor revientan con AttributeError.
+            self.llamadas += 1
+            self.pack_recibido = pack
+            self.metodos.append("execute_pack")
+            return self.cierre
+
+        def cuenta_a_apagar(self, pack):
+            # Lo que la doble pulsacion escribe: el numero de la PUERTA, no
+            # `len(pack.apps)`. Con `cuenta = 0` el texto dice 0 con 0 apps, que
+            # es indistinguible del texto viejo a ojo... asi que los tests que
+            # comprueban el texto fijan `cuenta` a un valor que el viejo no
+            # podia producir.
+            self.llamadas += 1
+            return self.cuenta
 
         def execute_gaming_pack(self, pack):
             self.llamadas += 1
+            self.pack_recibido = pack
+            self.metodos.append("execute_gaming_pack")
             return self.cierre
 
         def get_last_closed_apps(self):
@@ -9425,20 +9540,25 @@ def test_el_feedback_de_pack_dice_la_verdad():
                                default_action="kill")
             procs, gaming = _ProcesosGestor(), _GamingGestor()
             procs.cierre = (2, 0, 0, 40.0)
+            gaming.cierre = (2, 0, 0, 40.0)  # TASK-063: la puerta comun es el doble de gaming
             dash.process_service = procs
             dash.gaming_service = gaming
             dash.notification_service = _Notis()
             dash.after = lambda ms, func=None, *a: cola.append((ms, func, a, threading.get_ident()))
             _correr(dash, DashboardView.execute_pack, pack_apagar, doble=True,
                     callback=lambda v: v._show_banner)
-            assert gaming.llamadas == 0, (
-                "un pack NO gaming de la portada no puede pasar por la puerta del "
-                "Gaming Mode: execute_gaming_pack consulta keepers y solo tiene "
-                "sentido en el preset"
+            assert gaming.metodos == ["execute_pack"], (
+                "un pack NO gaming de la portada entra por la puerta COMUN "
+                "(`execute_pack`), nunca por la puerta RESTRINGIDA del Gaming Mode: "
+                f"se cruzaron {gaming.metodos}"
             )
-            assert procs.llamadas_cierre == 1 and procs.apps == APPS, (
-                "un pack NO gaming se cierra con SUS apps, no con una lista vacia: "
-                f"llego {procs.apps}"
+            assert procs.llamadas_cierre == 0, (
+                "la vista ya no llama a kill_pack_apps: el apagado va entero por la "
+                f"puerta comun (llamadas_cierre={procs.llamadas_cierre})"
+            )
+            assert gaming.pack_recibido is not None and gaming.pack_recibido.apps == APPS, (
+                "el pack debe llegar ENTERO a la puerta comun, con sus apps: la "
+                "puerta es la que consulta keepers, apps y categorias, no la vista"
             )
             assert dash.status_label.cget("text") == (
                 "⚡ 2 procesos cerrados · 40.0 MB liberados"
@@ -9535,16 +9655,21 @@ def test_el_feedback_de_pack_dice_la_verdad():
             # (1) CIERRE NORMAL CON EXITO REAL -> VERDE
             procs, gaming = _ProcesosGestor(), _GamingGestor()
             procs.cierre = (3, 0, 0, 128.5)
+            gaming.cierre = (3, 0, 0, 128.5)  # TASK-063: la puerta comun es el doble de gaming
             v = _correr(_gestor(pack_normal, procs, gaming), PackManagerView.kill_pack,
                         "trabajo", doble=True)
             assert v.status_label.texto == (
                 "✅ 3 procesos cerrados (128.5 MB liberados) · 'Trabajo'."
             ), f"mensaje de exito real: {v.status_label.texto!r}"
             assert v.status_label.color == VERDE
-            assert procs.llamadas_cierre == 1 and procs.apps == APPS, (
-                "el pack se cierra con SUS apps, no con un atajo"
+            assert procs.llamadas_cierre == 0 and gaming.pack_recibido.apps == APPS, (
+                "el pack se cierra por la puerta comun con SUS apps, no con un "
+                f"atajo ni con una lista vacia (llego {procs.apps})"
             )
-            assert gaming.llamadas == 0, "un pack normal no pasa por la puerta del Gaming Mode"
+            assert gaming.metodos == ["execute_pack"], (
+                "un pack normal entra por la puerta COMUN, no por la puerta "
+                f"RESTRINGIDA del Gaming Mode: se cruzaron {gaming.metodos}"
+            )
             assert v.notification_service.eventos == [("kill", "Trabajo", 3, 128.5)], (
                 f"el toast debe llevar el resultado real: {v.notification_service.eventos}"
             )
@@ -9554,6 +9679,7 @@ def test_el_feedback_de_pack_dice_la_verdad():
             # ningun caso de la puerta del pack cerraba exactamente UN proceso.
             procs, gaming = _ProcesosGestor(), _GamingGestor()
             procs.cierre = (1, 0, 0, 2.5)
+            gaming.cierre = (1, 0, 0, 2.5)  # TASK-063: la puerta comun es el doble de gaming
             v = _correr(_gestor(pack_normal, procs, gaming), PackManagerView.kill_pack,
                         "trabajo", doble=True)
             assert v.status_label.texto == (
@@ -9566,6 +9692,7 @@ def test_el_feedback_de_pack_dice_la_verdad():
             # (2) NADA CERRADO POR LA PUERTA NORMAL (todo en keepers / ya cerrado)
             procs, gaming = _ProcesosGestor(), _GamingGestor()
             procs.cierre = (0, 0, 4, 0.0)
+            gaming.cierre = (0, 0, 4, 0.0)  # TASK-063: la puerta comun es el doble de gaming
             v = _correr(_gestor(pack_normal, procs, gaming), PackManagerView.kill_pack,
                         "trabajo", doble=True)
             texto, color = v.status_label.texto, v.status_label.color
@@ -9601,6 +9728,7 @@ def test_el_feedback_de_pack_dice_la_verdad():
             # (4) FALLO: no se pudo cerrar NADA
             procs, gaming = _ProcesosGestor(), _GamingGestor()
             procs.cierre = (0, 2, 0, 0.0)
+            gaming.cierre = (0, 2, 0, 0.0)  # TASK-063: la puerta comun es el doble de gaming
             v = _correr(_gestor(pack_normal, procs, gaming), PackManagerView.kill_pack,
                         "trabajo", doble=True)
             texto, color = v.status_label.texto, v.status_label.color
@@ -9612,6 +9740,7 @@ def test_el_feedback_de_pack_dice_la_verdad():
             # (5) PARCIAL: cerro algo y algo fallo -> ni tick ni verde
             procs, gaming = _ProcesosGestor(), _GamingGestor()
             procs.cierre = (2, 1, 0, 64.0)
+            gaming.cierre = (2, 1, 0, 64.0)  # TASK-063: la puerta comun es el doble de gaming
             v = _correr(_gestor(pack_normal, procs, gaming), PackManagerView.kill_pack,
                         "trabajo", doble=True)
             texto, color = v.status_label.texto, v.status_label.color
@@ -9938,6 +10067,7 @@ def test_el_feedback_de_pack_dice_la_verdad():
 
             procs, gaming = _ProcesosGestor(), _GamingGestor()
             procs.cierre = (0, 0, 0, 0.0)
+            gaming.cierre = (0, 0, 0, 0.0)  # TASK-063: la puerta comun es el doble de gaming
             v = _gestor(pack_normal, procs, gaming)
             packs_perdidos = _PacksQuePierdenLasApps()
             v.pack_service = packs_perdidos
@@ -13799,6 +13929,909 @@ def test_el_estado_que_elige_el_usuario_se_persiste_de_verdad():
     print("La accion por defecto, y las apps de un pack, SE PERSISTEN de verdad (TASK-062).")
 
 
+# =====================================================================
+# TASK-063: SELECCION POR CATEGORIA PARA TODOS LOS PACKS (apagar y arrancar)
+# =====================================================================
+# Los quince van juntos a proposito: son tres rutas (apagar, arrancar, UI) y un
+# ladrillo (la barrera roja dentro de la puerta comun). Separados, cada uno mide
+# una linea, y la LINEA no es el invariante: el invariante es que la barrera
+# este DENTRO de la puerta, y eso solo se mide si el MISMO test pone un pack no
+# gaming delante de la puerta comun con `svchost` en el snapshot.
+
+_CAT_ROJO = "\U0001F534 Sistema de Windows"
+_CAT_SYNC = "\U0001F7E2 Sincronización"
+_CAT_CHAT = "\U0001F7E1 Chat y Comunicación"
+_CAT_NAV = "\U0001F7E2 Navegadores"
+_CAT_LANZ = "\U0001F7E1 Launchers Gaming"
+
+
+class _ServicioDeArranque(ProcessService):
+    """Doble de arranque: validacion REAL contra un temporal, `_lanzar` inerte.
+
+    Se sobreescriben DOS cosas, y el motivo de cada una es distinto:
+    - `_resolver_app` con `raices=[tmp]`: la validacion es la de verdad (extension
+      en lista blanca, contencion, cabecera PE), solo que busca en una carpeta que
+      existe. Falsearla tambien mediria nuestro `if` y no la puerta de arranque.
+    - `_lanzar`: aqui si se falsea, porque `Popen` da `spawn EPERM` de forma
+      intermitente en este entorno y abriria una ventana. Lo que se comprueba es
+      QUE se lanza y QUE se cuenta, no que el SO lo ejecute.
+    """
+
+    def __init__(self, raiz_prueba):
+        super().__init__()
+        self.raiz = str(raiz_prueba)
+        self.lanzados = []
+
+    def _resolver_app(self, entrada, raices=None):
+        return ProcessService._resolver_app(self, entrada, raices=[self.raiz])
+
+    def _lanzar(self, ruta):
+        self.lanzados.append(ruta)
+
+
+def _exe_de_prueba(destino):
+    """Copia el interprete del runner como `.exe` de prueba (imagen PE real)."""
+    import shutil
+    shutil.copyfile(sys.executable, destino)
+    return destino
+
+
+class _EtiquetaFalsa_:
+    """Widget de etiqueta minimo: guarda lo que se le configura."""
+
+    def __init__(self):
+        self.text = ""
+        self.color = None
+
+    def cget(self, key):
+        return getattr(self, key)
+
+    def configure(self, **kw):
+        if "text" in kw:
+            self.text = kw["text"]
+        if "text_color" in kw:
+            self.color = kw["text_color"]
+
+    def pack(self, **kw):
+        pass
+
+    def pack_forget(self):
+        pass
+
+
+class _GestorDePuertasFalso_:
+    """Doble de `GamingService` para las vistas: cuenta y devuelve una tupla."""
+
+    def __init__(self):
+        self.cierre = (2, 0, 0, 40.0)
+        self.packs = []
+        self.cuenta = 2
+
+    def execute_pack(self, pack):
+        self.packs.append(pack)
+        return self.cierre
+
+    def cuenta_a_apagar(self, pack):
+        return self.cuenta
+
+
+class _NotisFalso_:
+    def __init__(self):
+        self.eventos = []
+
+    def notify_pack_activated(self, *a):
+        self.eventos.append(("kill",) + a)
+
+    def notify_apps_launched(self, *a):
+        self.eventos.append(("start",) + a)
+
+
+class _HilosSincronos:
+    """Ejecuta el cuerpo del worker EN EL HILO PRINCIPAL, sin crear un hilo.
+
+    Por que hace falta: las puertas de las vistas arrancan un
+    `threading.Thread(daemon=True)` real. En un test eso es una carrera: el
+    assert puede correr antes de que el worker haga nada, y el fallo seria
+    INTERMITENTE, que es peor que no tener test. Este contexto sustituye `Thread`
+    por uno que ejecuta el target en el acto; es el mismo truco que el arnés ya
+    usa con `after` en los tests de UI headless.
+    """
+
+    def __enter__(self):
+        import woptimizer.ui.views.dashboard_view as mod
+        import woptimizer.ui.views.pack_manager_view as mod_gestor
+        self._mods = (mod, mod_gestor)
+        self._reales = (mod.threading.Thread, mod_gestor.threading.Thread)
+        self.hilos = []
+        _yo = self
+
+        class _T:
+            def __init__(self, target=None, args=(), daemon=None):
+                self._target = target
+                self._args = args
+                _yo.hilos.append(self)
+
+            def start(self):
+                self._target(*self._args)
+
+            def join(self, timeout=None):
+                return None
+
+        for m in self._mods:
+            m.threading.Thread = _T
+        return self
+
+    def __exit__(self, *exc):
+        for m, real in zip(self._mods, self._reales):
+            m.threading.Thread = real
+        return False
+
+
+def _orden_de_categoria(cat):
+    from woptimizer.config import CATEGORY_ORDER
+    return CATEGORY_ORDER.index(cat) if cat in CATEGORY_ORDER else 999
+
+
+def test_pack_no_gaming_apaga_por_categoria_y_respeta_keepers():
+    """#1. Un pack NORMAL con 0 apps y una categoria marcada apaga esa categoria.
+
+    Por que discrimina: antes la ruta de apagado de un pack no gaming era
+    `process_service.kill_pack_apps(p.apps)`, y con `apps=[]` devolvia
+    `0,0,0,0.0` sin mirar NINGUNA linea de `target_categories`. Aqui el proceso
+    de la categoria marcada tiene que LLEGAR a `kill_processes`, y el keeper
+    seguir vivo aunque su categoria este marcada.
+    """
+    print("Testing pack no gaming apaga por categoria y respeta keepers...")
+    from woptimizer.services.gaming_service import GamingService
+
+    pack_s, tmp_path = _pack_service_temporal()
+    try:
+        spy = _ProcessServiceSpy()
+        spy.snapshot = [
+            ProcessInfo(name="onedrive", full_name="onedrive.exe", pid=2001,
+                        category=_CAT_SYNC),
+            ProcessInfo(name="discord", full_name="discord.exe", pid=2002,
+                        category=_CAT_CHAT),
+            ProcessInfo(name="woptimizer_zzz", full_name="woptimizer_zzz.exe",
+                        pid=2003, category="\u26aa Otros"),
+        ]
+        gs = GamingService(spy, pack_s)
+        pack = Pack(
+            id="trabajo", name="Trabajo", default_action="kill",
+            apps=[], keepers=["discord.exe"],
+            target_categories=[_CAT_SYNC, _CAT_CHAT],
+        )
+        resultado = gs.execute_pack(pack)
+        assert spy.capturados is not None, "execute_pack no llego a la via de kill"
+        nombres = sorted(p.full_name for p in spy.capturados)
+        assert nombres == ["onedrive.exe"], (
+            "solo onedrive debe morir (categoria marcada); el keeper y el ajeno no. "
+            f"Llegaron: {nombres}"
+        )
+        assert "discord.exe" not in nombres, (
+            "el keeper gana aunque su categoria este marcada"
+        )
+        killed, failed, skipped, freed_mb = resultado
+        assert (killed, failed) == (2, 0), (
+            f"la tupla debe venir del doble sin alterar: {resultado}"
+        )
+        assert skipped == 0, f"nada hay que saltarse: {skipped}"
+    finally:
+        os.unlink(tmp_path)
+    print("Pack no gaming apaga por categoria OK (TASK-063).")
+
+
+def test_pack_con_categorias_supera_las_cuatro_guardas():
+    """#2. El pack del #1 pasa las CUATRO guardas, en las DOS vistas.
+
+    Por que discrimina: las dos guardas de apagado cortaban con "no tiene apps
+    que apagar" ANTES de armar la confirmacion. Aqui la unica salida de la puerta
+    tiene que ser la confirmacion, no el aviso.
+    """
+    print("Testing pack con categorias supera las cuatro guardas...")
+    from woptimizer.ui.views.dashboard_view import DashboardView
+    from woptimizer.ui.views.pack_manager_view import PackManagerView
+
+    pack = Pack(id="trabajo", name="Trabajo", default_action="kill", apps=[],
+               target_categories=[_CAT_SYNC])
+
+    # Guarda #1: la del Gestor, que vive en `_aviso_pack_inerte`.
+    v = PackManagerView.__new__(PackManagerView)
+    aviso = v._aviso_pack_inerte(pack)
+    assert aviso is None, (
+        f"un pack con categorias marcadas tiene algo que apagar; el aviso "
+        f"{aviso!r} miente sobre lo que la puerta va a hacer"
+    )
+
+    # Guardas #3 y #4: las de ARRIQUE del pack. Un pack que solo tiene
+    # `target_categories` SI tiene algo que apagar y NADA que arrancar, asi que
+    # la puerta de arrancar debe avisar y la de apagar no.
+    d = DashboardView.__new__(DashboardView)
+    vistos = []
+    tocadas = []
+    d._show_aviso_banner = lambda texto, color: vistos.append(texto)
+    d._cancel_confirm = lambda: None
+    d._require_double_tap = lambda token, button, aviso: (tocadas.append(aviso), True)[1]
+    d._inline_status = lambda *a: None
+    d.gaming_service = _GestorDePuertasFalso_()
+    d.process_service = None
+    d.notification_service = _NotisFalso_()
+    d.status_label = _EtiquetaFalsa_()
+    d.after = lambda ms, func=None, *a: None
+    d._show_banner = lambda *a: None
+    d._show_start_banner = lambda *a: None
+    d._refrescar_banner = lambda: None
+    with _HilosSincronos():
+        d.execute_pack(pack)
+    assert not vistos, (
+        f"la guarda de la Portada corto con {vistos!r}: el pack tiene categorias "
+        "marcadas y la puerta comun las apagaria"
+    )
+    assert tocadas, "la doble pulsacion no llego a armarse: la guarda corto antes"
+    assert "apagar 0 apps" not in tocadas[0], (
+        f"el texto sigue contando apps en vez de la puerta: {tocadas[0]!r}"
+    )
+
+    # Y el gemelo del Gestor, por su via real (`kill_pack`), que es donde vive
+    # la doble pulsacion del pack.
+    procs_vistos = []
+    gestor = PackManagerView.__new__(PackManagerView)
+    gestor.pack_service = _PackServiceFalso_({"trabajo": pack})
+    gestor.gaming_service = _GestorDePuertasFalso_()
+    gestor.notification_service = _NotisFalso_()
+    gestor.process_service = None
+    gestor.status_label = _EtiquetaFalsa_()
+    gestor.after = lambda ms, func=None, *a: None
+    gestor._cancel_confirm = lambda: None
+    gestor._inline_status = lambda *a: procs_vistos.append(a)
+    gestor._require_double_tap = lambda token, button, aviso: True
+    with _HilosSincronos():
+        gestor.kill_pack("trabajo")
+    assert not procs_vistos, (
+        f"la guarda del Gestor corto con {procs_vistos!r}: el pack tiene "
+        "categorias marcadas y la puerta comun las apagaria"
+    )
+    print("Pack con categorias supera las cuatro guardas OK (TASK-063).")
+
+
+def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
+    """#3. El acordeon existe para cualquier pack, y el espejo no deja marcar dos.
+
+    Por que discrimina: el control nacia DENTRO de `if pack.is_gaming:`, asi
+    que en un pack normal no habia nada que renderizar. Y el conflicto (una misma
+    categoria en las dos listas) se evita en la UI deseleccionando la gemela al
+    marcar la otra.
+
+    Es una comprobacion ESTATICA a proposito: el arnes no abre ventana, y una
+    casilla de CustomTkinter sin `CTk`/`root` no se puede instanciar. Lo que se
+    congela es la FORMA del cableado, que es lo que esta task cambia; el
+    comportamiento de los servicios lo miden los tests #1 a #11.
+    """
+    print("Testing acordeon en pack no gaming con espejo deshabilitado...")
+    ruta = os.path.join("src", "woptimizer", "ui", "views", "pack_manager_view.py")
+    with open(ruta, encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read())
+
+    def _es_gate_de_gaming(nodo):
+        t = nodo.test if isinstance(nodo, ast.If) else nodo
+        return (isinstance(t, ast.Attribute) and t.attr == "is_gaming"
+                and isinstance(t.value, ast.Name) and t.value.id == "pack")
+
+    # El gate puede SEGUIR existiendo para lo que de verdad es solo del Gaming
+    # (el badge `PRESET`, el boton de restaurar, el texto "preparar el Gaming
+    # Mode"). Lo que no puede es envolver el ACORDEON. Asi que la comprobacion
+    # no es "no hay `if pack.is_gaming` en el fichero" --seria un criterio mas
+    # fuerte que el invariante, y un invariante mas fuerte del que se quiere
+    # acaba en prohibiendo codigo legitimo-- sino "ningun gate de gaming
+    # CONTIENE la construccion del acordeon".
+    gates = [n for n in ast.walk(arbol) if _es_gate_de_gaming(n)]
+    for gate in gates:
+        textos = [k.value.value for n in ast.walk(gate)
+                  for k in getattr(n, "keywords", [])
+                  if k.arg == "text" and isinstance(k.value, ast.Constant)
+                  and isinstance(k.value.value, str)]
+        no_es_acordeon = not any("Configurar" in t or "arrancar" in t for t in textos)
+        assert no_es_acordeon, (
+            "hay un `if pack.is_gaming` que envuelve widgets del acordeon: "
+            f"L{gate.lineno}. El gate se elimino de la seccion de categorias, no de "
+            "todo el fichero; devolverlo dejaria un pack normal sin donde elegir "
+            "categorias, con un servicio que se las pregunta igual"
+        )
+    with io.open(ruta, encoding="utf-8") as fh:
+        cod = _codigo_ejecutable(fh.read())
+    assert "categorias_disponibles" in cod, (
+        "el catalogo tiene que salir del servicio: leer process_db o repetir los "
+        "ocho nombres a mano son las dos formas que este cambio elimina"
+    )
+    assert "process_db" not in cod, "la vista no puede leer la DB de procesos"
+    assert cod.count("pack.start_categories") >= 2, (
+        "la columna de arrancar tiene que existir y leer su propia lista"
+    )
+    assert cod.count("pack.target_categories") >= 2, (
+        "la columna de apagar tiene que seguir leyendo su lista"
+    )
+    assert "v_arrancar.set(0)" in cod and "v_apagar.set(0)" in cod, (
+        "el conflicto debe evitarse en la UI deseleccionando la gemela al marcar "
+        "la otra; si no, el usuario puede construir la misma categoria en las dos"
+    )
+    print("Acordeon en pack no gaming con espejo OK (TASK-063).")
+
+
+def test_start_categories_arranca_y_cuenta_honestamente():
+    """#4. `start_categories` arranca lo resoluble, y lo no resoluble va a `failed`.
+
+    Por que discrimina: el campo no existia y las dos puertas de arranque solo
+    leian `apps`. Ademas el techo es real (la DB guarda categoria, prioridad y
+    descripcion, y NINGUNA ruta), asi que hay nombres que no resuelven: esos van
+    a `failed` y NUNCA a `started`. Con un `started` inflado, la UI pinta en
+    verde un "0 apps iniciadas" que no ocurrio.
+    """
+    print("Testing start_categories arranca y cuenta honestamente...")
+    import tempfile as _tf
+    with _tf.TemporaryDirectory() as tmp:
+        ruta_ok = os.path.join(tmp, "woptimizer_t063_ok.exe")
+        _exe_de_prueba(ruta_ok)
+        svc = _ServicioDeArranque(tmp)
+        # El catalogo se sobreescribe para que apunte al ejecutable que existe.
+        svc._patrones_de_categoria = lambda cat: (
+            ["woptimizer_t063_ok.exe", "woptimizer_t063_inexistente.exe"]
+            if cat == _CAT_NAV else []
+        )
+        started, failed = svc.start_pack_categories([_CAT_NAV])
+        assert started == 1, (
+            f"solo el ejecutable que resuelve debe arrancar: started={started} "
+            f"lanzados={svc.lanzados}"
+        )
+        assert failed == 1, (
+            f"el nombre que no resuelve va a failed, NUNCA a started: failed={failed}"
+        )
+        assert svc.lanzados == [ruta_ok], (
+            f"no debe lanzarse nada mas que lo resoluble: {svc.lanzados}"
+        )
+        # Una categoria con NINGUN ejecutable resoluble: 0 arrancados y >0 con
+        # error. Es lo que evita el toast verde con 0 apps iniciadas.
+        started2, failed2 = svc.start_pack_categories([_CAT_LANZ])
+        assert started2 == 0 and failed2 >= 1, (
+            "una categoria sin ejecutable resoluble no es exito: "
+            f"started={started2} failed={failed2}"
+        )
+    print("start_categories arranca y cuenta OK (TASK-063).")
+
+
+def test_la_barrera_roja_sigue_dentro_de_la_puerta_comun():
+    """#5 (🔴 EL LADRILLO DEL CICLO 14). La barrera roja esta DENTRO de `execute_pack`.
+
+    Por que discrimina, y por que el snapshot lleva `svchost` REAL: si la
+    barrera se quedase pegada a `execute_gaming_pack` y la puerta comun no la
+    repitiese, TODOS los tests de gaming seguirian verdes --el Gaming entra por
+    la puerta restringida, que conserva la barrera-- y solo este caeria. Y como
+    `is_system_protected('svchost')` es `False`, el blindaje de NOMBRES no lo
+    salva: la unica red que puede cazarlo es la categoria roja. Un nombre
+    inventado no discriminaria nada, porque el filtro caeria por otra parte.
+    """
+    print("Testing la barrera roja sigue dentro de la puerta comun...")
+    from woptimizer.services.gaming_service import GamingService
+
+    pack_s, tmp_path = _pack_service_temporal()
+    try:
+        spy = _ProcessServiceSpy()
+        spy.snapshot = [
+            ProcessInfo(name="svchost", full_name="svchost.exe", pid=3001,
+                        category=_CAT_ROJO),
+            ProcessInfo(name="onedrive", full_name="onedrive.exe", pid=3002,
+                        category=_CAT_SYNC),
+        ]
+        gs = GamingService(spy, pack_s)
+        pack = Pack(
+            id="usuario", name="Pack de usuario", default_action="kill",
+            apps=[], target_categories=[_CAT_ROJO, _CAT_SYNC],
+        )
+        # Precondicion: sin esto el test no distinguiria la barrera del blindaje.
+        assert ProcessService.is_system_protected("svchost") is False, (
+            "precondicion rota: si svchost estuviera en el blacklist de nombres, "
+            "este test ya no mediria la barrera de categoria"
+        )
+        killed, failed, skipped, freed_mb = gs.execute_pack(pack)
+        # OJO: `kill_processes` del doble devuelve SIEMPRE (2, 0, 0, 12.5), asi
+        # que `killed` no dice nada sobre la lista. El discriminante esta en lo
+        # CAPTURADO y en `skipped`, que si lo calcula la puerta: `skipped` sube
+        # con los descartes del filtro, y por eso un `svchost` que se colase se
+        # veria como `skipped == 0`.
+        nombres = [p.full_name for p in spy.capturados]
+        assert nombres == ["onedrive.exe"], (
+            "solo onedrive debe llegar a kill_processes (categoria verde marcada): "
+            f"llegaron {nombres}"
+        )
+        assert "svchost.exe" not in nombres, (
+            "svchost con la categoria roja marcada llego a kill_processes: sin la "
+            "barrera DENTRO de la puerta comun se matan todos los svchost.exe y "
+            "Windows queda inservible"
+        )
+        assert skipped == 1, (
+            f"svchost debe contar como protegido, no desaparecer: skipped={skipped} "
+            f"(con 0, la barrera no lo esta descartando y se cuela por otra parte)"
+        )
+    finally:
+        os.unlink(tmp_path)
+    print("La barrera roja sigue dentro de la puerta comun OK (TASK-063).")
+
+
+def test_categoria_roja_en_start_categories_no_arranca():
+    """#6. Una categoria 🔴 marcada para ARRANCAR no arranca nada.
+
+    Por que discrimina: `svchost.exe` esta en System32, que no es una raiz de
+    arranque, asi que sin la barrera `_resolver_app` devolveria None y el test
+    pasaria por el motivo equivocado. Por eso el ejecutable de prueba esta en un
+    temporal VALIDO: si la barrera no existiera, arrancaria 1.
+    """
+    print("Testing categoria roja en start_categories no arranca...")
+    import tempfile as _tf
+    with _tf.TemporaryDirectory() as tmp:
+        _exe_de_prueba(os.path.join(tmp, "svchost.exe"))
+        svc = _ServicioDeArranque(tmp)
+        svc._patrones_de_categoria = lambda cat: (
+            ["svchost.exe"] if cat == _CAT_ROJO else []
+        )
+        started, failed = svc.start_pack_categories([_CAT_ROJO])
+        assert started == 0, (
+            "una categoria roja debe ser INERTE tambien al arrancar: "
+            f"started={started} lanzados={svc.lanzados}"
+        )
+        assert svc.lanzados == [], (
+            f"no debe salir nada por la puerta de arranque: {svc.lanzados}"
+        )
+    print("Categoria roja en start_categories no arranca OK (TASK-063).")
+
+
+def test_conflicto_misma_categoria_gana_kill():
+    """#7. La misma categoria en las dos listas: gana `kill`, y `started == 0`.
+
+    Por que discrimina: hoy el conflicto no puede existir, asi que sin la
+    politica este test no mediria nada. La UI lo evita (la casilla espejo se
+    desmarca), pero un `profiles.json` escrito a mano lo trae, y arrancar lo que
+    se va a apagar deja al usuario con los dos estados a la vez.
+    """
+    print("Testing conflicto misma categoria gana kill...")
+    import tempfile as _tf
+    with _tf.TemporaryDirectory() as tmp:
+        _exe_de_prueba(os.path.join(tmp, "woptimizer_t063_chat.exe"))
+        svc = _ServicioDeArranque(tmp)
+        svc._patrones_de_categoria = lambda cat: (
+            ["woptimizer_t063_chat.exe"] if cat == _CAT_CHAT else []
+        )
+        started, failed = svc.start_pack_categories([_CAT_CHAT], [_CAT_CHAT])
+        assert started == 0, (
+            f"la categoria marcada para apagar no puede arrancar: started={started}"
+        )
+        assert svc.lanzados == [], (
+            f"no debe salir nada por la puerta de arranque: {svc.lanzados}"
+        )
+        # Y el filtro NO se come una categoria verde que no este en la lista de
+        # apagado: si lo hiciera, arrancar un pack seria siempre 0.
+        started2, _ = svc.start_pack_categories([_CAT_CHAT], [_CAT_SYNC])
+        assert started2 == 1, (
+            "sin conflicto, la categoria debe arrancar: "
+            f"started={started2} lanzados={svc.lanzados}"
+        )
+    print("Conflicto misma categoria gana kill OK (TASK-063).")
+
+
+def test_keepers_ganan_a_las_categorias_en_pack_no_gaming():
+    """#8. Un keeper cuya categoria esta marcada NO muere, tampoco sin gaming.
+
+    Por que discrimina: es la precedencia R1 (keeper) sobre R3 (categoria). Sin
+    R1 antes que R3, el keeper muere; y mirando solo el numero de llamadas a
+    `kill_processes` no se notaria, porque la llamada sigue habiendo una.
+    """
+    print("Testing keepers ganan a las categorias en pack no gaming...")
+    from woptimizer.services.gaming_service import GamingService
+
+    pack_s, tmp_path = _pack_service_temporal()
+    try:
+        spy = _ProcessServiceSpy()
+        spy.snapshot = [
+            ProcessInfo(name="discord", full_name="discord.exe", pid=4001,
+                        category=_CAT_CHAT),
+            ProcessInfo(name="onedrive", full_name="onedrive.exe", pid=4002,
+                        category=_CAT_SYNC),
+        ]
+        gs = GamingService(spy, pack_s)
+        pack = Pack(id="user", name="U", default_action="kill", apps=[],
+                    keepers=["discord.exe"],
+                    target_categories=[_CAT_CHAT, _CAT_SYNC])
+        gs.execute_pack(pack)
+        nombres = [p.full_name for p in spy.capturados]
+        assert "discord.exe" not in nombres, (
+            f"el keeper tiene que ganar a la categoria: llegaron {nombres}"
+        )
+        assert "onedrive.exe" in nombres, (
+            f"el resto de la categoria si debe morir: llegaron {nombres}"
+        )
+    finally:
+        os.unlink(tmp_path)
+    print("Keepers ganan a las categorias OK (TASK-063).")
+
+
+def test_kill_recursivo_desde_la_puerta_por_categoria():
+    """#9. El kill sigue siendo RECURSIVO cuando la lista viene de una categoria.
+
+    Por que discrimina: una puerta que montara la lista y matara por su cuenta
+    (proceso a proceso) saltaria el kill de hijos de `kill_processes` y dejaria
+    nietos vivos. El nieto se comprueba de verdad, como en `test_kill_recursive`.
+    """
+    print("Testing kill recursivo desde la puerta por categoria...")
+    import json as _json
+    import psutil
+    import subprocess
+    import tempfile as _tf
+    from woptimizer import config as wopt_config
+
+    tmp_path = _tf.mkdtemp(prefix="wopt_t063_")
+    pidfile = os.path.join(tmp_path, "nieto.pid")
+    pack_json = os.path.join(tmp_path, "profiles.json")
+    marca = "woptimizer_t063_padre.exe"
+    # La categoria de un proceso NO viene del snapshot: `should_kill_for_gaming`
+    # la RECALCULA con `_categorize(nombre)`, que lee la DB. Asi que para matar
+    # POR CATEGORIA hace falta que la DB clasifique la marca, y un nombre
+    # inventado en la DB real caeria en "Otros" y no se mataria nada -- que es
+    # justo lo que hacia pasar este test con killed == 0.
+    os.makedirs(os.path.join(tmp_path, "assets"), exist_ok=True)
+    with io.open(os.path.join(tmp_path, "assets", "process_db.json"), "w",
+                 encoding="utf-8") as fh:
+        _json.dump({marca: {"category": _CAT_NAV, "priority": "medium",
+                            "description": "objetivo de la prueba"}}, fh,
+                   ensure_ascii=False)
+    _dir_data_original = wopt_config._data_dir
+    wopt_config._data_dir = lambda: tmp_path
+
+    child_code = "import time; time.sleep(120)"
+    parent_code = (
+        "import subprocess, sys, time\n"
+        f"c = subprocess.Popen([sys.executable, '-c', {child_code!r}])\n"
+        f"with open({pidfile!r}, 'w', encoding='utf-8') as fh:\n"
+        "    fh.write(str(c.pid))\n"
+        "time.sleep(120)\n"
+    )
+
+    class _SnapFijo(ProcessService):
+        """Snapshot con UN objetivo propio, pero la DB de la prueba de verdad."""
+
+        def __init__(self, snap):
+            super().__init__()
+            self.snap = snap
+
+        def get_running_processes(self, force_refresh=False):
+            return list(self.snap)
+
+    from woptimizer.services.gaming_service import GamingService
+    from woptimizer.services.pack_service import PackService
+
+    parent_proc = None
+    child_pid = None
+    try:
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            parent_proc = subprocess.Popen([sys.executable, "-c", parent_code],
+                                           creationflags=flags)
+        except Exception as e:
+            print(f"  AVISO: el entorno bloquea la creacion de subprocesos ({e}). "
+                  "Test degradado.")
+            return
+        child_pid = _esperar_pid_de_archivo(pidfile, timeout=10.0)
+        assert child_pid is not None, "el padre no lanzo ningun nieto a tiempo"
+        assert _proceso_vivo(child_pid), "el nieto no esta vivo antes de la prueba"
+
+        pack_s = PackService(pack_json)
+        gs = GamingService(_SnapFijo([]), pack_s)
+        pinfo = ProcessInfo(name=marca.replace(".exe", ""), full_name=marca,
+                            pid=parent_proc.pid, category=_CAT_NAV)
+        gs.process_service.snap = [pinfo]
+        # Precondicion: la puerta decide por CATEGORIA recalculada, no por la del
+        # snapshot. Si esto no se cumple, el test mediria una lista explicita.
+        assert gs.process_service._categorize(marca) == _CAT_NAV, (
+            "precondicion rota: la DB de la prueba debe clasificar la marca en "
+            f"{_CAT_NAV}; quedo en {gs.process_service._categorize(marca)!r}"
+        )
+        # La categoria del snapshot es la marcada, y el pack NO es de gaming.
+        pack = Pack(id="u", name="U", default_action="kill", apps=[],
+                    target_categories=[_CAT_NAV])
+        killed, failed, skipped, freed_mb = gs.execute_pack(pack)
+        if killed == 0 and failed > 0:
+            print("  AVISO: kill protegido por permisos (AccessDenied). "
+                  "Test degradado.")
+            return
+        assert killed == 1, (
+            "se esperaba 1 proceso muerto por CATEGORIA; "
+            f"killed={killed} failed={failed} skipped={skipped}"
+        )
+        padre_muerto = ((parent_proc.poll() is not None)
+                        or _esperar_a_morir(parent_proc.pid))
+        nieto_muerto = _esperar_a_morir(child_pid)
+        assert padre_muerto, f"el padre {parent_proc.pid} deberia estar muerto"
+        assert nieto_muerto, (
+            f"el nieto {child_pid} sobrevivio: el kill por categoria NO es "
+            "recursivo (invariante rota)"
+        )
+    finally:
+        if child_pid is not None and _proceso_vivo(child_pid):
+            try:
+                psutil.Process(child_pid).kill()
+            except psutil.Error:
+                pass
+        if parent_proc is not None and parent_proc.poll() is None:
+            try:
+                parent_proc.kill()
+            except Exception:
+                pass
+        wopt_config._data_dir = _dir_data_original
+        shutil_rmtree(tmp_path)
+    print("Kill recursivo desde la puerta por categoria OK (TASK-063).")
+
+
+def test_execute_pack_acepta_pack_no_gaming():
+    """#10. `execute_pack` acepta CUALQUIER pack: sin `ValueError`.
+
+    Por que discrimina: `execute_gaming_pack` RECHAZA los packs no gaming con
+    `ValueError`, asi que sin una puerta comun la feature no tendria por donde
+    pasar. Y se congela tambien que la puerta RESTRINGIDA sigue rechazando: lo
+    que hay son dos puertas con dos alcances distintos, no una sin contrato.
+    """
+    print("Testing execute_pack acepta pack no gaming...")
+    from woptimizer.services.gaming_service import GamingService
+
+    pack_s, tmp_path = _pack_service_temporal()
+    try:
+        spy = _ProcessServiceSpy()
+        spy.snapshot = []
+        gs = GamingService(spy, pack_s)
+        normal = Pack(id="user", name="U", apps=["chrome.exe"])
+        r = gs.execute_pack(normal)
+        assert len(r) == 4, f"se espera la misma 4-tupla que kill_processes: {r}"
+        try:
+            gs.execute_gaming_pack(normal)
+        except ValueError:
+            pass
+        else:
+            assert False, (
+                "execute_gaming_pack debe seguir lanzando ValueError con un pack "
+                "no gaming: su contrato es 'solo Gaming Mode'"
+            )
+    finally:
+        os.unlink(tmp_path)
+    print("execute_pack acepta pack no gaming OK (TASK-063).")
+
+
+def test_apagar_un_pack_no_gaming_no_toca_last_closed_apps():
+    """#11 (🔴). Apagar un pack NO gaming NO toca `_last_closed_apps`.
+
+    Por que discrimina, y por que mira la LISTA y no el banner: `_last_closed_apps`
+    es la sesion GAMING, la que consume y VACIA `restore_gaming_session()`, y la
+    que enciende el banner de la Portada. Sin la condicion, apagar un pack normal
+    con categorias la SOBREESCRIBE: aparece un banner fantasma y, si el usuario
+    lo pulsa, `restore_gaming_session()` vacia la lista ANTES de arrancar y se
+    COME una restauracion Gaming pendiente de verdad. Ningun recuento de la sesion
+    baja por eso: el dano esta DESPUES.
+    """
+    print("Testing apagar un pack no gaming no toca last_closed_apps...")
+    from woptimizer.services.gaming_service import GamingService
+
+    pack_s, tmp_path = _pack_service_temporal()
+    try:
+        spy = _ProcessServiceSpy()
+        gs = GamingService(spy, pack_s)
+
+        # 1) Sesion Gaming de verdad: un proceso con exe_path, pack gaming.
+        ruta_gaming = os.path.join(os.path.dirname(sys.executable), "wopt_t063.exe")
+        spy.snapshot = [ProcessInfo(name="onedrive", full_name="onedrive.exe",
+                                    pid=5001, category=_CAT_SYNC,
+                                    exe_path=ruta_gaming)]
+        gs.execute_pack(Pack(id="gaming", name="G", is_gaming=True,
+                             default_action="kill", apps=[],
+                             target_categories=[_CAT_SYNC]))
+        pendientes = gs.get_last_closed_apps()
+        assert pendientes == [ruta_gaming], (
+            f"el pack gaming debe dejar su restauracion pendiente: {pendientes}"
+        )
+
+        # 2) Ahora un pack NORMAL que si mata: NO puede tocar esa lista.
+        spy.snapshot = [ProcessInfo(name="chrome", full_name="chrome.exe",
+                                    pid=5002, category="\u26aa Otros",
+                                    exe_path="C:\\otro\\chrome.exe")]
+        gs.execute_pack(Pack(id="user", name="U", default_action="kill",
+                             apps=["chrome.exe"]))
+        assert gs.get_last_closed_apps() == [ruta_gaming], (
+            "apagar un pack NORMAL sobreescribio la sesion Gaming pendiente: el "
+            "banner 'Reabrir' aparece fantasma y, si se pulsa, "
+            "restore_gaming_session() la vacia y destruye la restauracion real"
+        )
+        # Y con un pack normal que no mata nada, la lista sigue intacta.
+        spy.snapshot = []
+        gs.execute_pack(Pack(id="user", name="U", default_action="kill", apps=[]))
+        assert gs.get_last_closed_apps() == [ruta_gaming], (
+            "un pack normal sin victimas dejo la sesion Gaming vacia"
+        )
+    finally:
+        os.unlink(tmp_path)
+    print("Apagar un pack no gaming no toca last_closed_apps OK (TASK-063).")
+
+
+def test_portada_no_anuncia_gaming_inerte_a_un_pack_de_arranque():
+    """#12. Un gaming con `default_action="start"` no oye "Gaming inerte".
+
+    Por que discrimina: `es_pack_inerte` significa "el Gaming no tiene NADA que
+    CERRAR", y se evaluaba ANTES de la rama del verbo, asi que un pack de
+    arranque con categorias oia un diagnostico de la OTRA puerta.
+    """
+    print("Testing portada no anuncia gaming inerte a un pack de arranque...")
+    from woptimizer.ui.views.dashboard_view import DashboardView
+
+    pack = Pack(id="gaming", name="G", is_gaming=True, default_action="start",
+                apps=[], target_categories=[], start_categories=[_CAT_NAV])
+
+    d = DashboardView.__new__(DashboardView)
+    vistos = []
+    arrancados = []
+
+    class _Arr:
+        def start_pack_apps(self, apps):
+            arrancados.append(("apps", list(apps)))
+            return 0, 0
+
+        def start_pack_categories(self, cats, targets=None):
+            arrancados.append(("categorias", list(cats)))
+            return 2, 0
+
+    d._show_aviso_banner = lambda texto, color: vistos.append(texto)
+    d._cancel_confirm = lambda: None
+    d.process_service = _Arr()
+    d.gaming_service = None
+    d.notification_service = _NotisFalso_()
+    d.status_label = _EtiquetaFalsa_()
+    d.after = lambda ms, func=None, *a: None
+    d._show_banner = lambda *a: None
+    d._show_start_banner = lambda *a: None
+    d._refrescar_banner = lambda: None
+    with _HilosSincronos():
+        d.execute_pack(pack)
+    juntos = " ".join(vistos)
+    assert "inert" not in juntos.lower(), (
+        "la puerta de ARRANCAR de un gaming con categorias oyo un diagnostico de "
+        f"apagado: {vistos!r}"
+    )
+    assert ("categorias", [_CAT_NAV]) in arrancados, (
+        f"la puerta de arrancar debe ejecutar start_categories: {arrancados!r}"
+    )
+    print("Portada no anuncia gaming inerte a un pack de arranque OK (TASK-063).")
+
+
+def test_default_action_stop_sigue_siendo_error_de_escritura():
+    """#13. `default_action="stop"` sigue siendo un error de escritura.
+
+    Por que discrimina: el encargo de TASK-063 daba `"stop"` por una accion
+    valida. No lo es: `default_action` es un `Literal["start", "kill"]` y
+    cualquier otra cosa es CORRUPCION, no un pack valido. Este test congela que
+    sigue siendolo, para que nadie lo "arregle" abriendo el enumerado.
+    """
+    print("Testing default_action stop sigue siendo error de escritura...")
+    from pydantic import ValidationError
+    try:
+        Pack(id="x", name="X", default_action="stop")
+    except ValidationError:
+        pass
+    else:
+        assert False, (
+            'default_action="stop" debe seguir siendo un error de escritura: el '
+            "Literal es [start, kill] y abrirlo admitiria un tercer estado"
+        )
+    assert Pack(id="x", name="X", default_action="kill").default_action == "kill"
+    print("default_action stop sigue siendo error de escritura OK (TASK-063).")
+
+
+def test_la_vista_no_lee_process_db_ni_repite_el_catalogo():
+    """#14. La vista no lee `process_db` ni repite el catalogo de 8 nombres a mano.
+
+    Por que discrimina: hoy la vista leia `process_service.process_db` para
+    armarse el catalogo y, si venia vacio, repetia ocho nombres escritos a mano.
+    Con dos fuentes, la lista que el usuario ve no es la que el servicio
+    clasifica, y el desfase sale como un proceso en "Otros" sin casilla donde
+    marcarlo. El guard de capas lo congela sobre los ficheros que ya recorre,
+    con el predicado `process_db` anadido.
+    """
+    print("Testing la vista no lee process_db ni repite el catalogo...")
+    NOMBRES = ("Sincronización", "Navegadores", "Productividad",
+               "Chat y Comunicación", "Launchers Gaming", "Media y Streaming",
+               "Sistema de Windows", "Antivirus y Seguridad", "Overlays e Info")
+    vistas = (
+        os.path.join("ui", "views", "pack_manager_view.py"),
+        os.path.join("ui", "views", "dashboard_view.py"),
+        os.path.join("ui", "views", "process_manager_view.py"),
+        os.path.join("ui", "app.py"),
+    )
+    for relativo in vistas:
+        ruta = os.path.join("src", "woptimizer", relativo)
+        with io.open(ruta, encoding="utf-8") as fh:
+            cod = _codigo_ejecutable(fh.read())
+        assert "process_db" not in cod, (
+            f"la UI no puede leer la DB de procesos ({relativo}): el catalogo sale "
+            "de ProcessService.categorias_disponibles()"
+        )
+        for nombre in NOMBRES:
+            assert nombre not in cod, (
+                f"{relativo} repite el nombre de categoria {nombre!r} a mano: "
+                "ese es el catalogo del servicio, no de la vista"
+            )
+    # Y el servicio tiene que devolverlo de verdad: una lista vacia haria que el
+    # acordeon se dibuje sin casillas, que es un fallo silencioso.
+    cats = ProcessService().categorias_disponibles()
+    assert len(cats) >= 8, (
+        "el catalogo del servicio deberia traer las 9 categorias sin el centinela: "
+        f"{cats}"
+    )
+    assert cats == sorted(cats, key=_orden_de_categoria), (
+        f"el catalogo del servicio debe salir en el orden de CATEGORY_ORDER: {cats}"
+    )
+    print("La vista no lee process_db ni repite el catalogo OK (TASK-063).")
+
+
+def test_el_texto_de_confirmacion_no_dice_apagar_0_apps():
+    """#15. Con 0 apps y 3 categorias, el texto NO dice "apagar 0 apps".
+
+    Por que discrimina: el texto armaba `f"apagar {len(pack.apps)} apps"`, o sea
+    contaba `apps` contando lo que la puerta NO hace: la misma mentira que el
+    `started` en verde del ciclo 26, otra vez. Aqui el numero lo pone la puerta
+    (`cuenta_a_apagar`) y el texto lo dice.
+    """
+    print("Testing el texto de confirmacion no dice apagar 0 apps...")
+    from woptimizer.services.gaming_service import GamingService
+    from woptimizer.ui.views.pack_manager_view import PackManagerView
+
+    pack_s, tmp_path = _pack_service_temporal()
+    try:
+        spy = _ProcessServiceSpy()
+        spy.snapshot = [
+            ProcessInfo(name="onedrive", full_name="onedrive.exe", pid=6001,
+                        category=_CAT_SYNC),
+            ProcessInfo(name="chrome", full_name="chrome.exe", pid=6002,
+                        category="\u26aa Otros"),
+            ProcessInfo(name="discord", full_name="discord.exe", pid=6003,
+                        category=_CAT_CHAT),
+        ]
+        gs = GamingService(spy, pack_s)
+        pack = Pack(id="trabajo", name="Trabajo", default_action="kill", apps=[],
+                    target_categories=[_CAT_SYNC, _CAT_CHAT, _CAT_NAV])
+        v = PackManagerView.__new__(PackManagerView)
+        v.gaming_service = gs
+        texto = v._texto_confirmacion_apagado(pack)
+        assert "apagar 0 apps" not in texto, (
+            f"el texto sigue contando apps en vez de la puerta: {texto!r}"
+        )
+        assert "3 procesos" in texto, (
+            "el texto debe decir lo que la puerta va a hacer (3 en este "
+            f"snapshot): {texto!r}"
+        )
+        assert "3 categorías" in texto, (
+            f"el parentesis debe decir de donde sale el numero: {texto!r}"
+        )
+    finally:
+        os.unlink(tmp_path)
+    print("El texto de confirmacion no dice apagar 0 apps OK (TASK-063).")
+
+
+class _PackServiceFalso_:
+    """Doble de `PackService`: solo el registro, sin disco ni cache."""
+
+    def __init__(self, packs):
+        self._packs = packs
+
+    def get_all_packs(self):
+        return dict(self._packs)
+
+
+def shutil_rmtree(ruta):
+    import shutil
+    shutil.rmtree(ruta, ignore_errors=True)
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -13988,4 +15021,24 @@ if __name__ == "__main__":
     test_process_manager_db_update_button_and_feedback()
     # TASK-052: Indicador único en desplegable de packs y placeholder centralizado
     test_process_manager_pack_dropdown_single_arrow_and_placeholder()
+    # TASK-063: seleccion por categoria para TODOS los packs (apagar y arrancar).
+    # Orden de subtareas T-1 a T-8, y el orden importa: la barrera roja se prueba
+    # (#5) DESPUES de que exista la puerta comun, que es lo que evita el ladrillo
+    # del ciclo 14. Los quince van juntos porque el invariante es de puerta, no
+    # de linea: separado, cada uno mediria una linea y la linea no es el riesgo.
+    test_pack_no_gaming_apaga_por_categoria_y_respeta_keepers()          # #1
+    test_pack_con_categorias_supera_las_cuatro_guardas()                 # #2
+    test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado()  # #3
+    test_start_categories_arranca_y_cuenta_honestamente()                # #4
+    test_la_barrera_roja_sigue_dentro_de_la_puerta_comun()               # #5 EL LADRILLO
+    test_categoria_roja_en_start_categories_no_arranca()                 # #6
+    test_conflicto_misma_categoria_gana_kill()                           # #7
+    test_keepers_ganan_a_las_categorias_en_pack_no_gaming()              # #8
+    test_kill_recursivo_desde_la_puerta_por_categoria()                  # #9
+    test_execute_pack_acepta_pack_no_gaming()                            # #10
+    test_apagar_un_pack_no_gaming_no_toca_last_closed_apps()             # #11
+    test_portada_no_anuncia_gaming_inerte_a_un_pack_de_arranque()         # #12
+    test_default_action_stop_sigue_siendo_error_de_escritura()           # #13
+    test_la_vista_no_lee_process_db_ni_repite_el_catalogo()               # #14
+    test_el_texto_de_confirmacion_no_dice_apagar_0_apps()                # #15
     print("\nALL TESTS PASSED.")

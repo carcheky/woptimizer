@@ -1310,7 +1310,7 @@
       "description": "El campo target_categories YA existe (models.py:37) y el acordeon de la UI YA esta escrito, pero los dos estan GATED a Gaming Mode: el acordeon nace dentro de `if pack.is_gaming:` (pack_manager_view.py:336) y las TRES puertas de apagado enrutan por is_gaming hacia kill_pack_apps(p.apps) (pack_manager_view.py:545, dashboard_view.py:458, app.py:119), que IGNORA las categorias. Medido: hoy un pack normal no tiene ni el control para elegir categorias, y si se le anadieran tampoco podria ejecutar. Arrancar por categoria NO existe en ninguna capa. Diseno: reutilizar target_categories como lista de apagado (sin renombrar, sin migrar profiles.json) y anadir UN campo, start_categories; una sola puerta de apagado comun con las barreras anti-brick dentro; precedencia reusada sin reordenar (blindaje > keepers > apps explicitas > categorias) y en el conflicto stop-vs-start gana kill. Propuesta: openspec/changes/2026-10-03-pack-seleccion-por-categoria/.",
       "complexity": "high",
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "docs/ai/data-models.md",
       "acceptance_criteria": [

@@ -8,7 +8,7 @@ from woptimizer.models import Pack
 from woptimizer.ui.confirmation import AMBAR, CANCEL, MSG_EXPIRADO, VENTANA_MS_PORTADA, Confirmable
 from woptimizer.ui.feedback import (
     clausula_mb, es_pack_inerte, mensaje_banner_cierre, mensaje_banner_gaming_inerte,
-    mensaje_banner_sin_apps,
+    mensaje_banner_sin_apps, texto_confirmacion_apagado,
 )
 from woptimizer.ui import theme
 
@@ -427,46 +427,86 @@ class DashboardView(Confirmable, ctk.CTkFrame):
         btn.configure(command=lambda p=pack, b=btn: self.execute_pack(p, b))
         return btn
 
-    def execute_pack(self, pack: Pack, button=None):
-        # TASK-036: las dos guardas van ANTES de `_require_double_tap` y ANTES
-        # del `if pack.default_action`, asi que el aviso sale de UN solo punto y
-        # el verbo lo decide `default_action` solo. Armar la doble pulsacion
-        # sobre un pack que no puede hacer nada produciria "Segunda pulsacion
-        # para apagar 0 apps de 'X'", que es la fealdad que esta guarda evita.
-        if es_pack_inerte(pack.is_gaming, len(pack.apps), len(pack.target_categories)):
-            self._show_aviso_banner(*mensaje_banner_gaming_inerte(pack.name))
-            return
-        if not pack.is_gaming and not pack.apps:
-            # El silencio no es la opcion neutra: la pulsacion no dejaba ni
-            # rastro, y con `default_action="start"` el usuario creia que se
-            # abrian programas que nunca se abren. Sin hilo, sin `after` y sin
-            # worker: ya estamos en el hilo principal dentro de un callback.
-            self._show_aviso_banner(*mensaje_banner_sin_apps(pack.name, pack.default_action))
-            return
+    def _texto_confirmacion_apagado(self, pack: Pack) -> str:
+        """La frase de la doble pulsacion, con el numero de la PUERTA.
 
+        El numero lo pone `gaming_service.cuenta_a_apagar(pack)`, que aplica el
+        mismo filtro que `execute_pack` va a aplicar: si esta vista contara por su
+        cuenta seria una segunda politica de seguridad en el sitio que menos
+        puede tenerla. La frase vive en `ui/feedback.py` para que el Gestor y la
+        Portada digan exactamente lo mismo.
+        """
+        return texto_confirmacion_apagado(
+            pack.name,
+            self.gaming_service.cuenta_a_apagar(pack),
+            len(pack.apps),
+            len(pack.target_categories),
+        )
+
+    def execute_pack(self, pack: Pack, button=None):
+        # TASK-036: las guardas van ANTES de `_require_double_tap` y ANTES de
+        # tocar nada, asi que el aviso sale de UN solo punto por puerta y el
+        # verbo lo decide `default_action` solo. Armar la doble pulsacion sobre
+        # un pack que no puede hacer nada produciria "Segunda pulsacion para
+        # apagar 0 apps de 'X'", que es la fealdad que estas guardas evitan.
+        #
+        # TASK-063: las guardas son POR PUERTA y cada una mira las listas de SU
+        # puerta. `es_pack_inerte` significa "el Gaming no tiene NADA que
+        # CERRAR" (`feedback.py`: 0 apps y 0 categorias, o sea, inerte por la via
+        # de kill), asi que se evalua DENTRO de la rama de apagar y no antes: antes
+        # de la rama del verbo, un gaming con `default_action="start"` y
+        # `start_categories` marcadas oia "Gaming inerte" en la puerta de ARRANCAR,
+        # que es un diagnostico de otra puerta. Las dos guardas siguen antes de
+        # `_require_double_tap`, que es lo que el comentario de arriba preserva.
         if pack.default_action == "kill":
+            if es_pack_inerte(pack.is_gaming, len(pack.apps), len(pack.target_categories)):
+                self._show_aviso_banner(*mensaje_banner_gaming_inerte(pack.name))
+                return
+            if not pack.apps and not pack.target_categories:
+                # El silencio no es la opcion neutra: la pulsacion no dejaba ni
+                # rastro, y con `default_action="start"` el usuario creia que se
+                # abrian programas que nunca se abren. Sin hilo, sin `after` y sin
+                # worker: ya estamos en el hilo principal dentro de un callback.
+                self._show_aviso_banner(*mensaje_banner_sin_apps(pack.name, pack.default_action))
+                return
+
             if pack.is_gaming:
                 aviso = f"⚠️ Segunda pulsación para preparar el Gaming Mode de '{pack.name}'."
             else:
-                aviso = f"⚠️ Segunda pulsación para apagar {len(pack.apps)} apps de '{pack.name}'."
+                aviso = self._texto_confirmacion_apagado(pack)
             if not self._require_double_tap(f"dashboard:{pack.id}", button, aviso):
                 return
 
             def _run_kill(p: Pack):
                 # Las dos puertas devuelven la misma 4-tupla y el texto se
                 # calcula una sola vez en `ui/feedback.py` (ciclo 26).
-                if p.is_gaming:
-                    killed, failed, skipped, freed_mb = self.gaming_service.execute_gaming_pack(p)
-                else:
-                    killed, failed, skipped, freed_mb = self.process_service.kill_pack_apps(p.apps)
+                killed, failed, skipped, freed_mb = self.gaming_service.execute_pack(p)
                 self.after(0, self._show_banner, killed, freed_mb, p.is_gaming, failed, skipped)
                 self.notification_service.notify_pack_activated(p.name, killed, freed_mb)
 
             threading.Thread(target=_run_kill, args=(pack,), daemon=True).start()
         else:
             self._cancel_confirm()
+            if not pack.apps and not pack.start_categories:
+                # La puerta de arrancar mira `start_categories`, no
+                # `target_categories`: apagar por una categoria no significa que
+                # haya algo que iniciar, y al reves tampoco.
+                self._show_aviso_banner(*mensaje_banner_sin_apps(pack.name, pack.default_action))
+                return
+
             def _run_start(p: Pack):
+                # TASK-063: la puerta de arranque ejecuta SUS DOS listas (las apps
+                # explicitas y las categorias de arranque) y SUMA los dos
+                # recuentos. Elegir una y dejar la otra seria un apagado del
+                # criterio del usuario en silencio. El conflicto de las dos listas
+                # lo resuelve el servicio, no esta vista.
                 launched, failed = self.process_service.start_pack_apps(p.apps)
+                if p.start_categories:
+                    launched_cats, failed_cats = self.process_service.start_pack_categories(
+                        p.start_categories, p.target_categories
+                    )
+                    launched += launched_cats
+                    failed += failed_cats
                 self.after(0, self._show_start_banner, launched, failed, p.name)
                 self.notification_service.notify_apps_launched(p.name, launched, failed)
 

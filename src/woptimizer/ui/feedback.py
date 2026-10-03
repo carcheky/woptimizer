@@ -301,3 +301,23 @@ def mensaje_banner_gaming_inerte(nombre: str) -> Tuple[str, str]:
     por el texto (`⛔`), no inventandose un par de color que no cumple.
     """
     return _frase_gaming_inerte(nombre), theme.WARNING
+
+
+def texto_confirmacion_apagado(nombre: str, n_procesos: int,
+                                n_apps: int, n_categorias: int) -> str:
+    """El texto de la DOBLE PULSACION de la puerta de apagar. Las dos vistas.
+
+    TASK-063. Antes decia `f"apagar {len(pack.apps)} apps"`, que con 0 apps y 3
+    categorias marcadas decia **"apagar 0 apps"**: el contador de `apps` contando
+    lo que la puerta no hace. Es la misma clase que el `started` en verde que
+    motivo el ciclo 26 y que la frase vive aqui para que el Gestor y la Portada
+    no puedan divergir otra vez.
+
+    El numero que va delante es el que devuelve
+    `GamingService.cuenta_a_apagar(pack)`, o sea el MISMO filtro que mata: la
+    vista no cuenta nada por su cuenta. Los dos parentesis dicen de donde sale,
+    porque un 0 con 3 categorias marcadas no es un pack vacio: es un pack con
+    nada corriendo ahora mismo, y el usuario tiene que poder distinguir los dos.
+    """
+    return (f"⚠️ Segunda pulsación para apagar {n_procesos} procesos de '{nombre}' "
+            f"({n_apps} apps y {n_categorias} categorías marcadas).")

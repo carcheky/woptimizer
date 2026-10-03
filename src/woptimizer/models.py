@@ -35,6 +35,35 @@ class Pack(BaseModel):
     apps: List[str] = Field(default_factory=list)
     keepers: List[str] = Field(default_factory=list)
     target_categories: List[str] = Field(default_factory=list)
+    # TASK-063: simetrico de `target_categories`, y NO un renombramiento suyo.
+    # Por que no se renombra `target_categories` a `stop_categories` (que seria
+    # el nombre simetrico y el mas legible): porque ese campo YA esta en el
+    # `profiles.json` de los usuarios (`pack_service.py:239` lo pone en el pack
+    # de fabrica), y renombrarlo exige una migracion cuyo fallo silencioso deja
+    # el Gaming Mode cerrando de mas o sin cerrar nada. Anadir este campo nuevo y
+    # dejar el viejo como estaba es lo que hace `extra="allow"` arriba posible: un
+    # build viejo lee un fichero nuevo (sobrevive al ciclo carga -> guarda) y un
+    # build nuevo lee un fichero viejo (el default cubre la clave ausente).
+    #
+    # CONTRATO (escrito aqui porque es lo que hace que `[]` signifique algo):
+    #   * default `[]`, y AUSENTE == VACIO a proposito: es lo que deja que un
+    #     `profiles.json` viejo cargue sin migracion y sin aviso.
+    #   * `[]` significa "no arrancar por categoria", igual que
+    #     `target_categories=[]` significa hoy "no apagar por categoria".
+    #   * NO es `Optional[List]` ni `None`: un `None` crearia un tercer estado
+    #     (ausente / vacio / nulo) que ningun llamante necesita y que este
+    #     `extra="allow"` dejaria pasar sin avisar.
+    #   * `start_categories INTERSECT target_categories` tiene que ser vacio. Se
+    #     IMPONE al escribir (la casilla espejo de la otra lista viene
+    #     deshabilitada) y se RESUELVE en el servicio por si un `profiles.json`
+    #     escrito a mano trae el conflicto: gana `kill`, porque apagar destruye
+    #     estado y arrancar, como mucho, abre una ventana que el usuario cierra.
+    #
+    # NO hay que migrar nada: la rama legacy de `load()` entrega el registro
+    # entero a `Pack` justamente para que "en cuanto `Pack` gane un campo, esta
+    # rama lo lea sin que nadie se acuerde" (`pack_service.py:350-353`), y las
+    # cinco copias del pack van con `model_copy(deep=True)`.
+    start_categories: List[str] = Field(default_factory=list)
     # TASK-031 iteracion 2: `strict=True` en los booleanos. En modo laxo, Pydantic
     # COACCIONA `"true"`, `"1"` y `"si"` a `True` sin avisar, y con `is_gaming` eso
     # convertia un pack normal en un pack de SISTEMA invisible e indeletable: no

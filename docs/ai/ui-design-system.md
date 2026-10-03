@@ -69,8 +69,8 @@ La jerarquía tipográfica está estrictamente acotada a una tupla de 6 valores 
   - Cada tarjeta de pack incluye:
     - Nombre del pack y cantidad de apps configuradas.
     - Botón `⭐` para alternar si es favorito (aparece en portada). Es un **toggle real**: la segunda pulsación de la estrella de un pack que ya es favorito lo **desmarca** (`pack_service.set_favorite(None)`). El estado se lee **en vivo** de `get_all_packs()`, nunca del `pack` capturado en el render (queda obsoleto en cuanto el estado cambia) ni del glifo ⭐/☆, y **nunca** con `get_favorite_pack()` (devuelve el PRIMER favorito: con dos favoritos pulsaría el segundo en vez de desmarcarlo). Consecuencia aceptada: al desmarcar el único pack la portada queda en su **estado vacío** (`dashboard_view._show_empty_state`), un callejón sin salida *desde la portada* pero recuperable desde el Gestor de Packs, que es donde vive la estrella (TASK-027 / FIX-006).
-    - Botón `⛔ Apagar Apps`: Cierra los ejecutables del pack. Si `is_gaming = True` va por `gaming_service.execute_gaming_pack()` (respeta `keepers` y `target_categories`); si no, por `process_service.kill_pack_apps()`.
-    - Botón `🚀 Arrancar Apps`: Lanza todos los ejecutables configurados vía `ProcessService.start_pack_apps()`, que **valida cada ruta antes de lanzarla** (sin intérprete, sin UNC, contenida en las raíces permitidas y con extensión `.exe`/`.com`). La UI nunca llama a `subprocess` ni a `os.startfile`: ver `architecture.md` § 14 (TASK-027 / FIX-003).
+    - Botón `⛔ Apagar Apps`: Cierra los ejecutables del pack. **TASK-063: va siempre por `gaming_service.execute_pack(pack)`, sin bifurcar por `is_gaming`** — es la puerta ÚNICA de apagado por pack, y por eso respeta `keepers` y `target_categories` para *cualquier* pack, no solo el Gaming. El Gaming Mode pasó de ser una puerta a ser un **preset** de esta puerta. (El menú del tray sigue en `execute_gaming_pack`, que además **rechaza** los packs no gaming: esa no es una puerta de packs.)
+    - Botón `🚀 Arrancar Apps`: Lanza **las dos listas** — los ejecutables de `apps` vía `ProcessService.start_pack_apps()` y las categorías de `start_categories` vía `ProcessService.start_pack_categories()`, **sumando los dos recuentos** (TASK-063). Elegir una y dejar la otra sería ignorar en silencio la mitad de lo que el usuario marcó. Ambas validan cada ruta antes de lanzarla (sin intérprete, sin UNC, contenida en las raíces permitidas y con extensión `.exe`/`.com`). La UI nunca llama a `subprocess` ni a `os.startfile`: ver `architecture.md` § 14 (TASK-027 / FIX-003).
     - Botón `🔄 Restaurar`: Restablece la configuración predeterminada del pack Gaming (`reset_gaming_pack`).
     - Botón `🗑️ Borrar`: Elimina el pack (deshabilitado si `is_gaming = True`).
 
@@ -101,7 +101,10 @@ La jerarquía tipográfica está estrictamente acotada a una tupla de 6 valores 
   - `🔴 NO CERRAR`: Rojo vibrante (`#ff6b6b`) sobre fondo rojo oscuro (`#401616`). Vitales para el SO o hardware (Windows, drivers, antivirus).
 - **Gestor de Packs Compacto:**
   - Toolbar de acciones en tarjetas de pack con hit targets mínimos de 28x28px.
-  - Acordeón plegable para configurar categorías automáticas en el Pack Gaming.
+  - **Acordeón plegable para configurar las categorías automáticas de CUALQUIER pack** (TASK-063). Antes solo se dibujaba dentro de `if pack.is_gaming:` y **el gate se ha eliminado sin sustituto**, porque era el síntoma de un cableado que ya no existe: `Pack` es un solo modelo con las tres listas, `execute_pack` y `start_pack_categories` son las dos puertas de todo el producto y ya no miran `is_gaming` para decidir nada. Dejar el gate sería alinear el formulario con lo que el servicio **no** hace.
+    - **Dos columnas espejadas** por categoría: una para **apagar** (`target_categories`) y otra para **arrancar** (`start_categories`). Marcar una **desmarca** la otra, y el estado final se persiste en **un solo** `update_pack()` (una escritura, no dos: guardar dos veces la misma tarjeta es dos veces la ventana en la que un fallo de disco deja `_data` y el disco discrepando).
+    - **El conflicto se evita en la UI y se resuelve en el servicio.** Aquí se impone (una misma categoría no puede estar en las dos listas); en `ProcessService.start_pack_categories` se resuelve a favor de `kill` por si un `profiles.json` escrito a mano lo trae. Apagar destruye estado, arrancar como mucho abre una ventana que el usuario cierra.
+    - **El catálogo sale del servicio:** `ProcessService.categorias_disponibles()`. Antes la vista se lo armaba con **dos** fuentes distintas —leer `process_service.process_db`, y si venía vacío, **ocho nombres escritos a mano**— y las dos tenían que coincidir con la DB de verdad. Cuando no coincidían, el proceso aparecía en "Otros" sin casilla donde marcarlo. El guard de capas de `run_tests.py` **congela las dos cosas**: que la UI no mencione `process_db`, y que no repita los ocho nombres.
 
 ## Banner de Telemetría de RAM (`status_banner`) — TASK-014
 
@@ -128,16 +131,25 @@ status_banner_frame  CTkFrame  fg_color=transparent  (oculto por defecto: pack_f
 
 ### Wiring Thread-Safe del Callback
 ```python
-# En execute_pack, hilo secundario:
+# En execute_pack, hilo secundario (TASK-063: UNA sola puerta, sin if is_gaming):
 def _run_kill(p):
-    if p.is_gaming:
-        # Gaming Mode: consulta keepers y categorias en la capa de servicios
-        killed, failed, skipped, freed_mb = self.gaming_service.execute_gaming_pack(p)
-    else:
-        killed, failed, skipped, freed_mb = self.process_service.kill_pack_apps(p.apps)
-    self.after(0, self._show_banner, killed, freed_mb, p.is_gaming)
+    # La puerta comun: consulta keepers, apps y categorias, para cualquier pack,
+    # y las barreras (nombres protegidos, categoria roja) viven DENTRO de ella.
+    killed, failed, skipped, freed_mb = self.gaming_service.execute_pack(p)
+    self.after(0, self._show_banner, killed, freed_mb, p.is_gaming, failed, skipped)
 
 threading.Thread(target=_run_kill, args=(pack,), daemon=True).start()
+
+# Y la de arrancar, que ejecuta SUS DOS listas y suma los dos recuentos:
+def _run_start(p):
+    launched, failed = self.process_service.start_pack_apps(p.apps)
+    if p.start_categories:
+        launched_cats, failed_cats = self.process_service.start_pack_categories(
+            p.start_categories, p.target_categories
+        )
+        launched += launched_cats
+        failed += failed_cats
+    self.after(0, self._show_start_banner, launched, failed, p.name)
 
 # En el hilo principal (after callback):
 def _show_banner(self, killed: int, freed_mb: float, is_gaming: bool):
@@ -181,6 +193,50 @@ usuario ve. Cuando dos cargas se solapan, el que llegue último al mainloop gana
 - La UI **nunca** llama a `psutil` directamente; `freed_mb` llega exclusivamente como argumento del callback.
 - Toda manipulación de widgets ocurre en el hilo principal vía `self.after(0, ...)`.
 - El pack gaming (`is_gaming=True`) puede activarse (acción kill/start) pero **no** puede borrarse.
+
+## Las CUATRO guardas, y por qué cada una mira las listas de SU puerta (TASK-063)
+
+El número importa: son **cuatro**, no dos, y el borrador de la tarea declaraba solo dos. Cada vista
+tiene **dos puertas** (apagar / arrancar) y cada puerta tiene su guarda. Todas van **antes** de
+`_require_double_tap`, que es lo que preserva el "no armar una confirmación sobre un pack que no
+puede hacer nada".
+
+| # | Vista | Puerta | Guarda | Listas que mira |
+|---|---|---|---|---|
+| 1 | `PackManagerView._aviso_pack_inerte` | apagar (Gemelo) | `if not pack.apps and not pack.target_categories` | `apps` + `target_categories` |
+| 2 | `DashboardView.execute_pack`, rama `kill` | apagar (Gemelo) | `if not pack.apps and not pack.target_categories` | `apps` + `target_categories` |
+| 3 | `PackManagerView.start_pack` | arrancar | `if not pack.apps and not pack.start_categories` | `apps` + `start_categories` |
+| 4 | `DashboardView.execute_pack`, rama `else` | arrancar | `if not pack.apps and not pack.start_categories` | `apps` + `start_categories` |
+
+**La regla que las unifica:** una guarda existe para **no mentirle al usuario antes de que pulse**.
+Cada puerta ejecuta unas listas concretas, así que la pregunta es siempre *"¿tiene algo en las listas
+que esta puerta ejecuta?"*, y la respuesta sale de las listas de **esa** puerta. Antes la pregunta
+era "¿tiene algo en `apps`?", que solo era cierta para una puerta y mentía para las demás.
+
+**🔴 `es_pack_inerte` se movió DENTRO de la rama `kill`, y no por estética.** Significa
+*"el Gaming no tiene **nada que CERRAR"* (0 apps y 0 categorías): es un predicado de la puerta de
+**apagar**, y se evaluaba **antes** de la rama del verbo. Consecuencia medida: un pack gaming con
+`default_action="start"` y `start_categories` marcadas oía **"Gaming inerte"** en la puerta de
+**arrancar** — un diagnóstico de otra puerta. Ahora:
+- **La firma no cambia** (`es_pack_inerte(is_gaming, len(apps), len(categorias))`), y su contrato de
+  llamantes sigue vigilado por `test_el_feedback_de_pack_dice_la_verdad`.
+- **Efecto secundario declarado:** un gaming con `default_action="start"` y 0/0/0 pasa a decir
+  *"no tiene apps que iniciar"* en vez de *"Gaming inerte"*. Es **más honesto**: el usuario está en la
+  puerta de arrancar.
+- **Y no se pone un "equivalente" donde estaba:** con `is_gaming=True` y las dos listas vacías, la
+  rama 1 de `_aviso_pack_inerte` ya devuelve el diagnóstico del gaming inerte. Es decir, quitar el
+  `not pack.is_gaming and` **no cambia el resultado de ningún pack**: cambia por qué ruta sale el
+  mismo aviso.
+
+**El verbo lo decide el MÉTODO, no el pack — y es distinto en cada vista.** No es una preferencia
+estética; hay dos razones medidas y distintas:
+- **En el Gestor** el verbo lo sabe el método de la puerta (`kill_pack` apaga siempre, `start_pack`
+  arranca siempre). Un pack recién creado nace con `default_action="start"`, así que cablear el
+  pack hacía que la primera acción de un usuario recién instalado —pulsar **⛔ Apagar**— respondiera
+  *"no tiene apps que **iniciar**"*.
+- **En la Portada** hay **un solo botón** y el verbo lo decide `pack.default_action` (`feedback.py`).
+  Un pack con las dos listas marcadas es medio-usable desde ahí, **por diseño**: el botón es único y
+  el preset es la acción por defecto del pack.
 
 ## Notificaciones Nativas (Toast) — TASK-019
 
@@ -289,7 +345,15 @@ En las dos vistas, el texto del aviso se adapta al pack pero **el guard es el mi
 | `DashboardView` | `execute_pack(pack, button)` | `"⚠️ Segunda pulsación para preparar el Gaming Mode de '{name}'."` |
 | `PackManagerView` | `kill_pack(pack_id, button)` | `"⚠️ Segunda pulsación para preparar el Gaming Mode de '{name}'."` |
 
-`PackManagerView` mantiene el **re-fetch del pack por `id`** en la segunda pulsación, porque `reset_gaming_pack()` re-empaqueta con `model_copy(deep=True)`. El resto de la comprobación también es Gaming-aware: un Gaming Mode con `apps` vacía se ejecuta (su configuración está en `keepers` + `target_categories`), así que la guarda es `if not pack.is_gaming and not pack.apps`.
+`PackManagerView` mantiene el **re-fetch del pack por `id`** en la segunda pulsación, porque `reset_gaming_pack()` re-empaqueta con `model_copy(deep=True)`.
+
+> ⚠️ **TASK-063: el texto de la doble pulsación dejó de contar `apps` y cuenta la PUERTA.** Antes las dos vistas armaban `«apagar {len(pack.apps)} apps»`, que con 0 apps y 3 categorías marcadas decía **«apagar 0 apps»** — el contador de `apps` contando lo que la puerta no hace, la misma clase que el `started` en verde del ciclo 26. Ahora el número lo pone `GamingService.cuenta_a_apagar(pack)`, que aplica **el mismo filtro que `execute_pack` va a aplicar**, y la frase vive en `ui/feedback.py::texto_confirmacion_apagado` para que el Gestor y la Portada no puedan divergir:
+>
+> `⚠️ Segunda pulsación para apagar {n} procesos de '{nombre}' ({apps} apps y {categorias} categorías marcadas).`
+>
+> **Por qué el número no lo cuenta la vista:** contarlo allí sería una **segunda política de seguridad** en el sitio que menos puede tenerla (si divergiera del filtro real, el texto prometería una cosa y la puerta haría otra). Por eso la vista solo **pide** el número y no lo calcula.
+>
+> **La guarda ya no es `if not pack.is_gaming and not pack.apps`.** Con la puerta común, un pack con 0 apps y categorías marcadas **sí** tiene algo que apagar, así que decir "no tiene apps que apagar" sería la misma mentira. Ahora cada guarda mira **las listas de su propia puerta**: apagado → `apps` + `target_categories`; arranque → `apps` + `start_categories`.
 
 ### Invariantes a Respetar
 - **Se congela la INTENCIÓN, se recalculan los DATOS.** El token de `on_kill_selected` es el conjunto de claves marcadas; los `ProcessInfo` se recalculan en la segunda pulsación. Entre pulsaciones el PID se recicla: matar un `ProcessInfo` congelado es matar a un inocente.
@@ -300,7 +364,7 @@ En las dos vistas, el texto del aviso se adapta al pack pero **el guard es el mi
 - Solo hay una pendiente viva por vista: pulsar otra acción distinta la descarta.
 - `ui/confirmation.py` solo importa `typing`; prohibido `psutil`, `json`, `services` y `models` (§7.4 de la OpenSpec). El guard de imports vive en `run_tests.py::test_double_tap_guard`.
 - **Nada se traga en silencio:** los fallos de `delete_pack` (pack de sistema / inexistente) se muestran en el `status_label`, nunca `except: pass`.
-- **El acordeón de categorías compara contra el centinela canónico (TASK-026 / FIX-005).** El filtro `if "⚪ Otros" not in row.category` de `PackManagerView` usa el **círculo U+26AA**, el mismo literal que `config.CATEGORY_ORDER[-1]` y que `process_service._DEFAULT_META[0]`. Escribirlo como `"? Otros"` deja el filtro comparando contra un texto que ya no existe en el código (no-op) y, en cuanto la DB traiga la categoría canónica, ofrece "Otros" como casilla activable de `target_categories`: basura seleccionable que el usuario nunca pidió. Cuando se toque uno de los tres sitios, se tocan los tres.
+- **El centinela canónico ya NO se compara en la vista (TASK-063; el invariante no cambió, el sitio sí).** El filtro `if "⚪ Otros" not in row.category` vivía en `PackManagerView` y usaba el **círculo U+26AA**, el mismo literal que `config.CATEGORY_ORDER[-1]` y que `process_service._DEFAULT_META[0]`. Hoy el catálogo sale de `categorias_disponibles()`, así que la vista **no ve la DB** y el filtro **no se puede escribir ahí**: lo cumple el servicio. Escribir el literal como `"? Otros"` en cualquiera de los sitios que quedan **sigue siendo un no-op** que ofrece "Otros" como casilla activable — basura seleccionable que el usuario nunca pidió, y `⚪ Otros` es la categoría de **todo lo que la DB no conoce**, así que marcarla mataría procesos nunca nombrados. `test_default_meta_matches_canonical_otros` lo vigila **ejecutando** el catálogo y **fallando** si la vista vuelve a compararlo.
 
 ## Feedback y Telemetría en Ejecución de Packs (TASK-035)
 
@@ -323,9 +387,9 @@ Previamente existía asimetría entre vistas y acciones:
    - **Apagado (`kill`):** Se mantiene `_show_banner` (sin alias: `_show_kill_banner` era código muerto y se borró), mostrando procesos cerrados y MB liberados con `theme.GAMING` o `theme.ACCENT`, y refrescando la barra de reposo con `_update_resting_bar()`.
 
 2. **Gestor de Packs (`PackManagerView`):**
-   - **Guarda preventiva en `start_pack`:** Si `not pack.apps`, la UI cancela confirmaciones pendientes y emite de inmediato `self._inline_status(*mensaje_sin_apps(pack.name, "start"))` sin crear un hilo innecesario. Aquí la **acción** es arrancar, así que el verbo es "iniciar" aunque el pack sea gaming con `default_action="kill"`: quien decide el verbo es el formateador, y quien dice qué acción se ejecuta es el método.
+   - **Guarda preventiva en `start_pack`:** Si `not pack.apps and not pack.start_categories` (TASK-063: las **dos** listas que `start_pack` ejecuta; con 0 apps y 2 categorías de arranque marcadas, el aviso con solo `apps` sería la misma mentira que el "apagar 0 apps"), la UI cancela confirmaciones pendientes y emite de inmediato `self._inline_status(*mensaje_sin_apps(pack.name, "start"))` sin crear un hilo innecesario. Aquí la **acción** es arrancar, así que el verbo es "iniciar" aunque el pack sea gaming con `default_action="kill"`: quien decide el verbo es el formateador, y quien dice qué acción se ejecuta es el método.
      - Eso no es una convención sin medir: `test_el_feedback_de_pack_dice_la_verdad` pasa un `Pack(is_gaming=True, default_action="kill", apps=[])` por `start_pack` y exige el texto **"no tiene apps que iniciar"**. El caso anterior (pack normal) no distinguía nada, porque `default_action` vale `"start"` de serie y las dos cableaciones dan el mismo texto; con el gaming de apagar, cablear `pack.default_action` produce **"apagar"** y el test muere por aserción. Si "corregir" esa línea a `pack.default_action` parece más coherente, es la suite la que lo dice que no.
-   - **Guarda preventiva en `kill_pack`:** el pack no gaming y sin apps se avisa con `mensaje_sin_apps(pack.name, "kill")`. La comprobación vive **una vez** en `_aviso_pack_inerte(pack)` y se llama en los **dos** puntos donde `kill_pack` lee el pack (antes de `_require_double_tap` y tras el re-fetch por `id`): el literal estaba duplicado byte a byte dentro del mismo método, que es la forma más barata de tener dos verdades. Los dos puntos están medidos; el segundo por su propia vía (ver "El pack que no puede hacer nada", mutante `K-a`).
+   - **Guarda preventiva en `kill_pack`:** el pack **sin apps y sin categorías de apagado** se avisa con `mensaje_sin_apps(pack.name, "kill")` (TASK-063: antes era "no gaming **y** sin apps"; el `not pack.is_gaming` se cayó porque `es_pack_inerte` ya cubre el gaming 0/0/0 y quitarlo no cambia el resultado de ningún pack, solo el camino que sale). La comprobación vive **una vez** en `_aviso_pack_inerte(pack)` y se llama en los **dos** puntos donde `kill_pack` lee el pack (antes de `_require_double_tap` y tras el re-fetch por `id`): el literal estaba duplicado byte a byte dentro del mismo método, que es la forma más barata de tener dos verdades. Los dos puntos están medidos; el segundo por su propia vía (ver "El pack que no puede hacer nada", mutante `K-a`).
      - El verbo también lo decide el **método**, por el mismo argumento que en `start_pack` y su espejo: `_aviso_pack_inerte` es la puerta de **apagar** y solo la de apagar, así que cablea `"kill"` y **no** `pack.default_action`. Un pack recién creado nace con `default_action="start"` (`on_new_pack` → `create_user_pack(pack_id, name, [])` → el default del modelo), de modo que cablear el pack hacía que la primera acción de un usuario recién instalado —pulsar **⛔ Apagar**— respondiera *"no tiene apps que **iniciar**"*. Lo mide `test_el_feedback_de_pack_dice_la_verdad` con un pack **no gaming, vacío y `default_action="start"`** en `kill_pack`, que exige el texto **"no tiene apps que apagar"**: mutado a `pack.default_action` **o** a `"start"`, el mutante muere por esa aserción. El pack es **no gaming a propósito**, para que el diagnóstico del gaming inerte no se adelante y el assert muera por el verbo y por nada más.
      - **La cadena causal del "nace con `start`" también está medida, por la vía real.** La afirmación anterior la sostenía el comentario de la sonda y este doc, pero ningún test la miraba: cambiar el default del modelo (`models.py`, `default_action: Literal["start", "kill"] = "start"`) a `"kill"` dejaba la suite entera en verde. Desde la iteración 7 la sonda llama a `create_user_pack` **de verdad** (no un `Pack(...)` con literales), exige `default_action == "start"` en el pack que devuelve y pasa ese mismo pack por la puerta de **apagar** exigiendo el texto "apagar". Así la cadena entera —default del modelo → pack recién creado → verbo de la puerta de apagar— queda atada; mutante `D5-d` de `_matrix_c26.py`, MUERE.
    - **Gaming inerte:** un `is_gaming` con 0 apps **y** 0 categorías se diagnostica con `mensaje_gaming_inerte(nombre)` (ROJO, `⛔`) en `_aviso_pack_inerte`, también antes de `_require_double_tap`. Con ambas listas vacías `should_kill_for_gaming` cae a `False` para todo lo no protegido: es **inerte por construcción**. Un gaming con apps **o** con categorías no es inerte y no avisa.
@@ -362,9 +426,17 @@ Hay **tres puertas de cierre**, y las tres devuelven la **misma 4-tupla**
 
 | puerta | quién la llama | servicio |
 |---|---|---|
-| gaming | `PackManagerView.kill_pack` y `DashboardView.execute_pack` con `is_gaming` | `gaming_service.execute_gaming_pack(pack)` |
-| pack | `PackManagerView.kill_pack` y `DashboardView.execute_pack` sin `is_gaming` | `process_service.kill_pack_apps(apps)` |
+| **pack (TASK-063)** | `PackManagerView.kill_pack` y `DashboardView.execute_pack`, **con o sin `is_gaming`** | `gaming_service.execute_pack(pack)` |
 | seleccion | `ProcessManagerView.on_kill_selected` | `process_service.kill_processes(procesos)` |
+
+> ⚠️ **TASK-063: la tabla tenía dos filas de apagado y ahora tiene UNA.** Eran `gaming` (vía
+> `execute_gaming_pack`) y `pack` (vía `kill_pack_apps`), y esa segunda fila era la que **no miraba
+> `target_categories`**: con 0 apps y 3 categorías marcadas cerraba 0 y lo decía como éxito. Las dos
+> rutas se unificaron en `execute_pack`, que además es donde viven las barreras. La fila `gaming`
+> **no se conserva** porque la puerta restringida ya no la llama ninguna vista; la bandeja
+> (`ui/app.py`) sigue usando `execute_gaming_pack`, y esa **no es una puerta de packs** — su item de
+> menú es "Preparar Gaming Mode" y lee `get_all_packs().get("gaming")` por construcción, así que **no
+> se toca**.
 
 El texto se formatea **una sola vez**, en `ui/feedback.py`, y las tres lo reciben.
 Es deliberado: es la forma de no repetir el fallo del ciclo 14, donde un camino

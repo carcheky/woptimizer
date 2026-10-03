@@ -4,7 +4,9 @@ import struct
 import time
 from typing import List, Tuple, Optional, Dict, Sequence, Callable, Final
 from woptimizer.models import ProcessInfo
-from woptimizer.config import PROCESS_CATEGORIES, CATEGORY_ORDER, logger
+from woptimizer.config import (
+    PROCESS_CATEGORIES, CATEGORY_ORDER, get_safety_badge, logger, ordenar_categorias,
+)
 
 # TASK-026 (FIX-005): el centinela de "sin clasificar" es UN literal y se escribe
 # con escape para que nadie lo reescriba a ojo. Debe ser EXACTAMENTE el ultimo
@@ -832,4 +834,126 @@ class ProcessService:
             except (OSError, Exception) as e:
                 failed += 1
                 logger.warning(f"Failed to launch app '{app}': {e}")
+        return started, failed
+
+    # ------------------------------------------------------------------
+    # TASK-063: SELECCION POR CATEGORIA PARA TODOS LOS PACKS (arranque)
+    # ------------------------------------------------------------------
+    def categorias_disponibles(self) -> List[str]:
+        """El CATALOGO UNICO de categorias, en el orden de `CATEGORY_ORDER`.
+
+        Sustituye a las DOS fuentes que la vista tenia: leer `self.process_db`
+        para armarse el catalogo y, si venia vacio, repetir a mano los nombres.
+        Con dos fuentes, la lista que el usuario ve no es la que el servicio
+        clasifica, y el desfase sale como un proceso en "Otros" que nadie sabe
+        donde marcar. Aqui la sale el propio servicio que clasifica.
+
+        El centinela `\u26aa Otros` NO se ofrece (se escribe con escape y no a
+        mano, como en `_DEFAULT_META`, por la familia de bug del ciclo #9). No es
+        un detalle: es la categoria de todo lo que la DB no conoce, asi que
+        marcarla para apagar mataria procesos que el usuario no nombro nunca, y
+        marcarla para arrancar intentaria arrancar "lo que sea". Las dos son un
+        no-op que el usuario no puede distinguir de un fallo.
+        """
+        cats = {meta[0] for meta in self._db_map.values() if meta and meta[0]}
+        # La DB puede no haber cargado todavia (o no existir): el catalogo sale
+        # de `CATEGORY_ORDER`, que es la MISMA constante que ordena el listado de
+        # procesos, y la DB solo puede AÑADIR categorias nuevas.
+        cats |= set(CATEGORY_ORDER)
+        cats.discard(_DEFAULT_META[0])
+        return ordenar_categorias(cats)
+
+    def _patrones_de_categoria(self, categoria: str) -> List[str]:
+        """Nombres candidatos de UNA categoria, desde la DB ya en memoria.
+
+        La DB guarda `(categoria, prioridad, descripcion)` y NINGUNA ruta
+        (medido), asi que aqui no se decide nada: solo se listan los nombres que
+        clasifican en esa categoria. Si un nombre es un patron sin `.exe`
+        (que es como viene la DB) se le anade la extension, porque
+        `_resolver_app` exige `.exe`/`.com` en la lista blanca y rechazaria el
+        nombre pelado sin llegar siquiera a mirar el fichero.
+        """
+        nombres = []
+        for patron, meta in self._db_map.items():
+            if not meta or meta[0] != categoria:
+                continue
+            if os.path.splitext(patron)[1]:
+                nombres.append(patron)
+            else:
+                nombres.append(f"{patron}.exe")
+        return sorted(set(nombres))
+
+    def start_pack_categories(
+        self,
+        categorias: List[str],
+        target_categories: Optional[List[str]] = None,
+    ) -> Tuple[int, int]:
+        """Arranca lo de esas CATEGORIAS. Devuelve (started, failed) HONESTOS.
+
+        El techo es real y hay que poder decirlo: la DB no guarda rutas, asi que
+        "arrancar una categoria" significa "resolver cada nombre que la DB asocia
+        a esa categoria con la MISMA validacion de `start_pack_apps`". Hay
+        categorias sin NINGUN ejecutable resoluble (las de procesos de fondo), y
+        eso no es un fallo del arranque: es que no hay nada que lanzar. Por eso
+        un rechazo cuenta como `failed` y NUNCA como `started`.
+
+        `target_categories` es la lista de apagado del MISMO pack, y se pasa por
+        parametro en vez de leerse de un `Pack` porque este servicio no depende de
+        los packs (la dependencia va al reves). Con ella se resuelve en el
+        SERVICIO el conflicto de las dos listas: gana `kill`, porque apagar
+        destruye estado y arrancar, como mucho, abre una ventana que el usuario
+        cierra. En la UI la casilla espejo ya viene deshabilitada; esto es la
+        segunda capa, para el `profiles.json` escrito a mano.
+        """
+        en_apagado = set(target_categories or [])
+        started, failed = 0, 0
+        for categoria in categorias or []:
+            # Las dos barreras, ANTES de resolver nada y con el mismo predicado
+            # que usa la puerta de apagado (`gaming_service._pack_evaluable`):
+            #   1. categoria roja: una categoria 🔴 es INERTE en las dos listas.
+            #   2. conflicto con `target_categories`: manda apagar.
+            # Sin la primera, `_resolver_app` puede devolver una ruta valida de
+            # un proceso del sistema. Sin la segunda, el mismo patron se apagaba
+            # y se arrancaba en la misma sesion.
+            if get_safety_badge(categoria)["tier"] == "danger":
+                logger.warning(
+                    f"Arranque por categoria omitido: '{categoria}' es una categoria "
+                    f"de riesgo y no se arranca nada de ella."
+                )
+                continue
+            if categoria in en_apagado:
+                logger.warning(
+                    f"Arranque por categoria omitido: '{categoria}' esta marcada "
+                    f"para apagar en este pack, y el conflicto lo gana apagar."
+                )
+                continue
+            candidatos = self._patrones_de_categoria(categoria)
+            if not candidatos:
+                # Honesto y no silencioso: el usuario marco una categoria y no
+                # va a pasar nada. Decirlo como `failed` es lo unico que evita
+                # el toast de exito en verde con 0 arrancados.
+                failed += 1
+                logger.warning(
+                    f"Arranque por categoria: '{categoria}' no tiene ningun "
+                    f"ejecutable resoluble en la DB, no se arranca nada."
+                )
+                continue
+            for nombre in candidatos:
+                try:
+                    ruta = self._resolver_app(nombre)
+                    if ruta is None:
+                        failed += 1
+                        logger.warning(
+                            f"'{nombre}' (categoria '{categoria}') no se arranco: la "
+                            f"ruta no supera la validacion de arranque."
+                        )
+                        continue
+                    self._lanzar(ruta)
+                    started += 1
+                    logger.info(f"Launched app by category: {ruta} ({categoria})")
+                except (OSError, Exception) as e:
+                    failed += 1
+                    logger.warning(
+                        f"Failed to launch '{nombre}' (categoria '{categoria}'): {e}"
+                    )
         return started, failed

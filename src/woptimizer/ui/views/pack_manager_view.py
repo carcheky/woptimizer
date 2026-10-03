@@ -11,6 +11,7 @@ from woptimizer.config import ordenar_categorias
 from woptimizer.ui.confirmation import AMBAR, ROJO, VERDE, MSG_PACK_INEXISTENTE, Confirmable
 from woptimizer.ui.feedback import (
     es_pack_inerte, mensaje_cierre_pack, mensaje_gaming_inerte, mensaje_sin_apps,
+    texto_confirmacion_apagado,
 )
 from woptimizer.ui import theme
 
@@ -332,80 +333,133 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
                 btn_remove.pack(side="right")
                 btn_remove.configure(command=lambda p=pack.id, a=app: self.remove_app_from_pack(p, a, btn_remove))
                 
-        # --- SECCION ACORDEON CATEGORIAS (SOLO GAMING) ---
-        if pack.is_gaming:
-            active_count = len(pack.target_categories)
-            acc_state = {"open": False}
-            
-            cat_body = ctk.CTkFrame(card, fg_color=theme.SURFACE_SUNKEN, corner_radius=theme.RADIUS_MEDIUM)
-            
-            def toggle_acc():
-                acc_state["open"] = not acc_state["open"]
-                if acc_state["open"]:
-                    acc_btn.configure(text=f"⚙️ Configurar Categorías Automáticas ({len(pack.target_categories)} activas) ▲")
-                    cat_body.pack(fill="x", padx=8, pady=(0, 6))
-                else:
-                    acc_btn.configure(text=f"⚙️ Configurar Categorías Automáticas ({len(pack.target_categories)} activas) ▼")
-                    cat_body.pack_forget()
+        # --- SECCION ACORDEON CATEGORIAS (TASK-063: para TODOS los packs) ---
+        #
+        # El `if pack.is_gaming:` que abria esta seccion se ha ido y no se ha
+        # sustituido por su equivalente. Motivo: el gate era el sintoma de un
+        # cableado que ya no existe. `Pack` es un solo modelo con las tres listas
+        # (`apps`, `target_categories`, `start_categories`), `execute_pack` y
+        # `start_pack_categories` son las dos puertas de todo el producto y ya no
+        # miran `is_gaming` para decidir nada. Dejar el gate seria alinear el
+        # formulario con lo que el servicio NO hace: el usuario veria un pack sin
+        # donde elegir categorias, con un servicio que se las pregunta igual.
+        active_count = len(pack.target_categories) + len(pack.start_categories)
+        acc_state = {"open": False}
 
-            acc_btn = ctk.CTkButton(
-                card,
-                text=f"⚙️ Configurar Categorías Automáticas ({active_count} activas) ▼",
+        cat_body = ctk.CTkFrame(card, fg_color=theme.SURFACE_SUNKEN, corner_radius=theme.RADIUS_MEDIUM)
+
+        def _texto_acordeon(n: int, abierto: bool) -> str:
+            return (f"⚙️ Configurar Categorías Automáticas ({n} activas)"
+                    f" {'▲' if abierto else '▼'}")
+
+        def _refrescar_contador():
+            """El contador sale del registro VIVO (`_data`), no de esta tarjeta."""
+            actual = self.pack_service.get_all_packs().get(pack.id)
+            n = (len(actual.target_categories) + len(actual.start_categories)
+                 if actual else active_count)
+            acc_btn.configure(text=_texto_acordeon(n, acc_state["open"]))
+
+        def toggle_acc():
+            acc_state["open"] = not acc_state["open"]
+            _refrescar_contador()
+            if acc_state["open"]:
+                cat_body.pack(fill="x", padx=8, pady=(0, 6))
+            else:
+                cat_body.pack_forget()
+
+        acc_btn = ctk.CTkButton(
+            card,
+            text=_texto_acordeon(active_count, False),
+            font=("Segoe UI", theme.FONT_SIZE_SMALL),
+            fg_color=theme.SURFACE_SUNKEN,
+            hover_color=theme.SURFACE_HOVER,
+            text_color=theme.TEXT_PRIMARY,
+            height=28,
+            anchor="w",
+            command=toggle_acc
+        )
+        acc_btn.pack(fill="x", padx=8, pady=(0, 4))
+
+        # TASK-063: el catalogo lo da `ProcessService.categorias_disponibles()`.
+        # Antes esta vista se lo armaba sola con DOS fuentes distintas --leer
+        # `self.process_service.process_db`, y si venia vacio, ocho nombres
+        # escritos a mano-- y las dos tenian que coincidir con la DB de verdad.
+        # Cuando no coincidian, el proceso aparecia en "Otros" sin casilla donde
+        # marcarlo. Ahora hay una sola fuente, y la vista deja de tocar el
+        # atributo de DB del servicio: leerlo era una via lateral a la capa, y lo
+        # era justo para decidir QUE puede matar el usuario.
+        all_cats = set(self.process_service.categorias_disponibles())
+
+        grid = ctk.CTkFrame(cat_body, fg_color="transparent")
+        grid.pack(fill="x", padx=6, pady=4)
+        grid.grid_columnconfigure((0, 1), weight=1)
+
+        # TASK-063: las dos columnas son ESPEJO UNA DE OTRA. Marcar "apagar"
+        # desmarca "arrancar" y al reves, y el estado final sale en UN solo
+        # `update_pack()` -- una escritura, no dos: guardar dos veces la misma
+        # tarjeta es dos veces la ventana en la que un fallo de disco deja
+        # `_data` y el disco discrepando.
+        def create_command(c, v_apagar, v_arrancar, p_id=pack.id):
+            def toggle():
+                # BUG (TASK-062): `pack` es la COPIA de `get_all_packs()` que
+                # llego a esta tarjeta. Mutar la lista en ella y llamar a `save()`
+                # no persiste NADA, porque `save()` serializa `_data` y la copia
+                # nunca lo toca. Es decir: las categorias automaticas del pack
+                # Gaming --justo lo que decide que cierra el Gaming Mode-- no se
+                # guardaban. `update_pack()` copia a `_data`, guarda e invalida
+                # la cache.
+                actual = self.pack_service.get_all_packs()[p_id]
+                # El conflicto de las dos listas se IMPONE aqui (una misma
+                # categoria no puede estar en las dos) y se RESUELVE en
+                # `ProcessService.start_pack_categories` por si un `profiles.json`
+                # escrito a mano lo trae. Alli gana apagar, y por eso la que se
+                # desmarca al marcar esta es la de arrancar.
+                if v_apagar.get() == 1:
+                    if c not in actual.target_categories:
+                        actual.target_categories.append(c)
+                    if c in actual.start_categories:
+                        actual.start_categories.remove(c)
+                    v_arrancar.set(0)
+                elif c in actual.target_categories:
+                    actual.target_categories.remove(c)
+                if v_arrancar.get() == 1:
+                    if c not in actual.start_categories:
+                        actual.start_categories.append(c)
+                    if c in actual.target_categories:
+                        actual.target_categories.remove(c)
+                    v_apagar.set(0)
+                elif c in actual.start_categories:
+                    actual.start_categories.remove(c)
+                self.pack_service.update_pack(actual)
+                _refrescar_contador()
+            return toggle
+
+        sorted_cats = ordenar_categorias(all_cats)
+        for i, cat in enumerate(sorted_cats):
+            apagar_var = ctk.IntVar(value=1 if cat in pack.target_categories else 0)
+            arrancar_var = ctk.IntVar(value=1 if cat in pack.start_categories else 0)
+            cb = ctk.CTkCheckBox(
+                grid,
+                text=cat,
+                variable=apagar_var,
                 font=("Segoe UI", theme.FONT_SIZE_SMALL),
-                fg_color=theme.SURFACE_SUNKEN,
-                hover_color=theme.SURFACE_HOVER,
                 text_color=theme.TEXT_PRIMARY,
-                height=28,
-                anchor="w",
-                command=toggle_acc
+                command=create_command(cat, apagar_var, arrancar_var)
             )
-            acc_btn.pack(fill="x", padx=8, pady=(0, 4))
-            
-            all_cats = set()
-            for row in getattr(self.process_service, 'process_db', []):
-                if "⚪ Otros" not in row.category:
-                    all_cats.add(row.category)
-            if not all_cats:
-                all_cats = {"🟢 Sincronización", "🟢 Navegadores", "🟢 Productividad",
-                            "🟡 Chat y Comunicación", "🟡 Launchers Gaming", "🟡 Media y Streaming",
-                            "🔴 Sistema de Windows", "🔴 Antivirus y Seguridad", "🔴 Overlays e Info"}
-                
-            grid = ctk.CTkFrame(cat_body, fg_color="transparent")
-            grid.pack(fill="x", padx=6, pady=4)
-            grid.grid_columnconfigure((0, 1), weight=1)
-            
-            def create_command(c, v, p_id=pack.id):
-                def toggle():
-                    # BUG (TASK-062): `pack` es la COPIA de `get_all_packs()` que
-                    # llego a esta tarjeta. Mutar `target_categories` en ella y
-                    # llamar a `save()` no persiste NADA, porque `save()`
-                    # serializa `_data` y la copia nunca lo toca. Es decir: las
-                    # categorias automaticas del pack Gaming --justo lo que decide
-                    # que cierra el Gaming Mode-- no se guardaban.
-                    # `update_pack()` copia a `_data`, guarda e invalida la cache.
-                    actual = self.pack_service.get_all_packs()[p_id]
-                    if v.get() == 1:
-                        if c not in actual.target_categories:
-                            actual.target_categories.append(c)
-                    else:
-                        if c in actual.target_categories:
-                            actual.target_categories.remove(c)
-                    self.pack_service.update_pack(actual)
-                    acc_btn.configure(text=f"⚙️ Configurar Categorías Automáticas ({len(actual.target_categories)} activas) ▲")
-                return toggle
-                
-            sorted_cats = ordenar_categorias(all_cats)
-            for i, cat in enumerate(sorted_cats):
-                var = ctk.IntVar(value=1 if cat in pack.target_categories else 0)
-                cb = ctk.CTkCheckBox(
-                    grid,
-                    text=cat,
-                    variable=var,
-                    font=("Segoe UI", theme.FONT_SIZE_SMALL),
-                    text_color=theme.TEXT_PRIMARY,
-                    command=create_command(cat, var)
-                )
-                cb.grid(row=i // 2, column=i % 2, padx=6, pady=3, sticky="w")
+            cb.grid(row=i // 2, column=i % 2, padx=6, pady=3, sticky="w")
+        # Segunda tanda del grid: las MISMAS categorias, para arrancar.
+        for i, cat in enumerate(sorted_cats):
+            apagar_var = ctk.IntVar(value=1 if cat in pack.target_categories else 0)
+            arrancar_var = ctk.IntVar(value=1 if cat in pack.start_categories else 0)
+            cb = ctk.CTkCheckBox(
+                grid,
+                text=f"{cat} (arrancar)",
+                variable=arrancar_var,
+                font=("Segoe UI", theme.FONT_SIZE_SMALL),
+                text_color=theme.TEXT_PRIMARY,
+                command=create_command(cat, apagar_var, arrancar_var)
+            )
+            cb.grid(row=(len(sorted_cats) + i) // 2, column=i % 2, padx=6, pady=3, sticky="w")
 
     def toggle_favorite(self, pack_id: str):
         pack = self.pack_service.get_all_packs().get(pack_id)
@@ -489,10 +543,24 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
         puntos de `kill_pack` que leen el pack, y ninguno mas. Por eso el aviso
         de "no tiene apps" cablea el verbo a `"kill"` y no a `pack.default_action`
         (ver el comentario de la rama): la accion la sabe el metodo, no el pack.
+
+        TASK-063: la segunda guarda ya no mira solo `apps`. Un pack con 0 apps y
+        3 categorias marcadas SI tiene algo que apagar -- la puerta de aqui
+        entra en `gaming_service.execute_pack`, que ademas consulta
+        `target_categories` -- asi que decir "no tiene apps que apagar" seria la
+        misma mentira que el "0 apps" del texto de confirmacion (spec 2.7). La
+        guarda se queda, y lo que cambia es lo que considera vacio: apps Y
+        categorias de apagado.
+
+        El `not pack.is_gaming and` que estaba aqui ya no hace falta y por eso no
+        se pone el equivalente: si `is_gaming` es True y las dos listas estan
+        vacias, la primera rama (el diagnostico del Gaming inerte) ya ha
+        devuelto. Es decir, quitarlo NO cambia el resultado de ningun pack: cambia
+        por que ruta sale el mismo aviso.
         """
         if es_pack_inerte(pack.is_gaming, len(pack.apps), len(pack.target_categories)):
             return mensaje_gaming_inerte(pack.name)
-        if not pack.is_gaming and not pack.apps:
+        if not pack.apps and not pack.target_categories:
             # El verbo lo decide el METODO, no el pack (espejo de `start_pack`):
             # este helper lo llama solo `kill_pack`, que es apagar SIEMPRE, asi
             # que la accion que se le pasa es `"kill"`. Si se pasara
@@ -503,6 +571,22 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
             # metodo de la puerta, no el dato guardado del pack.
             return mensaje_sin_apps(pack.name, "kill")
         return None
+
+    def _texto_confirmacion_apagado(self, pack: Pack) -> str:
+        """La frase de la doble pulsacion, con el numero de la PUERTA.
+
+        El numero lo pone `gaming_service.cuenta_a_apagar(pack)`, que aplica el
+        mismo filtro que `execute_pack` va a aplicar: contarlo aqui seria una
+        segunda politica de seguridad en el sitio que menos puede tenerla. La
+        frase vive en `ui/feedback.py` para que el Gestor y la Portada digan
+        exactamente lo mismo.
+        """
+        return texto_confirmacion_apagado(
+            pack.name,
+            self.gaming_service.cuenta_a_apagar(pack),
+            len(pack.apps),
+            len(pack.target_categories),
+        )
 
     def kill_pack(self, pack_id: str, button=None):
         pack = self.pack_service.get_all_packs().get(pack_id)
@@ -520,7 +604,7 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
         if pack.is_gaming:
             aviso = f"⚠️ Segunda pulsación para preparar el Gaming Mode de '{pack.name}'."
         else:
-            aviso = f"⚠️ Segunda pulsación para apagar {len(pack.apps)} apps de '{pack.name}'."
+            aviso = self._texto_confirmacion_apagado(pack)
         if not self._require_double_tap(f"pack_kill:{pack_id}", button, aviso):
             return
         pack = self.pack_service.get_all_packs().get(pack_id)
@@ -534,18 +618,21 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
         if aviso_inerte is not None:
             self._inline_status(*aviso_inerte)
             return
-        apps = list(pack.apps)
         nombre = pack.name
         def _run():
             # TASK-035 / ciclo 26: el mensaje sale de la TUPLA REAL, no de un
-            # literal. Las dos puertas (gaming y normal) devuelven la misma
-            # 4-tupla y `mensaje_cierre_pack` es la unica que la formatea, de
-            # modo que ninguna de las dos puede mentir por su cuenta. Con 0
-            # cerrados el texto NO lleva tick y el color NO es verde.
-            if pack.is_gaming:
-                killed, failed, skipped, freed_mb = self.gaming_service.execute_gaming_pack(pack)
-            else:
-                killed, failed, skipped, freed_mb = self.process_service.kill_pack_apps(apps)
+            # literal. La puerta devuelve la misma 4-tupla que antes devolvian las
+            # dos y `mensaje_cierre_pack` es la unica que la formatea, de modo que
+            # ninguna puerta puede mentir por su cuenta. Con 0 cerrados el texto NO
+            # lleva tick y el color NO es verde.
+            #
+            # TASK-063: UN SOLO camino de apagado para TODOS los packs. Antes
+            # estaba `if is_gaming: execute_gaming_pack / else: kill_pack_apps`,
+            # y la rama de `kill_pack_apps` no miraba `target_categories`: con 0
+            # apps y 3 categorias marcadas mataba 0 y lo decia como exito. Ahora las
+            # dos ramas entran en `execute_pack`, que es donde viven las barreras
+            # (nombres protegidos y categoria roja) y el filtro de keepers.
+            killed, failed, skipped, freed_mb = self.gaming_service.execute_pack(pack)
             texto, color = mensaje_cierre_pack(nombre, killed, failed, skipped, freed_mb)
             self.after(0, self._inline_status, texto, color)
             self.notification_service.notify_pack_activated(nombre, killed, freed_mb)
@@ -553,18 +640,35 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
 
     def start_pack(self, pack: Pack):
         self._cancel_confirm()
-        if not pack.apps:
+        if not pack.apps and not pack.start_categories:
             # Aqui la accion la decide el METODO, no el pack: `start_pack` es
             # arrancar siempre, y un pack gaming con `default_action="kill"`
             # iniciado desde el Gestor tiene que decir "iniciar". El verbo lo
             # sigue sacando el formateador de la accion, que es lo unico que la
             # vista le pasa.
+            #
+            # TASK-063: el "vacio" de esta puerta es `apps` Y `start_categories`,
+            # no solo `apps`: son las dos listas que `start_pack` ejecuta, y con
+            # 0 apps y 2 categorias de arranque marcadas el aviso seria la misma
+            # mentira que el "apagar 0 apps" de la otra puerta.
             self._inline_status(*mensaje_sin_apps(pack.name, "start"))
             return
         nombre = pack.name
         apps = list(pack.apps)
+        categorias = list(pack.start_categories)
         def _run():
+            # TASK-063: las DOS listas y la SUMA de los dos recuentos. Elegir una
+            # y dejar la otra seria ignorar en silencio la mitad de lo que el
+            # usuario marco. El conflicto entre las dos listas lo resuelve el
+            # servicio (`start_pack_categories` recibe `target_categories` y
+            # descarta la que este marcada para apagar).
             started, failed = self.process_service.start_pack_apps(apps)
+            if categorias:
+                started_cats, failed_cats = self.process_service.start_pack_categories(
+                    categorias, pack.target_categories
+                )
+                started += started_cats
+                failed += failed_cats
             if failed == 0:
                 self.after(0, self._inline_status, f"🚀 {started} apps iniciadas · '{nombre}'.", VERDE)
             else:
