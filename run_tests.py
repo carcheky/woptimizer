@@ -14204,116 +14204,248 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
 
     Es una comprobacion ESTATICA a proposito: el arnes no abre ventana, y una
     casilla de CustomTkinter sin `CTk`/`root` no se puede instanciar. Lo que se
-    congela es la FORMA del cableado, que es lo que esta task cambia; el
-    comportamiento de los servicios lo miden los tests #1 a #11.
+    congela es la PROPIEDAD del cableado, no su forma: que el espejo existe y
+    que ninguna pieza del acordeon cuelga de una condicion (A0, A1 y A2 mas
+    abajo). El comportamiento de los servicios lo miden los tests #1 a #11.
     """
     print("Testing acordeon en pack no gaming con espejo deshabilitado...")
     ruta = os.path.join("src", "woptimizer", "ui", "views", "pack_manager_view.py")
     with open(ruta, encoding="utf-8") as fh:
         arbol = ast.parse(fh.read())
 
-    # TASK-063 iteracion 3 (mutation-auditor: U1_AND SOBREVIVIO). El predicado de
-    # la iteracion 2 exigia que el test del `if` FUERA `pack.is_gaming`:
+    # === TASK-063 iteracion 4: DE LA FORMA DEL GATE A LA PROPIEDAD DEL CABLEADO ==
     #
-    #     t = nodo.test if isinstance(nodo, ast.If) else nodo
-    #     return isinstance(t, ast.Attribute) and t.attr == "is_gaming" ...
+    # Las iteraciones 2 y 3 de este test Yardaron la FORMA del gate. La 2 exigia
+    # que la condicion FUERA exactamente `pack.is_gaming`; la 3 que la CONTIENIERA
+    # (con `ast.walk`). Las dos leen el NOMBRE de la lectura, y un test que
+    # reconoce N formas de gate es un test que la forma N+1 ciega: la 3 cayo con
+    # un `and`, y la 4 con las seis siguientes de la tabla del mutation-auditor
+    # (variable intermedia, alias de `pack`, `getattr`, predicado extraido a un
+    # metodo, helper y guard clause). Medido: con cualquiera de las seis los 123
+    # tests seguian en verde y el acordeon se escondia a algun pack que hoy lo ve.
     #
-    # Eso es un predicado de IGUALDAD TEXTUAL, y por eso `if pack.is_gaming and
-    # pack.default_action == "kill":` --la forma mas natural que un desarrollador
-    # escribiria para reintroducir el gate-- se le escapaba entero: su test es un
-    # `ast.BoolOp`, no un `ast.Attribute`, el gate no entraba en la lista, y los
-    # 123 tests se quedaban en verde con el acordeon gateado. Peor que U1: como
-    # `default_action` nace en "start" (`models.py:83`), ese gate compuesto le
-    # esconderia el acordeon al PROPIO pack de Gaming.
+    # Ademas las dos eran DEMASIADO ESTRICTAS, que es la otra mitad del mismo
+    # defecto: rechazaban codigo legitimo (una casilla propia del Gaming Mode
+    # dentro del badge `PRESET`, y un texto de aviso que dice "arrancar"), y el
+    # mensaje de fallo de la primera afirmaba algo que no habia pasado. Quien
+    # quisiera meter una opcion de solo-Gaming se encontraba el test en contra y
+    # sin forma de escribir la excepcion: la salida natural era relajar el
+    # predicado, o sea reabrir el agujero. Un test que obliga a aflojar es un
+    # test que garantiza que se afloje.
     #
-    # El invariante real no es una forma de condicion, es una DEPENDENCIA:
-    # "ninguna construccion del acordeon puede quedar bajo una condicion que
-    # dependa de `is_gaming`". Asi que lo que se pregunta es si la condicion
-    # CONTIENE la lectura de `is_gaming`, y da igual si viene sola, con un
-    # `and`, con un `or`, negada con `not` o pasada como argumento. Un test que
-    # solo reconoce UNA forma de gate es un test que la siguiente forma ciega.
+    # Aqui ya no se pregunta "¿la condicion menciona `is_gaming`?". Se pregunta
+    # por el ESPACIO NEGATIVO del invariante, que es una PROPIEDAD y no una lista
+    # de formas:
+    #
+    #   A0  el ESPEJO existe. Sin el, A1 y A2 mirarian el vacio.
+    #   A1  ninguna pieza del acordeon cuelga de una condicion: ni por la forma de
+    #       la condicion (da igual cual sea) ni por el iterable del bucle que la
+    #       hospeda (una lista filtrada tambien la esconde).
+    #   A2  ninguna funcion que dibuje una pieza hace un `return` temprano
+    #       condicionado. El guard clause es la unica forma de gate que NO es
+    #       antecesor, y por eso se mide aparte.
+    #
+    # Que una condicion "de gaming" siga existiendo alrededor del badge `PRESET`,
+    # del boton de restaurar, del texto del Gaming Mode y de los dos ternarios
+    # del borde es CORRECTO y este test lo permite: no se asserta nada de ellas.
+    _CONDICIONALES = (ast.If, ast.IfExp, ast.While, ast.Try, ast.Match)
+
+    # Tabla de padres: lo que hace posible razonar sobre antecesentes sin
+    # importar el modulo entero en memoria.
+    _PADRES = {}
+    for _nodo in ast.walk(arbol):
+        for _hijo in ast.iter_child_nodes(_nodo):
+            _PADRES[_hijo] = _nodo
+
+    def _llamada(nodo):
+        """Nombre de la llamada: `ctk.CTkCheckBox` -> `CTkCheckBox`."""
+        f = nodo.func
+        return f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "")
+
+    # Que pieza ES el acordeon se decide por el CABLEADO, no por el nombre del
+    # widget: la casilla de una categoria es la que lleva
+    # `command=create_command(...)`, y el espejo es quien escribe en el pack
+    # (`update_pack`) e impone el espejo apagar/arrancar. Una casilla propia del
+    # Gaming Mode, o un texto de aviso, pueden seguir gateados por `is_gaming`
+    # sin que este test los confunda con la rejilla de categorias -- que es
+    # justo el falso positivo que se midio en la ronda 4.
+    def _es_casilla_del_acordeon(nodo):
+        """CTkCheckBox cuya opcion `command` invoca el ESPEJO."""
+        if not isinstance(nodo, ast.Call) or _llamada(nodo) != "CTkCheckBox":
+            return False
+        return any(
+            kw.arg == "command"
+            and any(isinstance(s, ast.Call) and _llamada(s) == "create_command"
+                    for s in ast.walk(kw.value))
+            for kw in nodo.keywords
+        )
+
+    def _es_etiqueta_del_acordeon(nodo):
+        """La etiqueta del boton que abre la seccion."""
+        return isinstance(nodo, ast.Call) and _llamada(nodo) == "_texto_acordeon"
+
+    ANCLAJES = []
+    for _nodo in ast.walk(arbol):
+        if isinstance(_nodo, ast.FunctionDef) and _nodo.name == "create_command":
+            ANCLAJES.append((_nodo, "el espejo (def create_command)"))
+        elif isinstance(_nodo, ast.Call) and _llamada(_nodo) == "create_command":
+            ANCLAJES.append((_nodo, "el cableado de una casilla (create_command(...))"))
+        elif _es_casilla_del_acordeon(_nodo):
+            ANCLAJES.append((_nodo, "una casilla de categoria (CTkCheckBox)"))
+        elif _es_etiqueta_del_acordeon(_nodo):
+            ANCLAJES.append((_nodo, "la etiqueta del boton del acordeon"))
+
+    # --- A0: sin el espejo y sin las casillas, A1 y A2 no mirarian nada ---------
+    assert any("def create_command" in etiqueta for _, etiqueta in ANCLAJES), (
+        "no aparece el ESPEJO (def create_command) en la vista: este test dejaria "
+        "de mirar la seccion de categorias y un acordeon entero desaparecido "
+        "pasaria por no mirarlo nada. Si el espejo cambio de nombre, esto NO se "
+        "relaja: se actualiza el nombre aqui y se vuelve a comprobar el cableado"
+    )
+    assert any("casilla de categoria" in etiqueta for _, etiqueta in ANCLAJES), (
+        "no aparece ninguna casilla de categoria (CTkCheckBox con "
+        "command=create_command(...)): la rejilla ha desaparecido de la vista y "
+        "este test no lo veria"
+    )
+
+    # --- A1: ninguna pieza del acordeon cuelga de una condicion ----------------
+    # Da igual QUE condicion sea. Una variable intermedia, un alias, `getattr`,
+    # un helper, un predicado con otro nombre o el identificador de otra cosa
+    # siguen siendo un `if`/`while`/`try` por delante de la construccion, y el
+    # resultado para el usuario es el mismo: un pack normal sin donde elegir
+    # categorias, con un servicio que se las pregunta igual.
+    for _nodo, _etiqueta in ANCLAJES:
+        _condicion = None
+        _padre = _PADRES.get(_nodo)
+        while _padre is not None:
+            if isinstance(_padre, _CONDICIONALES):
+                _condicion = _padre
+                break
+            _padre = _PADRES.get(_padre)
+        assert _condicion is None, (
+            f"{_etiqueta} (L{_nodo.lineno}) cuelga de una condicion en "
+            f"L{_condicion.lineno}: {ast.unparse(_condicion.test)[:90]!r}. El "
+            "acordeon se dibuja en linea recta, para todos los packs: no importa "
+            "que la condicion sea 'pack.is_gaming' a secas, con un 'and', con un "
+            "'or', negada, leida de una variable intermedia, de un alias, con "
+            "getattr, de un helper, o escrita con otro predicado"
+        )
+
+    # Y la lista que alimenta la rejilla no puede depender de `is_gaming`. Un gate
+    # no tiene por que ser un `if` DELANTE: tambien puede ser la lista de
+    # categorias ya filtrada, y entonces el acordeon se dibuja VACIO para un pack
+    # normal con el test en verde. Aqui si se mira el NOMBRE de la lectura, y a
+    # proposito: un `ordenar_categorias(cats) if cats else []` defensivo es
+    # legitimo y no se parece en nada a un gate del Gaming Mode.
     def _lee_is_gaming(nodo):
-        """`True` si el subarbol CONTIENE una lectura de `is_gaming` del pack."""
-        for n in ast.walk(nodo):
-            if not isinstance(n, ast.Attribute) or n.attr != "is_gaming":
-                continue
-            base = n.value
-            if ((isinstance(base, ast.Name) and base.id == "pack")
-                    or (isinstance(base, ast.Attribute) and base.attr == "pack")):
-                return True
+        for s in ast.walk(nodo):
+            if isinstance(s, ast.Attribute) and s.attr == "is_gaming":
+                base = s.value
+                if ((isinstance(base, ast.Name) and base.id == "pack")
+                        or (isinstance(base, ast.Attribute) and base.attr == "pack")):
+                    return True
         return False
 
-    def _es_gate_de_gaming(nodo):
-        """`if` o ternario cuya CONDICION depende de `is_gaming`, sea del tipo que sea."""
-        if not isinstance(nodo, (ast.If, ast.IfExp)):
-            return False
-        return _lee_is_gaming(nodo.test)
+    def _funcion_que_alimenta(bucle):
+        _padre = _PADRES.get(bucle)
+        while _padre is not None and not isinstance(
+                _padre, (ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
+            _padre = _PADRES.get(_padre)
+        return _padre
 
-    # El gate puede SEGUIR existiendo para lo que de verdad es solo del Gaming
-    # (el badge `PRESET`, el boton de restaurar, el texto "preparar el Gaming
-    # Mode"). Lo que no puede es envolver el ACORDEON. Asi que la comprobacion
-    # no es "no hay `if pack.is_gaming` en el fichero" --seria un criterio mas
-    # fuerte que el invariante, y un invariante mas fuerte del que se quiere
-    # acaba en prohibiendo codigo legitimo-- sino "ningun gate de gaming
-    # CONSTRUYE el acordeon".
-    #
-    # TASK-063 iteracion 2 (mutation-auditor: U1 SOBREVIVIO). El predicado que
-    # estaba aqui antes miraba `text=` cuyo valor fuera un `ast.Constant`, y las
-    # casillas del acordeon NO lo son: `text=cat` es un `ast.Name` y el boton
-    # pasa `text=_texto_acordeon(...)`, un `ast.Call` cuyo cuerpo es un f-string.
-    # Un gate que envolvia las 118 lineas del acordeon NO contenia ni un literal
-    # y pasaba el filtro: el test que existe para vigilar exactamente esa
-    # regresion no la vigilaba. Por eso el predicado mira la CONSTRUCCION y no
-    # el texto: no depende de que el literal sea constante, f-string o variable,
-    # asi que un refactor del texto de la casilla no lo vuelve a dejar ciego.
-    _CONSTRUCCIONES_DEL_ACORDEON = ("CTkCheckBox", "_texto_acordeon", "create_command")
-
-    def _construye_acordeon(nodo):
-        """`nombre` de la primera construccion del acordeon dentro del gate."""
-        for n in ast.walk(nodo):
-            if not isinstance(n, ast.Call):
+    for _nodo, _etiqueta in ANCLAJES:
+        if "casilla de categoria" not in _etiqueta:
+            continue
+        _bucle = _PADRES.get(_nodo)
+        while _bucle is not None and not isinstance(
+                _bucle, (ast.For, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+        ):
+            _bucle = _PADRES.get(_bucle)
+        if not isinstance(_bucle, ast.For):
+            continue
+        _fuente = _funcion_que_alimenta(_bucle)
+        # El iterable (y la asignacion que lo alimenta) no pueden depender de
+        # `is_gaming`: la rejilla se dibuja con la lista de categorias entera.
+        _cadena = [_bucle.iter]
+        for _s in ast.walk(_bucle.iter):
+            if not isinstance(_s, ast.Name) or _fuente is None:
                 continue
-            f = n.func
-            nombre = f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "")
-            if nombre in _CONSTRUCCIONES_DEL_ACORDEON:
-                return nombre
-        return None
-
-    def _cadenas_de(nodo):
-        """Todo string del subarbol, LOS f-strings incluidos."""
-        salida = []
-        for n in ast.walk(nodo):
-            if isinstance(n, ast.Constant) and isinstance(n.value, str):
-                salida.append(n.value)
-            elif isinstance(n, ast.JoinedStr):
-                salida.extend(p.value for p in n.values
-                              if isinstance(p, ast.Constant)
-                              and isinstance(p.value, str))
-        return salida
-
-    gates = [n for n in ast.walk(arbol) if _es_gate_de_gaming(n)]
-    assert gates, (
-        "no se encontro ninguna condicion que dependa de `is_gaming` en el "
-        "fichero: si el gate de este test desaparece, este test pasa por no "
-        "mirarlo nada"
-    )
-    for gate in gates:
-        construccion = _construye_acordeon(gate)
-        assert construccion is None, (
-            f"una condicion que depende de `is_gaming` CONSTRUYE el acordeon "
-            f"({construccion}): L{gate.lineno}. Da igual que la condicion sea "
-            "`pack.is_gaming` a secas o `pack.is_gaming and <algo>`: el gate se "
-            "elimino de la seccion de categorias, no de todo el fichero; "
-            "devolverlo dejaria un pack normal sin donde elegir categorias, con "
-            "un servicio que se las pregunta igual"
+            _asignaciones = [
+                a for a in ast.walk(_fuente)
+                if isinstance(a, ast.Assign) and a.lineno < _bucle.lineno
+                and any(isinstance(t, ast.Name) and t.id == _s.id for t in a.targets)
+            ]
+            if _asignaciones:
+                _cadena.append(max(_asignaciones, key=lambda a: a.lineno).value)
+        _filtrada = next((c for c in _cadena if _lee_is_gaming(c)), None)
+        assert _filtrada is None, (
+            f"la casilla de L{_nodo.lineno} la dibuja el bucle de L{_bucle.lineno}, "
+            "pero la lista de categorias que lo alimenta depende de `is_gaming`: "
+            f"L{_filtrada.lineno}. Un gate no tiene por que ser un `if` delante: "
+            "si la lista se filtra, el acordeon se dibuja vacio para un pack "
+            "normal y este test pasaria por no mirar nada"
         )
-        textos = _cadenas_de(gate)
-        no_es_acordeon = not any("Configurar" in t or "arrancar" in t for t in textos)
-        assert no_es_acordeon, (
-            "una condicion que depende de `is_gaming` tiene texto del acordeon "
-            f"dentro: L{gate.lineno}. Los gates legitimos (badge PRESET, boton "
-            "restaurar y el texto 'preparar el Gaming Mode') no lo llevan"
-        )
+
+    # --- A2: la funcion que dibuja una pieza no vuelve antes si algo se cumple --
+    # `if not pack.is_gaming: return` al principio de un metodo propio es la
+    # unica forma de gate que NO es antecesor de la construccion, asi que A1 no
+    # la ve. Se mide en las funciones que dibujan una pieza.
+    def _funcion_que_lo_dibuja(nodo):
+        _padre = _PADRES.get(nodo)
+        while _padre is not None and not isinstance(
+                _padre, (ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
+            _padre = _PADRES.get(_padre)
+        return _padre
+
+    def _cuerpo_propio(funcion, nodo):
+        """`nodo` es de `funcion` y no de una funcion anidada dentro de ella."""
+        _padre = _PADRES.get(nodo)
+        while _padre is not None:
+            if _padre is funcion:
+                return True
+            if isinstance(_padre, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                   ast.Lambda, ast.ClassDef)):
+                return False
+            _padre = _PADRES.get(_padre)
+        return False
+
+    FUNCIONES = []
+    for _nodo, _etiqueta in ANCLAJES:
+        _funcion = _funcion_que_lo_dibuja(_nodo)
+        if _funcion is not None and not any(_funcion is f for f in FUNCIONES):
+            FUNCIONES.append(_funcion)
+
+    for _funcion in FUNCIONES:
+        for _ret in ast.walk(_funcion):
+            if not isinstance(_ret, ast.Return) or not _cuerpo_propio(_funcion, _ret):
+                continue
+            _condicion = None
+            _padre = _PADRES.get(_ret)
+            while _padre is not None and _padre is not _funcion:
+                if isinstance(_padre, _CONDICIONALES):
+                    _condicion = _padre
+                    break
+                _padre = _PADRES.get(_padre)
+            assert _condicion is None, (
+                f"{_funcion.name} (L{_funcion.lineno}) dibuja una pieza del acordeon "
+                f"y ademas vuelve en L{_ret.lineno} si se cumple "
+                f"{ast.unparse(_condicion.test)[:90]!r}: el guard clause "
+                "'if not pack.is_gaming: return' es la unica forma de gate que no "
+                "es antecesor de la construccion, y por eso se mira aparte. El "
+                "resultado para el usuario es el mismo: sin donde elegir categorias"
+            )
+
+    # Lo que este test NO cubre, dicho para que la proxima ronda lo mida en vez
+    # de suponerlo: (a) un gate en el LUGAR DE LA LLAMADA --`if pack.is_gaming:
+    # self._render_pack_card(pack)`-- no se ve, porque `refresh_packs` YA
+    # condiciona de legitimo ("el Gaming primero", "el resto, sin repetir el
+    # Gaming") y ninguna regla de este test puede distinguir una de la otra sin
+    # ser otra vez un test de forma; (b) gatear la llamada a `.pack()`/`.grid()`
+    # que hace VISIBLE la rejilla, dejando las casillas construidas. Ninguno de
+    # los dos es una forma de reintroducir el gate original: las doce medidas
+    # envuelven la construccion, y esas A1 y A2 las cubren todas.
     with io.open(ruta, encoding="utf-8") as fh:
         cod = _codigo_ejecutable(fh.read())
     assert "categorias_disponibles" in cod, (
