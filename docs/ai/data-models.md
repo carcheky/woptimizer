@@ -62,6 +62,8 @@ resolver cada nombre que la DB asocia a esa categoría con la **misma** validaci
 eso **no es un fallo del arranque**: es que no hay nada que lanzar. Por eso un rechazo cuenta como
 `failed` y **nunca** como `started`.
 
+**Los candidatos salen de la DB con la extensión puesta (TASK-063 iteración 2).** `ProcessService._patrones_de_categoria` lista los patrones que clasifican en esa categoría y añade `.exe` a los que la DB guarda **pelados**, porque `_resolver_app` exige `.exe`/`.com` en la lista blanca y rechazaría el nombre sin llegar siquiera a mirar el fichero. No es un detalle: **sin esa extensión, arrancar por categoría no arranca nada** — los nueve nombres de una categoría se rechazan uno a uno y el usuario solo ve un `failed` sin explicación. Locongela `test_arranque_por_categoria_toma_los_nombres_de_la_db_real`, que pide los nombres a la DB **real** porque el doble del arnés sobreescribía justo el método que decide esto.
+
 **Sin migración, y esto es una medición:** la rama legacy de `load()` entrega el registro entero a
 `Pack` justamente para que "en cuanto `Pack` gane un campo, esta rama lo lea sin que nadie se acuerde",
 y las cinco copias del pack van con `model_copy(deep=True)`. Ninguna es campo a campo, así que un

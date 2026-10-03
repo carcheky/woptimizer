@@ -14223,19 +14223,61 @@ def test_acordeon_se_renderiza_en_pack_no_gaming_con_espejo_deshabilitado():
     # no es "no hay `if pack.is_gaming` en el fichero" --seria un criterio mas
     # fuerte que el invariante, y un invariante mas fuerte del que se quiere
     # acaba en prohibiendo codigo legitimo-- sino "ningun gate de gaming
-    # CONTIENE la construccion del acordeon".
+    # CONSTRUYE el acordeon".
+    #
+    # TASK-063 iteracion 2 (mutation-auditor: U1 SOBREVIVIO). El predicado que
+    # estaba aqui antes miraba `text=` cuyo valor fuera un `ast.Constant`, y las
+    # casillas del acordeon NO lo son: `text=cat` es un `ast.Name` y el boton
+    # pasa `text=_texto_acordeon(...)`, un `ast.Call` cuyo cuerpo es un f-string.
+    # Un gate que envolvia las 118 lineas del acordeon NO contenia ni un literal
+    # y pasaba el filtro: el test que existe para vigilar exactamente esa
+    # regresion no la vigilaba. Por eso el predicado mira la CONSTRUCCION y no
+    # el texto: no depende de que el literal sea constante, f-string o variable,
+    # asi que un refactor del texto de la casilla no lo vuelve a dejar ciego.
+    _CONSTRUCCIONES_DEL_ACORDEON = ("CTkCheckBox", "_texto_acordeon", "create_command")
+
+    def _construye_acordeon(nodo):
+        """`nombre` de la primera construccion del acordeon dentro del gate."""
+        for n in ast.walk(nodo):
+            if not isinstance(n, ast.Call):
+                continue
+            f = n.func
+            nombre = f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "")
+            if nombre in _CONSTRUCCIONES_DEL_ACORDEON:
+                return nombre
+        return None
+
+    def _cadenas_de(nodo):
+        """Todo string del subarbol, LOS f-strings incluidos."""
+        salida = []
+        for n in ast.walk(nodo):
+            if isinstance(n, ast.Constant) and isinstance(n.value, str):
+                salida.append(n.value)
+            elif isinstance(n, ast.JoinedStr):
+                salida.extend(p.value for p in n.values
+                              if isinstance(p, ast.Constant)
+                              and isinstance(p.value, str))
+        return salida
+
     gates = [n for n in ast.walk(arbol) if _es_gate_de_gaming(n)]
+    assert gates, (
+        "no se encontro ningun `if pack.is_gaming` en el fichero: si el gate de "
+        "este test desaparece, este test pasa por no mirarlo nada"
+    )
     for gate in gates:
-        textos = [k.value.value for n in ast.walk(gate)
-                  for k in getattr(n, "keywords", [])
-                  if k.arg == "text" and isinstance(k.value, ast.Constant)
-                  and isinstance(k.value.value, str)]
-        no_es_acordeon = not any("Configurar" in t or "arrancar" in t for t in textos)
-        assert no_es_acordeon, (
-            "hay un `if pack.is_gaming` que envuelve widgets del acordeon: "
+        construccion = _construye_acordeon(gate)
+        assert construccion is None, (
+            f"hay un `if pack.is_gaming` que CONSTRUYE el acordeon ({construccion}): "
             f"L{gate.lineno}. El gate se elimino de la seccion de categorias, no de "
             "todo el fichero; devolverlo dejaria un pack normal sin donde elegir "
             "categorias, con un servicio que se las pregunta igual"
+        )
+        textos = _cadenas_de(gate)
+        no_es_acordeon = not any("Configurar" in t or "arrancar" in t for t in textos)
+        assert no_es_acordeon, (
+            "hay un `if pack.is_gaming` con texto del acordeon dentro: "
+            f"L{gate.lineno}. Los tres gates legitimos (badge PRESET, boton "
+            "restaurar y el texto 'preparar el Gaming Mode') no lo llevan"
         )
     with io.open(ruta, encoding="utf-8") as fh:
         cod = _codigo_ejecutable(fh.read())
@@ -14817,6 +14859,237 @@ def test_el_texto_de_confirmacion_no_dice_apagar_0_apps():
     print("El texto de confirmacion no dice apagar 0 apps OK (TASK-063).")
 
 
+# ---------------------------------------------------------------------
+# TASK-063 iteracion 2 (mutation-auditor: FAIL con 2 supervivientes rojos).
+# Los tres tests de aqui nacen de los tres mutantes que sobrevivieron. Los tres
+# son de COBERTURA, no de codigo: el codigo de produccion estaba bien escrito y
+# lo que faltaba era un test que lo comprobara.
+# ---------------------------------------------------------------------
+
+
+def test_barrera_roja_sola_con_el_snapshot_y_la_db_en_discrepancia():
+    """#16 (S1, 🔴). G1 SOLA, con el snapshot y la DB en DESACUERDO.
+
+    Por que discrimina: el #5 pone `svchost` con la categoria ROJA en el
+    snapshot, de modo que el filtro lo descarta por DOS motivos a la vez --G5
+    sobre `p.category` y G1 sobre `target_categories`-- y quitar G1 no se nota:
+    el test sigue en verde porque la otra red sigue puesta. Aqui los dos NO
+    coinciden: el snapshot dice verde (G5 no lo frena) y la DB dice roja, asi que
+    el unico camino que puede pararlo es G1.
+
+    La discrepancia no es sintetica. `should_kill_for_gaming` recalcula la
+    categoria con `_categorize`, que vuelve a la DB, mientras que G5 lee la que
+    trae el snapshot; los dos no se llaman en el mismo instante y `load_db_async`
+    corre en un hilo que al aterrizar cambia `_db_map` y limpia `_meta_cache`.
+    Un proceso puede, por tanto, llegar a la puerta con la DB ya recalculada y
+    el snapshot con la clasificacion anterior.
+
+    Sin el fix (G1 borrado) este test muere por la LISTA CAPTURADA, no por un
+    `skipped`: `skipped` cuenta los descartes de G4/G5 y aqui no hay ninguno, que
+    es justo por lo que hace falta mirar lo que LLEGA a `kill_processes`.
+    """
+    print("Testing barrera roja sola con snapshot y DB en discrepancia...")
+    import json as _json
+    import tempfile as _tf
+    from woptimizer import config as wopt_config
+    from woptimizer.config import get_safety_badge
+    from woptimizer.services.gaming_service import GamingService
+
+    dir_db = _tf.mkdtemp(prefix="wopt_t063_s1_")
+    _dir_data_original = wopt_config._data_dir
+    pack_s, tmp_pack = _pack_service_temporal()
+    try:
+        os.makedirs(os.path.join(dir_db, "assets"), exist_ok=True)
+        with io.open(os.path.join(dir_db, "assets", "process_db.json"), "w",
+                     encoding="utf-8") as fh:
+            _json.dump({
+                # La DB dice ROJO. Es lo que el hilo de `load_db_async` puede
+                # dejar puesto despues de que el snapshot ya se construyera.
+                "svchost": {"category": _CAT_ROJO, "priority": "high",
+                            "description": "la DB lo reclasifica"},
+                "onedrive": {"category": _CAT_SYNC, "priority": "medium",
+                             "description": "el verde de control"},
+                "chrome": {"category": _CAT_NAV, "priority": "medium",
+                           "description": "el marcado que no vale"},
+            }, fh, ensure_ascii=False)
+        wopt_config._data_dir = lambda: dir_db
+
+        spy = _ProcessServiceSpy()   # __init__ carga la DB de arriba, de verdad
+        spy.snapshot = [
+            # El caso que importa: verde en el snapshot, ROJO en la DB.
+            ProcessInfo(name="svchost", full_name="svchost.exe", pid=5101,
+                        category=_CAT_SYNC),
+            # Control positivo: verde de verdad y marcada. Tiene que morir; si
+            # no, el filtro se estaria comiendo las categorias que si valen.
+            ProcessInfo(name="onedrive", full_name="onedrive.exe", pid=5102,
+                        category=_CAT_SYNC),
+            # Control negativo: verde, marcada en el snapshot pero NO en el pack.
+            ProcessInfo(name="chrome", full_name="chrome.exe", pid=5103,
+                        category=_CAT_NAV),
+        ]
+        gs = GamingService(spy, pack_s)
+        pack = Pack(id="usuario", name="Pack de usuario", default_action="kill",
+                    apps=[], target_categories=[_CAT_ROJO, _CAT_SYNC])
+
+        # Precondiciones. Sin ellas este test mediria otra cosa: si el nombre
+        # estuviera en el blacklist de G4, o si la DB no lo declarara rojo, la
+        # categoria roja marcada no seria lo unico que lo salve.
+        assert ProcessService.is_system_protected("svchost") is False, (
+            "precondicion rota: svchost esta en el blindaje de NOMBRES de G4 y "
+            "este test ya no mediria la barrera de categoria"
+        )
+        assert get_safety_badge(_CAT_SYNC)["tier"] != "danger", (
+            "precondicion rota: la categoria del snapshot tiene que ser verde, "
+            "porque el filtro de G5 no debe poder descartarlo"
+        )
+        assert spy._categorize("svchost.exe") == _CAT_ROJO, (
+            "precondicion rota: la DB de la prueba tiene que clasificar svchost "
+            f"como {_CAT_ROJO!r}; quedo en {spy._categorize('svchost.exe')!r}"
+        )
+
+        gs.execute_pack(pack)
+        nombres = [p.full_name for p in spy.capturados]
+        assert nombres == ["onedrive.exe"], (
+            "solo el verde marcado debe llegar a kill_processes. Llego "
+            f"{nombres}: 'svchost.exe' entro porque la categoria ROJA marcada no "
+            "se filtro de 'target_categories', y la DB la reclasifico a rojo "
+            "DESPUES de que el snapshot la trajera verde. Sin esa barrera, un "
+            "proceso del sistema acaba en la via de kill porque las dos fuentes "
+            "no coinciden durante un instante"
+        )
+        assert "svchost.exe" not in nombres, (
+            "svchost llego a kill_processes con la categoria roja marcada: "
+            f"capturados={nombres}"
+        )
+    finally:
+        wopt_config._data_dir = _dir_data_original
+        shutil_rmtree(dir_db)
+        os.unlink(tmp_pack)
+    print("Barrera roja sola con snapshot y DB en discrepancia OK (TASK-063).")
+
+
+def test_el_filtro_de_la_puerta_no_escribe_en_el_pack_original():
+    """#17 (S7). La barrera filtra una COPIA: el pack del usuario queda entero.
+
+    Por que discrimina: `_pack_evaluable` devuelve `pack.model_copy(update=...)`
+    y su docstring promete "NUNCA el original". Si el filtro escribiera en el
+    pack que le pasaron, el efecto NO seria visible en la ejecucion (el filtro es
+    idempotente, asi que la segunda llamada mataria lo mismo) sino en el ESTADO:
+    el objeto `Pack` que la vista tiene cargado y que `update_pack` persiste se
+    queda sin la categoria roja marcada y sin la de conflicto. Dano silencioso:
+    el usuario apaga una vez y su `profiles.json` pierde su seleccion.
+
+    El pack de este test lleva las TRES cosas que el filtro cambia (una roja que
+    sale de `target_categories`, una repetida en las dos listas que sale de
+    `start_categories`), asi que el estado alterado se ve en las dos listas.
+    """
+    print("Testing el filtro de la puerta no escribe en el pack original...")
+    from woptimizer.services.gaming_service import GamingService
+
+    pack_s, tmp_path = _pack_service_temporal()
+    try:
+        spy = _ProcessServiceSpy()
+        spy.snapshot = [
+            ProcessInfo(name="onedrive", full_name="onedrive.exe", pid=5201,
+                        category=_CAT_SYNC),
+            ProcessInfo(name="discord", full_name="discord.exe", pid=5202,
+                        category=_CAT_CHAT),
+        ]
+        gs = GamingService(spy, pack_s)
+        objetivos = [_CAT_ROJO, _CAT_SYNC]
+        arranques = [_CAT_SYNC, _CAT_CHAT]
+        pack = Pack(id="trabajo", name="Trabajo", default_action="kill", apps=[],
+                    target_categories=list(objetivos),
+                    start_categories=list(arranques))
+        gs.execute_pack(pack)
+        gs.cuenta_a_apagar(pack)
+        assert pack.target_categories == objetivos, (
+            "el filtro de la barrera escribio en el pack del usuario: "
+            f"target_categories quedo en {pack.target_categories!r} cuando se "
+            f"marcó {objetivos!r}. La categoria roja marcada se habria perdido, y "
+            "con ella la seleccion que la UI tiene cargada y que update_pack "
+            "persiste"
+        )
+        assert pack.start_categories == arranques, (
+            "el filtro de la barrera escribio en el pack del usuario: "
+            f"start_categories quedo en {pack.start_categories!r} cuando se "
+            f"marcó {arranques!r}. La resolucion del conflicto start/target es "
+            "de la COPIA, no borra la marca que el usuario puso"
+        )
+    finally:
+        os.unlink(tmp_path)
+    print("El filtro de la puerta no escribe en el pack original OK (TASK-063).")
+
+
+def test_arranque_por_categoria_toma_los_nombres_de_la_db_real():
+    """#18 (A5). Los nombres que salen de la DB son rutas, no patrones pelados.
+
+    Por que discrimina: `_patrones_de_categoria` anade `.exe` a los patrones que
+    la DB guarda SIN extension, porque `_resolver_app` exige `.exe`/`.com` en la
+    lista blanca y rechazaria el nombre pelado sin llegar a mirar el fichero.
+    Sin ese `.exe`, "arrancar por categoria" no arranca NADA: todos los nombres
+    se rechazan y la categoria entera se va a `failed`.
+
+    Los tests #4, #6 y #7 NO lo veian porque `_ServicioDeArranque` sobreescribe
+    `_patrones_de_categoria` con nombres que ya traian `.exe`: el arnés tapaba
+    justo la linea que decide. Este test NO la sobreescribe --pide los nombres a
+    la DB de verdad, cargada por `_load_local_db`-- y ademas usa el criterio de
+    abajo, que es lo que un usuario ve: no "que se llamo", sino si arranco algo.
+    """
+    print("Testing arranque por categoria toma los nombres de la db real...")
+    import json as _json
+    import tempfile as _tf
+    from woptimizer import config as wopt_config
+
+    with _tf.TemporaryDirectory() as tmp:
+        ruta_ok = os.path.join(tmp, "woptimizer_t063_db.exe")
+        _exe_de_prueba(ruta_ok)
+        # Dos claves, las dos formas que trae la DB real: una SIN extension (que
+        # es como las guarda `assets/process_db.json`) y una que ya la trae. La
+        # segunda congela que la extension no se duplique.
+        dir_db = os.path.join(tmp, "db")
+        os.makedirs(os.path.join(dir_db, "assets"), exist_ok=True)
+        with io.open(os.path.join(dir_db, "assets", "process_db.json"), "w",
+                     encoding="utf-8") as fh:
+            _json.dump({
+                "woptimizer_t063_db": {
+                    "category": _CAT_NAV, "priority": "medium",
+                    "description": "patron pelado, como en la DB real"},
+                "woptimizer_t063_otro.com": {
+                    "category": _CAT_NAV, "priority": "medium",
+                    "description": "clave que ya trae extension"},
+            }, fh, ensure_ascii=False)
+
+        _dir_data_original = wopt_config._data_dir
+        wopt_config._data_dir = lambda: dir_db
+        try:
+            svc = _ServicioDeArranque(tmp)   # carga la DB de verdad
+            assert svc._categorize("woptimizer_t063_db.exe") == _CAT_NAV, (
+                "precondicion rota: la DB de la prueba tiene que clasificar el "
+                f"nombre; quedo en {svc._categorize('woptimizer_t063_db.exe')!r}"
+            )
+            nombres = svc._patrones_de_categoria(_CAT_NAV)
+            assert nombres == ["woptimizer_t063_db.exe", "woptimizer_t063_otro.com"], (
+                "los candidatos de una categoria tienen que ser Nombres con "
+                f"extension, porque `_resolver_app` rechaza los patrones pelados: "
+                f"salieron {nombres!r}. Sin la extension, arrancar por categoria "
+                "no arranca nada y el usuario solo ve la categoria como fallida"
+            )
+            started, failed = svc.start_pack_categories([_CAT_NAV])
+            assert started == 1 and svc.lanzados == [ruta_ok], (
+                "la categoria marcada tiene que arrancar el ejecutable que "
+                f"resuelve: started={started} failed={failed} "
+                f"lanzados={svc.lanzados}"
+            )
+            assert failed == 1, (
+                "el nombre cuya extension ya traia la DB, y que no existe en "
+                f"disco, va a failed: failed={failed}"
+            )
+        finally:
+            wopt_config._data_dir = _dir_data_original
+    print("Arranque por categoria toma los nombres de la db real OK (TASK-063).")
+
+
 class _PackServiceFalso_:
     """Doble de `PackService`: solo el registro, sin disco ni cache."""
 
@@ -15041,4 +15314,15 @@ if __name__ == "__main__":
     test_default_action_stop_sigue_siendo_error_de_escritura()           # #13
     test_la_vista_no_lee_process_db_ni_repite_el_catalogo()               # #14
     test_el_texto_de_confirmacion_no_dice_apagar_0_apps()                # #15
+    # TASK-063 iteracion 2 (mutation-auditor: FAIL, 2 supervivientes rojos).
+    # Los tres nacen de mutantes que la suite no cazaba. Suite: 120 -> 123.
+    #   S1 la barrera de categoria roja se podia borrar EN SOLO: el #5 la llevaba
+    #      acompanada de G5 y por eso no lo notaba. Aqui el snapshot y la DB
+    #      discrepan, que es lo que hace `load_db_async` desde su hilo.
+    #   S7 el filtro escribia en el pack original: dano silencioso al estado.
+    #   A5 sin el `.exe` de los patrones, arrancar por categoria no arranca nada
+    #      y el doble del arnes lo tapaba sobreescribiendo `_patrones_de_categoria`.
+    test_barrera_roja_sola_con_el_snapshot_y_la_db_en_discrepancia()     # #16
+    test_el_filtro_de_la_puerta_no_escribe_en_el_pack_original()         # #17
+    test_arranque_por_categoria_toma_los_nombres_de_la_db_real()          # #18
     print("\nALL TESTS PASSED.")
