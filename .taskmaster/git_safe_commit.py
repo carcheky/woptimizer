@@ -228,16 +228,31 @@ def ancla_del_mensaje(mensaje, ids):
     identificador en un ancla y no en una decoracion: `"chore: TASK-999"` tiene
     la forma correcta y no apunta a nada, asi que NO pasa.
 
-    Tres formas y solo tres, y el orden no es de estilo: primero `TASK-` porque
-    es la unica que se puede resolver, luego las dos convenciones de ciclo. Se
-    recorre TODAS las menciones de `TASK-` en vez de quedarse con la primera,
-    porque un mensaje que dice "arrastra TASK-999 de TASK-059" tiene un ancla
-    real al final y negarsela seria un falso rojo.
+    Tres convenciones de mensaje, dos RESOLUBLES: primero `TASK-`, que es la unica
+    que se puede resolver, luego `CYCLE-NNN` y el marcador de ciclo. Se recorre
+    TODAS las menciones de `TASK-` en vez de quedarse con la primera, porque un
+    mensaje que dice "arrastra TASK-999 de TASK-059" tiene un ancla real al final
+    y negarsela seria un falso rojo.
 
-    `ids` vacio NO significa "todo valido": degrada a la FORMA, que es lo unico
-    que se puede exigir sin leer el fichero, y `ids_de_tareas` lo dice con un
-    `INFO`. Un `except` que devolviera "todo valido" seria fail-open y dejaria la
-    puerta muerta.
+    `ids` VACIO ES FAIL-CLOSED, y lo que hace esta MEDIDO (2026-10-04, corrigiendo
+    la auditoria del ciclo 52 que lo dio por fail-open): con `ids=set()`,
+    `"chore: TASK-059"` -> `False` y `"chore: TASK-999"` -> `False`. NO degrada a
+    la forma: **deja de aceptar `TASK-` por completo**, porque el `in` sobre un
+    conjunto vacio no encuentra nada. Solo las dos convenciones de ciclo siguen
+    pasando, y no dependen de ficheros. Es decir: con `tasks.json` roto la puerta
+    **para al bucle** (un mensaje con `TASK-NNN` sale con 2) y **deja pasar** los
+    mensajes que llevan ciclo.
+
+    Y es la decision correcta, aunque pese: la alternativa (aceptar `TASK-NNN` por
+    su forma cuando el fichero no se puede leer) es **exactamente el punto ciego
+    que esta tarea cierra**: un identificador que nadie puede resolver no es un
+    ancla, es una decoracion, y aceptarla por su forma devuelve el proyecto al
+    estado previo. Un `except` que devolviera "todo valido" seria peor todavia.
+    El precio es que un `tasks.json` roto **detiene el bucle**, y eso es visible al
+    instante: el `INFO` lo dice con el motivo literal y el siguiente mensaje con
+    `ciclo N` pasa igual, luego el bucle nunca queda sin salida. Fijado por test en
+    `run_tests.py` -> `test_la_puerta_del_mensaje_exige_un_ancla_resoluble` y
+    `test_los_ids_del_bolsillo_se_leen_y_la_puerta_no_se_degrada_a_forma`.
     """
     texto = mensaje or ""
     for encontrado in _RE_TASK_ANCLA.finditer(texto):
@@ -256,8 +271,15 @@ def ids_de_tareas():
     `aviso` es `None` cuando todo fue bien y un texto de UNA linea cuando no: el
     llamante lo imprime como `INFO` ANTES de la linea `WOPT_*`, que tiene que
     quedar la ultima (regla 4 del contrato). El aviso existe porque degradar en
-    silencio es indistinguishable de no degradar: el que llama tiene que poder
-    ver que la puerta esta exigiendo menos de lo que suele.
+    silencio es INVISIBLE: con `ids` vacio la puerta deja de aceptar `TASK-`
+    (fail-closed, ver `ancla_del_mensaje`), asi que el bucle se para, y si eso no
+    se dice en voz alta el agente lee un codigo 2 sin entender por que.
+
+    El aviso NO dice "exige la forma pero no la resolubilidad": eso afirmaba antes
+    y es FALSO (medido el 2026-10-04: con `ids` vacio, `TASK-059` NO pasa). Dice
+    lo que ocurre de verdad: `TASK-` no se acepta y las convenciones de ciclo
+    siguen valiendo. Un aviso que describe un comportamiento que el codigo no
+    tiene es peor que no dar aviso: manda a leer el codigo y a no fiarse de el.
     """
     ruta = os.path.join(REPO_ROOT, ".taskmaster", "tasks.json")
     try:
@@ -265,9 +287,10 @@ def ids_de_tareas():
             datos = json.load(f)
     except (OSError, ValueError) as exc:
         return set(), (
-            f".taskmaster/tasks.json ilegible ({type(exc).__name__}); la puerta exige "
-            "la FORMA del identificador pero no su resolubilidad. No es fail-open: "
-            "'TASK-NNN' sin resolver ya no pasa"
+            f".taskmaster/tasks.json ilegible ({type(exc).__name__}: {exc}); con el "
+            "bolsillo ilegible la puerta es FAIL-CLOSED: 'TASK-NNN' deja de pasar "
+            "por completo porque no se puede resolver. Los mensajes con 'ciclo N' o "
+            "'CYCLE-NNN' siguen valiendo, que no dependen de este fichero"
         )
 
     tareas = datos.get("tasks") if isinstance(datos, dict) else datos

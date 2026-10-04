@@ -59,7 +59,7 @@ Otros comandos:
 
 ```bash
 python -m woptimizer      # equivalente a run.py
-python run_tests.py       # 131 tests headless (no abre ventanas)
+python run_tests.py       # 132 tests headless (no abre ventanas)
 python verify_ui_syntax.py
 ```
 

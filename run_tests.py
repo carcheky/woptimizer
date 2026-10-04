@@ -16219,6 +16219,36 @@ def test_la_puerta_del_mensaje_exige_un_ancla_resoluble():
         "ilegible la puerta sigue admitiendo `ciclo N` y `CYCLE-NNN`, que es lo que "
         "hace que degradar no bloquee el bucle")
 
+    # --- S4: `CYCLE-NNN` esta SUBSUMIDO por el marcador de ciclo -------------
+    # La auditoria del ciclo 52 lo dio por EQUIVALENTE (barrido de 4 grafias x
+    # 10 000 numeros, 0 contraejemplos) y con razon: `CYCLE-059` es `cycle` mas
+    # separador mas numero, que es justo lo que acepta `_RE_MARCADOR_ANCLA`. O
+    # sea que `_RE_CYCLE_ANCLA` no puede ser nunca la razon de un `True`. Se
+    # comprueba aqui con el MISMO barrido, y ademas se comprueba que el codigo
+    # llega a la misma conclusion por el otro camino: si alguien borrara el
+    # `_RE_CYCLE_ANCLA` (creyendolo muerto, que es lo queinducir a leerlo mal) el
+    # marcador seguiria aceptando esos mensajes, y este test lo dice.
+    graficas = ("CYCLE-{n:03d}", "CYCLE-{n}", "ciclo-{n:03d}", "cycle-{n:03d}")
+    sin_contraejemplo = 0
+    for grafica in graficas:
+        for n in range(0, 10000):
+            mensaje = grafica.format(n=n)
+            if gsc._RE_CYCLE_ANCLA.search(mensaje) and not gsc._RE_MARCADOR_ANCLA.search(mensaje):
+                sin_contraejemplo += 1
+    assert sin_contraejemplo == 0, (
+        "`CYCLE-NNN` tiene que estar SUBSUMIDO por el marcador de ciclo (S4 del ciclo "
+        f"52, medido con un barrido de 4 grafias x 10 000 numeros) y hay "
+        f"{sin_contraejemplo} contraejemplos. Si han aparecido, los dos patrones han "
+        "divergido y hay que revisar cual manda: la prosa dice que son tres "
+        "convenciones y solo dos son resolutivas")
+
+    # Y la prosa no puede afirmar mas de lo que el codigo tiene: el motivo de
+    # rechazo nombra las TRES convenciones que el producto acepta.
+    for forma in ("TASK-NNN", "CYCLE-NNN", "ciclo N"):
+        assert forma in gsc.MOTIVO_SIN_ANCLA, (
+            f"el motivo tiene que seguir nombrando {forma!r}: el rechazo es la unica "
+            "fuente de la que dispone quien no abre el codigo")
+
     # --- La puerta y el validador no pueden divergir --------------------------
     import validate_docs as vd
     assert gsc._RE_MARCADOR_ANCLA.pattern == vd._RE_MARCADOR_DE_CICLO.pattern, (
@@ -16227,6 +16257,39 @@ def test_la_puerta_del_mensaje_exige_un_ancla_resoluble():
         f"validador={vd._RE_MARCADOR_DE_CICLO.pattern!r}. Son dos COPIAS del mismo "
         "patron y lo unico que las ata es este assert: sin el, cada una se desfasaria "
         "por su cuenta y un commit pasaria la puerta que el historial no veria")
+
+    # --- S6: el `\b` de salida del ancla de `TASK-` ---------------------------
+    # `TASK-12345` NO puede casar con `TASK-1234`: sin el `\b` de salida, el
+    # cuantificador `\d{1,4}` se quedaria con los cuatro primeros digitos y
+    # resolveria un id que no existe. Con `{"TASK-1234"}` el mensaje de cinco
+    # digitos tiene que ser RECHAZADO.
+    #
+    # Y el caso que la primera redaccion de esta fila dramatizo de mas: con SU
+    # PROPIO id (`{"TASK-12345"}`) tampoco pasa, y no es un fallo. `\d{1,4}` pone
+    # un tope de cuatro digitos a proposito (D1), luego un id de cinco no es una
+    # forma aceptada. Es justo lo que hace SEGURO el ancla: como el patron no
+    # puede leer cinco digitos, `TASK-12345` no puede PREFIJAR a `TASK-1234`.
+    # El limite real de esa decision, y el que hay que vigilar, es el ultimo
+    # aserto: un id de `tasks.json` con mas de cuatro digitos dejaria al bucle
+    # sin poder commitear siquiera su propio trabajo.
+    assert gsc.ancla_del_mensaje("chore: TASK-12345", {"TASK-1234"})[0] is False, (
+        "`TASK-12345` NO puede pasar con un conjunto que solo tiene `TASK-1234`: "
+        "el `\\b` de salida se ha perdido y el cuantificador se queda con cuatro "
+        "digitos de un id de cinco. Con el `\\b` quitado este mensaje pasa")
+    assert gsc.ancla_del_mensaje("chore: TASK-12345", {"TASK-12345"})[0] is False, (
+        "y con SU propio id tampoco: el tope `\\d{1,4}` deja los ids de cinco "
+        "digitos fuera de la forma aceptada, que es la decision de D1 y lo que "
+        "impide que un id largo prejije a uno corto")
+    assert gsc.ancla_del_mensaje("chore: TASK-1234", {"TASK-12345"})[0] is False, (
+        "y al reves tampoco: `TASK-1234` no es un prefijo de un ancla")
+    fuera_de_forma = sorted(i for i in _ids_reales_de_tasks_json()
+                            if not gsc._RE_TASK_ANCLA.fullmatch(i))
+    assert not fuera_de_forma, (
+        f"todos los ids de `tasks.json` tienen que caber en la forma `TASK-[0-9]"
+        f"{{1,4}}` de la puerta, y estos no caben: {fuera_de_forma!r}. Un id de mas "
+        "de cuatro digitos haria que el bucle no pudiera commitear ni su propio "
+        "trabajo con `TASK-`, que es el precio del tope y hay que vigilarlo porque "
+        "no se manifiesta hasta que hay una tarea TASK-10000")
 
     # --- El motivo de rechazo es imprimible en la consola del host -----------
     motivo = gsc.MOTIVO_SIN_ANCLA
@@ -16246,7 +16309,148 @@ def test_la_puerta_del_mensaje_exige_un_ancla_resoluble():
     assert gsc.ancla_del_mensaje("fix(tooling): puerta (TASK-059)", ids_reales)[0], (
         "el mensaje de esta tarea tiene que pasar su propia puerta: si no, el "
         "wrapper esta rechazando el trabajo que lo instala")
-    print("Puerta del mensaje OK: 7 rechazos, 7 aceptaciones y el motivo completo.")
+    print("Puerta del mensaje OK: 7 rechazos, 7 aceptaciones, S4 sin contraejemplos, "
+          "S6 en el `\\b` de salida y el motivo completo.")
+
+
+def test_los_ids_del_bolsillo_se_leen_y_la_puerta_es_fail_closed():
+    """TASK-059 iteracion 3: `ids_de_tareas`, MEDIDO 0 apariciones hasta aqui.
+
+    La auditoria del ciclo 52 reporto que `ids_de_tareas` era fail-open ("deja
+    la puerta aceptando cualquier `TASK-NNN` con `tasks.json` ilegible"). Es
+    **FALSO**: con `ids=set()`, `"chore: TASK-059"` -> `False`. El `in` sobre un
+    conjunto VACIO no encuentra nada, luego la puerta **deja de aceptar `TASK-`
+    por completo** (fail-CLOSED) y el bucle se para mientras el fichero este
+    roto. Peor que eso: tres fuentes (el docstring de `ancla_del_mensaje`, el
+    aviso de `ids_de_tareas` y D5 de la propuesta) describian degradaciones
+    INCOMPATIBLES con ese codigo. Se eligio el fail-closed y se corrigieron las
+    tres, porque la alternativa ("exigir la forma y no la resolubilidad") es
+    exactamente el punto ciego que esta tarea cierra.
+
+    Este test fija el comportamiento ELEGIDO, y lo hace sobre una COPIA del arbol
+    con el tablero roto, que es la unica forma de llegar ahi: `REPO_ROOT` se
+    deriva de la ruta del propio wrapper, luego una copia en `<raiz>/.taskmaster/`
+    hace que el producto lea el tablero de la copia. Con eso se comprueba el
+    `ids_de_tareas()` de verdad y ademas, por SUBPROCESO, el `INFO` de
+    degradacion (S9) y que sale **antes** de la linea `WOPT_*`.
+    """
+    print("Ids del bolsillo: lectura real, fail-closed y aviso antes del rechazo...")
+    import importlib.util as _ilu
+    import json as _json
+    import shutil as _shutil
+    import subprocess
+    import sys as _sys
+    import tempfile as _tempfile
+
+    gsc = _cargar_el_wrapper()
+
+    # --- 1) El tablero real se lee entero y sin aviso ------------------------
+    ids, aviso = gsc.ids_de_tareas()
+    assert aviso is None, f"el tasks.json real se lee sin aviso y sale: {aviso!r}"
+    reales = _ids_reales_de_tasks_json()
+    assert reales <= ids, (
+        "los ids del producto tienen que CONTENER los de `tasks.json`: si pierde "
+        f"alguno, la puerta rechazaria commits legitimos. producto={len(ids)} "
+        f"tareas={len(reales)} faltan={sorted(reales - ids)[:5]!r}")
+
+    # --- 2) FAIL-CLOSED, y no "degrada a la forma" ---------------------------
+    # Si alguien "arregla" la degradacion para que `TASK-` pase por su forma,
+    # estas aserciones mueren, que es lo que tienen que hacer: esa version es el
+    # punto ciego que TASK-059 viene a cerrar.
+    for mensaje in ("chore: TASK-059", "chore: TASK-001", "chore: TASK-999"):
+        ok, motivo = gsc.ancla_del_mensaje(mensaje, set())
+        assert ok is False, (
+            f"{mensaje!r} con el bolsillo ILEGIBLE tiene que ser RECHAZADO (fail-"
+            f"closed): sin `tasks.json` no hay nada que resolver y aceptar la "
+            f"FORMA seria el punto ciego. Devolvio ok={ok!r} motivo={motivo!r}")
+    for mensaje in ("chore: ciclo 52", "chore: CYCLE-052", "chore: cycle 52"):
+        ok, _ = gsc.ancla_del_mensaje(mensaje, set())
+        assert ok is True, (
+            f"{mensaje!r} NO depende de `tasks.json` y tiene que seguir pasando con "
+            f"el tablero roto: si no, un tablero ilegible deja al bucle sin ninguna "
+            f"salida. Devolvio ok={ok!r}")
+
+    # --- 3) Una COPIA del arbol con el tablero roto, y el producto de verdad --
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    copia = _tempfile.mkdtemp(prefix="wopt_t059_bolsillo_")
+    testigo = os.path.join(raiz, "_t059_bolsillo_testigo.txt")
+    try:
+        _shutil.copytree(os.path.join(raiz, ".taskmaster"),
+                         os.path.join(copia, ".taskmaster"),
+                         ignore=_shutil.ignore_patterns("__pycache__"))
+        ruta_wrapper_copia = os.path.join(copia, ".taskmaster", "git_safe_commit.py")
+        with open(ruta_wrapper_copia, "w", encoding="utf-8") as fh:
+            fh.write(io.open(os.path.join(raiz, ".taskmaster",
+                                          "git_safe_commit.py"),
+                             encoding="utf-8").read())
+        with open(os.path.join(copia, ".taskmaster", "tasks.json"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("{esto no es json")
+
+        spec = _ilu.spec_from_file_location("wopt_gsc_roto", ruta_wrapper_copia)
+        roto = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(roto)
+        ids_roto, aviso_roto = roto.ids_de_tareas()
+        assert ids_roto == set(), (
+            "con el tablero corrupto no puede salir NINGUN id; salieron "
+            f"{sorted(ids_roto)[:5]!r}")
+        assert aviso_roto, (
+            "y tiene que haber AVISO: sin el, el agente lee un codigo 2 sin "
+            "entender por que, y degradar en silencio es invisible")
+        assert "\n" not in aviso_roto, (
+            f"el aviso va en UNA linea `INFO` (regla 4 del contrato): {aviso_roto!r}")
+        assert aviso_roto == aviso_roto.encode("ascii", "strict").decode("ascii"), (
+            f"y en ASCII puro (trampa #16, la consola es cp1252): {aviso_roto!r}")
+        for token in ("FAIL-CLOSED", "TASK-", "ciclo N"):
+            assert token in aviso_roto, (
+                f"el aviso tiene que decir {token!r}: tiene que describir lo que el "
+                "codigo HACE (`TASK-` deja de pasar y las convenciones de ciclo "
+                f"siguen valiendo). Antes decia lo contrario. Aviso: {aviso_roto!r}")
+
+        # --- 4) S9: el `INFO` sale y sale ANTES de la linea `WOPT_*` ----------
+        # Por SUBPROCESO, con la copia degradada y un arbol de trabajo sucio por
+        # un fichero untracked que este test crea y borra (el truco declarado del
+        # ciclo 52: `GIT_WORK_TREE` lo impone el wrapper y no se puede redirigir).
+        d_hist = os.path.join(copia, "historial")
+        git_dir = _repo_temporal_de_un_commit(d_hist, "chore(release): fixture del INFO")
+        for clave, valor in (("user.email", "t059@woptimizer.invalid"),
+                             ("user.name", "t059"), ("commit.gpgsign", "false")):
+            _git_de_fixture(["config", clave, valor], d_hist)
+        with open(testigo, "w", encoding="utf-8") as fh:
+            fh.write("testigo\n")
+        env = os.environ.copy()
+        env["GIT_DIR"] = git_dir
+        env["GIT_WORK_TREE"] = raiz
+        r = subprocess.run(
+            [_sys.executable, ruta_wrapper_copia, "chore(manual): sin ancla"],
+            cwd=raiz, env=env, capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=120)
+        lineas = [l for l in (r.stdout or "").splitlines() if l.strip()]
+        assert r.returncode == 2, (
+            f"con el tablero degradado y un mensaje sin ancla tiene que salir con 2; "
+            f"salio con {r.returncode}. stdout={r.stdout!r}")
+        assert any(l.startswith("INFO ancla-mensaje:") for l in lineas), (
+            "el aviso de degradacion tiene que LLEGAR: sin el, el agente solo ve un "
+            f"codigo 2. Lineas: {lineas!r}")
+        assert lineas[-1].startswith("WOPT_USAGE ancla-mensaje"), (
+            "la linea `WOPT_*` tiene que ser la ULTIMA (regla 4 del contrato) y la "
+            f"ultima fue {lineas[-1]!r}. Lineas: {lineas!r}")
+        indice_info = next(i for i, l in enumerate(lineas)
+                           if l.startswith("INFO ancla-mensaje:"))
+        assert indice_info < len(lineas) - 1, (
+            "el `INFO` de degradacion tiene que imprimirse ANTES de la `WOPT_*`, no "
+            f"despues: {lineas!r}")
+        # Y el staged tiene que seguir vacio: el aviso no puede costar un `add -A`.
+        staged = _git_de_fixture(["diff", "--cached", "--name-only"], d_hist)
+        assert not [l for l in staged.splitlines() if l.strip()], (
+            f"el rechazo con tablero degradado no puede dejar nada stageado: {staged!r}")
+    finally:
+        if os.path.exists(testigo):
+            os.unlink(testigo)
+        _shutil.rmtree(copia, ignore_errors=True)
+    print("Ids del bolsillo OK: tablero real leido, fail-closed en los tres mensajes "
+          "con `TASK-`, el ciclo sigue pasando con el fichero roto, aviso literal y "
+          "`INFO` antes del rechazo sin tocar el indice.")
 
 
 def test_la_puerta_se_coloca_despues_del_noop_y_antes_de_add():
@@ -16562,6 +16766,13 @@ def test_las_plantillas_del_bucle_pasan_la_puerta_del_producto():
         f"se esperaban al menos 5 plantillas literales y se han encontrado "
         f"{len(encontradas)}: {encontradas!r}. Si el bucle ha cambiado de forma, "
         "este test hay que actualizarlo, no relajarlo")
+    # T4 (ciclo 52): el suelo era `>= 5` y con el FIXTADO son 6. Un suelo que se
+    # cumple con una unidad de mas no vigila nada; se sube al numero real para que
+    # perder una plantilla se vea al instante.
+    assert len(encontradas) == 6, (
+        f"han aparecido {len(encontradas)} plantillas literales del comando y el "
+        f"suelo es 6: {encontradas!r}. O se perdio una (eso es lo que hay que ver), "
+        "o se anadio otra y el suelo tiene que moverse a mano con su razon")
     assert not rechazadas, (
         "hay plantillas del bucle que la puerta del producto RECHAZA, y eso mata el "
         "bucle en su primer commit. Con identificador en la plantilla, no en una "
@@ -16614,6 +16825,25 @@ def test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico():
     with open(os.path.join(esqueleto, "validate_docs.py"),
               encoding="utf-8") as fh:
         fuente_validador = fh.read()
+    # Los techos se LEEN del producto, y aqui se AFIRMA SU VALOR contra un
+    # LITERAL escrito aqui. MEDIDO el 2026-10-04 (M6 y M6b de la auditoria del
+    # ciclo 52): la primera redaccion de este test se limitaba a `> 0` y
+    # dimensionaba la fixture con `MAX_... + 1`, con lo que subir el techo a 999
+    # daba el mismo veredicto que dejarlo en 3. Una asercion que se cumple con
+    # cualquier valor no mira el valor. Los tres y tres son los MEDIDOS el
+    # 2026-10-04: 3 hashes que no resuelven (5623629, ee4b753, 12b9c3bf) y 2
+    # ciclos sin hash (1 y 2). Si el residuo cambia, este assert falla y obliga a
+    # mirar POR QUE, que es lo que un suelo tiene que hacer.
+    assert vd.MAX_HASHES_PERDIDOS == 3, (
+        f"MAX_HASHES_PERDIDOS vale {vd.MAX_HASHES_PERDIDOS} y el MEDIDO el 2026-10-04 "
+        "es 3 (5623629 del ciclo 30, ee4b753 del 31 y 12b9c3bf del 33, los tres con "
+        "el objeto perdido en el .git del VFS). Si ha cambiado, el cambio es real y "
+        "tiene que ir con su razon en el comentario de la constante; si no lo es, "
+        "este assert acaba de impedir que un techo se moviera en silencio")
+    assert vd.MAX_CICLOS_SIN_HASH == 2, (
+        f"MAX_CICLOS_SIN_HASH vale {vd.MAX_CICLOS_SIN_HASH} y el MEDIDO el 2026-10-04 "
+        "es 2 (los ciclos 1 y 2, que ningun subject del historial nombra). Misma "
+        "regla: si cambia de verdad, con su razon escrita")
     assert isinstance(vd.MAX_HASHES_PERDIDOS, int) and vd.MAX_HASHES_PERDIDOS > 0, (
         "el producto tiene que declarar MAX_HASHES_PERDIDOS: sin la constante el "
         "techo no es un suelo ejecutado sino un numero en un docstring")
@@ -16762,6 +16992,8 @@ def test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico():
     # una perdida y no cuatro. Por eso los hashes muertos de esta fila son
     # DISTINTOS, y esta nota esta porque la primera redaccion de la fila usaba
     # el mismo cuatro veces y pasaba en verde por el motivo equivocado.
+    TECHO_HASHES = 3          # literal; arriba hay un assert de igualdad
+    TECHO_CICLOS = 2          # literal; idem
     MUERTOS = ["deadbee", "beefbee", "cafebabe", "badc0de", "f00dfeed"]
     for h in MUERTOS:
         assert vd.RE_HASH_CORTO.fullmatch(h), (
@@ -16770,23 +17002,23 @@ def test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico():
         assert h not in _git_de_fixture(["cat-file", "--batch-check"], d_hist), (
             f"pre-vuelo: el hash muerto de la fixture {h} existe de verdad")
 
-    escribir(journal(muertos=MUERTOS[:vd.MAX_HASHES_PERDIDOS + 1],
+    escribir(journal(muertos=MUERTOS[:TECHO_HASHES + 1],
                      perdidos=[{"hash": h, "causa": "VFS_CORRUPTO",
                                 "nota": "nota de la fixture"} for h
-                               in MUERTOS[:vd.MAX_HASHES_PERDIDOS + 1]]))
+                               in MUERTOS[:TECHO_HASHES + 1]]))
     errors, _ = asentar()
     assert any("el techo es" in x for x in de_check_9(errors)), (
-        f"{vd.MAX_HASHES_PERDIDOS + 1} perdidas declaradas tienen que superar el "
-        f"techo ({vd.MAX_HASHES_PERDIDOS}) y salir como FAIL. Errores: "
+        f"{TECHO_HASHES + 1} perdidas declaradas (LITERAL) tienen que superar el "
+        f"techo del producto ({vd.MAX_HASHES_PERDIDOS}) y salir como FAIL. Errores: "
         f"{de_check_9(errors)!r}")
 
-    escribir(journal(muertos=MUERTOS[:vd.MAX_HASHES_PERDIDOS],
+    escribir(journal(muertos=MUERTOS[:TECHO_HASHES],
                      perdidos=[{"hash": h, "causa": "VFS_CORRUPTO",
                                 "nota": "nota de la fixture"} for h
-                               in MUERTOS[:vd.MAX_HASHES_PERDIDOS]]))
+                               in MUERTOS[:TECHO_HASHES]]))
     errors, _ = asentar()
     assert not de_check_9(errors), (
-        f"exactamente {vd.MAX_HASHES_PERDIDOS} perdidas declaradas tienen que PASAR "
+        f"exactamente {TECHO_HASHES} perdidas declaradas (LITERAL) tienen que PASAR "
         f"(el techo es >=, no >): si no, el suelo avisa de mas y entrena a ignorar el "
         f"semaforo. Errores: {de_check_9(errors)!r}")
 
@@ -16794,13 +17026,14 @@ def test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico():
     sin_hash_de_mas = [{"cycle": 100 + i, "commits": [],
                         "commits_perdidos": [{"causa": "NUNCA_DECLARADO",
                                               "nota": "nota de la fixture"}]}
-                       for i in range(vd.MAX_CICLOS_SIN_HASH + 1)]
+                       for i in range(TECHO_CICLOS + 1)]
     escribir([{"cycle": 1, "commits": [HASH_REAL]}] + sin_hash_de_mas)
     errors, _ = asentar()
     assert any("ciclo(s) sin hash declarado" in x and "el techo es" in x
                for x in de_check_9(errors)), (
-        f"{vd.MAX_CICLOS_SIN_HASH + 1} ciclos sin hash declarado tienen que superar "
-        f"el techo ({vd.MAX_CICLOS_SIN_HASH}). Errores: {de_check_9(errors)!r}")
+        f"{TECHO_CICLOS + 1} ciclos sin hash declarado (LITERAL) tienen que superar "
+        f"el techo del producto ({vd.MAX_CICLOS_SIN_HASH}). Errores: "
+        f"{de_check_9(errors)!r}")
 
     # Y un ciclo sin hash cuya declaracion NO lleva nota es un FAIL: no hay hecho
     # que comprobar y no hay nada que leer. La fila DECLARA la perdida sin `nota`
@@ -16820,10 +17053,10 @@ def test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico():
              + [{"cycle": 100 + i, "commits": [],
                  "commits_perdidos": [{"causa": "NUNCA_DECLARADO",
                                        "nota": "nota de la fixture"}]}
-                for i in range(vd.MAX_CICLOS_SIN_HASH)])
+                for i in range(TECHO_CICLOS)])
     errors, _ = asentar()
     assert not de_check_9(errors), (
-        f"{vd.MAX_CICLOS_SIN_HASH} ciclos sin hash, cada uno con su nota, tienen que "
+        f"{TECHO_CICLOS} ciclos sin hash (LITERAL), cada uno con su nota, tienen que "
         f"PASAR. Errores: {de_check_9(errors)!r}")
 
     # ==== (e) AC-B5: la linea de informe, con las cifras VIVAS de la fixture =
@@ -16848,6 +17081,28 @@ def test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico():
     assert "0 + 0" not in linea, (
         f"la linea de informe jamas puede ser '0 + 0' en verde: seria un falso "
         f"verde con la forma de un acierto. Linea: {linea!r}")
+
+    # M10: la fila de arriba construye UN ciclo CONFORME y nunca miraba la linea
+    # de informe de ese caso, o sea que el recuento de "conformes a R1" no lo
+    # comprobaba nadie con un valor > 0. Aqui la misma forma con una sola entrada
+    # conforme: la linea tiene que decir 1 conforme y 0 perdidos declarados, que es
+    # la combinacion que ninguna otra fila del test produce.
+    escribir(journal(conformes=[HASH_REAL]))
+    errors, ok = asentar()
+    assert not de_check_9(errors), (
+        f"un solo ciclo con un hash que resuelve y limpio de forma tiene que dar 0 "
+        f"fallos: {de_check_9(errors)!r}")
+    linea_uno = [o for o in ok if "campo 'commits' del journal" in o]
+    assert linea_uno, "esta fila tambien tiene que imprimir su linea de informe"
+    linea_uno = linea_uno[0]
+    for esperado in ("1 entrada(s) con 'cycle'", "1 con lista de hash(es)",
+                     "1 conforme(s) a R1", "0 sin hash declarado",
+                     "0 hash(es) perdido(s) declarados"):
+        assert esperado in linea_uno, (
+            f"con UN ciclo conforme la linea tiene que decir {esperado!r} y es "
+            f"{linea_uno!r}. El numero de conformes no lo miraba ninguna fila: sin "
+            "una asercion sobre el, el conteo de R1 podria quedarse en 0 para "
+            "siempre sin que nadie se entere")
 
     # (f) Journal ILEGIBLE: el check 9 NO acusa, y la razon es una REGLA, no una
     # comodidad. MEDIDO el 2026-10-04: con un `errors.append` aqui, el
@@ -16900,6 +17155,97 @@ def test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico():
         f"fabricarlas. Lineas ok del check 9: {[o for o in ok if 'commits' in o]!r}")
     assert "not a git repository" in linea_repo[0] or "rev-parse" in linea_repo[0], (
         f"el motivo tiene que ser LITERAL: {linea_repo[0]!r}")
+
+    # (h) M9: el PRE-VUELO, y el caso que lo hace necesario. MEDIDO el 2026-10-04
+    # con las tres cifras reales: un repo `git init` **sin commits** responde
+    # `cat-file --batch-check` con **0** y `missing` para TODO, mientras que
+    # `rev-parse --verify HEAD` sale con 128 ("Needed a single revision"). O sea
+    # que el `returncode != 0` de la lectura NO lo distingue y, sin pre-vuelo, el
+    # check acusaria las entradas del journal como "no resuelven" y SUGERIRIA
+    # declararlas perdidas: fabricar una perdida. Este repo tiene que producir el
+    # motivo con `SIN COMPROBAR` y CERO(hash) contados como no declarados.
+    d_vacio = os.path.join(tmp, "historial_sin_commits")
+    os.makedirs(d_vacio, exist_ok=True)
+    # `git init` sobre el DIRECTORIO, no sobre `<dir>/.git`: inicializar la ruta
+    # de `.git` crea un repo ANIDADO (`<dir>/.git/.git`) y el `GIT_DIR` de
+    # despues no es un repositorio.
+    _git_de_fixture(["init", "-q", d_vacio], tmp)
+    # Pre-vuelo del propio fixture, con `subprocess` y NO con `_git_de_fixture`:
+    # ese envoltorio AFIRMA que el comando sale con 0, y aqui tiene que salir con
+    # 128 a proposito, luego wrapper y proposito son incompatibles. La primera
+    # redaccion de esta fila lo hizo con el envoltorio y no pudo ni mirar.
+    import subprocess as _sp
+    import tempfile as _tf
+    _env_pre = os.environ.copy()
+    _env_pre.pop("GIT_DIR", None)
+    _env_pre.pop("GIT_WORK_TREE", None)
+    _env_pre["GIT_DIR"] = os.path.join(d_vacio, ".git")
+    _env_pre["GIT_WORK_TREE"] = d_vacio
+    r_pre = _sp.run(["git", "rev-parse", "--verify", "HEAD"], cwd=d_vacio,
+                    env=_env_pre, capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=60)
+    det_pre = ((r_pre.stderr or "") + (r_pre.stdout or "")).strip()
+    assert r_pre.returncode != 0 and "Needed a single revision" in det_pre, (
+        "el fixture de esta fila tiene que ser un repo SIN commits (rc != 0 con "
+        f"'Needed a single revision') y salio rc={r_pre.returncode} "
+        f"detalle={det_pre!r}. Con commits, esta fila no mide el pre-vuelo: "
+        "mediria un repo sano, que es donde el bug no aparece")
+    escribir(journal(muertos=[HASH_MUERTO]))
+    os.environ["GIT_DIR"] = os.path.join(d_vacio, ".git")
+    errors, ok = _informe_del_validador_real(esqueleto)
+    fallos = de_check_9(errors)
+    assert not any("no lo declara" in x for x in fallos), (
+        "un repo SIN COMMITS responde 'missing' para todo y eso NO puede acabar en "
+        "'el hash no resuelve y no lo declara': seria fabricar perdidas. Fallos: "
+        f"{fallos!r}")
+    linea_vacio = [o for o in ok if "SIN COMPROBAR" in o and "commits' del journal" in o]
+    assert linea_vacio, (
+        "el pre-vuelo tiene que producir el motivo de la no verificacion: sin el, "
+        "'cero errores' se cumple tambien con un check que mira un repo caido. "
+        f"Lineas: {[o for o in ok if 'commits' in o]!r}")
+    assert "Needed a single revision" in linea_vacio[0] or \
+        "rev-parse --verify HEAD devolvio" in linea_vacio[0], (
+        f"y el motivo tiene que ser el LITERAL de git: {linea_vacio[0]!r}")
+
+    # (i) M1c: un nombre con ESPACIO no puede certificarse como existente.
+    # MEDIDO: `f"{hash} (architect)"` se devuelve TAL CUAL y git responde
+    # `e60d2a0 (architect) missing`, que tiene TRES campos: contando campos se
+    # certificaba como existente un objeto que no existe. Con la forma exacta
+    # (`<sha> <tipo> <tamano>`) tiene que contar como NO resuelto.
+    # Y el criterion de la respuesta, sobre el repo BUENO. OJO al estado: la fila
+    # (h) deja `GIT_DIR` apuntando al repo sin commits, y sin restaurarlo aqui la
+    # lectura falla por el pre-vuelo y este aserto mide el repo equivocado. Una
+    # fila que depende del `GIT_DIR` que dejo la anterior tiene que fijarlo ella
+    # misma, y no confiar en que la siguiente lo encuentre.
+    os.environ["GIT_DIR"] = os.path.join(d_hist, ".git")
+    resolver, motivo_resolver = vd._hashes_que_existen(
+        esqueleto, [f"{HASH_REAL} (architect)", HASH_REAL])
+    assert motivo_resolver is None, (
+        f"la lectura tiene que ser buena: motivo={motivo_resolver!r}")
+    assert HASH_REAL in resolver, (
+        f"el hash limpio tiene que resolverse: {resolver!r}")
+    assert f"{HASH_REAL} (architect)" not in resolver, (
+        "un nombre con ESPACIO tiene que contar como NO resuelto: `cat-file` lo "
+        "devuelve tal cual y responde `<hash> (architect) missing`, que con el "
+        "criterio de 'tres campos o mas' se certificaba como existente. Mutante "
+        "M1c, fail-open en la regla de resolubilidad")
+    # Y el mutante al reves: con el criterio viejo, ese nombre SI entra. Se comprueba
+    # con una asercion sobre el patron, para que el fallo sea el del criterio.
+    assert vd._RESPUESTA_DE_OBJETO.fullmatch(
+        f"{HASH_REAL} (architect) missing") is None, (
+        "el patron de la respuesta tiene que RECHAZAR una linea con espacios: si la "
+        "acepta, M1c vuelve")
+    # Y tiene que ACEPTAR la forma REAL de un objeto, que lleva el sha COMPLETO:
+    # con el hash corto esta asercion fallaba, porque `_RESPUESTA_DE_OBJETO` pide
+    # 40 o 64 hex y git devuelve el sha entero, no el abreviado.
+    sha_completo = _git_de_fixture(["rev-parse", "HEAD"], d_hist).strip()
+    assert len(sha_completo) in (40, 64), (
+        f"el fixture tiene que dar un sha completo de verdad y ha dado {len(sha_completo)}"
+        f" caracteres: {sha_completo!r}")
+    assert vd._RESPUESTA_DE_OBJETO.fullmatch(
+        f"{sha_completo} commit 120") is not None, (
+        "y tiene que ACEPTAR la forma real de un objeto: `<sha completo> <tipo> "
+        f"<tamano>`. Sha de la fixture: {sha_completo!r}")
 
     for clave, valor in previos.items():
         if valor is None:
@@ -17361,6 +17707,10 @@ if __name__ == "__main__":
     # seis llamadas van ANTES del marcador headless porque ninguna abre una
     # ventana: son tooling puro, y el reparto lo deriva el check 7 con `ast`.
     test_la_puerta_del_mensaje_exige_un_ancla_resoluble()
+    # TASK-059 iteracion 3 (mutacion, ciclo 52): `ids_de_tareas` MEDIDO 0
+    # apariciones en toda la suite, y su comportamiento (fail-closed, no
+    # "degrada a la forma") estaba contradicho por tres fuentes. Suite: 131 -> 132.
+    test_los_ids_del_bolsillo_se_leen_y_la_puerta_es_fail_closed()
     test_la_puerta_se_coloca_despues_del_noop_y_antes_de_add()
     test_el_rechazo_de_la_puerta_dice_que_se_espera_y_por_que_importa()
     test_las_plantillas_del_bucle_pasan_la_puerta_del_producto()

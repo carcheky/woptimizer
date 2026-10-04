@@ -374,6 +374,18 @@ def _comprobar_ancla_de_commits(root, errors, ok, journal_cycles):
 # esa clase de bug.
 RE_HASH_CORTO = re.compile(r"[0-9a-f]{7,40}")
 
+# La FORMA EXACTA con la que git responde "este objeto existe": sha completo,
+# tipo, tamano. MEDIDO el 2026-10-04, y por que no basta con contar campos:
+# un nombre con espacio se devuelve TAL CUAL, luego
+# `f"{hash} (architect)"` responde `e60d2a0 (architect) missing`, que tiene tres
+# campos y certificaba como existente un objeto que no existe (M1c del ciclo 52).
+# El sha va de 40 (sha1) o 64 (sha256) hex, el tipo es una palabra y el tamano un
+# entero, que es la unica forma en la que esta respuesta no puede ser un `missing`
+# disfrazado.
+_RESPUESTA_DE_OBJETO = re.compile(
+    r"(?:[0-9a-f]{40}|[0-9a-f]{64}) [a-z]+ \d+"
+)
+
 # R3 -- el registro de perdidas vive EN EL PROPIO JOURNAL, por entrada, y solo
 # admite lo que se puede PROBAR que se perdio. El vocabulario es CERRADO a
 # proposito: una causa redactada en libertad es infalsable (no se puede contar,
@@ -450,11 +462,6 @@ def _hashes_que_existen(root, hashes):
     uno, y un validador que se cuelga por multiplicar git por el numero de filas
     se acabaomisando por rendimiento en vez de por verdad.
 
-    Solo se cuenta como EXISTENTE una linea de tres campos o mas (`<sha> <tipo>
-    <tamano>`). Una abreviacion AMBIGUA sale con dos campos y no certifica que
-    el objeto sea el que se quiso: se trata como no existente, que es la
-    direccion conservadora (un hash ambiguo se extiende y se vuelve a escribir).
-
     `motivo` es `None` cuando la lectura fue buena y el texto LITERAL del fallo
     cuando no. Un `except: return set()` devolveria "nada resuelve", que es
     justo la entrada que empuja al check a declarar perdidas de mentira: lo que
@@ -470,18 +477,39 @@ def _hashes_que_existen(root, hashes):
     )
     env["GIT_WORK_TREE"] = root
 
-    # PRE-VUELO, y no es decorativo. MEDIDO el 2026-10-04: con un `GIT_DIR` que
-    # es un directorio VACIO (no un repo), `git cat-file --batch-check` sale con
-    # 0 y responde `missing` para TODO lo que se le pide. Sin esta comprobacion
-    # el check acusaria las ~100 entradas del journal como "no resuelven" y
-    # sugeriria declararlas perdidas: fabricar una perdida es la peor direccion
-    # en la que se puede equivocar un ancla. El criterio es el MISMO que usa
+    # PRE-VUELO, y no es decorativo. MEDIDO el 2026-10-04 con las TRES cifras
+    # reales (la primera redaccion de este comentario afirmaba una FALSA, y una
+    # medicion inventada en un comentario es peor que un comentario sin medicion):
+    #
+    #   | GIT_DIR                                | rev-parse --verify HEAD | batch-check |
+    #   |----------------------------------------|-------------------------|-------------|
+    #   | directorio VACIO (no es repo)          | 128                      | 128         |
+    #   | `git init` SIN commits                 | 128 (Needed a single revision) | **0 + `missing`** |
+    #   | `git init` CON un commit               | 0                        | 0 + `missing`|
+    #
+    # El caso que necesita el pre-vuelo es el DEL MEDIO: un repo sin commits
+    # responde `0` y dice `missing` para TODO lo que se le pide, y el
+    # `returncode != 0` de la lectura NO lo distingue. Sin esta comprobacion el
+    # check acusaria las ~100 entradas del journal como "no resuelven" y sugeriria
+    # declararlas perdidas: fabricar una perdida es la peor direccion en la que se
+    # puede equivocar un ancla. El criterio es el MISMO que usa
     # `git_safe_commit.validar_repo` (`rev-parse --verify HEAD`), para que los dos
-    # componentes_NO puedan discrepar sobre que es un repo.
+    # componentes no puedan discrepar sobre que es un repo. Y un journal con
+    # hashes SIEMPRE viene de commits que existen, luego exigir HEAD no recorta
+    # ningun caso legitimo.
     motivo_pre = _leer_el_repo_si_lo_hay(root, env)
     if motivo_pre is not None:
         return set(), motivo_pre
 
+    # Solo se cuenta como EXISTENTE la respuesta con la FORMA EXACTA de un objeto:
+    # `<sha-completo> <tipo> <tamano>`. MEDIDO el 2026-10-04 (M1c del ciclo 52): un
+    # nombre con ESPACIO se devuelve tal cual, y `f"{hash} (architect)"` responde
+    # `e60d2a0 (architect) missing`, que tiene TRES campos: contar campos
+    # certificaba como existente un objeto que no existe, que es fail-open en la
+    # regla de resolubilidad. Se exige el sha hexadecimal completo, un tipo
+    # conocido y un tamano numerico, y cualquier otra forma se trata como
+    # inexistente (la direccion conservadora: un hash raro se extiende y se
+    # vuelve a escribir).
     args = ["git", "cat-file", "--batch-check"]
     motivo = None
     for _intento in (1, 2):                      # un reintento por el spawn EPERM
@@ -510,7 +538,7 @@ def _hashes_que_existen(root, hashes):
             continue
         resueltos = {
             pedidos[i] for i, linea in enumerate(lineas)
-            if len(linea.split()) >= 3
+            if _RESPUESTA_DE_OBJETO.fullmatch(linea.strip())
         }
         return resueltos, None
     return set(), motivo

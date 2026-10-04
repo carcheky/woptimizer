@@ -140,6 +140,16 @@ resolverlos: aceptar un `T-9` es aceptar un ancla de mentira. MEDIDO: el commit
 `9433985` lleva `T-9` donde debía llevar `TASK-063`, y ese es exactamente el caso
 que un regex laxo deja pasar.
 
+**Son tres convenciones pero solo DOS formas resolutivas** (S4 del ciclo 52, veredicto
+EQUIVALENTE): `CYCLE-NNN` **casa también con el marcador de ciclo**, porque `CYCLE-59`
+es `cycle` seguido de un separador y un número, que es justo lo que
+`_RE_MARCADOR_ANCLA` (el mismo patrón del validador) acepta. MEDIDO por la auditoría
+con un barrido de 4 grafías × 10 000 números: **0 contraejemplos**. Por eso
+`_RE_CYCLE_ANCLA` no puede ser nunca la razón de un `True`: está subsumido. Se
+conserva la constante **con un trabajo real**, que es el test que demuestra la
+equivalencia con un barrido igual, para que nadie lo lea como una tercera puerta
+independiente ni lo "simplifique" creyendo que hace falta.
+
 **Medido sobre el historial real (2026-10-04, 212 subjects):** pasan **150
 (71 %)** y la rechazan 62 (29 %), y de los 25 commits más recientes la fallan 8
 (32 %) — el bucle no vivía limpio. **La puerta no paraliza el bucle: lo rechaza
@@ -182,11 +192,28 @@ poder corregir el mensaje sin abrir el contrato.
 
 ### Dos degradaciones, las dos explícitas
 
-- **`tasks.json` ilegible** → la puerta exige la **forma** y **no** la resolubilidad, y lo dice
-  en una línea `INFO` **antes** de la `WOPT_*`. Se degrada solo el paso de resolución, **nunca el
-  de forma**: un `except` que devolviera «todo válido» sería *fail-open* y dejaría la puerta
-  muerta.
+- **`tasks.json` ilegible** → la puerta es **FAIL-CLOSED**, y esto se corrigió al medirlo
+  (auditoría del ciclo 52, que lo había reportado como fail-open: es al revés). **MEDIDO:** con
+  `ids=set()`, `"chore: TASK-059"` → `False` y `"chore: TASK-999"` → `False`. **No degrada a la
+  forma:** deja de aceptar `TASK-` **por completo**, porque el `in` sobre un conjunto vacío no
+  encuentra nada. Las dos convenciones de ciclo siguen pasando, y no dependen de ficheros. O sea:
+  con el fichero roto **el bucle se para** (código 2) y el `INFO` lo dice con el motivo literal.
+
+  Se eligió **fail-closed** y no «aceptar `TASK-NNN` por su forma» por una razón concreta: esa
+  alternativa es **exactamente el punto ciego que TASK-059 cierra**. Un identificador que nadie
+  puede resolver no es un ancla, es una decoración, y aceptarlo por su forma devuelve el proyecto
+  al estado previo. El precio del fail-closed —que un `tasks.json` roto detenga el bucle— es
+  visible al instante y no deja al bucle sin salida (basta `ciclo N`). Un `except` que devolviera
+  «todo válido» sería peor que ambas.
+
 - **`--verify`** → **no** pasa por la puerta: es un diagnóstico del repo y no lleva mensaje.
+
+> **Por qué esto estaba mal en la documentación y ya no lo está:** tres fuentes (el docstring de
+> `ancla_del_mensaje`, el aviso de `ids_de_tareas` y D5 de la propuesta) describían degradaciones
+> incompatibles, y el código hacía una cuarta cosa. La lección operativa es la del ciclo 47 y la
+> del #52 alike: **una afirmación sobre un comportamiento que ningún test comprueba no es
+> documentación, es hopescrito**. Ahora hay dos tests que fijan el comportamiento elegido, con el
+> valor medido escrito en el mensaje de aserción.
 
 ### Por qué el NOOP queda exento, y por qué eso no es un descuido
 
@@ -261,14 +288,29 @@ la forma arriesgada, que es la única sin objeto que comprobar.
 
 ### El pre-vuelo que evita fabricar pérdidas
 
-`git cat-file --batch-check` responde `missing` para **todo** lo que se le pide cuando el `GIT_DIR`
-es un directorio **vacío** (no es un repo) y sale con `0` igual. Sin el pre-vuelo
-(`git rev-parse --verify HEAD`, el **mismo criterio** que `validar_repo` del wrapper, para que los
-dos componentes no puedan discrepar sobre qué es un repo) el check acusaría las ~100 entradas del
-journal como «no resuelven» y **sugeriría declararlas perdidas**: fabricar una pérdida es la peor
-dirección en la que se puede equivocar un ancla. Y un `GIT_DIR` ilegible **no** se convierte en
-«nada resuelve»: R1 y R3 se comprueban igual (no necesitan git) y las que sí lo necesitan se
-**registran sin veredicto**, con el motivo literal (abajo).
+`git cat-file --batch-check` responde `missing` para **todo** lo que se le pide y **sale con 0**
+cuando el repositorio está **vacío de commits**, y en ese caso el `returncode != 0` de la lectura
+NO lo distingue. Sin el pre-vuelo (`git rev-parse --verify HEAD`, el **mismo criterio** que
+`validar_repo` del wrapper, para que los dos componentes no puedan discrepar sobre qué es un repo)
+el check acusaría las ~100 entradas del journal como «no resuelven» y **sugeriría declararlas
+perdidas**: fabricar una pérdida es la peor dirección en la que se puede equivocar un ancla.
+
+⚠️ **MEDIDO con las tres cifras reales** (la primera versión de este párrafo afirmaba una falsa, y
+una medición inventada en un comentario es peor que un comentario sin medición):
+
+| `GIT_DIR` | `rev-parse --verify HEAD` | `cat-file --batch-check` |
+|---|---|---|
+| directorio vacío (no es repo) | 128 | 128 |
+| **`git init` sin commits** | **128** (`Needed a single revision`) | **0 + `missing`** para todo |
+| `git init` con un commit | 0 | 0 + `missing` |
+
+El caso del medio es el que obliga al pre-vuelo. Y exigir `HEAD` no recorta ningún caso legítimo:
+un journal con hashes viene de commits que existen.
+
+**Y la respuesta se acepta con su forma exacta**, `<sha-completo> <tipo> <tamano>` (40 o 64 hex,
+una palabra, un entero), no contando campos: un nombre con espacio se devuelve **tal cual**, luego
+`f"{hash} (architect)"` responde `e60d2a0 (architect) missing`, que tiene tres campos y
+certificaba como existente un objeto que no existe.
 
 ### UNA CAUSA, UN MENSAJE (y lo que sí se degrada: el veredicto, no el registro)
 
