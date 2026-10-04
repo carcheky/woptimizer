@@ -17316,6 +17316,385 @@ def test_el_cero_esta_sobrecargado_por_dos_desenlaces_y_solo_por_esos_dos():
           "paridad con 2 y cero escrituras.")
 
 
+def test_la_puerta_de_paridad_va_despues_de_validar_repo():
+    """TASK-061 iteracion 2 (mata a M5): la POSICION de la puerta de paridad.
+
+    MEDIDO por el `mutation-auditor` el 2026-10-05: mover el bloque `if
+    paridad_rota:` ANTES de `validar_repo` deja la suite ENTERA en verde,
+    porque la unica combinacion que distingue una posicion de la otra (par
+    asimetrico + repo NO verificable a la vez) no la hacia NADIE.
+
+    El criterio es la PRECEDENCIA, y por eso las dos cosas van juntas:
+
+    * **`--verify` con `GIT_DIR` inexistente y SIN `GIT_WORK_TREE`** tiene que
+      salir con **3** (`WOPT_REPO_INVALIDO`). El par esta asimetrico a proposito
+      para que la puerta de paridad PUDIERA dispararse; con la posicion
+      correcta no lo hace, porque el 3 (no pude ni comprobar) gana al 2 (tu
+      invocacion esta mal) segun D2. Con M5 puesto sale con **2**.
+    * El mismo par asimetrico con un repo SANO sale con **2**: es la otra mitad
+      (`test_la_puerta_de_paridad_tambien_cubre_el_modo_verify`).
+
+    **Por que el test existente NO lo caza** (medido): `test_git_safe_commit_
+    fail_safe` pone `GIT_WORK_TREE = root` en TODAS sus invocaciones, luego el
+    par nunca esta roto ahi y la puerta nunca dispara. Por eso la
+    justificacion de `docs/ai/sandbox-rules.md` que decia que mover la puerta
+    rompia los dos caminos de commit que esperan 3 era FALSA: no se puede
+    reproducir. Aqui esta la combinacion que SI lo distingue.
+
+    Camara en `%TEMP%` (T-5): `GIT_DIR` es una ruta temporal y el wrapper sale
+    en `validar_repo`, antes de `add -A`, luego no escribe nada.
+    """
+    print("Probando que la puerta de paridad va DESPUES de validar_repo...")
+    import shutil
+    import tempfile
+
+    gsc = _cargar_el_wrapper()
+    wrapper = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t061_posicion_")
+    git_dir_inexistente = os.path.join(tmp, "no_existe_este_git_dir")
+    head_antes = _head_del_repo_real()
+    try:
+        r = _invocar_el_wrapper(wrapper, gsc.REPO_ROOT, git_dir_inexistente, None,
+                                "--verify")
+        assert r.returncode == 3, (
+            f"con un par ASIMETRICO y un repo NO verificable tiene que ganar el 3 "
+            f"(no pude ni comprobar) sobre el 2 (tu invocacion esta mal), y salio "
+            f"con {r.returncode}. Con la puerta de paridad antes de `validar_repo` "
+            f"(o antes del `if verify and not ok`) sale con 2: es el mutante M5, "
+            f"medido superviviente antes de este test. stdout={r.stdout!r} "
+            f"stderr={r.stderr!r}")
+        assert "WOPT_REPO_INVALIDO" in (r.stdout or ""), (
+            f"el 3 tiene que decir POR QUE no pudo comprobar: {r.stdout!r}")
+        assert "WOPT_USAGE paridad-git" not in (r.stdout or ""), (
+            f"con el repo no verificable la asimetria NO se nombra: el 3 ya lo "
+            f"explica y un 2 aqui seria el diagnostico equivocado. Salida: "
+            f"{r.stdout!r}")
+        assert _head_del_repo_real() == head_antes, (
+            "una sonda de tooling no mueve el HEAD del repo real")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Puerta de paridad OK: par asimetrico + repo no verificable da 3; la "
+          "posicion despues de validar_repo queda guardada por este test.")
+
+
+def test_la_puerta_de_paridad_tambien_cubre_el_modo_verify():
+    """TASK-061 iteracion 2 (mata a M6): la paridad TAMBIEN en `--verify`.
+
+    MEDIDO por el `mutation-auditor` el 2026-10-05: el mutante `if paridad_rota
+    and not verify:` sobrevive a la suite entera. Es la fila que
+    `docs/ai/sandbox-rules.md` regla 7 promete (tambien en `--verify`) y nadie
+    comprobaba.
+
+    `--verify` con un repo SANO y el par ASIMETRICO (`GIT_DIR` sin
+    `GIT_WORK_TREE`) tiene que salir con **2** y `WOPT_USAGE paridad-git`: si
+    dice `WOPT_REPO_OK` esta afirmando que el repo Y su arbol son usables, y
+    una asimetria de ese par es exactamente la mentira que un diagnostico no
+    debe contar. Con M6 puesto sale con **0** y `WOPT_REPO_OK`.
+
+    El control negativo va DESPUES, en la misma sonda: un `--verify` con el par
+    ENTERO tiene que salir con 0, para que el 2 de arriba sea "la asimetria se
+    rechaza" y no "el wrapper esta roto".
+
+    Camara en `%TEMP%`: `GIT_DIR` es un repo temporal y el wrapper sale en la
+    puerta de paridad, antes de `add -A`.
+    """
+    print("Probando que la puerta de paridad TAMBIEN cubre --verify...")
+    import shutil
+    import tempfile
+
+    gsc = _cargar_el_wrapper()
+    wrapper = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t061_verify_")
+    git_dir = _repo_temporal_de_un_commit(os.path.join(tmp, "historial"),
+                                           "chore(release): fixture del verify")
+    head_antes = _head_del_repo_real()
+    try:
+        r = _invocar_el_wrapper(wrapper, gsc.REPO_ROOT, git_dir, None, "--verify")
+        assert r.returncode == 2, (
+            f"`--verify` con el par ASIMETRICO tiene que salir con 2 "
+            f"(WOPT_USAGE paridad-git) y salio con {r.returncode}. Con el mutante "
+            f"`and not verify` sale con 0 y dice WOPT_REPO_OK MINTIENDO que el "
+            f"repo y su arbol son usables (M6, medido superviviente antes de este "
+            f"test). stdout={r.stdout!r} stderr={r.stderr!r}")
+        lineas = [l for l in (r.stdout or "").splitlines() if l.strip()]
+        ultima = lineas[-1] if lineas else "(sin lineas)"
+        assert lineas and lineas[-1].startswith("WOPT_USAGE paridad-git"), (
+            f"la linea canonica de la paridad tiene que ser la ULTIMA y empezar "
+            f"por `WOPT_USAGE paridad-git`; la ultima fue {ultima!r}")
+        assert "WOPT_REPO_OK" not in (r.stdout or ""), (
+            f"un `--verify` con par asimetrico NUNCA puede decir WOPT_REPO_OK: "
+            f"seria el diagnostico mintiendo. Salida: {r.stdout!r}")
+
+        # --- CONTROL: el par ENTERO en `--verify` sigue dando 0 --------------
+        r_ok = _invocar_el_wrapper(wrapper, gsc.REPO_ROOT, git_dir, gsc.REPO_ROOT,
+                                  "--verify")
+        assert r_ok.returncode == 0, (
+            f"CONTROL: `--verify` con el par ENTERO tiene que salir con 0 "
+            f"(WOPT_REPO_OK); salio con {r_ok.returncode}. Sin este control, el 2 "
+            f"de arriba podria ser 'el wrapper esta roto' y no 'la asimetria se "
+            f"rechaza'. stdout={r_ok.stdout!r}")
+        assert _head_del_repo_real() == head_antes, (
+            "una sonda de tooling no mueve el HEAD del repo real")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Paridad en --verify OK: par asimetrico da 2, par entero da 0; la puerta "
+          "cubre el diagnostico.")
+
+
+def test_un_arbol_que_no_es_un_directorio_sale_con_3_y_lo_dice():
+    """TASK-061 iteracion 2 (mata a M7 y M8): el arbol tiene que ser un
+    DIRECTORIO, y el 3 lo dice de forma DETERMINISTA.
+
+    MEDIDO por el `mutation-auditor` el 2026-10-05: dos mutantes sobreviven.
+    **M7** quita la comprobacion `os.path.isdir(work_tree)` de `validar_repo`;
+    **M8** la cambia por `os.path.exists`. Los dos hacen que un `GIT_WORK_TREE`
+    que EXISTE pero NO es un directorio (un fichero) caiga en un `rc` de git sin
+    interpretar, que es justo lo que el codigo 3 (no pude ni comprobar) tiene
+    que evitar: determinista, no "git dijo algo raro".
+
+    El criterio NO es el codigo de salida (con y sin el pre-chequeo sale 3): es
+    el **MOTIVO**. El 3 correcto lo dice `GIT_WORK_TREE no existe o no es un
+    directorio`; los dos mutantes dicen `git no ejecutable`, o sea el sintoma de
+    un `cwd` que no es un directorio traducido a la lengua de git. Por eso la
+    asercion discriminate por contenido y no por el 3.
+
+    Camara en `%TEMP%` (T-5): repo y fichero en un temporal; el wrapper sale en
+    `validar_repo`, antes de `add -A`.
+    """
+    print("Probando que un arbol que NO es un directorio sale con 3 y lo dice...")
+    import shutil
+    import tempfile
+
+    gsc = _cargar_el_wrapper()
+    wrapper = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t061_arbol_")
+    git_dir = _repo_temporal_de_un_commit(os.path.join(tmp, "historial"),
+                                           "chore(release): fixture del arbol")
+    # Un FICHERO que existe: M8 (`exists`) lo acepta y M7 no comprueba nada, y
+    # los dos dejan que `run_git` corra con `cwd` = un fichero, que es el
+    # `OSError` que se tradujo a "git no ejecutable".
+    no_es_directorio = os.path.join(tmp, "esto_no_es_un_directorio.txt")
+    with open(no_es_directorio, "w", encoding="utf-8") as fh:
+        fh.write("soy un fichero, no un arbol de trabajo\n")
+    head_antes = _head_del_repo_real()
+    try:
+        r = _invocar_el_wrapper(
+            wrapper, gsc.REPO_ROOT, git_dir, no_es_directorio,
+            "chore(t061): un arbol que no es directorio sale con 3 (ciclo 999)")
+        assert r.returncode == 3, (
+            f"un GIT_WORK_TREE que no es un directorio tiene que salir con 3, y "
+            f"salio con {r.returncode}. stdout={r.stdout!r} stderr={r.stderr!r}")
+        assert "WOPT_REPO_INVALIDO" in (r.stdout or ""), (
+            f"el 3 tiene que emitir WOPT_REPO_INVALIDO: {r.stdout!r}")
+        assert "GIT_WORK_TREE" in (r.stdout or ""), (
+            f"MUTANTE M7/M8: el rechazo tiene que venir del PRE-CHEQUEO del arbol "
+            f"(`GIT_WORK_TREE no existe o no es un directorio`), no de un rc de "
+            f"git. Con la comprobacion `isdir` quitada (M7) o cambiada por "
+            f"`exists` (M8), un fichero que existe pasa el filtro, `run_git` "
+            f"corre con cwd=fichero y el wrapper dice `git no ejecutable`, que es "
+            f"un sintoma y no un diagnostico. Salida: {r.stdout!r}")
+        assert "git no ejecutable" not in (r.stdout or ""), (
+            f"el 3 tiene que ser DETERMINISTA (no pude ni comprobar), no el rc de "
+            f"git traducible: {r.stdout!r}")
+        assert _head_del_repo_real() == head_antes, (
+            "una sonda de tooling no mueve el HEAD del repo real")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Arbol no-directorio OK: sale con 3 y el motivo es el pre-chequeo del "
+          "arbol, no un rc de git.")
+
+
+def test_is_inside_work_tree_false_hace_rechazar_el_repo():
+    """TASK-061 iteracion 2 (mata a M9): `is-inside-work-tree` == `false` tiene
+    que RECHAZAR el repo.
+
+    MEDIDO por el `mutation-auditor` el 2026-10-05: el mutante que acepta
+    `false` sobrevive. Con el, el codigo 3 deja de ser determinista y un
+    `--verify` puede imprimir `WOPT_REPO_OK` MINTIENDO que el repo y su arbol
+    son usables, que es la unica clase de mentira que este wrapper no puede
+    permitirse: el diagnostico es lo que el orquestador lee cuando recibe un
+    codigo distinto de 0 sin saber de que es.
+
+    **Por que `run_git` de mentira y no git de verdad:** lo que se prueba es la
+    REACCION de `validar_repo` a lo que git responde, y la unica forma de que
+    git responda `false` de forma fiable (el cwd DENTRO del `.git`) es un
+    montaje que depende de la version de git. Un git real aqui mediria el
+    comportamiento de git, no el del wrapper. Los valores que devuelve el doble
+    son los que git devuelve de verdad (`true`/`false`/un sha).
+
+    El control va DESPUES del criterio, no antes: con `true` el repo se acepta,
+    y sin el un `validar_repo` que rechazara SIEMPRE pasaria el criterio de
+    abajo sin mirar el valor de git. Con M9 (que invierte la comprobacion a
+    `!= 'false'`) este test muere en el criterio (`false` -> se acepta).
+    """
+    print("Probando que is-inside-work-tree=false hace rechazar el repo...")
+    import shutil
+    import tempfile
+
+    gsc = _cargar_el_wrapper()
+    tmp = tempfile.mkdtemp(prefix="wopt_t061_inside_")
+    try:
+        git_dir = _repo_temporal_de_un_commit(
+            os.path.join(tmp, "historial"), "chore(release): fixture del 3")
+        arbol = os.path.join(tmp, "arbol")
+        os.makedirs(arbol, exist_ok=True)
+        env = {"GIT_DIR": git_dir, "GIT_WORK_TREE": arbol}
+        respuesta = {"inside": "false"}
+        original = gsc.run_git
+
+        def run_git_de_mentira(args, _env):
+            joined = " ".join(str(a) for a in args)
+            if "is-inside-work-tree" in joined:
+                return (0, respuesta["inside"], "", None)
+            if "--git-dir" in joined:
+                return (0, git_dir, "", None)
+            if "HEAD" in joined:
+                return (0, "0" * 40, "", None)
+            return (0, "", "", None)
+
+        gsc.run_git = run_git_de_mentira
+        try:
+            # --- (1) EL CRITERIO: `false` -> se rechaza (mata a M9) ---------
+            ok_false, det_false, _ = gsc.validar_repo(env)
+            assert ok_false is False, (
+                f"MUTANTE M9: `rev-parse --is-inside-work-tree` que responde FALSE "
+                f"tiene que hacer RECHAZAR el repo (codigo 3, no pude ni "
+                f"comprobar), y `validar_repo` devuelve ok={ok_false!r}. Con la "
+                f"comprobacion que acepta `false`, `--verify` imprime "
+                f"`WOPT_REPO_OK` + 0 mintiendo. detalle={det_false!r}")
+            assert "is-inside-work-tree" in det_false, (
+                f"el rechazo tiene que NOMBRAR la comprobacion que fallo: "
+                f"{det_false!r}")
+
+            # --- (2) CONTROL: `true` -> se acepta ---------------------------
+            respuesta["inside"] = "true"
+            ok_true, det_true, _ = gsc.validar_repo(env)
+            assert ok_true is True, (
+                f"CONTROL: con is-inside-work-tree=true el repo tiene que "
+                f"ACEPTARSE y `validar_repo` devuelve ok={ok_true!r} "
+                f"({det_true!r}). Sin este control, un validar_repo que rechazara "
+                f"siempre pasaria el criterio de arriba sin mirar el valor de git")
+        finally:
+            gsc.run_git = original
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("is-inside-work-tree OK: false rechaza, true acepta; el 3 no dice OK "
+          "mintiendo.")
+
+
+def test_toda_linea_wopt_de_main_esta_en_la_tabla_y_cierra_una_salida():
+    """TASK-061 iteracion 2 (mata a M10): cada `print` con `WOPT_*` de `main()`
+    esta en la tabla Y cierra un `sys.exit`.
+
+    MEDIDO por el `mutation-auditor` el 2026-10-05: el mutante M10 (un `print`
+    `WOPT_*` NUEVO que no cierra ninguna salida) sobrevive, porque el `ast` de
+    T-2 SOLO registra un marcador cuando detras hay un `sys.exit`: cualquier
+    sentencia ejecutable que no sea `print` pone `pendiente = None` y el
+    `WOPT_*` desaparece del contador sin que la tabla lo note. Este test es la
+    ASERCION 1 del contrato de T-2 (cada `print` con `WOPT_*` esta en la
+    tabla), que el test T-2 NO implementaba.
+
+    Dos mitades, cada una con su mutante:
+    * **SET**: el conjunto de marcadores que `main()` imprime tiene que ser
+      EXACTAMENTE la tabla del contrato. Un marcador nuevo (WOPT_INVENTADO) esta
+      fuera y mata por aqui. Mata a M10 cuando este REUTILIZA un marcador
+      existente que no cierra nada.
+    * **HUERFANOS**: cada `print` con `WOPT_*` tiene que cerrar un `sys.exit` en
+      SU bloque, sin que entre medias haya una sentencia que no sea `print` (esa
+      podria imprimir y dejar la linea canonica sin ser la ultima). Recorre cada
+      bloque de `main()` por separado, porque una linea WOPT y su `sys.exit` son
+      hermanos del mismo bloque.
+
+    Sin subproceso, sin escritura, sin ventana.
+    """
+    print("Probando que cada linea WOPT de main esta en la tabla y cierra una "
+          "salida (ast)...")
+    import re as _re
+
+    gsc = _cargar_el_wrapper()
+    ruta = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+    with open(ruta, encoding="utf-8") as f:
+        fuente = f.read()
+    arbol = ast.parse(fuente, filename=ruta)
+    main = next((n for n in arbol.body
+                 if isinstance(n, ast.FunctionDef) and n.name == "main"), None)
+    assert main is not None, "el wrapper tiene que seguir teniendo `main()`"
+
+    RE_MARCADOR = _re.compile(r"WOPT_[A-Z_]+")
+    TABLA = {"WOPT_COMMIT_OK", "WOPT_REPO_OK", "WOPT_NOOP",
+             "WOPT_FAIL", "WOPT_USAGE", "WOPT_REPO_INVALIDO"}
+
+    def es_print(stmt):
+        return (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+                and isinstance(stmt.value.func, ast.Name)
+                and stmt.value.func.id == "print")
+
+    def codigo_de_salida(stmt):
+        return (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+                and isinstance(stmt.value.func, ast.Attribute)
+                and stmt.value.func.attr == "exit")
+
+    def marcadores_de(stmt):
+        if not es_print(stmt):
+            return []
+        return RE_MARCADOR.findall(ast.unparse(stmt.value))
+
+    # --- (1) SET: cada marcador impreso es una fila de la tabla --------------
+    usados = set()
+    for nodo in ast.walk(main):
+        usados.update(marcadores_de(nodo))
+    fuera = usados - TABLA
+    assert not fuera, (
+        f"hay {len(fuera)} marcador(es) WOPT_* impreso(s) en main() que NO estan "
+        f"en la tabla del contrato: {sorted(fuera)!r}. Cada linea WOPT_* tiene que "
+        f"ser una fila de la tabla (marcador -> codigo). Un print WOPT_* que no "
+        f"cierra ninguna salida no lo ata nadie: el `ast` de T-2 solo registra un "
+        f"marcador si detras hay un `sys.exit`. Es el mutante M10")
+
+    # --- (2) HUERFANOS: cada linea WOPT cierra un sys.exit en su bloque ------
+    huerfanos = []
+
+    def recorrer_lista(cuerpo):
+        pendiente = None
+        for stmt in cuerpo:
+            marcadores = marcadores_de(stmt)
+            if marcadores:
+                if pendiente is not None:
+                    huerfanos.append(pendiente[1])
+                pendiente = (marcadores[0], ast.unparse(stmt))
+                continue
+            if codigo_de_salida(stmt):
+                pendiente = None
+                continue
+            if not es_print(stmt):
+                if pendiente is not None:
+                    huerfanos.append(pendiente[1])
+                pendiente = None
+            for campo in ("body", "orelse", "finalbody"):
+                hijo = getattr(stmt, campo, None)
+                if (isinstance(hijo, list) and hijo
+                        and all(isinstance(x, ast.stmt) for x in hijo)):
+                    recorrer_lista(hijo)
+            for manejador in getattr(stmt, "handlers", None) or []:
+                recorrer_lista(manejador.body)
+        if pendiente is not None:
+            huerfanos.append(pendiente[1])
+
+    recorrer_lista(main.body)
+    assert not huerfanos, (
+        f"hay {len(huerfanos)} `print` con WOPT_* en main() que NO cierran un "
+        f"`sys.exit` en su bloque: {huerfanos!r}. Una linea WOPT_* que no cierra "
+        f"ninguna salida es una linea que el codigo de salida no puede confirmar: "
+        f"queda antes de otra que si lo cierra, o suelta al final sin cerrar nada. "
+        f"Es el mutante M10")
+
+    print(f"Todas las lineas WOPT OK: {len(usados)} marcadores, todos en la tabla, "
+          f"y cada `print` WOPT cierra su `sys.exit`.")
+
+
 def test_las_plantillas_del_bucle_pasan_la_puerta_del_producto():
     """TASK-059 AC-C1: el bucle cumple SU PROPIA puerta.
 
@@ -18412,6 +18791,16 @@ if __name__ == "__main__":
     test_cache_ttl_and_invalidation()
     test_kill_recursive()
     test_git_safe_commit_fail_safe()
+    # TASK-061 iteracion 2 (matan a M5, M6, M7, M8, M9 y M10, los seis
+    # supervivientes que dejo el mutation-auditor). Las cinco sondas van ANTES
+    # del marcador headless porque NO abren ventana: son tooling puro (`ast`,
+    # subproceso con repo temporal, y llamada directa a `validar_repo`).
+    # Suite: 139 -> 144 (112 antes del marcador + 32 desde el).
+    test_la_puerta_de_paridad_va_despues_de_validar_repo()
+    test_la_puerta_de_paridad_tambien_cubre_el_modo_verify()
+    test_un_arbol_que_no_es_un_directorio_sale_con_3_y_lo_dice()
+    test_is_inside_work_tree_false_hace_rechazar_el_repo()
+    test_toda_linea_wopt_de_main_esta_en_la_tabla_y_cierra_una_salida()
     test_double_tap_guard()
     test_no_system_process_is_killable()
     # TASK-026: FIX-001 / FIX-005 / FIX-007 / FIX-009

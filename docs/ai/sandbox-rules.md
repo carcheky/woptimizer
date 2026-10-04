@@ -92,6 +92,20 @@ Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
    (el historial real quedó intacto, porque `GIT_DIR` era el temporal). La contaminación ocurrió
    dos veces en este repo (`STATUS.md:23`).
 
+   *Y ahora el árbol se valida además como DIRECTORIO.* Un `GIT_WORK_TREE` que existe pero no es
+   un directorio tiene que salir con `3` y el motivo del **pre-chequeo**
+   (`GIT_WORK_TREE no existe o no es un directorio`), no con el `rc` de git que sale de correr
+   con un `cwd` que no es un directorio. MEDIDO el 2026-10-05: sin ese pre-chequeo —o con
+   `os.path.exists` en vez de `os.path.isdir`— el `3` sigue saliendo pero por otro camino, y su
+   texto pasa a ser «git no ejecutable», que es un síntoma y no un diagnóstico. Guardado por
+   `test_un_arbol_que_no_es_un_directorio_sale_con_3_y_lo_dice`.
+
+   *Y `is-inside-work-tree` tiene que responder `true`.* Un repo en el que git responde `false`
+   es un repo que no se ha podido comprobar, y el `3` tiene que ser eso. MEDIDO el 2026-10-05:
+   aceptando `false` el código 3 deja de ser determinista y `--verify` puede imprimir
+   `WOPT_REPO_OK` **mintiendo** que el repo y su árbol son usables. Guardado por
+   `test_is_inside_work_tree_false_hace_rechazar_el_repo`.
+
    *Por qué la paridad no es un extra.* Honrar `GIT_WORK_TREE` sin más sería un arma de doble filo:
    basta un `GIT_DIR` real + un árbol ajeno para versionar un árbol extranjero en el historial real.
    La paridad es **el precio** de esa decisión, y hace **no representable** la combinación
@@ -118,6 +132,13 @@ Autocomprobación **de solo lectura** (solo `rev-parse`): ejecuta **exactamente*
 `validar_repo()` que el camino principal —prohibido darle una ruta de código propia— e imprime
 `WOPT_REPO_OK <git_dir>` + `0` si el repositorio está sano, o `WOPT_REPO_INVALIDO <detalle>` + `3`
 si no. Es el mecanismo de diagnóstico cuando el pipeline recibe un `!= 0` sin escribir nada.
+
+**`--verify` también pasa por la puerta de paridad (regla 7), y eso es normativo:** si dice
+`WOPT_REPO_OK` está afirmando que el repo **y su árbol** son usables, y una asimetría de ese par es
+exactamente la mentira que un diagnóstico no debe contar. Con el par entero sale `0`; con una sola
+de las dos variables sale `2` con `WOPT_USAGE paridad-git`. MEDIDO el 2026-10-05: el mutante que
+se salta la puerta en `--verify` sobrevivía a las 139 pruebas, y ahora muere en
+`test_la_puerta_de_paridad_tambien_cubre_el_modo_verify`.
 
 ### Cobertura
 
@@ -151,6 +172,39 @@ distinta porque ningún test solo alcanza:
 tabla que produce el código real discrepa de la que declara el contrato) **y** en la de runtime
 (sale `0` donde se exige `1`). La familia entera de `WOPT_FAIL` la cubre la tabla, y el mutante que
 añada un `print` de mentiras para parecer honesto también muere, porque su fila no está en la tabla.
+Re-medido el 2026-10-05 tras la segunda ronda: sigue muerto en las dos, y por partida doble.
+
+### Segunda ronda (2026-10-05): seis huecos que la tabla anterior no cubría
+
+El `mutation-auditor` puso seis mutantes encima del mismo wrapper y **los seis sobrevivieron a las
+139 pruebas**. No era que el invariante fuera falso —S48-2 sigue cerrado—: era que las propiedades
+que el panel daba por guardadas **no tenían guardián**. Seis son mutantes, ahora los seis muertos:
+
+| Mutante | Qué rompía | Sonda que lo mata |
+|---|---|---|
+| M5 | La puerta de paridad colocada **antes** de `validar_repo`: el 3 dejaba de ganar al 2 y un `--verify` con par asimétrico y repo malo salía con 2 | `test_la_puerta_de_paridad_va_despues_de_validar_repo` |
+| M6 | La paridad saltada en `--verify` (`and not verify`): `--verify` decía `WOPT_REPO_OK` + `0` con el par asimétrico, **mintiendo** | `test_la_puerta_de_paridad_tambien_cubre_el_modo_verify` |
+| M7 / M8 | `validar_repo` sin el pre-chequeo de que el árbol es directorio (M7 lo quita, M8 cambia `isdir` por `exists`): el `3` seguía saliendo pero con el motivo de git traducido a la lengua de git | `test_un_arbol_que_no_es_un_directorio_sale_con_3_y_lo_dice` |
+| M9 | `is-inside-work-tree` aceptando `false`: el `3` dejaba de ser determinista y el diagnóstico podía mentir | `test_is_inside_work_tree_false_hace_rechazar_el_repo` |
+| M10 | Un `print` con `WOPT_*` **nuevo** que no cerraba ninguna salida: el `ast` de T-2 lo descartaba en silencio, porque solo registra un marcador cuando detrás hay un `sys.exit` | `test_toda_linea_wopt_de_main_esta_en_la_tabla_y_cierra_una_salida` |
+
+**La aserción 1 del contrato de T-2, corregida.** La propuesta afirmaba «cada `print` con `WOPT_*`
+está en la tabla» y el test **no la implementaba**: por el hueco que M10 midió: el `ast`
+solo anotaba un marcador si detrás había un `sys.exit`, y cualquier otra sentencia ejecutable
+ponía el marcador a `None`, de modo que un `WOPT_*` suelto desaparecía del contador sin que la
+tabla lo notara. La aserción no era falsa: era **prometida y no implementada**, que es el mismo
+fallo que S48-2 un grado más abajo. Ahora hay una sonda que la cumple, y con **dos** mitades: el
+conjunto de marcadores que `main()` imprime tiene que ser exactamente la tabla, y cada `print` con
+`WOPT_*` tiene que cerrar un `sys.exit` en su bloque. La segunda mitad es la que mata a un mutante
+que **reutiliza** un marcador ya existente (un `WOPT_FAIL` de más), donde la primera no lo ve.
+
+**Lo que esta sección afirmaba y era FALSO, corregido el 2026-10-05.** La fila «Antes de
+`validar_repo`» de la tabla de posiciones daba como justificación que «los dos caminos de commit del
+test existente esperan 3 y pasarían a 2». **No se puede reproducir:** `test_git_safe_commit_fail_safe`
+pone `GIT_WORK_TREE = root` en todas sus invocaciones, luego el par nunca está roto ahí, la puerta
+nunca dispara y el test sigue verde muevas donde la muevas. La fila mandaba a leer un guardián que
+no existía. Ahora la consecuencia está medida con la combinación que el test existente **no**
+construía y que sí distingue una posición de la otra.
 
 **La víctima, nombrada, y el tamaño real del daño:** el único consumidor real del código de salida
 es el **agente orquestador** (`.agents/agents/architect-review/agent.md:50` y
@@ -224,8 +278,8 @@ El orden **es normativo** y las tres fronteras se pueden medir contra el código
 
 | Posición | Consecuencia medida |
 |---|---|
-| Antes de `validar_repo` | Rompe el contrato: los dos caminos de commit del test existente esperan **3** con un `GIT_DIR` inválido y pasarían a 2. El 3 significa «no pude ni comprobar» y el 2 «tu invocación está mal»: confundirlos entrena al orquestador a diagnosticar el repo cuando el problema es su cadena. |
-| **Después de `validar_repo` y del NOOP, antes de `add -A`** | **Elegida.** Un árbol limpio sigue diciendo `WOPT_NOOP` + `0` (benigno: no hay commit que anclar, y rechazar un no-op sería ruido que el orquestador leería como «el commit falló»); un commit que existe lleva **siempre** identificador; y la puerta es de **solo lectura**, luego testeable sin escribir nada. |
+| Antes de `validar_repo` | Rompe el contrato, y la consecuencia **medida** es esta: un `--verify` con el par asimétrico (`GIT_DIR` sin `GIT_WORK_TREE`) **y** un repo no verificable saldría con **2** en vez de **3**. El 3 significa «no pude ni comprobar» y el 2 «tu invocación está mal»: confundirlos entrena al orquestador a diagnosticar el repo cuando el problema es su cadena. MEDIDO el 2026-10-05 y guardado por `test_la_puerta_de_paridad_va_despues_de_validar_repo`.<br>**Lo que esta fila DECÍA antes era FALSO y se corrige aquí:** la redacción anterior («los dos caminos de commit del test existente esperan 3 y pasarían a 2») no se puede reproducir, porque `test_git_safe_commit_fail_safe` pone `GIT_WORK_TREE = root` en **todas** sus invocaciones: el par nunca está roto ahí, la puerta nunca dispara y el test sigue verde muevas donde la muevas. Esa era una justificación que mandaba a leer un guardián que no existía. El guardián real es la fila siguiente, y exige la combinación que el test existente **no** construía. |
+| **Después de `validar_repo` y del NOOP, antes de `add -A`** | **Elegida.** Un árbol limpio sigue diciendo `WOPT_NOOP` + `0` (benigno: no hay commit que anclar, y rechazar un no-op sería ruido que el orquestador leería como «el commit falló»); un commit que existe lleva **siempre** identificador; y la puerta es de **solo lectura**, luego testeable sin escribir nada. Las dos mitades del criterio las guardan `test_la_puerta_de_paridad_va_despues_de_validar_repo` (repo no verificable → `3`) y `test_el_cero_esta_sobrecargado_por_dos_desenlaces_y_solo_por_esos_dos` (par asimétrico → `2` con el índice y el `HEAD` intactos). |
 | Después de `add -A` | Rechaza **después** de stagear: muta el árbol real para luego decir que no. Prohibido. |
 
 ### El código de salida es 2, no 1
