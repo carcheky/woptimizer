@@ -1444,7 +1444,13 @@ def test_git_safe_commit_fail_safe():
 
     try:
         # 1) GIT_DIR inexistente -> 3 (NO 0, NO 1: no pude ni comprobar).
-        r = invocar(["test(t022): este mensaje no debe llegar a comitear"], git_dir_inexistente)
+        #    El mensaje LLEVA identificador (TASK-059, AC-C2) a proposito: la
+        #    puerta del mensaje va DESPUES de `validar_repo`, luego con el
+        #    identificador puesto se prueba que un repo invalido sigue saliendo
+        #    con 3 y no con el 2 de la puerta. Sin identificador, este caso
+        #    seguiria dando 3 y no mediria el orden de las dos fronteras.
+        r = invocar(["test(t022): este mensaje no debe llegar a comitear (TASK-059)"],
+                    git_dir_inexistente)
         assert r.returncode == 3, (
             f"Un GIT_DIR inexistente debe salir con 3, salio con {r.returncode}. "
             f"stdout={r.stdout!r} stderr={r.stderr!r}"
@@ -1468,7 +1474,8 @@ def test_git_safe_commit_fail_safe():
         )
 
         # 3) El camino de commit con un directorio no-repo tambien es 3, no 0.
-        r3 = invocar(["test(t022): sigue sin comitear"], git_dir_no_repo)
+        #    Con identificador en el mensaje, por el mismo motivo que el (1).
+        r3 = invocar(["test(t022): sigue sin comitear (TASK-059)"], git_dir_no_repo)
         assert r3.returncode == 3, (
             f"Un directorio que no es repo debe salir con 3, salio con {r3.returncode}. "
             f"stdout={r3.stdout!r}"
@@ -1489,7 +1496,31 @@ def test_git_safe_commit_fail_safe():
                 f"Falta WOPT_USAGE ({etiqueta}): {ru.stdout!r}"
             )
 
-        # 5) El wrapper no debe "arreglar" ni crear el GIT_DIR que se le dio, ni
+        # 5) TASK-059 AC-A4: `--verify` con un repo SANO sale con 0, y no pasa
+        #    por la puerta del mensaje. Es la tercera frontera del contrato: si la
+        #    puerta se colara en `--verify`, un diagnostico del repo (que no lleva
+        #    mensaje) saldria con 2 y el orquestario diagnostiaria su propia
+        #    invocacion en vez del repo.
+        import shutil as _shutil_t022
+        import tempfile as _tempfile_t022
+        tmp_sano = _tempfile_t022.mkdtemp(prefix="wopt_t022_sano_")
+        try:
+            git_dir_sano = _repo_temporal_de_un_commit(
+                os.path.join(tmp_sano, "historial"),
+                "chore(release): fixture del wrapper sano")
+            rv = invocar(["--verify"], git_dir_sano)
+            assert rv.returncode == 0, (
+                "--verify con un repo sano debe salir con 0 (WOPT_REPO_OK); salio con "
+                f"{rv.returncode}. stdout={rv.stdout!r} stderr={rv.stderr!r}")
+            assert "WOPT_REPO_OK" in rv.stdout, (
+                f"--verify debe emitir WOPT_REPO_OK: {rv.stdout!r}")
+            assert "WOPT_USAGE" not in rv.stdout, (
+                "`--verify` NO pasa por la puerta del mensaje: es un diagnostico del "
+                f"repo y no lleva mensaje. Salida: {rv.stdout!r}")
+        finally:
+            _shutil_t022.rmtree(tmp_sano, ignore_errors=True)
+
+        # 6) El wrapper no debe "arreglar" ni crear el GIT_DIR que se le dio, ni
         #    dejar rastro de escritura cuando el repo no valida.
         assert not os.path.exists(git_dir_inexistente), (
             f"El wrapper no debe crear el GIT_DIR invalido: {git_dir_inexistente}"
@@ -16042,6 +16073,923 @@ def test_todo_pack_ofrece_el_catalogo_completo_en_apagar_y_arrancar():
     print("Todo pack ofrece el catalogo completo en apagar y arrancar OK (TASK-063).")
 
 
+# ---------------------------------------------------------------------------
+# TASK-059: la puerta del mensaje (git_safe_commit.py) y el check 9 del
+# validador (el campo `commits` de rd_journal.json).
+# ---------------------------------------------------------------------------
+
+
+def _cargar_el_wrapper():
+    """El `.taskmaster/git_safe_commit.py` REAL, importado como modulo.
+
+    Importado y no copiado, y con `spec_from_file_location` porque no es un
+    paquete: la puerta que se prueba tiene que ser la que se ejecuta, y una
+    copia reimplementada mediria la copia. La importacion no tiene efectos: el
+    modulo solo define funciones y su `if __name__ == "__main__"` no se dispara
+    al importarlo con otro nombre.
+
+    MEDIDO el 2026-10-04: **esa ultima frase hubo que volver a escribirla.** El
+    wrapper envolvia `sys.stdout` y `sys.stderr` a NIVEL DE MODULO, luego
+    importarlo reenvolvia los streams del proceso que importa (el runner de esta
+    suite) y al terminar el doble envoltorio se liberaba con
+    `ValueError: I/O operation on closed file` y `lost sys.stderr`: el crash
+    aparecia en el test SIGUIENTE, no en el que lo causaba. El wrapper ahora
+    reenvuelve solo cuando es el programa principal. Importar un modulo no puede
+    cambiarle la consola a quien lo importa.
+    """
+    import importlib.util
+
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    ruta = os.path.join(raiz, ".taskmaster", "git_safe_commit.py")
+    spec = importlib.util.spec_from_file_location("wopt_gsc", ruta)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+def _ids_reales_de_tasks_json():
+    """Los `id` de `.taskmaster/tasks.json`, leidos del fichero real.
+
+    Se leen del producto y NO se escriben en el test: una lista de ids copiada
+    aqui seria la misma mentira que el recuento de tests, un nivel mas abajo.
+    Y por eso AC-A3 puede afirmar que un id que existe pasa y uno que no existe
+    no: el conjunto tiene que ser el de verdad para que la asercion signifique
+    algo.
+    """
+    import validate_docs  # noqa: F401  (asegura que el modulo esta importable)
+
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(raiz, ".taskmaster", "tasks.json"),
+              encoding="utf-8") as f:
+        datos = json.load(f)
+    ids = {t["id"] for t in datos["tasks"] if isinstance(t, dict) and "id" in t}
+    assert ids, "tasks.json no aporta ningun id: la puerta se degradaria a forma "\
+                "y AC-A3 no mediria nada"
+    return ids
+
+
+def test_la_puerta_del_mensaje_exige_un_ancla_resoluble():
+    """TASK-059 AC-A1, AC-A2, AC-A3: la puerta NO es decorativa.
+
+    `ancla_del_mensaje(mensaje, ids)` es PURA (no lee ficheros ni llama a
+    `subprocess`) y devuelve `(ok, motivo)`. Se prueba con un `ids` SINTETICO
+    para que cada caso sea una afirmacion y no una medicion del tablero, y el
+    motivo de rechazo tiene que nombrar las TRES formas aceptadas: sin eso, el
+    que recibe el rechazo no sabe que escribir y el mensaje se repite igual.
+
+    Los cuatro casos de AC-A2 son la forma DECEPTIVA de la puerta, la que hoy
+    pasa y con el fix no:
+
+    - `T-9` / `T-1` / `C-9`: `T-1`..`T-9` son ids de tarea DENTRO de un change
+      (`openspec/changes/*/tasks.md`), no existen en `tasks.json` y nadie puede
+      resolverlos. Un regex laxo `T-\\d+` los admitiria y dejaria pasar un
+      commit sin ancla de verdad, que es justo el punto ciego que se cierra.
+    - `TASK-` sin digitos: la forma sin ancla.
+    - `TASK-059 (T-9)`: la forma CORRECTA de tener las dos, y tiene que pasar:
+      el `T-9` de decoracion no puede contaminar la decision.
+
+    Y AC-A3 es la direccion que un "form checker" no mira: `TASK-999` tiene la
+    forma perfecta y no apunta a nada.
+    """
+    print("Probando la puerta del mensaje: forma, resolubilidad y las tres formas...")
+    gsc = _cargar_el_wrapper()
+    ids = {"TASK-059", "TASK-001"}
+
+    # --- AC-A1: sin ancla, y el motivo dice QUE se espera --------------------
+    ok, motivo = gsc.ancla_del_mensaje("feat: cosas", ids)
+    assert ok is False, (
+        "un mensaje sin identificador tiene que ser RECHAZADO: es el punto ciego "
+        "que TASK-059 cierra, y un `return True, \"\"` lo deja abierto. "
+        f"ancla_del_mensaje devolvio ok={ok!r}")
+    for forma in ("TASK-NNN", "CYCLE-NNN", "ciclo N"):
+        assert forma in motivo, (
+            f"el motivo del rechazo tiene que nombrar la forma {forma!r}: sin las "
+            f"tres, quien recibe WOPT_USAGE ancla-mensaje no sabe que escribir. "
+            f"Motivo: {motivo!r}")
+    assert motivo == gsc.MOTIVO_SIN_ANCLA, (
+        "el motivo de rechazo tiene que ser el del producto, no uno escrito aqui: "
+        "dos redacciones del mismo motivo significa dos verdades")
+
+    # --- AC-A2: la forma deceptive ------------------------------------------
+    for mensaje in ("fix(x): T-9", "T-1", "chore: C-9", "chore(architect): T-2",
+                    "fix(x): TASK-", "fix(x): T-12", "fix(x): MYTASK-059"):
+        ok, _ = gsc.ancla_del_mensaje(mensaje, ids)
+        assert ok is False, (
+            f"{mensaje!r} tiene que ser rechazado: `T-\\d+` es OTRO espacio de ids "
+            "(los de `openspec/changes/*/tasks.md`) que no existe en `tasks.json` y "
+            "no se puede resolver, luego admitirlo es un ancla de mentira. Con el "
+            "regex laxo `\\bT-?\\d+` este mensaje pasa")
+
+    # Las dos formas que SI son validas, y una con las dos a la vez.
+    for mensaje, por_que in (
+        ("fix(x): TASK-059 (T-9)", "el `T-9` de decoracion no puede contaminar"),
+        ("chore: TASK-001", "un id del conjunto inyectado"),
+        ("chore(release): CYCLE-059", "la forma CYCLE-NNN"),
+        ("chore(release): ciclo 59 cerrado", "el marcador de ciclo"),
+        ("chore(release): CYCLE 59 cerrado", "el marcador sin guion, que el repo usa"),
+        ("chore(release): ciclo #59", "el marcador con almohadilla"),
+        ("chore(release): cycle-59", "el marcador en ingles"),
+    ):
+        ok, motivo = gsc.ancla_del_mensaje(mensaje, ids)
+        assert ok is True, (
+            f"{mensaje!r} tiene que pasar ({por_que}); devolvio ok={ok!r} "
+            f"motivo={motivo!r}")
+
+    # --- AC-A3: la resolubilidad, que es lo que hace ancla y no adorno -------
+    ok, motivo = gsc.ancla_del_mensaje("chore: TASK-999", ids)
+    assert ok is False, (
+        "`TASK-999` tiene la forma correcta y NO esta en el conjunto: tiene que "
+        "fallar. Un mutante que se quede en la forma pura (`TASK-\\d+` y nada mas) "
+        f"lo deja pasar. ids inyectados={sorted(ids)}")
+    assert "TASK-999" not in motivo, (
+        "el motivo no tiene que devolver el id rechazado: no es informacion para "
+        "quien lo lee, es ruido. Motivo: " + repr(motivo))
+
+    # Y la degradacion: `ids` VACIO no es "todo valido", es "solo la forma".
+    ok, _ = gsc.ancla_del_mensaje("chore: TASK-059", set())
+    assert ok is False, (
+        "con `ids` vacio (tasks.json ilegible) la puerta tiene que exigir la FORMA "
+        "y no la resolubilidad: un `except` que devolviera 'todo valido' es "
+        "fail-open y deja la puerta muerta. Con ids={} el mensaje tiene la forma "
+        "correcta y aun asi no se puede resolver, luego no pasa")
+    ok, _ = gsc.ancla_del_mensaje("chore: ciclo 59", set())
+    assert ok is True, (
+        "las dos convenciones de ciclo no dependen de tasks.json: con el fichero "
+        "ilegible la puerta sigue admitiendo `ciclo N` y `CYCLE-NNN`, que es lo que "
+        "hace que degradar no bloquee el bucle")
+
+    # --- La puerta y el validador no pueden divergir --------------------------
+    import validate_docs as vd
+    assert gsc._RE_MARCADOR_ANCLA.pattern == vd._RE_MARCADOR_DE_CICLO.pattern, (
+        "el marcador de ciclo de la puerta y el del validador han divergido: "
+        f"puerta={gsc._RE_MARCADOR_ANCLA.pattern!r} "
+        f"validador={vd._RE_MARCADOR_DE_CICLO.pattern!r}. Son dos COPIAS del mismo "
+        "patron y lo unico que las ata es este assert: sin el, cada una se desfasaria "
+        "por su cuenta y un commit pasaria la puerta que el historial no veria")
+
+    # --- El motivo de rechazo es imprimible en la consola del host -----------
+    motivo = gsc.MOTIVO_SIN_ANCLA
+    assert motivo == motivo.encode("ascii", "strict").decode("ascii"), (
+        "el motivo del rechazo tiene que ser ASCII PURO (trampa #16, la consola es "
+        f"cp1252) y trae: {motivo!r}")
+    assert "se espera" in motivo and ("POR QUE" in motivo or "importa" in motivo), (
+        "el motivo tiene que decir QUE se espera y POR QUE importa: la puerta es un "
+        "contrato, no un rechazo mudo")
+    assert "\n" not in motivo, "la linea WOPT_* va a stdout y tiene que ser una sola"
+
+    # Y el producto de verdad, con los ids de verdad.
+    ids_reales = _ids_reales_de_tasks_json()
+    assert "TASK-059" in ids_reales, (
+        "TASK-059 tiene que existir en tasks.json: es la tarea viva y la puerta "
+        "exige RESOLUBILIDAD, luego si no esta el id de esta misma tarea no pasaria")
+    assert gsc.ancla_del_mensaje("fix(tooling): puerta (TASK-059)", ids_reales)[0], (
+        "el mensaje de esta tarea tiene que pasar su propia puerta: si no, el "
+        "wrapper esta rechazando el trabajo que lo instala")
+    print("Puerta del mensaje OK: 7 rechazos, 7 aceptaciones y el motivo completo.")
+
+
+def test_la_puerta_se_coloca_despues_del_noop_y_antes_de_add():
+    """TASK-059 AC-A5: la POSICION de la puerta, afirmada con `ast`.
+
+    La puerta es de SOLO LECTURA y devuelve antes de la primera escritura, pero
+    su sitio en el flujo es normativo y se mide contra el codigo real, no contra
+    un criterio escrito:
+
+    | donde esta | que rompe |
+    |---|---|
+    | antes de `validar_repo` | un `GIT_DIR` invalido con cualquier mensaje sale con 2 en vez de 3: "tu invocacion esta mal" y "no pude ni comprobar" se confunden, y el orquestador diagnostica el repo cuando el problema es su cadena |
+    | despues de `add -A` | rechaza con el arbol YA STAGEADO: muta el arbol real para luego decir que no |
+    | antes del NOOP | un arbol limpio con mensaje sin ancla sale con 2 en vez de `WOPT_NOOP` + 0, y el orquestador lee un rechazo de uso donde no habia ni commit que anclar |
+
+    Por que `ast` y no un subproceso: `get_env()` IMPONE `GIT_WORK_TREE = REPO_ROOT`
+    sin condiciones (`git_safe_commit.py`), luego el arbol de trabajo no es
+    controlable desde fuera del wrapper y un test no puede fabricar "arbol
+    sucio" sin mutar el arbol real. Es el limite 1 de la propuesta y dueno es
+    `TASK-061`; la posicion si es comprobable, y por indices de sentencia.
+    El patron es el de `_reparto_de_tests` con `MARCADOR_HEADLESS`.
+    """
+    print("Probando la posicion de la puerta con ast sobre el wrapper real...")
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    ruta = os.path.join(raiz, ".taskmaster", "git_safe_commit.py")
+    with open(ruta, encoding="utf-8") as f:
+        fuente = f.read()
+    arbol = ast.parse(fuente, filename=ruta)
+
+    main = next((n for n in arbol.body
+                 if isinstance(n, ast.FunctionDef) and n.name == "main"), None)
+    assert main is not None, "el wrapper tiene que seguir teniendo `main()`"
+
+    def indice_de_la_llamada(nombre):
+        for i, stmt in enumerate(main.body):
+            for nodo in ast.walk(stmt):
+                if (isinstance(nodo, ast.Call)
+                        and isinstance(nodo.func, ast.Name)
+                        and nodo.func.id == nombre):
+                    return i
+        return None
+
+    def indice_del_salir_de_noop():
+        for i, stmt in enumerate(main.body):
+            if (isinstance(stmt, ast.If) and "WOPT_NOOP" in ast.unparse(stmt)):
+                for nodo in ast.walk(stmt):
+                    if (isinstance(nodo, ast.Call) and isinstance(nodo.func,
+                                                                ast.Attribute)
+                            and nodo.func.attr == "exit"):
+                        return i
+        return None
+
+    def indice_del_add():
+        # El `add -A` real es `rc, out, err, exc = run_git(["add", "-A"], env)`,
+        # o sea un `Assign` cuyo objetivo es una TUPLA: mirar `targets[0]` como
+        # si fuera un `Name` daria `None` y el detector no encontraria nunca la
+        # frontera que quiere comparar. Se busca la sentencia completa.
+        for i, stmt in enumerate(main.body):
+            if not isinstance(stmt, ast.Assign):
+                continue
+            texto = ast.unparse(stmt)
+            # `ast.unparse` normaliza las comillas a SIMPLES, asi que un
+            # detector escrito con comillas dobles no encontraria nunca la
+            # sentencia. Se aceptan las dos formas.
+            if "run_git" in texto and ("'add'" in texto or '"add"' in texto):
+                return i
+        return None
+
+    i_puerta = indice_de_la_llamada("ancla_del_mensaje")
+    i_noop = indice_del_salir_de_noop()
+    i_add = indice_del_add()
+    i_repo = indice_de_la_llamada("validar_repo")
+    for nombre, valor in (("ancla_del_mensaje", i_puerta), ("validar_repo", i_repo),
+                          ("el sys.exit del NOOP", i_noop), ("el add -A", i_add)):
+        assert valor is not None, (
+            f"no se encuentra {nombre} en el cuerpo de `main()`. Si el refactor lo "
+            "cambio de forma, este test hay que rehacerlo: lo que no puede pasar es "
+            "que siga en verde sin comprobar la posicion")
+
+    assert i_repo < i_noop < i_puerta < i_add, (
+        "el orden de las cuatro fronteras del wrapper es normativo y esta roto: "
+        f"validar_repo={i_repo} < NOOP={i_noop} < puerta={i_puerta} < add -A={i_add}. "
+        "Se espera validar_repo -> NOOP -> puerta -> add -A, porque la puerta es de "
+        "solo lectura, un arbol limpio no tiene commit que anclar, y rechazar con el "
+        "arbol ya stageado seria mutar el arbol para luego decir que no")
+
+    # La puerta devuelve con el codigo 2 y su linea `WOPT_*` es la ULTIMA que
+    # imprime: se afirma sobre el bloque del rechazo, no sobre una costumbre.
+    bloque = None
+    for stmt in main.body:
+        if "ancla_del_mensaje" in ast.unparse(stmt):
+            siguiente = main.body[main.body.index(stmt) + 1]
+            if isinstance(siguiente, ast.If):
+                bloque = siguiente
+    assert bloque is not None, (
+        "el `if` de rechazo de la puerta tiene que ser la sentencia SIGUIENTE a la "
+        "llamada, para que la posicion de D2 se pueda afirmar sobre el bloque")
+    sentencia_wopt = [s for s in bloque.body if "WOPT_USAGE ancla-mensaje" in ast.unparse(s)]
+    assert len(sentencia_wopt) == 1, (
+        "el bloque de rechazo tiene que imprimir exactamente una linea "
+        f"WOPT_USAGE ancla-mensaje y hay {len(sentencia_wopt)}")
+    ultimo = ast.unparse(bloque.body[-1])
+    assert "exit(CODE_USAGE)" in ultimo, (
+        "el rechazo tiene que acabar en `sys.exit(CODE_USAGE)`: el codigo 2 es "
+        " USO INCORRECTO y no 1 (D3), porque la puerta no ejecuta ninguna operacion "
+        f"de git y un `WOPT_FAIL ancla-mensaje` seria indistinguible de un fallo de "
+        f"git. Ultima sentencia del bloque: {ultimo!r}")
+    assert bloque.body.index(sentencia_wopt[0]) == len(bloque.body) - 2, (
+        "la linea WOPT_* tiene que ser la penultima sentencia del bloque de rechazo, "
+        "o sea la ULTIMA que se imprime: el `INFO` de degradacion va antes y el "
+        "`sys.exit` no imprime nada. Con un print despues, el `WOPT_*` deja de ser "
+        "la unica linea que lee el pipeline (regla 4 del contrato)")
+
+    # Y que el NOOP no pasa por la puerta: es la excepcion que D2 declara.
+    if_noop = next(s for s in main.body
+                   if isinstance(s, ast.If) and "WOPT_NOOP" in ast.unparse(s))
+    assert "ancla_del_mensaje" not in ast.unparse(if_noop.body[0]), (
+        "el NOOP se resuelve ANTES de la puerta y con un mensaje sin ancla tiene que "
+        "salir `WOPT_NOOP` + 0: un no-op no tiene commit que anclar, y rechazarlo "
+        "seria ruido que el orquestador leeria como 'el commit fallo'")
+    print("Posicion de la puerta OK: validar_repo < NOOP < puerta < add -A.")
+
+
+def test_el_rechazo_de_la_puerta_dice_que_se_espera_y_por_que_importa():
+    """TASK-059 AC-A6: el rechazo por el camino REAL, con su contenido.
+
+    Dos mitades y cada una muere por su asercion:
+
+    1. **Contenido**: el motivo nombra las tres formas, dice "se espera" y
+       "POR QUE importa", y es ASCII puro. Un mensaje recortado a "formato
+       invalido" deja al que llama sin saber que escribir.
+    2. **Posicion**: la linea `WOPT_USAGE ancla-mensaje` es la ULTIMA de stdout.
+       Imprimir un `INFO` despues rompe la regla 4 del contrato, que es la que
+       hace que `WOPT_NOOP` pueda seguir siendo benigno (nunca imprime hash) y
+       la que hace que el pipeline tenga una sola linea que leer.
+
+    Y una tercera cosa que este test si puede hacer extremo a extremo, con el
+    arbol de trabajo sucio **por el propio test**: `GIT_DIR` temporal y un
+    fichero untracked nuevo que este test crea y borra. El `status --porcelain`
+    lo ve, la puerta rechaza, y como el rechazo es ANTERIOR a `add -A` el
+    indice tiene que quedar intacto: un `git add -A` colado tras la puerta
+    stagearia ese fichero, que es el dano exacto que D2 dice que no puede pasar.
+
+    Y el caso con identificador, en el MISMO arbol: no lo rechaza, stagea y
+    commitea en el temporal. Asi la puerta no se cuela en el camino bueno.
+    """
+    print("Probando el rechazo de la puerta por el camino real (contenido y posicion)...")
+    import subprocess
+    import sys as _sys
+    import tempfile
+
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    wrapper = os.path.join(raiz, ".taskmaster", "git_safe_commit.py")
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t059_puerta_")
+    d_hist = os.path.join(tmp, "historial")
+    git_dir = _repo_temporal_de_un_commit(
+        d_hist, "chore(release): fixture de la puerta")
+    # Identidad EN EL REPO TEMPORAL. `_repo_temporal_de_un_commit` pasa
+    # `-c user.email=...` en su propia linea de comandos, asi que no deja
+    # identidad configurada, y el wrapper commitea SIN `-c`: sin esto, la mitad
+    # "con identificador" muere con "Author identity unknown" y el test
+    # distinguiria "la puerta no se cuela" de "el fixture no sabe commitear".
+    for clave, valor in (("user.email", "t059@woptimizer.invalid"),
+                         ("user.name", "t059"),
+                         ("commit.gpgsign", "false")):
+        _git_de_fixture(["config", clave, valor], d_hist)
+    testigo = os.path.join(raiz, "_t059_testigo_stageado.txt")
+    previos = os.environ.get("GIT_DIR")
+
+    def invocar(mensaje):
+        env = os.environ.copy()
+        env["GIT_DIR"] = git_dir
+        env["GIT_WORK_TREE"] = raiz
+        return subprocess.run(
+            [_sys.executable, wrapper, mensaje], cwd=raiz, env=env,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=120,
+        )
+
+    def staged():
+        salida = _git_de_fixture(["diff", "--cached", "--name-only"],
+                                 os.path.join(tmp, "historial"))
+        return [l.strip() for l in salida.splitlines() if l.strip()]
+
+    try:
+        with open(testigo, "w", encoding="utf-8") as fh:
+            fh.write("fichero untracked que solo existe para que el arbol quede sucio\n")
+        assert staged() == [], (
+            f"la fixture tiene que empezar con el indice VACIO y hay {staged()!r}")
+
+        # --- 1) SIN identificador: rechazo, y el indice intacto --------------
+        r = invocar("chore(t059): mensaje sin identificador")
+        assert r.returncode == 2, (
+            "un mensaje sin identificador tiene que salir con 2 (WOPT_USAGE), no con "
+            f"1 ni con 0: salio con {r.returncode}. stdout={r.stdout!r}")
+        lineas = [l for l in (r.stdout or "").splitlines() if l.strip()]
+        assert lineas[-1].startswith("WOPT_USAGE ancla-mensaje"), (
+            "la linea `WOPT_*` tiene que ser la ULTIMA de stdout (regla 4 del "
+            f"contrato) y la ultima fue {lineas[-1]!r}. Todas: {lineas!r}")
+        assert "se espera" in lineas[-1], (
+            f"el rechazo tiene que decir QUE se espera: {lineas[-1]!r}")
+        assert "POR QUE" in lineas[-1] or "importa" in lineas[-1], (
+            f"el rechazo tiene que decir POR QUE importa: {lineas[-1]!r}")
+        assert "TASK-" in lineas[-1] and "CYCLE-" in lineas[-1] and "ciclo N" in lineas[-1], (
+            f"el rechazo tiene que nombrar las TRES formas: {lineas[-1]!r}")
+        assert lineas[-1].encode("ascii", "strict").decode("ascii") == lineas[-1], (
+            "la linea del rechazo tiene que ser ASCII puro (trampa #16, consola "
+            f"cp1252): {lineas[-1]!r}")
+        assert not any(l.startswith("WOPT_COMMIT_OK") for l in lineas), (
+            f"un mensaje rechazado NUNCA puede reportar commit creado: {lineas!r}")
+        assert staged() == [], (
+            "el rechazo NO puede dejar nada stageado: la puerta va antes de `add -A` "
+            f"por eso (D2) y hay {staged()!r} en el indice. Un rechazo que muta el "
+            "arbol es peor que no rejectar: deja al actor creyendo que no ha "
+            "cambiado nada cuando el indice ya tiene su trabajo")
+
+        # --- 2) CON identificador: la puerta NO se cuela en el camino bueno --
+        r2 = invocar("chore(t059): mensaje con ancla (TASK-059)")
+        assert r2.returncode == 0, (
+            "un mensaje CON identificador tiene que commitear y salir con 0; salio "
+            f"con {r2.returncode}. stdout={r2.stdout!r} stderr={r2.stderr!r}")
+        assert any(l.startswith("WOPT_COMMIT_OK") for l in
+                   (r2.stdout or "").splitlines()), (
+            f"el camino bueno tiene que imprimir WOPT_COMMIT_OK: {r2.stdout!r}")
+        # El indice se vacia al commitear, asi que "stageo" no se mira DESPUES:
+        # se mira el commit RESULTANTE en el repo temporal. Si el test solo
+        # mirase el indice, un no-op y un commit mal formado darian lo mismo.
+        hecho = _git_de_fixture(["log", "-1", "--format=%s", "--name-only"], d_hist)
+        assert os.path.basename(testigo) in hecho, (
+            "el commit con identificador tiene que haber LLEVADO el testigo al repo "
+            f"temporal: `git log -1 --name-only` dio {hecho!r}. Si no, el test no "
+            "estaba midiendo el camino bueno sino un no-op")
+    finally:
+        if os.path.exists(testigo):
+            os.unlink(testigo)
+        if previos is None:
+            os.environ.pop("GIT_DIR", None)
+        else:
+            os.environ["GIT_DIR"] = previos
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Rechazo de la puerta OK: 2, WOPT_* la ultima, indice intacto y camino "
+          "bueno con commit.")
+
+
+def test_las_plantillas_del_bucle_pasan_la_puerta_del_producto():
+    """TASK-059 AC-C1: el bucle cumple SU PROPIA puerta.
+
+    Se extraen del repo las plantillas literales de
+    `python .taskmaster/git_safe_commit.py "..."` de `.agents/**` y se pasan por
+    `ancla_del_mensaje` con los ids REALES de `tasks.json`. MEDIDO el 2026-10-04
+    antes de instalar la puerta: **0 de 5 pasaban**. Instalar la puerta sin tocar
+    las plantillas mataba el bucle en su primer commit, con certeza y no con
+    probabilidad.
+
+    El marcador de plantilla que se inserta en el mensaje es `(TASK-NNN)`, y
+    `TASK-NNN` **no resuelve** en `tasks.json`: por eso la comprobacion sustituye
+    el marcador por un id que existe de verdad. Es la unica concession que hace
+    este test y esta escrita para que se vea: si en vez de sustituir se
+    aceptara el marcador tal cual, el test mediria la regex y no las plantillas.
+    """
+    print("Probando que las plantillas del bucle pasan la puerta del producto...")
+    import glob
+    import re as _re
+
+    gsc = _cargar_el_wrapper()
+    ids = _ids_reales_de_tasks_json()
+    id_real = "TASK-059" if "TASK-059" in ids else sorted(ids)[0]
+
+    # La forma LITERAL del comando: comilla doble de apertura y de cierre en la
+    # misma linea. Con comilla simple no habria mensaje que pasar por la puerta.
+    patron = _re.compile(r'git_safe_commit\.py\s+"([^"]*)"')
+    # Un mensaje que es SOLO un marcador (`...`, `<mensaje>`, `[ID_TAREA]`) es
+    # una MENCION del comando, no una plantilla que se copie y pegue, y se
+    # salta. MEDIDO: hay tres, y sin esta regla el test las tomaria por
+    # plantillas y moriria por su propia prosa en vez de por lo que mide. Lo que
+    # NO se salta es un mensaje concreto: si a `chore(architect): planificar
+    # <tarea>` le quitan el `(TASK-NNN)`, deja de ser marcador entero, se
+    # comprueba, y la puerta lo rechaza.
+    solo_marcador = _re.compile(r"^(\.{2,}|<[^>]*>|\[[^\]]*\]|\{[^\}]*\})$")
+
+    def es_plantilla(texto):
+        return bool(texto.strip()) and not solo_marcador.match(texto.strip())
+
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    ficheros = sorted(glob.glob(os.path.join(raiz, ".agents", "**", "*.md"),
+                                recursive=True))
+    assert ficheros, "no se encuentra ningun .md en .agents/"
+
+    encontradas, rechazadas, saltadas = [], [], 0
+    for ruta in ficheros:
+        with open(ruta, encoding="utf-8") as f:
+            for numero, linea in enumerate(f, 1):
+                for plantilla in patron.findall(linea):
+                    if not es_plantilla(plantilla):
+                        saltadas += 1
+                        continue
+                    # El marcador de plantilla se sustituye por un id real: la
+                    # puerta exige RESOLUBILIDAD y `TASK-NNN` no esta en el
+                    # fichero. Ver el docstring de por que no se acepta tal cual.
+                    mensaje = plantilla.replace("TASK-NNN", id_real)
+                    ok, motivo = gsc.ancla_del_mensaje(mensaje, ids)
+                    encontradas.append((os.path.relpath(ruta, raiz), numero,
+                                        plantilla, ok, motivo))
+
+    rechazadas = [e for e in encontradas if not e[3]]
+    assert encontradas, (
+        "no se ha extraido NINGUNA plantilla de `git_safe_commit.py \"...\"` de "
+        ".agents/. Si el regex deja de encontrar las, este test pasa en verde sin "
+        "medir nada: es el falso verde con la forma de una asercion")
+    assert len(encontradas) >= 5, (
+        f"se esperaban al menos 5 plantillas literales y se han encontrado "
+        f"{len(encontradas)}: {encontradas!r}. Si el bucle ha cambiado de forma, "
+        "este test hay que actualizarlo, no relajarlo")
+    assert not rechazadas, (
+        "hay plantillas del bucle que la puerta del producto RECHAZA, y eso mata el "
+        "bucle en su primer commit. Con identificador en la plantilla, no en una "
+        f"nota al lado: {rechazadas!r}")
+
+    # La prueba de que el test mide algo: la MISMA puerta, aplicada a la plantilla
+    # en el estado que se midio (0 de 5), tiene que rechazar.
+    sin_id = "chore(architect): planificar la tarea"
+    assert gsc.ancla_del_mensaje(sin_id, ids)[0] is False, (
+        "control negativo: la puerta tiene que rechazar un mensaje sin "
+        "identificador, o este test no distinguiria 'las plantillas pasan' de "
+        "'la puerta no hace nada'")
+    detalle = ", ".join(f"{r}:{n}" for r, n, _t, _o, _m in encontradas)
+    print(f"Plantillas del bucle OK: {len(encontradas)} pasan la puerta "
+          f"({detalle}); {saltadas} mencion(es) del comando con marcador entero, "
+          "que no son plantillas y se saltan a proposito.")
+
+
+def test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico():
+    """TASK-059 AC-B1..AC-B5: el campo `commits`, con hechos y no con afirmaciones.
+
+    Siete escenarios en una tabla (D4: un hallazgo nuevo cuesta una fila, no un
+    test), sobre el esqueleto REAL copiado **una vez** a un `mkdtemp()` y con un
+    `GIT_DIR` temporal con **commits REALES** de ese repo: "resuelve" tiene que
+    ser un hecho de git, no una afirmacion del codigo.
+
+    Ninguna expectativa se deriva del fichero que se valida: los numeros que se
+    exigen son los que la FIXTURE construye (3 entradas, 1 conforme, 1 hash
+    perdido declarado, 1 ciclo sin hash), y el techo se **lee del producto**
+    (`MAX_HASHES_PERDIDOS` / `MAX_CICLOS_SIN_HASH`), no se copia.
+    """
+    print("Check 9 sobre arbol sintetico, 7 filas: forma, resolubilidad, registro "
+          "de perdidas, antidolar y techos...")
+    import shutil
+
+    import validate_docs as vd
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t059_check9_")
+    previos = {c: os.environ.get(c) for c in ("GIT_DIR", "GIT_WORK_TREE")}
+    espurias = [n for n in os.listdir(tmp)]
+    assert not espurias, f"el temporal tiene que empezar vacio y hay {espurias!r}"
+    esqueleto = os.path.join(tmp, "esqueleto")
+    os.makedirs(esqueleto, exist_ok=True)
+    _copiar_el_esqueleto_del_validador(esqueleto)
+
+    # El techo se LEE del producto. Copiarlo aqui seria la misma mentira que el
+    # recuento de tests, un nivel mas arriba, y el mutante "subir el techo a 999"
+    # pasaria sin ser probado.
+    with open(os.path.join(esqueleto, "validate_docs.py"),
+              encoding="utf-8") as fh:
+        fuente_validador = fh.read()
+    assert isinstance(vd.MAX_HASHES_PERDIDOS, int) and vd.MAX_HASHES_PERDIDOS > 0, (
+        "el producto tiene que declarar MAX_HASHES_PERDIDOS: sin la constante el "
+        "techo no es un suelo ejecutado sino un numero en un docstring")
+    assert isinstance(vd.MAX_CICLOS_SIN_HASH, int) and vd.MAX_CICLOS_SIN_HASH > 0, (
+        "el producto tiene que declarar MAX_CICLOS_SIN_HASH (idem MAX_HASHES_PERDIDOS)")
+    assert "2026-10-04" in fuente_validador, (
+        "la fecha de la medidad de la que salen los techos tiene que estar en el "
+        "producto: un techo sin fecha es un numero que nadie puede reevaluar cuando "
+        "el residuo cambie, y el comentario es la unica parte del producto que "
+        "explica de donde sale el numero")
+    lineas_validador = fuente_validador.splitlines()
+    for constante in ("MAX_HASHES_PERDIDOS", "MAX_CICLOS_SIN_HASH"):
+        indice = next((i for i, l in enumerate(lineas_validador)
+                       if l.startswith(constante + " =")), None)
+        assert indice is not None, f"el producto no declara {constante}"
+        # El comentario de una constante es lo que esta ENCIMA de ella, no lo que
+        # viene despues: mirar detras leeria el comentario de la SIGUIENTE, que es
+        # justo el error que hacia pasar este test con la fecha de otro techo.
+        arriba = []
+        for l in reversed(lineas_validador[:indice]):
+            if l.startswith("#"):
+                arriba.append(l)
+            else:
+                break
+        comentario = "\n".join(reversed(arriba))
+        assert "2026-10-04" in comentario, (
+            f"{constante} tiene que llevar en su comentario la FECHA de la medidad "
+            f"de la que sale, y su comentario es: {comentario[:200]!r}. Un techo sin "
+            "fecha es un numero que nadie puede reevaluar cuando el residuo cambie")
+
+    # --- Un repo temporal con UN commit real, y su hash corto REAL -----------
+    d_hist = os.path.join(tmp, "historial")
+    _repo_temporal_de_un_commit(d_hist, "chore(release): fixture del check 9")
+    HASH_REAL = _git_de_fixture(["rev-parse", "--short", "HEAD"], d_hist).strip()
+    # Hash bien formado que NO existe en ese repo: la forma conforme que R2 tiene
+    # que acusar. "deadbee" son 7 hex, luego `fullmatch` lo acepta y git no lo
+    # resuelve: el caso que un `search` en vez de `fullmatch` no distinguiria.
+    HASH_MUERTO = "deadbee"
+    assert HASH_MUERTO not in _git_de_fixture(
+        ["cat-file", "--batch-check"], d_hist), "pre-vuelo: HASH_MUERTO existe"
+    log = _git_de_fixture(["log", "--format=%s"], d_hist)
+    assert HASH_REAL in _git_de_fixture(["log", "--format=%h"], d_hist), (
+        f"la fixture de git tiene que tener el commit {HASH_REAL} de verdad: "
+        f"`git log --format=%h` dio {log!r}. Sin este pre-vuelo, un check que no "
+        "mire el repo y un GIT_DIR roto darian el mismo veredicto")
+
+    # --- Los tres ciclos de la fixture, con sus cifras CONOCIDAS -------------
+    # 1 CONFORME (el hash real), 1 con un hash muerto (declarado o no) y 1 SIN
+    # hash. Los tres numeros los fija la FIXTURE, no el fichero validado, y por
+    # eso el constructor NO deduce nada: cada fila dice que entradas pone.
+    def journal(conformes=(), muertos=(), sin_hash=False, perdidos=None):
+        entradas = [{"cycle": 1, "commits": list(conformes)}]
+        if muertos or perdidos is not None:
+            entrada = {"cycle": 2, "commits": list(muertos)}
+            if perdidos:
+                entrada["commits_perdidos"] = list(perdidos)
+            entradas.append(entrada)
+        if sin_hash:
+            entradas.append({"cycle": 3, "commits": []})
+        return entradas
+
+    def escribir(entradas=None, journal_texto=None):
+        ruta = os.path.join(esqueleto, ".taskmaster", "rd_journal.json")
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write(journal_texto if journal_texto is not None
+                     else json.dumps(entradas))
+
+    def asentar():
+        os.environ["GIT_DIR"] = os.path.join(d_hist, ".git")
+        return _informe_del_validador_real(esqueleto)
+
+    def de_check_9(errors):
+        return [e for e in errors if e.startswith("rd_journal.json commits:")]
+
+    # ==== (a) AC-B1: el PAR con el MISMO arbol y el MISMO hash ==============
+    # Con texto libre pegado, `search` lo daria por bueno y el check daria 0
+    # fallos: la segunda mitad de la fila es la que mata ese mutante.
+    escribir(journal(conformes=[f"{HASH_REAL} (architect)"]))
+    errors, _ = asentar()
+    fallos = de_check_9(errors)
+    assert fallos, (
+        f"`{HASH_REAL} (architect)` tiene que ser un FAIL de R1: el elemento lleva "
+        "texto libre y `search` (en vez de `fullmatch`) lo aceptaria, que es "
+        "exactamente el bug que produjo la cifra falsa de '41 de 46 hashes no "
+        f"resuelven'. Errores del check 9: {fallos!r}")
+    assert any("ciclo 001" in x and HASH_REAL in x for x in fallos), (
+        f"el FAIL tiene que NOMBRAR el ciclo y el elemento: {fallos!r}")
+
+    escribir(journal(conformes=[HASH_REAL]))
+    errors, ok = asentar()
+    assert not de_check_9(errors), (
+        "el MISMO hash desnudo y el MISMO arbol tienen que dar 0 fallos del check 9: "
+        f"si no, el check no distingue la forma y el fallo real se pierde. "
+        f"Errores: {de_check_9(errors)!r}")
+
+    # ==== (b) AC-B2: sin declaracion FALLA, con declaracion PASA ============
+    # El par exige los dos veredictos sobre el MISMO arbol: un mutante que solo
+    # sepa fallar, o solo sepa pasar, muere en una de las dos mitades.
+    escribir(journal(muertos=[HASH_MUERTO]))
+    errors, _ = asentar()
+    assert any(HASH_MUERTO in x and "no lo declara" in x for x in de_check_9(errors)), (
+        f"un hash que no resuelve y NO se declara perdido tiene que ser un FAIL de "
+        f"R2. Errores: {de_check_9(errors)!r}")
+
+    escribir(journal(muertos=[HASH_MUERTO],
+                     perdidos=[{"hash": HASH_MUERTO, "causa": "VFS_CORRUPTO"}]))
+    errors, _ = asentar()
+    assert not de_check_9(errors), (
+        "el MISMO hash, con su perdida declarada y su causa, tiene que dar 0 "
+        f"fallos: el registro EXPLICA, no suprime. Errores: {de_check_9(errors)!r}")
+
+    # ... y con la causa fuera del vocabulario cerrado, o vacia, es un FAIL.
+    for causa in ("", "se perdio", "VFS", "vfs_corrupto", None, 42):
+        escribir(journal(muertos=[HASH_MUERTO],
+                         perdidos=[{"hash": HASH_MUERTO, "causa": causa}]))
+        errors, _ = asentar()
+        fallos = de_check_9(errors)
+        assert any("vocabulario cerrado" in x for x in fallos), (
+            f"una causa fuera del vocabulario cerrado ({causa!r}) tiene que ser un "
+            f"FAIL de R3: una causa redactada en libertad es infalsable. "
+            f"Errores: {fallos!r}")
+
+    # ==== (c) AC-B3: declarada perdida una perdida que RESUELVE (R4) ========
+    escribir(journal(muertos=[HASH_REAL],
+                     perdidos=[{"hash": HASH_REAL, "causa": "VFS_CORRUPTO"}]))
+    errors, _ = asentar()
+    fallos = de_check_9(errors)
+    assert any("que el historial desmiente" in x for x in fallos), (
+        "un hash declarado perdido que SI RESUELVE tiene que ser un FAIL (R4). Sin "
+        "R4 la solucion degenerada es declarar como perdidas las entradas que no se "
+        "quieren sanear y el check queda verde: el falso verde que este check "
+        f"existe para matar, al reves. Errores: {fallos!r}")
+
+    # Y el caso espejo: una perdida declarada de un hash que la entrada NO
+    # declara en `commits` (taparla sin el hecho que la sostiene).
+    escribir(journal(muertos=[HASH_MUERTO],
+                     perdidos=[{"hash": HASH_REAL, "causa": "VFS_CORRUPTO"}]))
+    errors, _ = asentar()
+    assert any("NO esta en su 'commits'" in x for x in de_check_9(errors)), (
+        "declarar perdida un hash que la entrada no declara es tapar la perdida sin "
+        f"sostenerla. Errores: {de_check_9(errors)!r}")
+
+    # ==== (d) AC-B4: los techos, con el numero LEIDO del producto ==========
+    # El techo cuenta DECLARACIONES de perdida, no repeticiones de un hash: con
+    # el mismo hash cuatro veces en `commits` y UNA sola declaracion, el techo ve
+    # una perdida y no cuatro. Por eso los hashes muertos de esta fila son
+    # DISTINTOS, y esta nota esta porque la primera redaccion de la fila usaba
+    # el mismo cuatro veces y pasaba en verde por el motivo equivocado.
+    MUERTOS = ["deadbee", "beefbee", "cafebabe", "badc0de", "f00dfeed"]
+    for h in MUERTOS:
+        assert vd.RE_HASH_CORTO.fullmatch(h), (
+            f"{h!r} tiene que ser un hash CONFORME (7-40 hex) para que la fila mida "
+            "el techo y no la forma: la R1 lo rechazaria antes de llegar al R5")
+        assert h not in _git_de_fixture(["cat-file", "--batch-check"], d_hist), (
+            f"pre-vuelo: el hash muerto de la fixture {h} existe de verdad")
+
+    escribir(journal(muertos=MUERTOS[:vd.MAX_HASHES_PERDIDOS + 1],
+                     perdidos=[{"hash": h, "causa": "VFS_CORRUPTO",
+                                "nota": "nota de la fixture"} for h
+                               in MUERTOS[:vd.MAX_HASHES_PERDIDOS + 1]]))
+    errors, _ = asentar()
+    assert any("el techo es" in x for x in de_check_9(errors)), (
+        f"{vd.MAX_HASHES_PERDIDOS + 1} perdidas declaradas tienen que superar el "
+        f"techo ({vd.MAX_HASHES_PERDIDOS}) y salir como FAIL. Errores: "
+        f"{de_check_9(errors)!r}")
+
+    escribir(journal(muertos=MUERTOS[:vd.MAX_HASHES_PERDIDOS],
+                     perdidos=[{"hash": h, "causa": "VFS_CORRUPTO",
+                                "nota": "nota de la fixture"} for h
+                               in MUERTOS[:vd.MAX_HASHES_PERDIDOS]]))
+    errors, _ = asentar()
+    assert not de_check_9(errors), (
+        f"exactamente {vd.MAX_HASHES_PERDIDOS} perdidas declaradas tienen que PASAR "
+        f"(el techo es >=, no >): si no, el suelo avisa de mas y entrena a ignorar el "
+        f"semaforo. Errores: {de_check_9(errors)!r}")
+
+    # El techo de ciclos SIN hash, leido del producto igual.
+    sin_hash_de_mas = [{"cycle": 100 + i, "commits": [],
+                        "commits_perdidos": [{"causa": "NUNCA_DECLARADO",
+                                              "nota": "nota de la fixture"}]}
+                       for i in range(vd.MAX_CICLOS_SIN_HASH + 1)]
+    escribir([{"cycle": 1, "commits": [HASH_REAL]}] + sin_hash_de_mas)
+    errors, _ = asentar()
+    assert any("ciclo(s) sin hash declarado" in x and "el techo es" in x
+               for x in de_check_9(errors)), (
+        f"{vd.MAX_CICLOS_SIN_HASH + 1} ciclos sin hash declarado tienen que superar "
+        f"el techo ({vd.MAX_CICLOS_SIN_HASH}). Errores: {de_check_9(errors)!r}")
+
+    # Y un ciclo sin hash cuya declaracion NO lleva nota es un FAIL: no hay hecho
+    # que comprobar y no hay nada que leer. La fila DECLARA la perdida sin `nota`
+    # a proposito; con cinco ciclos asi el techo tambien salta, y lo que se exige
+    # aqui es el mensaje de la nota, no el del techo.
+    escribir([{"cycle": i, "commits": [],
+               "commits_perdidos": [{"causa": "NUNCA_DECLARADO"}]}
+              for i in range(1, 6)])
+    errors, _ = asentar()
+    assert any("sin 'nota'" in x for x in de_check_9(errors)), (
+        "una perdida sin hash y sin nota no declara nada comprobable y tiene que ser "
+        f"un FAIL. Errores: {de_check_9(errors)!r}")
+
+    # Y la misma fila CON nota y por debajo del techo tiene que pasar: el mensaje
+    # de la nota es lo que la hace conforme, no el numero de ciclos.
+    escribir([{"cycle": 1, "commits": [HASH_REAL]}]
+             + [{"cycle": 100 + i, "commits": [],
+                 "commits_perdidos": [{"causa": "NUNCA_DECLARADO",
+                                       "nota": "nota de la fixture"}]}
+                for i in range(vd.MAX_CICLOS_SIN_HASH)])
+    errors, _ = asentar()
+    assert not de_check_9(errors), (
+        f"{vd.MAX_CICLOS_SIN_HASH} ciclos sin hash, cada uno con su nota, tienen que "
+        f"PASAR. Errores: {de_check_9(errors)!r}")
+
+    # ==== (e) AC-B5: la linea de informe, con las cifras VIVAS de la fixture =
+    escribir(journal(conformes=[HASH_REAL], muertos=[HASH_MUERTO], sin_hash=True,
+                     perdidos=[{"hash": HASH_MUERTO, "causa": "VFS_CORRUPTO",
+                                "nota": "nota de la fixture"}]))
+    errors, ok = asentar()
+    linea = [o for o in ok if "campo 'commits' del journal" in o]
+    assert linea, (
+        "el check 9 tiene que imprimir su linea de informe en `ok`: sin numero "
+        f"vivo el suelo es una promesa. Lineas ok: {ok!r}")
+    linea = linea[0]
+    # 3 entradas, 2 con lista (1 y 2), 1 conforme (el ciclo 1; el 2 tiene un
+    # hash conforme tambien), 1 sin hash (el 3), 1 perdido declarado.
+    for esperado in ("3 entrada(s) con 'cycle'", "2 con lista de hash(es)",
+                     "1 sin hash declarado", "1 hash(es) perdido(s)",
+                     "VFS_CORRUPTO"):
+        assert esperado in linea, (
+            f"la linea de informe tiene que llevar {esperado!r} y es {linea!r}. Las "
+            "cifras son las que la FIXTURE construye (3 entradas, 1 conforme, 1 "
+            "perdido, 1 sin hash); leerlas del fichero validado seria tautologico")
+    assert "0 + 0" not in linea, (
+        f"la linea de informe jamas puede ser '0 + 0' en verde: seria un falso "
+        f"verde con la forma de un acierto. Linea: {linea!r}")
+
+    # Y si el journal NO se puede leer, se acusa con el MOTIVO LITERAL.
+    escribir(journal_texto="{esto no es json")
+    errors, _ = asentar()
+    fallos = de_check_9(errors)
+    assert fallos and "NO SE PUEDE LEER" in fallos[0], (
+        "un journal ilegible tiene que ser un FAIL con el motivo literal, NUNCA un "
+        f"0 en verde: un ancla ilegible no certifica. Errores: {fallos!r}")
+    assert "JSONDecodeError" in fallos[0] or "ValueError" in fallos[0], (
+        f"el motivo tiene que ser LITERAL (la clase de la excepcion), no un texto "
+        f"generico: {fallos[0]!r}")
+
+    # Y con un GIT_DIR que NO es repo, la resolubilidad no se inventa: se dice.
+    # OJO: esta fila llama a `_informe_del_validador_real` DIRECTAMENTE y no a
+    # `asentar()`, porque `asentar()` vuelve a FIJAR `GIT_DIR` al repo bueno: con
+    # `asentar()` esta fila no estaba midiendo un repo ilegido sino el de
+    # siempre, y el fallo salia como "no se puede leer" sobre un repo
+    # perfectamente legible. Un test que no ejecuta la situacion que dice medir.
+    escribir(journal(muertos=[HASH_MUERTO]))
+    os.environ["GIT_DIR"] = os.path.join(tmp, "no_es_un_repo")
+    os.makedirs(os.environ["GIT_DIR"], exist_ok=True)
+    errors, _ = _informe_del_validador_real(esqueleto)
+    fallos = de_check_9(errors)
+    assert any("NO SE PUEDE LEER EL REPO" in x for x in fallos), (
+        "con un GIT_DIR que no es repo, la R2 y la R4 no se pueden comprobar y "
+        "eso se INFORMA con el motivo literal: devolver 'nada resuelve' "
+        "declararia perdidas que no se han medido. Errores: "
+        f"{fallos!r}")
+    assert not any("no lo declara" in x for x in fallos), (
+        "y sobre todo NO puede acusar hashes sin resolver: ese es el falso verde "
+        f"invertido, el que fabrica perdidas. Errores: {fallos!r}")
+
+    for clave, valor in previos.items():
+        if valor is None:
+            os.environ.pop(clave, None)
+        else:
+            os.environ[clave] = valor
+    shutil.rmtree(tmp, ignore_errors=True)
+    print("Check 9 del journal OK: forma (fullmatch), resolubilidad, vocabulario "
+          "cerrado, antidolar, techos leidos del producto e informe con cifras vivas.")
+
+
+def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
+    """TASK-059 AC-B6: el cableado, no solo la funcion.
+
+    Es el patron que ya pago tres veces (ciclos #47 y #49): los tests llamaban a
+    las funciones PRIVADAS pasandoles los argumentos a mano, el cableado que
+    suministra esos argumentos no lo probaba NADIE, y el fix se quedaba como
+    **codigo muerto en el camino real** (`validate_docs.py` respondia `0 FAIL`
+    con el parser de marcadores muerto).
+
+    Aqui no se duplica la ruta: se copia el `validate_docs.py` REAL a un arbol
+    temporal con el esqueleto que `validar()` lee y se ejecuta como
+    SUBPROCESO, de modo que se ejercitan `main()`, `validar()`, la linea de
+    cableado y el `sys.exit`. Contra un `commits` con texto libre, que el repo
+    real ya no tiene, la salida tiene que ser DISTINTA de 0.
+
+    Y tiene dos caras, como el test del ciclo #47: la segunda mitad escribe en la
+    copia el MUTANTE (el cableado del check 9 sustituido por `pass`) y exige que
+    el residuo desaparezca del informe. Asi el test demuestra su capacidad de
+    matar en vez de declararla.
+    """
+    print("Check 9 en el camino real del validador, con su mutante de cableado...")
+    import shutil
+    import subprocess
+    import sys
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t059_real_")
+    previos = {c: os.environ.get(c) for c in ("GIT_DIR", "GIT_WORK_TREE")}
+    try:
+        os.makedirs(tmp, exist_ok=True)
+        _copiar_el_esqueleto_del_validador(tmp)
+
+        d_hist = os.path.join(tmp, "historial")
+        _repo_temporal_de_un_commit(d_hist, "chore(release): fixture del cableado")
+        hash_real = _git_de_fixture(["rev-parse", "--short", "HEAD"], d_hist).strip()
+        os.environ["GIT_DIR"] = os.path.join(d_hist, ".git")
+
+        # El residuo: un elemento con texto libre que CONTIENE un hash real.
+        with open(os.path.join(tmp, ".taskmaster", "rd_journal.json"),
+                  "w", encoding="utf-8") as fh:
+            fh.write(json.dumps([{"cycle": 7, "commits": [f"{hash_real} (architect)"]}]))
+
+        def ejecutar():
+            env = os.environ.copy()
+            env["PYTHONIOENCODING"] = "utf-8"
+            ultimo = (None, "(no llego a ejecutarse)")
+            for _intento in (1, 2, 3):
+                r = subprocess.run(
+                    [sys.executable, os.path.join(tmp, "validate_docs.py")],
+                    cwd=tmp, env=env, capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=300,
+                )
+                ultimo = (r.returncode, (r.stdout or "") + (r.stderr or ""))
+                if "no es un hash corto limpio" in ultimo[1]:
+                    return ultimo
+            return ultimo
+
+        rc, informe = ejecutar()
+        assert "Resumen:" in informe, (
+            "el validador tiene que LLEGAR AL FINAL y printar su informe. Si "
+            f"`Resumen:` no esta, esta asercion esta probando una excepcion, no el "
+            f"cableado. rc={rc}. Informe:\n{informe[-2000:]}")
+        assert "no es un hash corto limpio" in informe, (
+            "el validador REAL tiene que acusar el elemento con texto libre del "
+            f"campo `commits`: rc={rc}. Informe:\n{informe[-2000:]}")
+        assert "campo 'commits' del journal" in informe, (
+            "el check 9 tiene que CORRER dentro de `validar()`: su linea de informe "
+            f"no aparece. rc={rc}. Informe:\n{informe[-2000:]}")
+        assert rc != 0, (
+            f"con un residuo real el validador tiene que salir con != 0; salio con "
+            f"{rc}. Informe:\n{informe[-2000:]}")
+
+        # --- LA MITAD MUTANTE: el cableado sustituido por `pass` -------------
+        ruta_validador = os.path.join(tmp, "validate_docs.py")
+        with open(ruta_validador, encoding="utf-8") as f:
+            fuente = f.read()
+        linea = next((l for l in fuente.splitlines()
+                      if l.strip().startswith("_comprobar_hashes_del_journal(root,")),
+                     None)
+        assert linea is not None, (
+            "no se encuentra la linea de cableado `_comprobar_hashes_del_journal("
+            "root, errors, ok)` en la copia del validador. Si el cableado cambio de "
+            "forma, este test hay que rehacerlo; lo que no puede pasar es que siga "
+            "en verde sin comprobar el cableado")
+        with open(ruta_validador, "w", encoding="utf-8") as f:
+            f.write(fuente.replace(linea, "    pass  # MUTANTE: sin check 9"))
+        rc_mut, informe_mut = ejecutar()
+        assert "no es un hash corto limpio" not in informe_mut, (
+            "el MUTANTE (el cableado del check 9 sustituido por `pass`) tiene que "
+            "hacer DESAPARECER el residuo del informe: si el test sigue viendo el "
+            "fallo con el cableado muerto, no esta probando el cableado. Informe "
+            f"del mutante:\n{informe_mut[-2000:]}")
+    finally:
+        for clave, valor in previos.items():
+            if valor is None:
+                os.environ.pop(clave, None)
+            else:
+                os.environ[clave] = valor
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Check 9 cableado en el camino real OK: el residuo sale con != 0 y el "
+          "mutante de cableado lo hace desaparecer.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -16210,6 +17158,16 @@ if __name__ == "__main__":
     # reparto 94+10 del panel tambien se deriva, en el check 7 y no aqui. Suite:
     # 103 -> 104; trece escenarios en una tabla, sobre arbol sintetico.
     test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva()
+    # TASK-059: la puerta del mensaje (git_safe_commit.py) y el check 9 del
+    # validador (el campo `commits` de rd_journal.json). Suite: 124 -> 130. Las
+    # seis llamadas van ANTES del marcador headless porque ninguna abre una
+    # ventana: son tooling puro, y el reparto lo deriva el check 7 con `ast`.
+    test_la_puerta_del_mensaje_exige_un_ancla_resoluble()
+    test_la_puerta_se_coloca_despues_del_noop_y_antes_de_add()
+    test_el_rechazo_de_la_puerta_dice_que_se_espera_y_por_que_importa()
+    test_las_plantillas_del_bucle_pasan_la_puerta_del_producto()
+    test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico()
+    test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.

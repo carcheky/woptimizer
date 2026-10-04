@@ -55,7 +55,7 @@ ciclo se da por versionado sin haberlo estado.
 | `0` | Commit creado de verdad | `git commit` con returncode 0 | `WOPT_COMMIT_OK <hash-short> <mensaje>` |
 | `0` | Nada que comitear (benigno) | `git diff --cached --quiet` == 0 tras `add -A` | `WOPT_NOOP <motivo>` (**sin hash**) |
 | `1` | Fallo de una operación de git | `git status`, `git add -A` o `git commit` con rc != 0, o excepción al lanzarlos | `WOPT_FAIL <operacion> <detalle>` |
-| `2` | Uso incorrecto | sin mensaje, mensaje vacío, más de un posicional o flag desconocido | `WOPT_USAGE <detalle>` |
+| `2` | Uso incorrecto | sin mensaje, mensaje vacío, más de un posicional, flag desconocido, **o mensaje sin identificador de ciclo ni de tarea** | `WOPT_USAGE <detalle>` / `WOPT_USAGE ancla-mensaje <detalle>` |
 | `3` | Repositorio no verificable | `GIT_DIR` inexistente, no es un git dir, `HEAD` no resuelve, `is-inside-work-tree` != `true`, o `git` no ejecutable | `WOPT_REPO_INVALIDO <detalle>` |
 
 Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
@@ -87,7 +87,9 @@ Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
    `GIT_DIR` era el temporal). Por eso el test de la sección siguiente solo ejercita las dos
    puertas que devuelven **antes de cualquier `add`**.
 8. **Todas las cadenas de `print()` del wrapper son ASCII puro** (trampa #16: la consola es
-   cp1252). Los comentarios y docstrings sí llevan acentos.
+   cp1252). Los comentarios y docstrings sí llevan acentos. La puerta del mensaje (sección
+   siguiente) vive bajo esta misma regla: su motivo de rechazo es el texto que más urge y el que
+   menos puede fallar al imprimirse.
 
 ### Flag `--verify`
 
@@ -119,6 +121,202 @@ el código** (medido: repo temporal con un `pre-commit` que sale con 1 -> `WOPT_
 1), pero **nadie lo ata a un test**: por eso vive como 🔴 en la fila del `spawn EPERM` de
 `STATUS.md:88`. **SEGUNDA MEDICIÓN (cierre del ciclo #48):** el mutante sobrevive también a `validate_docs.py` (`110 OK / 0 FAIL` con el mutante puesto), así que los dos semi-veredictos del toolchain lo dejan pasar. **La víctima, nombrada:** el único consumidor real del código de salida es el **agente orquestador** (`.agents/agents/architect-review/agent.md:50` y `.agents/skills/id-pipeline/SKILL.md:382`, que escribe el changelog tras el commit «para tener el hash»), mientras que `run_tests.py` solo mira `3` y `2` y `validate_docs.py` solo lo menciona. Y el matiz que corrige el tamaño del daño: un `WOPT_NOOP` **no lleva hash** (regla 4 de esta tabla), luego esta puerta no puede reintroducir el CHANGELOG con hashes inventados; el daño real es el ciclo cerrado sin commit. Desde el cierre del ciclo #48 tiene dueño: **`TASK-061`**. Cerrarla exige decidir antes qué se hace con `GIT_WORK_TREE` (regla 7) y después
 escribir su test.
+
+## La puerta del mensaje: el identificador es obligatorio (TASK-059)
+
+### Qué exige
+
+Un mensaje pasa la puerta si lleva **al menos una** de estas tres formas, y solo tres:
+
+| Forma | Ejemplo | Por qué |
+|---|---|---|
+| `TASK-NNN` **que exista en `.taskmaster/tasks.json`** | `(TASK-059)` | Es la única que se puede **resolver**, y resolverla es lo que convierte el identificador en ancla y no en decoración |
+| `CYCLE-NNN` | `CYCLE-059` | Convención de ciclo, sin dependencia de ficheros |
+| Marcador de ciclo | `ciclo 59`, `ciclo #59`, `cycle-59` | El **mismo** patrón que el del validador (`validate_docs.py` -> `_RE_MARCADOR_DE_CICLO`), carácter por carácter |
+
+**`T-\d+` NO cuenta.** `T-1`..`T-9` son ids de tarea *dentro de un change*
+(`openspec/changes/*/tasks.md`), no existen en `tasks.json` y nadie puede
+resolverlos: aceptar un `T-9` es aceptar un ancla de mentira. MEDIDO: el commit
+`9433985` lleva `T-9` donde debía llevar `TASK-063`, y ese es exactamente el caso
+que un regex laxo deja pasar.
+
+**Medido sobre el historial real (2026-10-04, 212 subjects):** pasan **150
+(71 %)** y la rechazan 62 (29 %), y de los 25 commits más recientes la fallan 8
+(32 %) — el bucle no vivía limpio. **La puerta no paraliza el bucle: lo rechaza
+un 29 %, no un 100 %.** De las 212 menciones de `TASK-`, **todas las que se
+resuelven resuelven**: hay 63 ids en `tasks.json` y 48 de los 51 ciclos del
+journal se corroboran hoy por el historial, luego **siempre hay un identificador
+disponible** y la puerta es *opt-out por construcción*, no *opt-in* (la misma
+disyuntiva que ya resolvió el check 8 con las exenciones de la Deuda).
+
+### Dónde está, y por qué ahí
+
+```
+parse_args  ->  validar_repo  ->  [--verify]  ->  status --porcelain
+             ->  NOOP (WOPT_NOOP + 0, EXENTO)
+             ->  PUERTA DEL MENSAJE  <- aqui
+             ->  add -A  ->  diff --cached  ->  commit  ->  WOPT_COMMIT_OK
+```
+
+El orden **es normativo** y las tres fronteras se pueden medir contra el código real:
+
+| Posición | Consecuencia medida |
+|---|---|
+| Antes de `validar_repo` | Rompe el contrato: los dos caminos de commit del test existente esperan **3** con un `GIT_DIR` inválido y pasarían a 2. El 3 significa «no pude ni comprobar» y el 2 «tu invocación está mal»: confundirlos entrena al orquestador a diagnosticar el repo cuando el problema es su cadena. |
+| **Después de `validar_repo` y del NOOP, antes de `add -A`** | **Elegida.** Un árbol limpio sigue diciendo `WOPT_NOOP` + `0` (benigno: no hay commit que anclar, y rechazar un no-op sería ruido que el orquestador leería como «el commit falló»); un commit que existe lleva **siempre** identificador; y la puerta es de **solo lectura**, luego testeable sin escribir nada. |
+| Después de `add -A` | Rechaza **después** de stagear: muta el árbol real para luego decir que no. Prohibido. |
+
+### El código de salida es 2, no 1
+
+El rechazo imprime `WOPT_USAGE ancla-mensaje <qué se espera> <por qué importa>` y sale con
+**`2`**. No se **añade** un código: se **extiende** la fila «cuándo» del `2`, y el contrato
+0/1/2/3 sigue íntegro. La razón es que la puerta **no ejecuta ninguna operación de git**, y
+meterla en `WOPT_FAIL` haría **falsa la tabla de más arriba**: un `WOPT_FAIL ancla-mensaje` sería
+indistinguible de un fallo de git para el único consumidor real del código, que ramifica por
+él (`.agents/agents/architect-review/agent.md`). Todo consumidor que ramifica por `exit == 0`
+sigue viendo «no hubo commit», que es lo único que no puede perderse.
+
+La línea `WOPT_*` va **la última**, siempre (regla 4), y es **ASCII puro** (regla 8). El motivo
+deja claro que es un **POR QUÉ**, no un «formato inválido»: quien recibe el rechazo tiene que
+poder corregir el mensaje sin abrir el contrato.
+
+### Dos degradaciones, las dos explícitas
+
+- **`tasks.json` ilegible** → la puerta exige la **forma** y **no** la resolubilidad, y lo dice
+  en una línea `INFO` **antes** de la `WOPT_*`. Se degrada solo el paso de resolución, **nunca el
+  de forma**: un `except` que devolviera «todo válido» sería *fail-open* y dejaría la puerta
+  muerta.
+- **`--verify`** → **no** pasa por la puerta: es un diagnóstico del repo y no lleva mensaje.
+
+### Por qué el NOOP queda exento, y por qué eso no es un descuido
+
+Un no-op **no tiene commit que anclar**, así que no hay nada que anclar. Lo que sí tiene efectos
+—y es intencionado— es esto: **`WOPT_NOOP` nunca imprime hash** (regla 4) y la plantilla del
+changelog **exige** hashes (`SKILL.md`, sección «Outcome»), luego el fallo lo detecta el paso
+siguiente, tarde pero **sin falso verde**. MEDIDO el 2026-10-04: otro actor commiteó 16 segundos
+después de la última escritura de la propuesta (`20daaed`) y se llevó sus tres ficheros; el
+wrapper devolvió `WOPT_NOOP arbol limpio` + `0` y el mensaje que iba a llevar `TASK-059` **se
+descartó en silencio**. El NOOP es benigno **para el repositorio** —nada se pierde, el contenido
+queda versionado— y **no lo es para quien llama**, que creyó haber versionado. Que siga siendo
+benigno es exactamente lo que permite que no haya que cambiarlo: un `WOPT_NOOP` que imprimiera un
+hash inventado sería mucho peor que un no-op silencioso.
+
+**Y `git_safe_commit.py` no tiene cerrojo.** Dos actores que commitean a la vez se reparten el
+resultado y el segundo se lleva su mensaje perdido. No se arregla aquí (un cerrojo en el único
+wrapper **bloquearía** al bucle si el proceso muriera con el taken), pero queda medido y con dueño.
+
+### Lo que esta puerta NO cubre
+
+1. **No es independencia de actor.** La escribe el mismo agente que escribe el mensaje: puede
+   mentir en el identificador igual que mentía sin él. Lo que se gana es que **omitir** ya no
+   sale gratis, no que mentir desaparezca.
+2. **No cubre el `git` a pelo.** El bucle tiene prohibido versionar sin el wrapper, pero la puerta
+   solo existe en el wrapper. Un commit hecho a mano pasa sin identificador y el validador lo verá
+   como `SIN marcador` — que es la cifra que ya se imprime, y por eso sigue viva.
+3. **El rechazo extremo a extremo con un árbol *deliberadamente* sucio no es hermético.**
+   `get_env()` impone `GIT_WORK_TREE = REPO_ROOT` sin condiciones (regla 7), luego el árbol de
+   trabajo no es controlable desde fuera del wrapper. Por eso la cobertura va por la función
+   extraida, por una aserción estructural con `ast` sobre el orden, y —con un truco declarado— por
+   un subproceso que ensucia el árbol **con un fichero untracked que el propio test crea y borra**.
+   Dueño: **`TASK-061`**.
+4. **El patrón de ciclo está DUPLICADO** (el del validador y el de la puerta) porque el wrapper no
+   puede depender del validador: es la única puerta de versionado y tiene que valer con el
+   validador caído. Lo único que impide que diverjan es un assert que compara las dos cadenas
+   carácter a carácter (`run_tests.py`, test 125). Dos copias sin ese assert serían dos puertas.
+
+## Check 9: los hashes del journal y el registro de sus pérdidas (TASK-059)
+
+`.taskmaster/rd_journal.json` declara, por ciclo, los hashes del trabajo de ese ciclo, y hasta
+TASK-059 **nadie los comprobaba**: el validador no leía ese campo. `_comprobar_hashes_del_journal(root,
+errors, ok)` implementa **cinco** reglas, y cada una es un fallo distinto — mezclarlas daría
+números falsos:
+
+| # | Regla | Qué mide | Por qué está escrita así |
+|---|---|---|---|
+| **R1** | Forma | Cada elemento de `commits` es un hash corto **completo**: `fullmatch` de `[0-9a-f]{7,40}`, sin texto libre | Medir el **string entero** produjo la cifra falsa de «41 de 46 hashes no resuelven» (tabla de opciones descartadas, más arriba): `"617eef8 (architect)"` **contiene** el hash `617eef8` y su búsqueda lo daba por bueno. El `fullmatch` es el fix de esa clase de bug, no un detalle de estilo |
+| **R2** | Resolubilidad | Cada hash declarado **resuelve** en el mismo repo desacoplado que usa el ancla, con la misma precedencia de `GIT_DIR` | Sin objeto no hay ancla. La lectura es **un solo** `git cat-file --batch-check` por pasada, no un `--batch-check` —`t` por hash: ~100 subprocesos en el journal real por una cifra que cabe en uno |
+| **R3** | Registro de pérdidas | Campo `commits_perdidos` **por entrada** (la pérdida es de *un ciclo*, y el journal es una **lista** en la raíz: un campo de raíz obligaría a cambiar la forma del documento), con `{hash?, causa, nota?}` y `causa` en **vocabulario cerrado**: `VFS_CORRUPTO` (el objeto no existe; se perdió con el `.git` del árbol) y `NUNCA_DECLARADO` (el ciclo nunca declaró hash y el historial no lo nombra) | Una causa redactada en libertad es **infalsable**: no se puede contar, no se puede agrupar, y cualquiera puede escribir «se perdió» y cerrar el ciclo. Con vocabulario cerrado, «apareció una causa nueva» es un **valor nuevo visible** que hay que decidir. La prosa libre cabe solo en `nota` |
+| **R4** | **Antidolar** | Un hash declarado perdido que **RESUELVE** es un FAIL | Sin R4 la solución degenerada es declarar como perdidas las entradas que no se quieren sanear y el check queda **verde**: el falso verde que este check existe para matar, **al revés**. Declarar de más es la misma clase de fallo que borrar una fila sin evidencia |
+| **R5** | Techos | `MAX_HASHES_PERDIDOS` y `MAX_CICLOS_SIN_HASH`, **medidos el 2026-10-04** y comentados con esa fecha en el propio producto | El techo no es un objetivo a barrer: es un **suelo que avisa si crece**. Bajarlos es una acción, y ese día el check la exige |
+
+**Borrar una declaración de pérdida no silencia nada.** El `commits` del ciclo sigue ahí, y sin su
+`commits_perdidos` la R2 vuelve a fallar. El registro **explica**, nunca **suprime** — y por la
+misma razón una pérdida declarada de un hash que la entrada **no** declara en `commits` es un
+FAIL: es tapar la pérdida sin el hecho que la sostiene.
+
+### Dos formas de «pérdida sin hash», y por qué se cuentan distinto
+
+Una declaración **sin** `hash` es una de dos cosas, y el check las separa porque miden cosas
+distintas:
+
+- **El ciclo entero sin hash** → cuenta para `MAX_CICLOS_SIN_HASH`, porque **ahí no hay objeto que
+  nadie pueda mirar** y es la forma que puede esconder una pérdida real.
+- **Un hueco declarado** en una entrada que **sí** tiene hashes → exige `nota` y **no** cuenta para
+  ese techo. Solo existe porque el bucle escribe el changelog **después** del commit «para tener el
+  hash» (`SKILL.md`, «Cuándo se escribe») y el relleno se queda sin hacer.
+
+**MEDIDO al implementar:** contar ambas cosas en el mismo contador daba **3 contra un techo de 2**,
+o sea que el diseño original trataba como la misma medida dos cosas que no lo son. El techo protege
+la forma arriesgada, que es la única sin objeto que comprobar.
+
+### El pre-vuelo que evita fabricar pérdidas
+
+`git cat-file --batch-check` responde `missing` para **todo** lo que se le pide cuando el `GIT_DIR`
+es un directorio **vacío** (no es un repo) y sale con `0` igual. Sin el pre-vuelo
+(`git rev-parse --verify HEAD`, el **mismo criterio** que `validar_repo` del wrapper, para que los
+dos componentes no puedan discrepar sobre qué es un repo) el check acusaría las ~100 entradas del
+journal como «no resuelven» y **sugeriría declararlas perdidas**: fabricar una pérdida es la peor
+dirección en la que se puede equivocar un ancla. Y un `GIT_DIR` ilegible **no** se convierte en
+«nada resuelve»: R1 y R3 se comprueban igual (no necesitan git) y las que sí lo necesitan se
+**informan con el motivo literal**.
+
+### Cobertura
+
+`run_tests.py` -> `test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico` (siete
+filas sobre el esqueleto real copiado una vez, con `GIT_DIR` temporal y **commits reales** de ese
+repo) y `test_el_check_9_se_cablea_en_el_camino_real_del_validador` (copia el validador real a un
+árbol temporal y lo ejecuta como **subproceso**, con su mitad mutante: el cableado sustituido por
+`pass` tiene que hacer desaparecer el residuo). Los **techos se leen del producto**, no se copian,
+y se exige que su comentario lleve la fecha de la medición. Los números que se comparan son los que
+la **fixture** construye: ninguna expectativa se deriva del fichero que se valida.
+
+### LIMITES RESIDUALES de TASK-059 — se escriben, no se omiten
+
+1. **El rechazo extremo a extremo con un árbol *deliberadamente* sucio no es hermético.**
+   `get_env()` impone `GIT_WORK_TREE = REPO_ROOT` sin condiciones (regla 7), luego el árbol de
+   trabajo **no es controlable desde fuera** del wrapper y un test no puede fabricar «árbol sucio»
+   sin mutar el árbol real. La cobertura real va por la función extraída, por una aserción
+   estructural con `ast` sobre el orden, y por un subproceso que ensucia el árbol **con un fichero
+   untracked que el propio test crea y borra**. La puerta **sí** es hermética en el sentido que
+   importa: es de solo lectura y devuelve antes de la primera escritura. **Dueño: `TASK-061`**, cuya
+   decisión de diseño sobre `GIT_WORK_TREE` es la que lo desbloquea.
+2. **La puerta no es independencia de actor.** La escribe el mismo agente que escribe el mensaje:
+   puede mentir en el identificador igual que mentía sin él. Lo que se gana es que **omitir** ya no
+   sale gratis, **no** que mentir desaparezca.
+3. **La puerta no cubre el `git` a pelo.** El bucle tiene prohibido versionar sin el wrapper, pero
+   la puerta solo existe en el wrapper. Un commit hecho a mano pasa sin identificador y el validador
+   lo verá como `SIN marcador` — la cifra que ya se imprime, y por eso sigue viva.
+4. **El techo de pérdidas congela un residuo que no se puede cerrar, por construcción.** Los hashes
+   perdidos con el `.git` del VFS no van a volver. El techo no es un objetivo a barrer: es un suelo
+   que avisa si **crece**. El día que se recupere un objeto (un `git fetch` de un clon) el techo
+   habrá que bajarlo, y ese día el check exigirá la acción, que es lo que se quiere.
+5. **R3 se apoya en un vocabulario cerrado, y un vocabulario se puede ampliar a voluntad.** Si
+   alguien añade un valor a `causa` para tapar una pérdida real, R4 sigue sujetando a los **hashes**,
+   pero una entrada `NUNCA_DECLARADO` **sin hash** no la sujeta nadie más que el techo. Es la
+   costura más blanda del diseño y se declara como tal. Por eso la forma sin hash **exige `nota`**:
+   sin hash no hay hecho que comprobar y sin nota no hay nada que leer.
+6. **El residuo del journal se saneó a mano, en este mismo cambio.** Los 9 ciclos rellenables, los
+   13 con texto libre y el `<PENDIENTE>` del ciclo 50 se corrigieron uno a uno con la evidencia de
+   cada hash, no con una migración codificada. Es trabajo de una vez, y por eso esta tarea exigía
+   hacerlo **en el mismo cambio**: un check que nace con decenas de FAIL en el repo real es un check
+   que el bucle aprende a ignorar, que es el fallo del ciclo #15 en otra forma.
+7. **El techo de ciclos sin hash es un suelo, no un veto por entrada** (añadido al implementar, y
+   medido). Una entrada sin hashes y **sin** declaración no es un FAIL en sí misma: cuenta, y la
+   acota el techo. La razón es medida, no de gusto: el veto por entrada pone en rojo los árboles
+   sintéticos con los que las demás reglas se miden —y con ellos buena parte de la cobertura del
+   check 8—, y un validador que se pone rojo solo obliga a desactivarlo. El coste se paga en el otro
+   lado del saldo: un ciclo nuevo sin hash **no** se acusa hoy, se cuenta, y el conteo se imprime en
+   la línea de informe en cada pasada.
 
 ## Ancla de trazabilidad en el historial (TASK-057, ciclo 47)
 
@@ -197,9 +395,11 @@ Lo que sí es estable, y por eso se afirma sin cifra ni fecha de medición:
   limitación residual de más abajo).
 - `ciclos_del_historial - ciclos_del_journal = ∅` **hoy**: la unión no pone el repo en rojo. Es una
   propiedad del estado actual, no una garantía, y la vigila el validador en cada pasada.
-- Del campo `commits` del journal: la mayoría de las entradas lo declaran como lista limpia de
-  hashes y unas pocas lo dejan vacío; los hashes que no resuelven son residuo conocido y van a
-  `TASK-059` (tabla de opciones de más arriba, con su medición del día en que se hizo).
+- Del campo `commits` del journal: el validador **ya lo comprueba** (check 9, R1-R5, con su línea
+  de informe viva). Las entradas que no declaran hash y los hashes que no resuelven son **residuo
+  declarado**: cada uno con su `causa` en el vocabulario cerrado, y **sin cifra fija aquí** — las
+  cifras están en la línea de informe, que se reimprime en cada pasada, y una cifra caducada escrita
+  al lado de la cifra viva es peor que no escribirla.
 
 ### LIMITACIÓN RESIDUAL — el problema NO está cerrado
 
@@ -211,10 +411,14 @@ no lo estaba (ciclo #15):
    actor**. Quien puede mentir en el journal puede mentir en los mensajes de commit.
 2. **Más de la mitad de los commits no llevan marcador de ciclo** (son los `feat(...)`, `fix(...)`,
    `test(...)`; la cifra viva —subjects leídos, con marcador y sin él— está en la línea de informe
-   del validador que se copia arriba). Si un ciclo se comitea **sin** commit de cierre y **sin**
-   entrada de journal, no hay tercer testigo y el validador **no lo ve**. Cerrar eso es
-   `git_safe_commit.py` rechazando el mensaje sin identificador de ciclo = **`TASK-059`**, no esta
-   tarea. Aquí **no** se HPEa más.
+   del validador que se copia arriba). **MEDIDO el 2026-10-04 (TASK-059): este punto está CERRADO en
+   el sitio por el que se versiona.** `git_safe_commit.py` rechaza el mensaje sin identificador
+   (`WOPT_USAGE ancla-mensaje`, código 2), de modo que un ciclo comiteado **sin** commit de cierre y
+   **sin** entrada de journal ya no puede nacer por el camino del bucle: o lleva `TASK-NNN` que
+   resuelve, o lleva marcador de ciclo, o no se versiona. **Lo que queda abierto, y es distinto:**
+   un commit hecho a **mano**, saltándose el wrapper, sigue sin identificador y el validador solo lo
+   ve como `SIN marcador` — cerrar eso exigiría forbidding `git` a pelo, y el validador no puede
+   cerrar una puerta de escritura que no es suya. La puerta tampoco es independencia de actor.
 3. **Un parser de marcador es una convención leída, no una verdad**: un asunto que mencione
    "ciclo 15" por hablar de él corrobora el 15. Solo puede **ablandar** el ancla, nunca
    endurecerla, así que no puede producir un FAIL falso — pero tampoco puede cerrar el punto 2.

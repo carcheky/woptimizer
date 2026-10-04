@@ -37,6 +37,7 @@ Mantienes `assets/process_db.json`, la fuente de verdad de que procesos existen 
 
 - El shell falla a menudo con `spawn EPERM`, de forma intermitente: reintenta. Si no puedes ejecutar el escaneo, dilo y no inventes resultados de escaneo.
 - **No hagas `git` a pelo** (el `.git` del arbol esta corrupto por el VFS). El orquestador versiona.
+- **Si te toca versionar, el mensaje lleva identificador** (TASK-059): `TASK-NNN` existente en `.taskmaster/tasks.json`, `CYCLE-NNN` o `ciclo N`. El wrapper **rechaza** con `WOPT_USAGE ancla-mensaje` y codigo **2** el mensaje sin identificador. Sin identificador ese commit no tiene tercer testigo: ni `rd_journal.json` ni el historial podran anclarlo despues. Tu plantilla es `chore(process-db): actualizar procesos gaming y bloatware (TASK-NNN)`.
 
 ## Stop when
 

@@ -20,6 +20,7 @@ Un test que pasa porque ejecuta el codigo sin comprobar nada da **100% de cobert
 - Trabaja **exclusivamente sobre una copia en `%TEMP%`**. Si la copia esta bloqueada, ejercita las ramas de codigo in-process sin escribir, y dilo.
 - **Don't own:** el fix. No lo repares aunque lo veas roto: mutar, observar y **reportar**. Reparar es de `openspec-dev`.
 - No hagas commits.
+- **La puerta del mensaje existe y es de tu incumbencia auditarla** (TASK-059): `python .taskmaster/git_safe_commit.py "..."` rechaza con `WOPT_USAGE ancla-mensaje` y codigo **2** todo mensaje sin identificador (`TASK-NNN` existente en `.taskmaster/tasks.json`, `CYCLE-NNN` o `ciclo N`), sin tocar el arbol. Sin identificador ese commit no tiene tercer testigo, que es el punto ciego que el validador media. Mutar esa puerta (moverla antes o despues del NOOP, aflojar la resolubilidad del id, o aceptar `T-\d+`) es un mutante de primera clase de este ciclo.
 
 ## How you work
 

@@ -39,6 +39,7 @@ Lee solo lo que necesitas: los ficheros objetivo y **un** archivo de `docs/ai/`,
 - El shell falla a menudo con `spawn EPERM`, de forma **intermitente**: reintenta varias veces. Si al final no puedes ejecutar, dilo claro en el informe; **nunca inventes resultados de validacion**.
 - `python .taskmaster/tm.py next` falla (hace subprocess). Lee `.taskmaster/tasks.json`.
 - **No hagas `git` a pelo** (el `.git` del arbol esta corrupto por el VFS). El orquestador versiona; tu no.
+- **Si te toca versionar, el mensaje lleva identificador** (TASK-059): `TASK-NNN` existente en `.taskmaster/tasks.json`, `CYCLE-NNN` o `ciclo N`. El wrapper **rechaza** con `WOPT_USAGE ancla-mensaje` y codigo **2** el mensaje sin identificador, y no toca el arbol. Sin identificador ese commit no tiene tercer testigo: ni `rd_journal.json` ni el historial podran anclarlo despues.
 - En `print()` de tests: **ASCII puro**, sin acentos, flechas ni emoji (consola Windows cp1252).
 - **Nunca pases una regex a `python -c` desde PowerShell: escribe un fichero de script.** PowerShell analiza el bloque entero ANTES de ejecutar, asi que un solo `ParserError` aborta *todas* las lineas, incluidas las correctas, y el error senala una posicion enganosa. Patron que funciona:
   ```powershell

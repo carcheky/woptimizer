@@ -61,15 +61,15 @@ src/woptimizer/
    $env:GIT_DIR = "$env:LOCALAPPDATA\woptimizer_git\.git"
    $env:GIT_WORK_TREE = "C:\Users\carch\Nextcloud\Scripts\woptimizer"
    ```
-   **Nunca comitear a pelo:** usa siempre `python .taskmaster/git_safe_commit.py "..."`. Su código de salida es un contrato normativo (`0` commit o no-op, `1` fallo de git, `2` uso incorrecto, `3` repo no verificable, con línea canónica `WOPT_*` en stdout) documentado en `docs/ai/sandbox-rules.md`; `--verify` diagnostica el repo sin escribir nada.
+   **Nunca comitear a pelo:** usa siempre `python .taskmaster/git_safe_commit.py "..."`. Su código de salida es un contrato normativo (`0` commit o no-op, `1` fallo de git, `2` uso incorrecto, `3` repo no verificable, con línea canónica `WOPT_*` en stdout) documentado en `docs/ai/sandbox-rules.md`; `--verify` diagnostica el repo sin escribir nada. **El mensaje LLEVA identificador (TASK-059): `TASK-NNN` existente en `.taskmaster/tasks.json`, `CYCLE-NNN` o `ciclo N`.** Sin el, el wrapper responde `WOPT_USAGE ancla-mensaje` y sale con `2` sin tocar el árbol, porque un commit sin identificador no tiene tercer testigo: ni `rd_journal.json` ni el historial pueden anclarlo después.
 
 ## Comandos Rápidos
 ```bash
 python run.py                   # Lanzar en modo desarrollo
-python run_tests.py             # 124 tests headless (no abre ventanas)
+python run_tests.py             # 130 tests headless (no abre ventanas)
 python verify_ui_syntax.py      # Verificar sintaxis estática de la UI
 python validate_docs.py         # Validar documentación y changelogs
-python .taskmaster/git_safe_commit.py "msg"   # ÚNICA vía de versionado
+python .taskmaster/git_safe_commit.py "msg (TASK-NNN)"   # ÚNICA vía de versionado
 ```
 > ❌ `python .taskmaster/tm.py next|done|list` **no funciona aquí** (hace `subprocess`). Lee `.taskmaster/tasks.json`.
 
@@ -127,7 +127,7 @@ El **Paso 4** es obligatorio: `run_tests.py` en verde dice que el código hace l
 > `openspec-dev`, `process-db-updater` y `mutation-auditor`, y viven en
 > `.agents/agents/<nombre>/agent.md`.
 > ⚠️ **`tm.py` no es ejecutable aquí** (hace `subprocess` y el entorno lo bloquea con `spawn EPERM`). Lee `.taskmaster/tasks.json` directamente para saber cuál es la tarea activa.
-> ⚠️ **Nunca `git` a pelo**: el `.git` del árbol de trabajo está corrupto por el VFS de Nextcloud. Usa `python .taskmaster/git_safe_commit.py "<mensaje>"` y comprueba su código de salida.
+> ⚠️ **Nunca `git` a pelo**: el `.git` del árbol de trabajo está corrupto por el VFS de Nextcloud. Usa `python .taskmaster/git_safe_commit.py "<mensaje> (TASK-NNN)"` y comprueba su código de salida: el mensaje **lleva identificador** o el wrapper lo rechaza con `2` (TASK-059).
 
 **Changelog:** cada pase escribe en **dos** ficheros — `CHANGELOG.md` (raíz, legible por el usuario) y `.taskmaster/CHANGELOG.md` (registro técnico). `validate_docs.py` lo comprueba.
 

@@ -5,7 +5,13 @@
     "area": "Arquitectura & UI",
     "slug": "2026-09-28-v3-ui-redesign",
     "status": "COMPLETED",
-    "impact": "Rediseño completo de 3 ventanas con CustomTkinter, migración a psutil y modelos Pydantic v2."
+    "impact": "Rediseño completo de 3 ventanas con CustomTkinter, migración a psutil y modelos Pydantic v2.",
+    "commits_perdidos": [
+      {
+        "causa": "NUNCA_DECLARADO",
+        "nota": "perdida real y no recuperable: la entrada nunca declaro hash y NINGUN subject del historial nombra el ciclo 1 (medido el 2026-10-04 sobre los 212 subjects). El commit mas antiguo del historial es de 2026-09-14 ('chore: initial commit v2.0.5') y el primero que nombra un ciclo es de 2026-09-29, o sea que este trabajo no llego a tener un commit con su nombre. No se inventa un hash: se declara la ausencia con su causa."
+      }
+    ]
   },
   {
     "cycle": 2,
@@ -13,7 +19,13 @@
     "area": "Resiliencia & UX",
     "slug": "2026-09-29-v3.1-quality-of-life",
     "status": "COMPLETED",
-    "impact": "Integración System Tray (pystray), rotación segura de backups profiles.json.bak y logging persistente."
+    "impact": "Integración System Tray (pystray), rotación segura de backups profiles.json.bak y logging persistente.",
+    "commits_perdidos": [
+      {
+        "causa": "NUNCA_DECLARADO",
+        "nota": "perdida real y no recuperable: la entrada nunca declaro hash y NINGUN subject del historial nombra el ciclo 2 (medido el 2026-10-04 sobre los 212 subjects). El commit mas antiguo del historial es de 2026-09-14 y el primero que nombra un ciclo es de 2026-09-29. No se inventa un hash: se declara la ausencia con su causa."
+      }
+    ]
   },
   {
     "cycle": 3,
@@ -23,8 +35,8 @@
     "task": "TASK-014",
     "status": "COMPLETED",
     "commits": [
-      "617eef8 (architect)",
-      "dc7c30c (feat)"
+      "617eef8",
+      "dc7c30c"
     ],
     "impact": "Banner dinámico de telemetría en DashboardView: muestra procesos cerrados y MB liberados tras activar packs. Thread-safe via self.after(0,...). Auto-hide a 5s. Colores gaming (#1DB954) vs kill (#4a9fd4)."
   },
@@ -93,8 +105,8 @@
     "task": "TASK-019",
     "status": "COMPLETED",
     "commits": [
-      "283bc16 (architect)",
-      "4797d6a (feat)"
+      "283bc16",
+      "4797d6a"
     ],
     "tests": {
       "before": "5 backend",
@@ -110,8 +122,8 @@
     "task": "TASK-020",
     "status": "COMPLETED",
     "commits": [
-      "31906e7 (process-db)",
-      "4977b00 (fix config)"
+      "31906e7",
+      "4977b00"
     ],
     "tests": {
       "before": "9 backend",
@@ -127,8 +139,8 @@
     "task": "TASK-021",
     "status": "COMPLETED",
     "commits": [
-      "705e5f9 (tests)",
-      "1a0faa9 (fix)"
+      "705e5f9",
+      "1a0faa9"
     ],
     "tests": {
       "before": "11 backend",
@@ -144,8 +156,8 @@
     "task": "TASK-022",
     "status": "COMPLETED",
     "commits": [
-      "6048f6f (architect)",
-      "b9a31fa (fix)"
+      "6048f6f",
+      "b9a31fa"
     ],
     "tests": {
       "before": "20",
@@ -166,8 +178,8 @@
     "task": "TASK-023",
     "status": "COMPLETED",
     "commits": [
-      "fcd4f73 (architect)",
-      "30c0f11 (fix)"
+      "fcd4f73",
+      "30c0f11"
     ],
     "tests": {
       "before": "21",
@@ -198,7 +210,9 @@
     "slug": "2026-09-29-gaming-service-runtime",
     "task": "TASK-025",
     "status": "COMPLETED",
-    "commits": [],
+    "commits": [
+      "7485f57"
+    ],
     "tests": {
       "before": "23",
       "after": "24, 0 fallos"
@@ -212,7 +226,9 @@
     "slug": "2026-09-29-data-integrity-fixes",
     "task": "TASK-026",
     "status": "COMPLETED",
-    "commits": [],
+    "commits": [
+      "7485f57"
+    ],
     "tests": {
       "before": "24",
       "after": "28, 0 fallos"
@@ -226,7 +242,9 @@
     "slug": "roles-como-agentes",
     "task": null,
     "status": "COMPLETED",
-    "commits": [],
+    "commits": [
+      "7485f57"
+    ],
     "tests": {
       "before": "28",
       "after": "28, sin cambios en src/"
@@ -240,7 +258,9 @@
     "slug": "paso-4-mutation-auditor",
     "task": null,
     "status": "COMPLETED",
-    "commits": [],
+    "commits": [
+      "7485f57"
+    ],
     "tests": {
       "before": "28",
       "after": "28, sin cambios en src/"
@@ -254,7 +274,9 @@
     "slug": "2026-09-30-close-mutation-survivors",
     "task": "TASK-030",
     "status": "COMPLETED",
-    "commits": [],
+    "commits": [
+      "7485f57"
+    ],
     "tests": {
       "before": "28",
       "after": "36, 0 fallos"
@@ -268,7 +290,9 @@
     "slug": "2026-09-30-validate-pack-leaves",
     "task": "TASK-031",
     "status": "COMPLETED",
-    "commits": [],
+    "commits": [
+      "7485f57"
+    ],
     "tests": {
       "before": "36",
       "after": "48, 0 fallos"
@@ -282,7 +306,9 @@
     "slug": "2026-09-30-ui-hardening",
     "task": "TASK-027",
     "status": "COMPLETED",
-    "commits": [],
+    "commits": [
+      "7485f57"
+    ],
     "tests": {
       "before": "48",
       "after": "57, 0 fallos"
@@ -297,12 +323,12 @@
     "task": "TASK-028",
     "status": "COMPLETED",
     "commits": [
-      "7a421e8 (architect)",
-      "060fcc5 (refactor)",
-      "22464b9 (test)",
-      "3cc33dc (test)",
-      "41e42e7 (test)",
-      "e35d30e (fix)"
+      "7a421e8",
+      "060fcc5",
+      "22464b9",
+      "3cc33dc",
+      "41e42e7",
+      "e35d30e"
     ],
     "tests": {
       "before": "48",
@@ -318,7 +344,7 @@
     "task": "TASK-029",
     "status": "COMPLETED",
     "commits": [
-      "16ef4dc (feat)"
+      "16ef4dc"
     ],
     "tests": {
       "before": "57 backend + 1 headless UI",
@@ -334,9 +360,9 @@
     "task": "TASK-032",
     "status": "COMPLETED",
     "commits": [
-      "f2adf2b (plan)",
-      "3e24a1e (feat)",
-      "091386c (test)"
+      "f2adf2b",
+      "3e24a1e",
+      "091386c"
     ],
     "tests": {
       "before": "63 backend + 1 headless UI",
@@ -352,8 +378,8 @@
     "task": "TASK-033",
     "status": "COMPLETED",
     "commits": [
-      "7eb6c5a (plan)",
-      "142fdc1 (feat)"
+      "7eb6c5a",
+      "142fdc1"
     ],
     "tests": {
       "before": "71 backend + 1 headless UI",
@@ -369,8 +395,8 @@
     "task": "TASK-034",
     "status": "COMPLETED",
     "commits": [
-      "d4feeb8 (plan)",
-      "2bc869e (feat)"
+      "d4feeb8",
+      "2bc869e"
     ],
     "tests": {
       "before": "72 backend + 1 headless UI",
@@ -386,17 +412,17 @@
     "task": "TASK-035, TASK-036",
     "status": "COMPLETED",
     "commits": [
-      "86f65fd (plan)",
-      "54f50c8 (feat)",
-      "b7e5f54 (fix 1)",
-      "434e276 (fix 2)",
-      "d3089cc (fix 2b)",
-      "095203f (docs 1)",
-      "4ce17ea (decision arquitecto)",
-      "b01b0ef (fix 3)",
-      "955914c (test 1)",
-      "cb7dde7 (fix 4)",
-      "0dd2d38 (test 2)"
+      "86f65fd",
+      "54f50c8",
+      "b7e5f54",
+      "434e276",
+      "d3089cc",
+      "095203f",
+      "4ce17ea",
+      "b01b0ef",
+      "955914c",
+      "cb7dde7",
+      "0dd2d38"
     ],
     "tests": {
       "before": "75 backend + 2 headless UI",
@@ -411,7 +437,9 @@
     "slug": "2026-09-30-guardas-que-no-guardan",
     "task": "TASK-037",
     "status": "COMPLETED",
-    "commits": [],
+    "commits": [
+      "9cc9582"
+    ],
     "tests": {
       "before": "73 backend + 5 headless UI (78 totales)",
       "after": "75 backend + 5 headless UI (80 totales, validados con ast por validate_docs.py)"
@@ -425,7 +453,9 @@
     "slug": "2026-10-01-gaming-session-restoration",
     "task": "TASK-038",
     "status": "COMPLETED",
-    "commits": [],
+    "commits": [
+      "5e166e1"
+    ],
     "tests": {
       "before": "75 backend + 5 headless UI (80 totales)",
       "after": "76 backend + 5 headless UI (81 totales, validados con ast por validate_docs.py)"
@@ -463,7 +493,14 @@
       "before": "76 backend + 5 headless UI (81 totales)",
       "after": "78 backend + 5 headless UI (83 totales, validados con ast por validate_docs.py)"
     },
-    "impact": "Optimización de Latencia en Filtro de Búsqueda y Lectura de Packs (TASK-040): Caché inmutable de lectura de 2 capas en PackService (< 0.05 ms) con invalidación atómica en save(), update_pack(), load(); pre-tokenizado y filtrado ultrarrápido (< 2 ms) en ProcessManagerView. Pruebas de discriminación y benchmarks agregadas en run_tests.py. Auditoría Paso 4 = PASS."
+    "impact": "Optimización de Latencia en Filtro de Búsqueda y Lectura de Packs (TASK-040): Caché inmutable de lectura de 2 capas en PackService (< 0.05 ms) con invalidación atómica en save(), update_pack(), load(); pre-tokenizado y filtrado ultrarrápido (< 2 ms) en ProcessManagerView. Pruebas de discriminación y benchmarks agregadas en run_tests.py. Auditoría Paso 4 = PASS.",
+    "commits_perdidos": [
+      {
+        "hash": "5623629",
+        "causa": "VFS_CORRUPTO",
+        "nota": "el objeto no existe en el repo desacoplado: `git cat-file -t 5623629` responde 'fatal: Not a valid object name'. Se perdio con el `.git` corrupto del arbol de trabajo de Nextcloud. El hash NO se sustituye por otro porque es un hecho, y el ciclo 30 sigue anclado hoy por 837778a, que resuelve."
+      }
+    ]
   },
   {
     "cycle": 31,
@@ -481,7 +518,14 @@
       "before": "78 backend + 5 headless UI (83 totales)",
       "after": "80 backend + 5 headless UI (85 totales, validados con ast por validate_docs.py)"
     },
-    "impact": "Ampliación de Cobertura de Testing y Contratos de Persistencia Pydantic (TASK-041): +2 nuevos tests discriminantes en run_tests.py (test_pydantic_extra_fields_persistence y test_freed_mb_calculation_precision). Garantizada la inmutabilidad y persistencia de campos extra no estándar en AppData y Pack tras ciclos load()->save(), y precisión en el cálculo RSS de ProcessService.kill_processes. Auditoría Paso 4 = PASS."
+    "impact": "Ampliación de Cobertura de Testing y Contratos de Persistencia Pydantic (TASK-041): +2 nuevos tests discriminantes en run_tests.py (test_pydantic_extra_fields_persistence y test_freed_mb_calculation_precision). Garantizada la inmutabilidad y persistencia de campos extra no estándar en AppData y Pack tras ciclos load()->save(), y precisión en el cálculo RSS de ProcessService.kill_processes. Auditoría Paso 4 = PASS.",
+    "commits_perdidos": [
+      {
+        "hash": "ee4b753",
+        "causa": "VFS_CORRUPTO",
+        "nota": "el objeto no existe en el repo desacoplado: `git cat-file -t ee4b753` responde 'fatal: Not a valid object name'. Se perdio con el `.git` corrupto del arbol de trabajo de Nextcloud. El hash NO se sustituye por otro porque es un hecho, y el ciclo 31 sigue anclado hoy por a050ac7, que resuelve."
+      }
+    ]
   },
   {
     "cycle": 32,
@@ -513,7 +557,14 @@
       "before": "82 backend + 5 headless UI (87 totales)",
       "after": "82 backend + 6 headless UI (88 totales, validados con ast por validate_docs.py)"
     },
-    "impact": "Restauración de Sesión Gaming y Notificaciones desde el System Tray (TASK-043): Integración de la opción '🔄 Reabrir aplicaciones cerradas' en el menú contextual de pystray en WOptimizerApp. Ejecución asíncrona de restoration de sesión gaming en un hilo secundario daemon con notificación del resultado al usuario. +1 test discriminante (test_tray_session_restoration_integration) en run_tests.py."
+    "impact": "Restauración de Sesión Gaming y Notificaciones desde el System Tray (TASK-043): Integración de la opción '🔄 Reabrir aplicaciones cerradas' en el menú contextual de pystray en WOptimizerApp. Ejecución asíncrona de restoration de sesión gaming en un hilo secundario daemon con notificación del resultado al usuario. +1 test discriminante (test_tray_session_restoration_integration) en run_tests.py.",
+    "commits_perdidos": [
+      {
+        "hash": "12b9c3bf",
+        "causa": "VFS_CORRUPTO",
+        "nota": "el objeto no existe en el repo desacoplado: `git cat-file -t 12b9c3bf` responde 'fatal: Not a valid object name'. Se perdio con el `.git` corrupto del arbol de trabajo de Nextcloud. El hash NO se sustituye por otro porque es un hecho, y el ciclo 33 sigue anclado hoy por 34ca4ef, que resuelve."
+      }
+    ]
   },
   {
     "cycle": 34,
@@ -830,7 +881,8 @@
       "f447218",
       "6f7e15d",
       "41b8061",
-      "<PENDIENTE>"
+      "9d8fd00",
+      "ad9159f"
     ],
     "tests": {
       "before": "105 totales (95 backend + 10 headless)",
@@ -846,6 +898,12 @@
     "deuda_nueva": [
       "validate_docs.py sigue sin poder correr en CI porque su ancla de commits depende de un GIT_DIR desacoplado que solo existe en el host del dueno. Arreglo de fondo: que acepte el repositorio por argv o por una variable de entorno ya presente en el runner.",
       "Los flags de PyInstaller estan DUPLICADOS entre force_build.py y release.yml, unidos hoy solo por un comentario. Si divergen, el .exe publicado deja de ser el mismo producto que el local. Un unico fichero de flags leido por los dos lo cierra."
+    ],
+    "commits_perdidos": [
+      {
+        "causa": "NUNCA_DECLARADO",
+        "nota": "el 'commits' del ciclo 50 traia el marcador de relleno '<PENDIENTE>' en vez de un hash. No es una perdida: es un hueco de redscribo, y lo produjo la propia regla del bucle, que manda escribir el changelog TRAS el commit 'para tener el hash' (seccion 'Cuando se escribe' de SKILL.md, linea 401) con una plantilla que exige hashes (el apartado '### Outcome', linea 391). Los dos numeros se miden sobre el fichero de esta pasada y el titulo de la seccion es lo que no caduca: el relleno no llego a hacerse. Los tres hashes reales que corroboran el ciclo 50 (4aba876, 9d8fd00, ad9159f, los tres de 2026-10-03) estan ahora en 'commits'."
+      }
     ]
   },
   {

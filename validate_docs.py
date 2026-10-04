@@ -364,6 +364,419 @@ def _comprobar_ancla_de_commits(root, errors, ok, journal_cycles):
     return ciclos
 
 
+# --- Check 9: el campo `commits` de rd_journal.json (TASK-059) ----------------
+#
+# R1 -- FORMA. Cada elemento de `commits` es un hash corto COMPLETO, con
+# `fullmatch` y NO con `search`. No es estilo: medir el STRING entero produjo la
+# cifra falsa de "41 de 46 hashes no resuelven" (la tabla de opciones
+# descartadas de la seccion del ancla), porque `"617eef8 (architect)"` CONTIENE
+# el hash `617eef8` y su busqueda lo daba por bueno. El `fullmatch` es el fix de
+# esa clase de bug.
+RE_HASH_CORTO = re.compile(r"[0-9a-f]{7,40}")
+
+# R3 -- el registro de perdidas vive EN EL PROPIO JOURNAL, por entrada, y solo
+# admite lo que se puede PROBAR que se perdio. El vocabulario es CERRADO a
+# proposito: una causa redactada en libertad es infalsable (no se puede contar,
+# no se puede agrupar, y cualquiera puede escribir "se perdio" y cerrar el
+# ciclo), mientras que un valor nuevo en esta tupla es un cambio visible que
+# hay que decidir.
+CAUSAS_DE_PERDIDA = ("VFS_CORRUPTO", "NUNCA_DECLARADO")
+
+# R5 -- techos MEDIDOS, no prometidos. Subir cualquiera de los dos NO es "ir
+# mejor": es que el residuo CRECIO, y bajarlos es una ACCION que ese dia el check
+# exige. No son un objetivo a barrer: son un suelo que avisa.
+# MEDIDO el 2026-10-04 sobre el journal real (51 entradas).
+#
+# MAX_HASHES_PERDIDOS sale de los 3 hashes que `git cat-file -t` responde "Not a
+# valid object name": 5623629 del ciclo 30, ee4b753 del 31 y 12b9c3bf del 33. El
+# objeto se perdio con el `.git` corrupto del arbol (VFS de Nextcloud), y el
+# ciclo sigue anclado hoy por el historial, luego la perdida es PARCIAL: el hash
+# muerto se declara, no se sustituye.
+MAX_HASHES_PERDIDOS = 3
+# MAX_CICLOS_SIN_HASH sale de los 2 ciclos que nunca declararon hash y a los que
+# ningun subject del historial nombra: el 1 y el 2. MEDIDO el 2026-10-04, con el
+# mismo criterio que el de arriba: el commit mas antiguo del historial es de
+# 2026-09-14 y el primero que nombra un ciclo es de 2026-09-29.
+MAX_CICLOS_SIN_HASH = 2
+
+
+def _texto_ascii(texto, max_len=120):
+    """`texto` en una sola linea ASCII. Trampa #16: la consola es cp1252.
+
+    Lo que se ecoa del journal es DATO ajeno (el elemento que no es un hash) y
+    puede traer acentos o emojis: imprimirlos sin convertir tumba el
+    `print()` entero, que es donde vive el veredicto. La salida del validador
+    tiene que ser legible aunque el residuo no lo sea.
+    """
+    limpio = " ".join(str(texto).split())
+    limpio = limpio.encode("ascii", "replace").decode("ascii")
+    if len(limpio) > max_len:
+        limpio = limpio[:max_len].rstrip() + "..."
+    return limpio or "(vacio)"
+
+
+def _leer_el_repo_si_lo_hay(root, env):
+    """`None` si el repo sirve, o el MOTIVO LITERAL si no. -> `str | None`
+
+    Mismo criterio que `git_safe_commit.validar_repo`: `rev-parse --verify
+    HEAD`. Se separa de `_hashes_que_existen` porque lo que decide no es COMO se
+    leen los hashes, sino si hay un repo al que preguntar, y esa pregunta se
+    hace una vez y con su motivo textual.
+    """
+    for _intento in (1, 2):                      # un reintento por el spawn EPERM
+        try:
+            res = subprocess.run(
+                ["git", "rev-parse", "--verify", "HEAD"], cwd=root, env=env,
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=120,
+            )
+        except Exception as exc:                # noqa: BLE001 (timeout y EPERM)
+            return f"git no llego a ejecutarse: {type(exc).__name__}: {exc}"
+        if res.returncode == 0:
+            return None
+    return (
+        f"git rev-parse --verify HEAD devolvio {res.returncode}: "
+        f"{((res.stderr or '') + (res.stdout or '')).strip()}"
+    )
+
+
+def _hashes_que_existen(root, hashes):
+    """`(resueltos, motivo)` de un LOTE de hashes cortos, en una sola llamada.
+
+    `git cat-file --batch-check` lee los nombres por stdin y responde una linea
+    por nombre: `<nombre> missing` si el objeto no existe, o
+    `<sha-completo> <tipo> <tamano>` si existe. MEDIDO: un `cat-file -t` POR
+    hash serian ~100 subprocesos en el journal real para una cifra que cabe en
+    uno, y un validador que se cuelga por multiplicar git por el numero de filas
+    se acabaomisando por rendimiento en vez de por verdad.
+
+    Solo se cuenta como EXISTENTE una linea de tres campos o mas (`<sha> <tipo>
+    <tamano>`). Una abreviacion AMBIGUA sale con dos campos y no certifica que
+    el objeto sea el que se quiso: se trata como no existente, que es la
+    direccion conservadora (un hash ambiguo se extiende y se vuelve a escribir).
+
+    `motivo` es `None` cuando la lectura fue buena y el texto LITERAL del fallo
+    cuando no. Un `except: return set()` devolveria "nada resuelve", que es
+    justo la entrada que empuja al check a declarar perdidas de mentira: lo que
+    no se puede comprobar se INFORMA, no se convierte en veredicto.
+    """
+    pedidos = sorted({str(h) for h in hashes})
+    if not pedidos:
+        return set(), None
+
+    env = os.environ.copy()
+    env["GIT_DIR"] = env.get("GIT_DIR") or os.path.expandvars(
+        r"%LOCALAPPDATA%\woptimizer_git\.git"
+    )
+    env["GIT_WORK_TREE"] = root
+
+    # PRE-VUELO, y no es decorativo. MEDIDO el 2026-10-04: con un `GIT_DIR` que
+    # es un directorio VACIO (no un repo), `git cat-file --batch-check` sale con
+    # 0 y responde `missing` para TODO lo que se le pide. Sin esta comprobacion
+    # el check acusaria las ~100 entradas del journal como "no resuelven" y
+    # sugeriria declararlas perdidas: fabricar una perdida es la peor direccion
+    # en la que se puede equivocar un ancla. El criterio es el MISMO que usa
+    # `git_safe_commit.validar_repo` (`rev-parse --verify HEAD`), para que los dos
+    # componentes_NO puedan discrepar sobre que es un repo.
+    motivo_pre = _leer_el_repo_si_lo_hay(root, env)
+    if motivo_pre is not None:
+        return set(), motivo_pre
+
+    args = ["git", "cat-file", "--batch-check"]
+    motivo = None
+    for _intento in (1, 2):                      # un reintento por el spawn EPERM
+        try:
+            res = subprocess.run(
+                args, input="\n".join(pedidos) + "\n", cwd=root, env=env,
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=120,
+            )
+        except Exception as exc:                # noqa: BLE001 (timeout y EPERM)
+            motivo = f"git no llego a ejecutarse: {type(exc).__name__}: {exc}"
+            continue
+        if res.returncode != 0:
+            motivo = (
+                f"git devolvio {res.returncode}: "
+                f"{((res.stderr or '') + (res.stdout or '')).strip()}"
+            )
+            continue
+        lineas = [l for l in (res.stdout or "").splitlines() if l.strip()]
+        if len(lineas) != len(pedidos):
+            motivo = (
+                f"cat-file --batch-check devolvio {len(lineas)} linea(s) para "
+                f"{len(pedidos)} hash(es) pedidos: un repo que no responde uno a "
+                "uno no puede certificar que un objeto exista ni que falte"
+            )
+            continue
+        resueltos = {
+            pedidos[i] for i, linea in enumerate(lineas)
+            if len(linea.split()) >= 3
+        }
+        return resueltos, None
+    return set(), motivo
+
+
+def _comprobar_hashes_del_journal(root, errors, ok):
+    """Check 9: los hashes que el journal declara, y las perdidas que declara.
+
+    CINCO reglas, cada una por un fallo distinto (mezclarlas daria numeros
+    falsos):
+
+    - **R1 forma**: cada elemento de `commits` es un hash corto limpio
+      (`fullmatch`, no `search`).
+    - **R2 resolubilidad**: cada hash declarado RESUELVE en el mismo repo
+      desacoplado que usa el ancla del historial, con la misma precedencia de
+      `GIT_DIR` (el hook que permite tests hermeticos).
+    - **R3 registro de perdidas**: campo `commits_perdidos` POR ENTRADA, con
+      `{hash?, causa, nota?}` y `causa` en vocabulario cerrado. La prosa libre
+      cabe solo en `nota`. Una declaracion SIN hash es una de DOS COSAS y el
+      check las separa porque miden cosas distintas: el **ciclo entero sin
+      hash** (cuenta para el techo `MAX_CICLOS_SIN_HASH`, porque ahi no hay
+      objeto que nadie pueda mirar y es la forma que puede esconder una
+      perdida real) o un **hueco declarado** en una entrada que SI tiene hashes
+      (exige `nota`, no cuenta para ese techo, y solo existe porque el bucle
+      escribe el changelog despues del commit y el relleno se queda sin hacer).
+      MEDIDO: meter el hueco del ciclo 50 en el mismo contador que los ciclos 1
+      y 2 daba 3 contra un techo de 2, o sea que el diseno original trataba como
+      la misma medida dos cosas que no lo son.
+    - **R4 antidolar**: un hash declarado perdido que RESUELVE es un FAIL
+      ("declarada perdida una perdida que el historial desmiente"). Sin R4 la
+      solucion degenerada es declarar como perdidas las entradas que no se
+      quieren sanear y el check queda verde: el falso verde que este check
+      existe para matar, al reves.
+    - **R5 techos**: `MAX_HASHES_PERDIDOS` y `MAX_CICLOS_SIN_HASH` son un suelo
+      EJECUTADO. Subirlos es un FAIL, y bajarlos tambien: asi el techo avisa de
+      que el residuo CRECIO y de que hay que mirarlo.
+
+    **Borrar una declaracion de perdida no silencia nada**: el `commits` del
+    ciclo sigue ahi, y sin su `commits_perdidos` la R2 vuelve a fallar. El
+    registro EXPLICA, nunca suprime; por eso el opt-out es correcto aqui tambien.
+
+    Que R1 y R3 se comprueben SIN git y R2/R4 NEED git, y no es una division
+    arbitraria: con el repo ilegible se acusan las formas y se INFORMA el
+    motivo de las que no se pueden comprobar. Devolver `0` en el recuento de
+    hashes perdidos cuando no se ha podido mirar el repo seria fabricar un
+    veredicto, y fabricarlo en la direccion de "todo bien" es el peor de los dos
+    lados.
+    """
+    ruta = os.path.join(root, ".taskmaster", "rd_journal.json")
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            datos = json.load(f)
+    except (OSError, ValueError) as exc:
+        errors.append(
+            "rd_journal.json commits: NO SE PUEDE LEER y un ancla ilegible no "
+            f"certifica. Motivo literal: {type(exc).__name__}: {exc}"
+        )
+        return
+    if not isinstance(datos, list):
+        errors.append(
+            "rd_journal.json commits: la raiz del documento ya no es una lista "
+            f"(es {type(datos).__name__}) y el check no sabe que medir. El campo de "
+            "perdidas es POR ENTRADA a proposito: un campo de raiz habria hecho "
+            "falta cambiar la FORMA del documento"
+        )
+        return
+
+    # Solo las entradas IDENTIFICABLES se comprueban: una entrada sin `cycle`
+    # entero no se puede nombrar en un FAIL, y un error que no se puede atribuir
+    # a un ciclo no es accionable. Se cuentan aparte para que el informe lo diga.
+    identificables = [e for e in datos
+                      if isinstance(e, dict) and isinstance(e.get("cycle"), int)]
+
+    pedidos = []
+    for entrada in identificables:
+        for item in (entrada.get("commits") or []):
+            if isinstance(item, str) and RE_HASH_CORTO.fullmatch(item):
+                pedidos.append(item)
+    resueltos, motivo_git = _hashes_que_existen(root, pedidos)
+    if motivo_git is not None:
+        errors.append(
+            "rd_journal.json commits: NO SE PUEDE LEER EL REPO y no se declaran ni "
+            "se absuelven perdidas sin mirarlo. Motivo literal: " + motivo_git
+        )
+
+    conformes = con_lista = sin_hash = 0
+    no_declarados = 0
+    perdidos_por_causa = {}
+    hashes_perdidos = []
+    ciclos_sin_hash = 0
+    huecos = 0
+    elementos_no_conformes = 0
+
+    for entrada in identificables:
+        ciclo = entrada["cycle"]
+        commits = entrada.get("commits")
+        lista = commits if isinstance(commits, list) else []
+        hashes_de_la_entrada = {
+            item for item in lista
+            if isinstance(item, str) and RE_HASH_CORTO.fullmatch(item)
+        }
+
+        # --- R1: forma de cada elemento -------------------------------------
+        malos = [item for item in lista if item not in hashes_de_la_entrada]
+        elementos_no_conformes += len(malos)
+        for item in malos:
+            errors.append(
+                f"rd_journal.json commits: el ciclo {ciclo:03d} declara un elemento "
+                f"que no es un hash corto limpio: '{_texto_ascii(item)}'. Se mide el "
+                "ELEMENTO con fullmatch y no el string, porque '617eef8 (architect)' "
+                "CONTIENE el hash 617eef8 y su busqueda dio la cifra falsa de '41 de "
+                "46 hashes no resuelven' (R1)"
+            )
+        if lista:
+            con_lista += 1
+            if not malos:
+                conformes += 1
+        else:
+            sin_hash += 1
+
+        # --- R3: el registro de perdidas de ESTA entrada --------------------
+        declarados = entrada.get("commits_perdidos")
+        perdidos_de_aqui = set()
+        if declarados is None:
+            declarados = []
+        elif not isinstance(declarados, list):
+            errors.append(
+                f"rd_journal.json commits: el ciclo {ciclo:03d} declara "
+                f"'commits_perdidos' y no es una lista (es "
+                f"{type(declarados).__name__}); el registro de perdidas es una lista "
+                "de {hash?, causa, nota?} por ENTRADA (R3)"
+            )
+            declarados = []
+        for registro in declarados:
+            if not isinstance(registro, dict):
+                errors.append(
+                    f"rd_journal.json commits: el ciclo {ciclo:03d} tiene un elemento "
+                    f"de 'commits_perdidos' que no es un objeto: "
+                    f"'{_texto_ascii(registro)}' (R3)"
+                )
+                continue
+            causa = registro.get("causa")
+            hash_declarado = registro.get("hash")
+            if causa not in CAUSAS_DE_PERDIDA:
+                errors.append(
+                    f"rd_journal.json commits: el ciclo {ciclo:03d} declara una "
+                    f"perdida con causa '{_texto_ascii(causa)}', que NO esta en el "
+                    f"vocabulario cerrado {list(CAUSAS_DE_PERDIDA)}. Una causa redactada "
+                    "en libertad es infalsable: no se puede contar ni agrupar, y "
+                    "cualquiera puede escribir 'se perdio' y cerrar el ciclo (R3)"
+                )
+            if hash_declarado is None:
+                if causa != "NUNCA_DECLARADO":
+                    errors.append(
+                        f"rd_journal.json commits: el ciclo {ciclo:03d} declara una "
+                        f"perdida SIN hash con causa '{_texto_ascii(causa)}', y eso solo "
+                        "puede ser NUNCA_DECLARADO: VFS_CORRUPTO es la perdida de un "
+                        "OBJETO, y un objeto se nombra por su hash (R3)"
+                    )
+                elif not isinstance(registro.get("nota"), str) or not registro["nota"].strip():
+                    errors.append(
+                        f"rd_journal.json commits: el ciclo {ciclo:03d} declara una "
+                        "perdida sin hash y sin 'nota'. Sin hash no hay hecho que "
+                        "comprobar y sin nota no hay nada que leer: eso no es un "
+                        "registro, es una entrada de discretion (R3)"
+                    )
+                elif not lista:
+                    # El CICULO ENTERO sin hash. Es la forma que puede esconder una
+                    # perdida real --no hay objeto que nadie pueda mirar-- y por eso
+                    # es la unica que lleva el techo `MAX_CICLOS_SIN_HASH`.
+                    ciclos_sin_hash += 1
+                else:
+                    # Un HUECO declarado en una entrada que SI tiene hashes. Solo
+                    # existe porque el bucle escribe el changelog despues del
+                    # commit (SKILL.md:382) y el relleno se puede quedar sin hacer.
+                    huecos += 1
+                continue
+            if not (isinstance(hash_declarado, str)
+                    and RE_HASH_CORTO.fullmatch(hash_declarado)):
+                errors.append(
+                    f"rd_journal.json commits: el ciclo {ciclo:03d} declara perdida un "
+                    f"hash que no es un hash corto limpio: "
+                    f"'{_texto_ascii(hash_declarado)}' (R1 y R3)"
+                )
+                continue
+            if hash_declarado not in hashes_de_la_entrada:
+                # El registro EXPLICA, nunca suprime: una perdida que no aparece en
+                # `commits` es una perdida sin el hecho que la sostiene, y admitiria
+                # tapar un hash real declarandolo aqui y quitandolo de alla.
+                errors.append(
+                    f"rd_journal.json commits: el ciclo {ciclo:03d} declara perdida el "
+                    f"hash {hash_declarado} y ese hash NO esta en su 'commits'. El "
+                    "registro de perdidas explica lo que `commits` dice, no lo "
+                    "sustituye: sin el hash en `commits` no hay hecho que perder (R3)"
+                )
+                continue
+            perdidos_de_aqui.add(hash_declarado)
+            hashes_perdidos.append((ciclo, hash_declarado, causa))
+            perdidos_por_causa[causa] = perdidos_por_causa.get(causa, 0) + 1
+
+        # --- R2 y R4: resolubilidad, en direcciones opuestas ----------------
+        if motivo_git is None:
+            for hash_propio in sorted(hashes_de_la_entrada - perdidos_de_aqui):
+                if hash_propio not in resueltos:
+                    no_declarados += 1
+                    errors.append(
+                        f"rd_journal.json commits: el ciclo {ciclo:03d} declara el hash "
+                        f"{hash_propio} y NO resuelve en el repo desacoplado, y no lo "
+                        "declara en 'commits_perdidos' con su causa. Sin el objeto no se "
+                        "puede anclar este ciclo: o se recupera el hash, o se declara la "
+                        "perdida (R2)"
+                    )
+            for hash_perdido in sorted(perdidos_de_aqui):
+                if hash_perdido in resueltos:
+                    errors.append(
+                        f"rd_journal.json commits: el ciclo {ciclo:03d} declara perdida "
+                        f"el hash {hash_perdido} y ese hash SI resuelve: declarada perdida "
+                        "una perdida que el historial desmiente. Declarar de mas es la "
+                        "misma clase de fallo al reves que borrar una fila sin "
+                        "evidencia (R4)"
+                    )
+
+    # --- R5: los techos, que son un suelo EJECUTADO --------------------------
+    if len(hashes_perdidos) > MAX_HASHES_PERDIDOS:
+        errors.append(
+            f"rd_journal.json commits: {len(hashes_perdidos)} hash(es) perdido(s) "
+            f"declarados con causa y el techo es {MAX_HASHES_PERDIDOS} (medido el "
+            "2026-10-04). El techo no es un objetivo a barrer: es un suelo que avisa "
+            "de que el residuo CRECIO. Si un objeto se ha recuperado, bajarlo es una "
+            "accion que este check exige (R5)"
+        )
+    if ciclos_sin_hash > MAX_CICLOS_SIN_HASH:
+        errors.append(
+            f"rd_journal.json commits: {ciclos_sin_hash} ciclo(s) sin hash declarado "
+            f"y el techo es {MAX_CICLOS_SIN_HASH} (medido el 2026-10-04: los ciclos 1 "
+            "y 2, que ningun subject del historial nombra). Un ciclo nuevo sin hash es "
+            "una perdida que hay que poder probar (R5)"
+        )
+
+    causas = "; ".join(
+        f"{causa}: {n} hash(es)" if causa != "NUNCA_DECLARADO"
+        else f"{causa}: {ciclos_sin_hash} ciclo(s) sin hash"
+        for causa, n in sorted(perdidos_por_causa.items())
+    )
+    if not causas and (ciclos_sin_hash or huecos):
+        partes = []
+        if ciclos_sin_hash:
+            partes.append(f"NUNCA_DECLARADO: {ciclos_sin_hash} ciclo(s) sin hash")
+        if huecos:
+            partes.append(f"NUNCA_DECLARADO: {huecos} hueco(s) en un ciclo con hash")
+        causas = "; ".join(partes)
+    if huecos:
+        causas = (causas + "; " if causas else "") + (
+            f"hueco(s) declarado(s) sin hash: {huecos} (exigen 'nota' y no cuentan "
+            f"para el techo de los {MAX_CICLOS_SIN_HASH} ciclo(s) sin hash, que es la "
+            "forma que puede esconder una perdida real)")
+    ok.append(
+        f"campo 'commits' del journal: {len(identificables)} entrada(s) con 'cycle', "
+        f"{con_lista} con lista de hash(es), {conformes} conforme(s) a R1, "
+        f"{sin_hash} sin hash declarado, {len(hashes_perdidos)} hash(es) perdido(s) "
+        f"declarados con causa ({causas or 'ninguna'}), {no_declarados} sin resolver "
+        f"sin declaracion | techos R5: {MAX_HASHES_PERDIDOS} hash(es) y "
+        f"{MAX_CICLOS_SIN_HASH} ciclo(s) sin hash"
+    )
+
+
 def _comprobar_ancla_del_changelog(root, errors, ok):
     """Check 5b, su parte de ANCLA: cobertura de entradas de ciclo del changelog.
 
@@ -1855,6 +2268,14 @@ def validar(root):
     # con raiz y SIN defaults por el motivo de TASK-037 y de D1: un default
     # convierte un cableado roto en un `None` silencioso.
     _comprobar_deuda_con_anclas(root, errors, ok)
+    # 9. El campo `commits` de rd_journal.json declara los hashes del trabajo de
+    # cada ciclo y hasta TASK-059 NADIE lo comprobaba: cero coincidencias de
+    # `commits` como dato en todo el validador. Delegado a
+    # `_comprobar_hashes_del_journal(root, errors, ok)`, con raiz y SIN defaults
+    # por el motivo de D2: un default convierte un cableado roto en un `None`
+    # silencioso, y un `None` en esta posicion se lee como "no hay hashes que
+    # comprobar", que es el falso verde que el check viene a cerrar.
+    _comprobar_hashes_del_journal(root, errors, ok)
     return errors, ok
 
 

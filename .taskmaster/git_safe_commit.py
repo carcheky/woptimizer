@@ -14,25 +14,47 @@ CONTRATO DE CODIGOS DE SALIDA (normativo, documentado en docs/ai/sandbox-rules.m
     0  WOPT_NOOP <motivo>                      no hay nada que comitear (benigno)
     1  WOPT_FAIL <operacion> <detalle>         fallo de una operacion de git
     2  WOPT_USAGE <detalle>                    uso incorrecto
+    2  WOPT_USAGE ancla-mensaje <detalle>      el mensaje no lleva identificador
     3  WOPT_REPO_INVALIDO <detalle>            repositorio no verificable
+
+PUERTA DEL MENSAJE (TASK-059): un mensaje pasa si lleva `TASK-NNN` que exista en
+`.taskmaster/tasks.json`, o `CYCLE-NNN`, o un marcador de ciclo (`ciclo N`). Sin
+identificador el commit no tiene tercer testigo, asi que se rechaza con el codigo
+2 (uso incorrecto), NO con el 1: la puerta no ejecuta ninguna operacion de git y
+meterla en `WOPT_FAIL` haria falsa la tabla de docs/ai/sandbox-rules.md. Se
+coloca despues de `validar_repo` y del NOOP y ANTES de `add -A`, luego un arbol
+limpio sigue diciendo WOPT_NOOP + 0 y un rechazo no muta el arbol.
 
 `--verify` es un modo diagnostico de solo lectura: reutiliza EXACTAMENTE la misma
 validacion, imprime `WOPT_REPO_OK <git_dir>` + 0 si el repo esta sano, o
-`WOPT_REPO_INVALIDO <detalle>` + 3 si no. Nunca comitea.
+`WOPT_REPO_INVALIDO <detalle>` + 3 si no. Nunca comitea y NO pasa por la puerta
+(es un diagnostico del repo y no lleva mensaje).
 
 Uso:
-    python .taskmaster/git_safe_commit.py "tipo(scope): descripcion"
+    python .taskmaster/git_safe_commit.py "tipo(scope): descripcion (TASK-NNN)"
     python .taskmaster/git_safe_commit.py --verify
 """
 
 import sys
 import os
 import re
+import json
 import subprocess
 import io
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+# La consola de este host es cp1252 y `git` emite acentos, codigos de color ANSI
+# y saltos de linea: sin esto, un `print()` revienta con UnicodeEncodeError
+# justo en el mensaje de error. MEDIDO el 2026-10-04 (TASK-059): esto solo se
+# hace CUANDO EL WRAPPER ES EL PROGRAMA, nunca al importarlo. La razon es
+# medida: `run_tests.py` importa este modulo para probar `ancla_del_mensaje` sin
+# escribir nada, y envolver `sys.stdout`/`sys.stderr` a nivel de modulo
+# reenvuelve los streams del PROCESO QUE IMPORTA: al terminar, el doble
+# envoltorio se libera y la salida del validador de tests muere con
+# `ValueError: I/O operation on closed file` y `lost sys.stderr`. Importar un
+# modulo no puede cambiarle la consola a quien lo importa.
+if __name__ == "__main__":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOCAL_GIT_DIR = os.path.expandvars(r"%LOCALAPPDATA%\woptimizer_git\.git")
@@ -44,6 +66,38 @@ CODE_USAGE = 2
 CODE_REPO = 3
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+# --- La puerta del mensaje (TASK-059) ---------------------------------------
+#
+# El marcador de ciclo es el MISMO patron, caracter por caracter, que el del
+# validador (`validate_docs.py` -> `_RE_MARCADOR_DE_CICLO`, decision D1 de
+# `docs/ai/sandbox-rules.md`). No se importa de ahi: el wrapper no puede depender
+# del validador (es la unica puerta de versionado y tiene que valer con el
+# validador caido). Lo que impide que diverjan es `run_tests.py`, que compara las
+# dos cadenas: dos copias que nadie contrasta son dos puertas.
+_RE_MARCADOR_ANCLA = re.compile(
+    r"\b(?:ciclo|cycle)(s?)\b[\s:#-]*#?(\d{1,4})(?:\s*-\s*(\d{1,4}))?",
+    re.IGNORECASE,
+)
+# `TASK-` con 1 a 4 digitos y el `\b` de salida. Sin el `\b` final, "TASK-12345"
+# casaria con "TASK-1234" y resolveria un id que no existe. `T-\d+` NO se acepta:
+# `T-1`..`T-9` son ids de tarea DENTRO de un change
+# (`openspec/changes/*/tasks.md`), no existen en `tasks.json` y nadie puede
+# resolverlos: seria un ancla de mentira.
+_RE_TASK_ANCLA = re.compile(r"\bTASK-(\d{1,4})\b")
+_RE_CYCLE_ANCLA = re.compile(r"\bCYCLE-\d{3}\b")
+
+# Motivo del rechazo. ASCII PURO (trampa #16, consola cp1252) y con las TRES
+# formas aceptadas nombradas, que es lo que permite corregir el mensaje sin
+# abrir el contrato. La linea `WOPT_*` lo imprime la ULTIMA (regla 4).
+MOTIVO_SIN_ANCLA = (
+    "este mensaje no lleva identificador de ciclo ni de tarea; se espera "
+    "'TASK-NNN' existente en .taskmaster/tasks.json, 'CYCLE-NNN' o 'ciclo N'. "
+    "POR QUE importa: sin identificador este commit no tiene tercer testigo --ni "
+    "rd_journal.json ni el historial podran anclarlo despues-- y esa es la ceguera "
+    "que TASK-059 cierra. Ancla tu mensaje y repite el commit."
+)
+
 
 
 def detalle(texto, max_len=240):
@@ -160,9 +214,90 @@ def parse_args(argv):
     return verify, mensaje, None
 
 
+def ancla_del_mensaje(mensaje, ids):
+    """`(ok, motivo)`: el mensaje lleva identificador de ciclo o de tarea.
+
+    PURA por construccion: recibe el mensaje y el CONJUNTO de ids y no lee
+    ficheros ni llama a `subprocess`. Por eso se puede probar entera sin
+    escribir nada (limite 1 de la propuesta: el arbol de trabajo no es
+    controlable desde fuera del wrapper, luego lo unico hermetico es la funcion
+    extraida y la posicion de su llamada, que se afirma con `ast`).
+
+    `ids` es el conjunto de identificadores RESUELTOS de `.taskmaster/tasks.json`
+    (`ids_de_tareas`). La resolubilidad se exige porque es lo que convierte el
+    identificador en un ancla y no en una decoracion: `"chore: TASK-999"` tiene
+    la forma correcta y no apunta a nada, asi que NO pasa.
+
+    Tres formas y solo tres, y el orden no es de estilo: primero `TASK-` porque
+    es la unica que se puede resolver, luego las dos convenciones de ciclo. Se
+    recorre TODAS las menciones de `TASK-` en vez de quedarse con la primera,
+    porque un mensaje que dice "arrastra TASK-999 de TASK-059" tiene un ancla
+    real al final y negarsela seria un falso rojo.
+
+    `ids` vacio NO significa "todo valido": degrada a la FORMA, que es lo unico
+    que se puede exigir sin leer el fichero, y `ids_de_tareas` lo dice con un
+    `INFO`. Un `except` que devolviera "todo valido" seria fail-open y dejaria la
+    puerta muerta.
+    """
+    texto = mensaje or ""
+    for encontrado in _RE_TASK_ANCLA.finditer(texto):
+        if "TASK-" + encontrado.group(1) in ids:
+            return True, ""
+    if _RE_CYCLE_ANCLA.search(texto):
+        return True, ""
+    if _RE_MARCADOR_ANCLA.search(texto):
+        return True, ""
+    return False, MOTIVO_SIN_ANCLA
+
+
+def ids_de_tareas():
+    """`(ids, aviso)` leidos de `.taskmaster/tasks.json`. -> `set[str]`.
+
+    `aviso` es `None` cuando todo fue bien y un texto de UNA linea cuando no: el
+    llamante lo imprime como `INFO` ANTES de la linea `WOPT_*`, que tiene que
+    quedar la ultima (regla 4 del contrato). El aviso existe porque degradar en
+    silencio es indistinguishable de no degradar: el que llama tiene que poder
+    ver que la puerta esta exigiendo menos de lo que suele.
+    """
+    ruta = os.path.join(REPO_ROOT, ".taskmaster", "tasks.json")
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            datos = json.load(f)
+    except (OSError, ValueError) as exc:
+        return set(), (
+            f".taskmaster/tasks.json ilegible ({type(exc).__name__}); la puerta exige "
+            "la FORMA del identificador pero no su resolubilidad. No es fail-open: "
+            "'TASK-NNN' sin resolver ya no pasa"
+        )
+
+    tareas = datos.get("tasks") if isinstance(datos, dict) else datos
+    ids = set()
+    if isinstance(tareas, list):
+        for tarea in tareas:
+            if isinstance(tarea, dict) and isinstance(tarea.get("id"), str):
+                ids.add(tarea["id"].strip().upper())
+    if isinstance(datos, dict) and isinstance(datos.get("active_task_id"), str):
+        # `active_task_id` es tambien un id que EXISTE en el fichero, y el
+        # orquestador lo escribe a mano en sus mensajes.
+        ids.add(datos["active_task_id"].strip().upper())
+
+    if not ids:
+        return set(), (
+            ".taskmaster/tasks.json no aporta ningun id utilizable; la puerta exige "
+            "solo la FORMA del identificador"
+        )
+    return ids, None
+
+
 def imprimir_uso():
-    print('Uso: python .taskmaster/git_safe_commit.py "tipo(scope): descripcion"')
+    print('Uso: python .taskmaster/git_safe_commit.py "tipo(scope): descripcion (TASK-NNN)"')
     print("     python .taskmaster/git_safe_commit.py --verify")
+    print()
+    print("El mensaje LLEVA IDENTIFICADOR, y el wrapper lo exige (TASK-059):")
+    print("  'TASK-NNN'  existente en .taskmaster/tasks.json   (p. ej. '(TASK-059)')")
+    print("  'CYCLE-NNN'                                       (p. ej. 'CYCLE-059')")
+    print("  'ciclo N'                                         (p. ej. 'ciclo 59')")
+    print("Sin identificador el commit no tiene tercer testigo y se rechaza con 2.")
 
 
 def main():
@@ -201,14 +336,36 @@ def main():
         print("WOPT_NOOP arbol limpio (status --porcelain vacio)")
         sys.exit(CODE_OK)
 
-    # 2. add -A. Si falla, ABORTAR: comitear despues seria staging parcial
+    # 2. PUERTA DEL MENSAJE (TASK-059). Va DESPUES de `validar_repo` y del NOOP
+    #    y ANTES de `add -A`, y el orden se mide contra el codigo real:
+    #    antes de `validar_repo` rompia el contrato (un `GIT_DIR` invalido con
+    #    cualquier mensaje salia con 3 y pasaria a 2: "no pude ni comprobar" y
+    #    "tu invocacion esta mal" son dos diagnosticos distintos, y confundirlos
+    #    entrena al orquestador a mirar el repo cuando el problema es su cadena);
+    #    despues de `add -A` rechazaria con el arbol ya stageado, es decir, mutaria
+    #    el arbol para luego decir que no. Aqui es de SOLO LECTURA y cae antes de
+    #    la primera escritura. Un arbol limpio sigue diciendo WOPT_NOOP + 0: un
+    #    no-op no tiene commit que anclar, y rechazarlo seria ruido que el
+    #    orquestador leeria como "el commit fallo".
+    ids, aviso_ids = ids_de_tareas()
+    if aviso_ids:
+        print(f"INFO ancla-mensaje: {detalle(aviso_ids)}")
+    ok_ancla, motivo_ancla = ancla_del_mensaje(mensaje, ids)
+    if not ok_ancla:
+        # Codigo 2 y NO 1 (D3): la puerta no ejecuta ninguna operacion de git, y
+        # un `WOPT_FAIL ancla-mensaje` seria indistinguible de un fallo de git
+        # para el unico consumidor real del codigo, que ramifica por el codigo.
+        print(f"WOPT_USAGE ancla-mensaje {detalle(motivo_ancla)}")
+        sys.exit(CODE_USAGE)
+
+    # 3. add -A. Si falla, ABORTAR: comitear despues seria staging parcial
     #    silencioso (solo se versionaria una parte de los cambios).
     rc, out, err, exc = run_git(["add", "-A"], env)
     if exc is not None or rc != 0:
         print(f"WOPT_FAIL add {detalle(exc or err or out)}")
         sys.exit(CODE_FAIL)
 
-    # 3. Hay algo staged? Se decide con `diff --cached --quiet`, NO parseando el
+    # 4. Hay algo staged? Se decide con `diff --cached --quiet`, NO parseando el
     #    texto de git: "nothing to commit" se traduce segun LANG/LC_ALL y en un
     #    Windows en espanol no aparece nunca, lo que convertiria un arbol limpio
     #    en un fallo. rc 0 = nada staged, rc 1 = hay staged, rc > 1 = error.
@@ -223,13 +380,13 @@ def main():
         print(f"WOPT_FAIL diff (rc={rc}) {detalle(err or out)}")
         sys.exit(CODE_FAIL)
 
-    # 4. commit. Cualquier fallo real es codigo 1, nunca 0.
+    # 5. commit. Cualquier fallo real es codigo 1, nunca 0.
     rc, out, err, exc = run_git(["commit", "-m", mensaje], env)
     if exc is not None or rc != 0:
         print(f"WOPT_FAIL commit {detalle(exc or err or out)}")
         sys.exit(CODE_FAIL)
 
-    # 5. Hash real y solo si resuelve: sin hash no se inventa nada en el CHANGELOG.
+    # 6. Hash real y solo si resuelve: sin hash no se inventa nada en el CHANGELOG.
     rc, out, err, exc = run_git(["rev-parse", "--short", "HEAD"], env)
     if exc is not None or rc != 0 or not out:
         print(f"WOPT_FAIL hash-no-resoluble {detalle(exc or err or out)}")

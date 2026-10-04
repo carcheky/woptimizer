@@ -30,6 +30,25 @@ flowchart LR
 
 ---
 
+## 0-bis. 🔴 El mensaje de commit LLEVA identificador (TASK-059)
+
+> **REGLA DURA, no una recomendación:** todo commit del bucle va por
+> `python .taskmaster/git_safe_commit.py "..."` y el mensaje **lleva `TASK-NNN`
+> (existente en `.taskmaster/tasks.json`), `CYCLE-NNN` o `ciclo N`**. El wrapper
+> **rechaza** el mensaje que no lo lleve, con `WOPT_USAGE ancla-mensaje` y código
+> **2**, y no toca el árbol: no hay commit al que anclar.
+>
+> **Por qué en una frase:** sin identificador ese commit no tiene tercer testigo
+> —ni `rd_journal.json` ni el historial pueden anclarlo después—, que es
+> exactamente el punto ciego que el validador medía y no podía cerrar.
+>
+> Las cinco plantillas literales de este documento llevan `(TASK-NNN)` por eso, y
+> un test las extrae del repo y las pasa por la puerta del producto: si alguien
+> las deja sin identificador, la suite se pone roja antes de que el bucle se
+> atasque en su primer commit.
+
+---
+
 ## 0. ⚙️ Antes de nada: cómo delegar en subagentes EN ESTE RUNTIME
 
 > **Esta skill es agnóstica de runtime.** Escribes las mismas cuatro personas
@@ -149,7 +168,7 @@ Tu objetivo es auditar la arquitectura, validar viabilidad, resolver/ampliar deu
    - Refina dependencias en `.taskmaster/tasks.json` o la especificación en OpenSpec si detecta riesgos.
    - Realiza commit de la estrategia usando el wrapper seguro:
      ```bash
-     python .taskmaster/git_safe_commit.py "chore(architect): planificar <tarea>"
+     python .taskmaster/git_safe_commit.py "chore(architect): planificar <tarea> (TASK-NNN)"
      ```
 3. **Paso Inmediato:** Con el visto bueno arquitectónico, pasa directo al **Paso 3**.
 
@@ -177,7 +196,7 @@ Tu objetivo es implementar el código, verificarlo rigurosamente, actualizar la 
    - Marca la tarea completada: pon `"status": "completed"` en su entrada de `.taskmaster/tasks.json` (NO `tm.py done`, que no es ejecutable aquí).
    - Realiza commit seguro:
      ```bash
-     python .taskmaster/git_safe_commit.py "feat/fix: <tarea>"
+     python .taskmaster/git_safe_commit.py "feat/fix: <tarea> (TASK-NNN)"
      ```
 3. **Actualización de Tableros y continuación al Paso 4:**
    - Actualiza `.taskmaster/rd_journal.json` con la nueva entrada del ciclo.
@@ -277,7 +296,7 @@ TU OBJETIVO:
 3. Si la tarea se derivó de deuda técnica o toca áreas con deuda conocida en STATUS.md, crea o amplía planes y criterios discriminantes incorporándola antes de idear nuevas features.
 4. Ajusta dependencias o campos en .taskmaster/tasks.json si es necesario.
 5. NUNCA toques código de producción en src/.
-6. Haz commit: python .taskmaster/git_safe_commit.py "chore(architect): planificar [ID_TAREA]".
+6. Haz commit: python .taskmaster/git_safe_commit.py "chore(architect): planificar [ID_TAREA] (TASK-NNN)".
 7. Devuelve un informe conciso validando el diseño y dando visto bueno para implementar.
 ```
 
@@ -297,7 +316,7 @@ TU OBJETIVO:
 5. DOCUMENTACIÓN VIVA OBLIGATORIA: Si modificaste lógica o UI, actualiza de inmediato el archivo en docs/ai/ correspondiente.
 6. Ejecuta verificaciones: python verify_ui_syntax.py y python run_tests.py.
 7. Marca completada: pon "status": "completed" en la tarea dentro de .taskmaster/tasks.json (NO uses tm.py done).
-8. Haz commit: python .taskmaster/git_safe_commit.py "feat/fix([COMPONENTE]): [TÍTULO_TAREA]".
+8. Haz commit: python .taskmaster/git_safe_commit.py "feat/fix([COMPONENTE]): [TÍTULO_TAREA] (TASK-NNN)".
 9. Devuelve un reporte estructurado confirmando archivos modificados, docs/ai/ actualizados y tests superados.
 ```
 
@@ -329,7 +348,7 @@ CONTEXTO:
 1. Ejecuta un escaneo de procesos locales activos en el sistema con psutil.
 2. Cruza con assets/process_db.json e investiga los procesos nuevos relevantes.
 3. Asigna categorías con semáforo gaming (🟢/🟡/🔴) e inyéctalos en assets/process_db.json.
-4. Haz commit: python .taskmaster/git_safe_commit.py "chore(process-db): actualizar procesos gaming y bloatware".
+4. Haz commit: python .taskmaster/git_safe_commit.py "chore(process-db): actualizar procesos gaming y bloatware (TASK-NNN)".
 5. Devuelve un resumen de los procesos añadidos.
 ```
 

@@ -47,7 +47,8 @@ Verifica contra el codigo, no contra la descripcion de la tarea. Si una premisa 
 
 - El shell puede fallar con `spawn EPERM`, de forma **intermitente**: reintenta, no abandones al primer fallo. Si tras varios intentos no puedes ejecutar, dilo y sigue con lectura estatica.
 - `python .taskmaster/tm.py next` **falla** (hace subprocess). Lee `.taskmaster/tasks.json` directamente.
-- **No hagas `git` a pelo.** El `.git` del arbol esta corrupto por el VFS de Nextcloud. Usa `python .taskmaster/git_safe_commit.py "<mensaje>"` y comprueba su codigo de salida.
+- **No hagas `git` a pelo.** El `.git` del arbol esta corrupto por el VFS de Nextcloud. Usa `python .taskmaster/git_safe_commit.py "<mensaje> (TASK-NNN)"` y comprueba su codigo de salida.
+- **El mensaje de commit lleva identificador** (TASK-059): `TASK-NNN` existente en `.taskmaster/tasks.json`, `CYCLE-NNN` o `ciclo N`. El wrapper **rechaza** con `WOPT_USAGE ancla-mensaje` y codigo **2** el mensaje sin identificador, y no toca el arbol. Sin identificador ese commit no tiene tercer testigo: ni `rd_journal.json` ni el historial podran anclarlo despues. Ejemplo: `chore(architect): planificar el cierre de la deuda (TASK-059)`.
 
 ## Stop when
 
