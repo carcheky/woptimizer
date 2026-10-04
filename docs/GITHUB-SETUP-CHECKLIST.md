@@ -183,8 +183,11 @@ Ninguno existe hoy. Solo hay `workflows/commitlint.yml` y `workflows/release.yml
       bf0f5d0 fix(tests): cerrar los dos supervivientes de la seccion 16
       ... (11 mas)
       ```
-      Hay **`feat(categorias):`** entre ellos. Cuando se pusheen, **dos releases
-      estables** (1.1.0 y 1.0.1) saldaran de un golpe, directo de `main`.
+      Hay **`feat(categorias):`** y **`feat(tests):`** entre ellos. Cuando se pusheen,
+      saldra **una** release estable desde `main`: `v1.1.0` (semantic-release calcula
+      **un** version por corrida, tomando el tipo mas alto de todos los commits del
+      push: hay `feat` -> minor, aunque tambien haya `fix`). Es decir, el trabajo sale
+      como estable **sin haber pasado por beta ni un solo dia**.
 - [ ] **Decision del dueno sobre como cerrar el desajuste.** Ver seccion 7, O-1.
 
 ## 5. DERIVA Y FICHEROS SUCOS
@@ -252,8 +255,8 @@ Ninguno existe hoy. Solo hay `workflows/commitlint.yml` y `workflows/release.yml
 Ordenadas por urgencia. Ninguna aplicada por mi cuenta.
 
 - [ ] **O-1. Que se hace con los 15 commits sin pushear en `main`.**
-      - (a) **Pushear `main` tal cual** -> salen 2 releases estables de golpe (1.1.0 y
-            1.0.1). Simple, pero **nunca pasan por `beta`**.
+      - (a) **Pushear `main` tal cual** -> sale `v1.1.0` como estable sin haber pasado
+            por `beta`. Simple, pero **incumple el flujo documentado**.
       - (b) **Rebasar `main` sobre `beta` y pushear `beta` primero** -> pre-releases,
             luego merge a `main`. Cumple el flujo documentado. Cuesta un rebase.
       - (c) **Fusionarlos tal cual y seguir trabajando en `beta` desde ahora**, aceptando
