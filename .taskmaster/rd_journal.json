@@ -953,7 +953,8 @@
       "c900dbc",
       "cbf4c3f",
       "6420eb4",
-      "d1c382a"
+      "d1c382a",
+      "e1e9a28"
     ],
     "tests": "132 = 103 backend + 29 headless (run_tests.py, ALL TESTS PASSED, exit 0)",
     "change": "openspec/changes/2026-10-04-marcador-ciclo-y-hashes-journal/",
