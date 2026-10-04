@@ -297,6 +297,40 @@ Las dos formas de fallo que ya se ven en el historial y que la puerta habria dej
 `T-9` en vez de `TASK-063` (`9433985`), y mensajes `ci(release)` / `fix(release)` sin id
 (`bb50a7a`, `41b8061`, `6f7e15d`, `f447218`, `6a6fb5f`).
 
+### 6.1 Un NOOP medido en vivo el 2026-10-04, y por que matiza a D2
+
+Escribiendo este contrato, la llamada a `git_safe_commit.py "chore(architect): ... (TASK-059)"`
+devolvio **`WOPT_NOOP arbol limpio` + `0`**. Motivo medido: **otro actor commiteo 16 segundos
+despues de mi ultima escritura** (`20daaed`, `docs(github): checklist de configuracion del repo con
+el estado medido`, 14:40:33 frente a proposal.md a las 14:40:17) y **se llevo mis tres ficheros**:
+la proposal, el tasks y el `tasks.json` con sus 14 criterios. El arbol quedo limpio y mi wrapper no
+tenia nada que comitear.
+
+**Que corrige D2, y es una correccion a la propia justificacion de esta propuesta:** el NOOP es
+benigno **para el repositorio** —nada se pierde, el contenido esta versionado— y **no lo es para
+quien llama**: el mensaje que iba a llevar `TASK-059`, que es justamente el identificador del que
+trata esta tarea, se **descarto en silencio** y el trabajo acabo bajo un asunto ajeno. Es la misma
+clase de dano que `docs/ai/sandbox-rules.md:120` ya atribuia al NOOP ("el ciclo cerrado sin
+commit"), y aquiinstances es una **instancia nueva y medida**.
+
+Tres consecuencias, todas de diseno:
+
+1. **El NOOP sigue exento de la puerta** (un no-op no tiene commit que anclar), pero el
+   orquestador tiene que distinguir `WOPT_COMMIT_OK` de `WOPT_NOOP` cuando **esperaba** un commit.
+   El contrato ya lo permite sin ambiguedad: `WOPT_NOOP` **nunca imprime hash**
+   (`docs/ai/sandbox-rules.md:56`, regla 4), y la plantilla del changelog **exige** hashes
+   (`SKILL.md:372`). O sea: el fallo lo detecta el paso siguiente, tarde pero sin falso verde. Lo que
+   se escribe es que **eso es intencionado y no un descuido**, porque es lo unico que hace que el
+   NOOP pueda seguir siendo benigno.
+2. **`git_safe_commit.py` no tiene cerrojo**, luego dos actores que commitean a la vez se reparten
+   el resultado y el segundo se lleva un `WOPT_NOOP` con su mensaje perdido. No se arregla aqui
+   (es otra tarea, y un cerrojo en el unico wrapper **bloquearia** al bucle si el proceso muere
+   con el taken), pero queda medido y con dueno.
+3. **El commit que se llevo el trabajo es `docs(github): checklist...`**, un asunto **sin `TASK-` y
+   sin marcador de ciclo**: es exactamente el caso que la puerta de D1 habria rechazado, y uno mas
+   para la cifra de "SIN marcador" que ya se imprime. El punto ciego que esta tarea cierra acaba de
+   demostrarse solo, en un commit real, el mismo dia.
+
 ---
 
 ## 7. `validate_docs.py`: el check 9 y su linea de informe
