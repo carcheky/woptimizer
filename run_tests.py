@@ -16373,7 +16373,14 @@ def test_los_ids_del_bolsillo_se_leen_y_la_puerta_es_fail_closed():
     # --- 3) Una COPIA del arbol con el tablero roto, y el producto de verdad --
     raiz = os.path.dirname(os.path.abspath(__file__))
     copia = _tempfile.mkdtemp(prefix="wopt_t059_bolsillo_")
-    testigo = os.path.join(raiz, "_t059_bolsillo_testigo.txt")
+    # TASK-061: el arbol de trabajo del subproceso es TEMPORAL, no `raiz`. Antes
+    # esta sonda creaba `_t059_bolsillo_testigo.txt` en la raiz REAL porque
+    # `get_env()` imponia `GIT_WORK_TREE = REPO_ROOT` sin condiciones. Ese
+    # "truco declarado" desaparece con la paridad: el par asimetrico se rechaza
+    # con 2, luego un arbol sucio de verdad tiene que ser de otro sitio.
+    arbol_sucio = os.path.join(copia, "arbol")
+    os.makedirs(arbol_sucio, exist_ok=True)
+    testigo = os.path.join(arbol_sucio, "_t059_bolsillo_testigo.txt")
     try:
         _shutil.copytree(os.path.join(raiz, ".taskmaster"),
                          os.path.join(copia, ".taskmaster"),
@@ -16409,8 +16416,10 @@ def test_los_ids_del_bolsillo_se_leen_y_la_puerta_es_fail_closed():
 
         # --- 4) S9: el `INFO` sale y sale ANTES de la linea `WOPT_*` ----------
         # Por SUBPROCESO, con la copia degradada y un arbol de trabajo sucio por
-        # un fichero untracked que este test crea y borra (el truco declarado del
-        # ciclo 52: `GIT_WORK_TREE` lo impone el wrapper y no se puede redirigir).
+        # un fichero untracked en un ARBOL TEMPORAL (TASK-061: este subproceso
+        # antes escribia su testigo en la raiz real porque el `GIT_WORK_TREE` lo
+        # imponia el wrapper y no se podia redirigir; con la paridad exigida ya
+        # se puede, y el temporal se lo lleva el `rmtree` del `finally`).
         d_hist = os.path.join(copia, "historial")
         git_dir = _repo_temporal_de_un_commit(d_hist, "chore(release): fixture del INFO")
         for clave, valor in (("user.email", "t059@woptimizer.invalid"),
@@ -16419,8 +16428,9 @@ def test_los_ids_del_bolsillo_se_leen_y_la_puerta_es_fail_closed():
         with open(testigo, "w", encoding="utf-8") as fh:
             fh.write("testigo\n")
         env = os.environ.copy()
+        env.pop("GIT_WORK_TREE", None)
         env["GIT_DIR"] = git_dir
-        env["GIT_WORK_TREE"] = raiz
+        env["GIT_WORK_TREE"] = arbol_sucio
         r = subprocess.run(
             [_sys.executable, ruta_wrapper_copia, "chore(manual): sin ancla"],
             cwd=raiz, env=env, capture_output=True, text=True, encoding="utf-8",
@@ -16445,8 +16455,9 @@ def test_los_ids_del_bolsillo_se_leen_y_la_puerta_es_fail_closed():
         assert not [l for l in staged.splitlines() if l.strip()], (
             f"el rechazo con tablero degradado no puede dejar nada stageado: {staged!r}")
     finally:
-        if os.path.exists(testigo):
-            os.unlink(testigo)
+        # TASK-061: nada se borra a mano. El testigo vive en el temporal, y el
+        # `rmtree` se lleva el arbol entero. Un resto de test en el arbol del
+        # dueno lo recoge el proximo `add -A` del producto.
         _shutil.rmtree(copia, ignore_errors=True)
     print("Ids del bolsillo OK: tablero real leido, fail-closed en los tres mensajes "
           "con `TASK-`, el ciclo sigue pasando con el fichero roto, aviso literal y "
@@ -16466,11 +16477,17 @@ def test_la_puerta_se_coloca_despues_del_noop_y_antes_de_add():
     | despues de `add -A` | rechaza con el arbol YA STAGEADO: muta el arbol real para luego decir que no |
     | antes del NOOP | un arbol limpio con mensaje sin ancla sale con 2 en vez de `WOPT_NOOP` + 0, y el orquestador lee un rechazo de uso donde no habia ni commit que anclar |
 
-    Por que `ast` y no un subproceso: `get_env()` IMPONE `GIT_WORK_TREE = REPO_ROOT`
-    sin condiciones (`git_safe_commit.py`), luego el arbol de trabajo no es
-    controlable desde fuera del wrapper y un test no puede fabricar "arbol
-    sucio" sin mutar el arbol real. Es el limite 1 de la propuesta y dueno es
-    `TASK-061`; la posicion si es comprobable, y por indices de sentencia.
+    Por que `ast` y no un subproceso, para la POSICION: porque la posicion de una
+    puerta es una propiedad del flujo de `main()`, y forzarla por un subproceso
+    exigiria un scenario con la combinacion exacta de repo, arbol y mensaje
+    (TASK-061 lo que si puede hacer con `ast` es lo que este test ya hacia: el
+    arbol temporal y el testigo de no-contaminacion; la POSICION se afirma por
+    indices de sentencia, que es lo unico que no depende de ganar una carrera
+    contra el orden real). Antes de TASK-061 esta frase de aqui era otra cosa y
+    era FALSA: decia que `get_env()` imponia `GIT_WORK_TREE = REPO_ROOT` sin
+    condiciones y que por eso el arbol no era controlable desde fuera del
+    wrapper. Con la paridad exigida ya lo es, y un docstring que describe un
+    limite que ya no existe manda a rehacer un test que si funciona.
     El patron es el de `_reparto_de_tests` con `MARCADOR_HEADLESS`.
     """
     print("Probando la posicion de la puerta con ast sobre el wrapper real...")
@@ -16588,11 +16605,14 @@ def test_el_rechazo_de_la_puerta_dice_que_se_espera_y_por_que_importa():
        la que hace que el pipeline tenga una sola linea que leer.
 
     Y una tercera cosa que este test si puede hacer extremo a extremo, con el
-    arbol de trabajo sucio **por el propio test**: `GIT_DIR` temporal y un
-    fichero untracked nuevo que este test crea y borra. El `status --porcelain`
-    lo ve, la puerta rechaza, y como el rechazo es ANTERIOR a `add -A` el
-    indice tiene que quedar intacto: un `git add -A` colado tras la puerta
-    stagearia ese fichero, que es el dano exacto que D2 dice que no puede pasar.
+    arbol de trabajo sucio **por el propio test** y en un ARBOL TEMPORAL
+    (TASK-061; antes era el arbol real y el propio docstring reconocia el "truco
+    declarado del ciclo 52"): `GIT_DIR` temporal, `GIT_WORK_TREE` temporal y un
+    fichero untracked nuevo que este test crea dentro de ese temporal. El
+    `status --porcelain` lo ve, la puerta rechaza, y como el rechazo es ANTERIOR
+    a `add -A` el indice tiene que quedar intacto: un `git add -A` colado tras la
+    puerta stagearia ese fichero, que es el dano exacto que D2 dice que no puede
+    pasar.
 
     Y el caso con identificador, en el MISMO arbol: no lo rechaza, stagea y
     commitea en el temporal. Asi la puerta no se cuela en el camino bueno.
@@ -16607,6 +16627,15 @@ def test_el_rechazo_de_la_puerta_dice_que_se_espera_y_por_que_importa():
 
     tmp = tempfile.mkdtemp(prefix="wopt_t059_puerta_")
     d_hist = os.path.join(tmp, "historial")
+    # TASK-061: el arbol de trabajo es TEMPORAL y va aparte del repositorio. Antes
+    # era `raiz` y el testigo untracked se creaba en la raiz REAL
+    # (`_t059_testigo_stageado.txt`), lo que el propio test reconocia como "el
+    # truco declarado del ciclo 52". Con `GIT_WORK_TREE` honrado y la paridad
+    # exigida, la combinacion "GIT_DIR desechable + arbol real" ya no es
+    # representable y este test no necesita escribir en el arbol del dueno. El
+    # `rmtree` del `finally` se lleva el arbol entero: no se borra nada a mano.
+    arbol = os.path.join(tmp, "arbol")
+    os.makedirs(arbol, exist_ok=True)
     git_dir = _repo_temporal_de_un_commit(
         d_hist, "chore(release): fixture de la puerta")
     # Identidad EN EL REPO TEMPORAL. `_repo_temporal_de_un_commit` pasa
@@ -16618,13 +16647,14 @@ def test_el_rechazo_de_la_puerta_dice_que_se_espera_y_por_que_importa():
                          ("user.name", "t059"),
                          ("commit.gpgsign", "false")):
         _git_de_fixture(["config", clave, valor], d_hist)
-    testigo = os.path.join(raiz, "_t059_testigo_stageado.txt")
+    testigo = os.path.join(arbol, "_t059_testigo_stageado.txt")
     previos = os.environ.get("GIT_DIR")
 
     def invocar(mensaje):
         env = os.environ.copy()
+        env.pop("GIT_WORK_TREE", None)
         env["GIT_DIR"] = git_dir
-        env["GIT_WORK_TREE"] = raiz
+        env["GIT_WORK_TREE"] = arbol
         return subprocess.run(
             [_sys.executable, wrapper, mensaje], cwd=raiz, env=env,
             capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -16641,6 +16671,10 @@ def test_el_rechazo_de_la_puerta_dice_que_se_espera_y_por_que_importa():
             fh.write("fichero untracked que solo existe para que el arbol quede sucio\n")
         assert staged() == [], (
             f"la fixture tiene que empezar con el indice VACIO y hay {staged()!r}")
+        assert not os.path.exists(os.path.join(raiz, "_t059_testigo_stageado.txt")), (
+            "TASK-061: este test ya no debe escribir su testigo en la raiz REAL. Si "
+            "el fichero existe ahi, o es un resto de una corrida anterior o el "
+            "arbol de trabajo sigue siendo `raiz` en vez del temporal")
 
         # --- 1) SIN identificador: rechazo, y el indice intacto --------------
         r = invocar("chore(t059): mensaje sin identificador")
@@ -16685,8 +16719,9 @@ def test_el_rechazo_de_la_puerta_dice_que_se_espera_y_por_que_importa():
             f"temporal: `git log -1 --name-only` dio {hecho!r}. Si no, el test no "
             "estaba midiendo el camino bueno sino un no-op")
     finally:
-        if os.path.exists(testigo):
-            os.unlink(testigo)
+        # TASK-061: el testigo vive en el temporal, y el `rmtree` se lo lleva
+        # entero. Un unlink a mano de un fichero en la raiz del dueno es
+        # justamente el resto que el proximo `add -A` del producto se lleva.
         if previos is None:
             os.environ.pop("GIT_DIR", None)
         else:
@@ -16694,7 +16729,591 @@ def test_el_rechazo_de_la_puerta_dice_que_se_espera_y_por_que_importa():
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)
     print("Rechazo de la puerta OK: 2, WOPT_* la ultima, indice intacto y camino "
-          "bueno con commit.")
+          "bueno con commit, sin escribir en la raiz real.")
+
+
+# --- TASK-061: el codigo 1 del contrato, y la hermeticidad de ARBOL ----------
+#
+# Estas sondas cierran el invariante que el ciclo #11 rompio -- "un fallo de git
+# tiene que salir con un codigo distinto de 0" -- que se CUMPLIA en el codigo y no
+# lo comprobaba NADIE: medido, el mutante `sys.exit(CODE_FAIL)` -> `CODE_OK` en el
+# camino de commit sobrevivia a `run_tests.py` Y a `validate_docs.py`, o sea que
+# los dos semi-veredictos del toolchain lo dejaban pasar.
+#
+# De paso cierran la hermeticidad del hook de tests: con `GIT_WORK_TREE` honrado
+# y con PARIDAD exigida, las tres trabajan sobre un repo y un arbol TEMPORALES y
+# ninguna escribe en el arbol del dueno. El mensaje de las tres lleva el ancla
+# `ciclo 999` y NO `TASK-061`, por decision taken en la propuesta: la convencion
+# de ciclo no depende de `.taskmaster/tasks.json`, luego los tests no se rompen
+# cuando la tarea se cierre. Ejercita ademas una de las dos convenciones de
+# mensaje que no dependen de ficheros.
+# ---------------------------------------------------------------------------
+
+# Rutas REALES del arbol del dueno, usadas como testigo de no-contaminacion.
+# `_sin_contaminacion` comprueba ANTES que existen: un `assert not in` sobre
+# rutas que no existen pasa siempre, y un testigo que no se puede violar no es un
+# testigo.
+_RUTAS_REALES_DEL_REPO = ("AGENTS.md", "run.py", "run_tests.py",
+                          "validate_docs.py", "STATUS.md")
+
+# Prefijo unico de los ficheros que estas sondas crean. Si aparece en la raiz
+# real, esta suite ha escrito en el arbol del dueno.
+PREFIXO_DE_LA_SONDA = "_t061_"
+
+
+def _head_del_repo_real():
+    """El `HEAD` del repo REAL, leido del `GIT_DIR` desacoplado. -> `str`.
+
+    El `.git` del arbol de trabajo esta corrupto (VFS de Nextcloud), luego sin
+    `GIT_DIR` explicito este `git` leeria un repo roto. Las dos rutas se leen DEL
+    PRODUCTO (`gsc.LOCAL_GIT_DIR` / `gsc.REPO_ROOT`) y no se escriben aqui: una
+    copia de la ruta seria la misma mentira que una copia del contrato. Los TRES
+    intentos son por el `spawn EPERM` intermitente de este host, igual que en
+    `_git_de_fixture`: un unico fallo de git no se distingue de un falso verde.
+    """
+    import subprocess
+
+    gsc = _cargar_el_wrapper()
+    env = os.environ.copy()
+    env["GIT_DIR"] = gsc.LOCAL_GIT_DIR
+    env["GIT_WORK_TREE"] = gsc.REPO_ROOT
+    ultimo = "(nunca llego a ejecutarse)"
+    for _intento in (1, 2, 3):
+        r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=gsc.REPO_ROOT, env=env,
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=120)
+        if r.returncode == 0 and (r.stdout or "").strip():
+            return r.stdout.strip()
+        ultimo = ((r.stderr or "") + (r.stdout or "")).strip()
+    raise AssertionError(
+        f"no se pudo leer el HEAD del repo real ni a la tercera: {ultimo}. Sin este "
+        "testigo el resto de la sonda no puede afirmar que no toco el historial")
+
+
+def _repo_y_arbol_temporales_de_la_sonda(tmp, asunto):
+    """`(dir_repo, git_dir, arbol)`: repo de un commit y arbol VACIO y aparte.
+
+    El repositorio vive en `tmp/historial` y el arbol de trabajo en `tmp/arbol`,
+    DISTINTOS a proposito: si compartieran directorio, el arbol contendria el
+    `.git` y el testigo de no-contaminacion no tendria nada que mirar. La
+    identidad se configura EN EL REPO porque el wrapper commitea sin `-c`, y sin
+    esto el camino bueno moriria con "Author identity unknown", que no es lo que
+    estas sondas miden.
+    """
+    d_repo = os.path.join(tmp, "historial")
+    arbol = os.path.join(tmp, "arbol")
+    os.makedirs(arbol, exist_ok=True)
+    git_dir = _repo_temporal_de_un_commit(d_repo, asunto)
+    for clave, valor in (("user.email", "t061@woptimizer.invalid"),
+                         ("user.name", "t061"),
+                         ("commit.gpgsign", "false")):
+        _git_de_fixture(["config", clave, valor], d_repo)
+    return d_repo, git_dir, arbol
+
+
+def _instalar_pre_commit_que_falla(d_repo, base):
+    """Un `pre-commit` que sale con 1, via `core.hooksPath` a un temporal.
+
+    Es el mecanismo MEDIDO (`docs/ai/sandbox-rules.md:120-121`): con el hook
+    colgado, `git commit` falla de verdad y el wrapper tiene que reportarlo con el
+    codigo 1 en vez de tragarselo. Se usa `core.hooksPath` y no `.git/hooks` por
+    robustez en Windows, donde el bit de ejecucion no es lo que decide: el hook
+    corre por el `sh` de git y basta con que el fichero exista. El
+    `core.hooksPath` se configura EN EL REPO de la sonda, luego el hook del repo
+    real no se toca.
+    """
+    hooks = os.path.join(base, "hooks")
+    os.makedirs(hooks, exist_ok=True)
+    ruta = os.path.join(hooks, "pre-commit")
+    # `newline="\n"`: con CRLF el `#!/bin/sh` deja de ser la primera linea y el
+    # hook no arranca. No es estilo, es la diferencia entre que la sonda mida un
+    # fallo de commit y que mida un `sh` que no existe.
+    with open(ruta, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("#!/bin/sh\n"
+                 "echo 'T061: el pre-commit de la sonda falla a proposito' 1>&2\n"
+                 "exit 1\n")
+    try:
+        os.chmod(ruta, 0o755)
+    except OSError:
+        pass
+    _git_de_fixture(["config", "core.hooksPath", hooks], d_repo)
+
+
+def _invocar_el_wrapper(wrapper, cwd, git_dir, work_tree, mensaje):
+    """El wrapper REAL como subproceso, con el par `GIT_DIR` + `GIT_WORK_TREE`.
+
+    Las dos variables se ponen SIEMPRE (o ninguna, cuando `work_tree` es `None`),
+    y `GIT_WORK_TREE` se QUITA del entorno heredado antes: si el proceso que
+    corre la suite lo trajera, la puerta de paridad lo veria como una asimetria
+    falsa y estas sondas medirian el motivo equivocado.
+    """
+    import subprocess
+    import sys as _sys
+
+    env = os.environ.copy()
+    env.pop("GIT_WORK_TREE", None)
+    env["GIT_DIR"] = git_dir
+    if work_tree is not None:
+        env["GIT_WORK_TREE"] = work_tree
+    return subprocess.run(
+        [_sys.executable, wrapper, mensaje], cwd=cwd, env=env, capture_output=True,
+        text=True, encoding="utf-8", errors="replace", timeout=180)
+
+
+def _rutas_stageadas(d_repo):
+    """Los nombres de fichero que el indice de la sonda tiene stageados."""
+    salida = _git_de_fixture(["diff", "--cached", "--name-only"], d_repo)
+    return [l.strip() for l in salida.splitlines() if l.strip()]
+
+
+def _ficheros_del_commit(d_repo, rev="HEAD"):
+    """Los nombres de fichero que hay en el arbol del commit `rev` de la sonda."""
+    salida = _git_de_fixture(["ls-tree", "-r", "--name-only", rev], d_repo)
+    return [l.strip() for l in salida.splitlines() if l.strip()]
+
+
+def _sin_contaminacion(d_repo, head_antes):
+    """Aserta que la sonda NO toco el arbol del dueno. Sin argumentos de sonda.
+
+    Tres testigos, y cada uno mira algo distinto:
+
+    1. **El indice de la sonda no puede contener ni una ruta del arbol real**, ni
+       el arbol de su `HEAD` tampoco. Este es el que MUERE si alguien revierte la
+       paridad de `get_env()`: sin ella el wrapper hace `add -A` sobre
+       `REPO_ROOT` y el arbol del dueno aparece dentro del repo de temporal, que
+       es la contaminacion medida dos veces en este repo (`STATUS.md:23`).
+    2. **El `HEAD` del repo real no se mueve.** Se compara por contenido, con el
+       unico `HEAD` de antes y de despues, y NO con una igualdad de
+       `git status`: hay otro actor commiteando en este arbol
+       (`docs/ai/sandbox-rules.md:223`) y la igualdad estricta fallaria sola.
+    3. **En la raiz real no queda ningun fichero con el prefijo de la sonda.**
+    """
+    gsc = _cargar_el_wrapper()
+    inexistentes = [p for p in _RUTAS_REALES_DEL_REPO
+                    if not os.path.exists(os.path.join(gsc.REPO_ROOT, p))]
+    assert not inexistentes, (
+        f"el testigo de no-contaminacion mira rutas que NO existen y por tanto no "
+        f"puede violarse: {inexistentes!r}. Si el arbol del dueno cambio de forma, "
+        "el testigo se actualiza con el y no se relaja")
+
+    for donde, rutas in (("el indice", _rutas_stageadas(d_repo)),
+                         (f"el arbol de HEAD del repo de sonda",
+                          _ficheros_del_commit(d_repo))):
+        coladas = [p for p in rutas if p in _RUTAS_REALES_DEL_REPO]
+        assert not coladas, (
+            f"la sonda ha metido ficheros del ARBOL REAL en {donde}: {coladas!r} "
+            f"(completo: {rutas!r}). Con la paridad de `get_env()` eso es imposible: "
+            "el `GIT_WORK_TREE` del entorno se honra, luego `add -A` no alcanza el "
+            "arbol del dueno. Si has revertido esa decision, esta asercion es la que "
+            "lo dice")
+
+    head_despues = _head_del_repo_real()
+    assert head_despues == head_antes, (
+        f"el HEAD del repo real se ha movido: antes {head_antes!r}, despues "
+        f"{head_despues!r}. Una sonda de tooling no commitea en el historial real")
+
+    raiz = gsc.REPO_ROOT
+    restos = [n for n in os.listdir(raiz) if n.startswith(PREFIXO_DE_LA_SONDA)]
+    assert not restos, (
+        f"han quedado ficheros de la sonda en la raiz REAL: {restos!r}. El `finally` "
+        "tiene que borrar el temporal ENTERO, no un fichero a mano: un resto de test "
+        "en el arbol del dueno se lo lleva el proximo `add -A` del producto")
+
+
+def test_el_contrato_de_codigos_esta_atado_a_cada_linea_wopt():
+    """TASK-061 AC-2: la tabla `(WOPT_*, CODE_*)` esta ATADA al codigo real.
+
+    Sin subproceso y sin escritura, con `ast` sobre el wrapper REAL importado
+    (nunca una copia del contrato: dos copias que nadie contrasta son dos
+    verdades). Empaqueta los tres sitios de salida de `main()`:
+
+    | Marcador | Codigo | Cuantas veces | Que se afirma |
+    |---|---|---|---|
+    | `WOPT_COMMIT_OK` | `CODE_OK` | 1 | el 0 de un commit de verdad |
+    | `WOPT_REPO_OK` | `CODE_OK` | 1 | `--verify` sano |
+    | `WOPT_NOOP` | `CODE_OK` | 2 | **la sobrecarga deliberada del 0** |
+    | `WOPT_FAIL` | `CODE_FAIL` | 6 | los seis fallos de git, la FAMILIA entera |
+    | `WOPT_USAGE` | `CODE_USAGE` | 3 | sintaxis, ancla-mensaje, paridad-git |
+    | `WOPT_REPO_INVALIDO` | `CODE_REPO` | 2 | repo no verificable |
+
+    Y tres reglas mas, y las tres importan:
+    **ningun `sys.exit` de `main()` sin linea `WOPT_*` que lo cierre** (mata al
+    mutante que anade un `print` de mentiras para parecer honesto, porque su fila
+    no esta en la tabla), **las constantes valen 0/1/2/3** (mata al mutante que
+    intercambia dos valores sin tocar ningun `exit`) y **`get_env()` no asigna
+    `GIT_WORK_TREE` de forma incondicional** (mata la regresion de la paridad sin
+    necesidad de subproceso).
+
+    `WOPT_REPO_OK` no estaba en la tabla de la propuesta y hace falta: la
+    asercion "todo `print` con `WOPT_*` esta en la tabla" no puede ser cierta si
+    se deja fuera el marcador que `--verify` imprime.
+    """
+    print("Probando que el contrato de codigos esta atado a cada linea WOPT del "
+          "wrapper (ast, sin subproceso)...")
+    import collections
+    import re as _re
+
+    gsc = _cargar_el_wrapper()
+    ruta = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+    with open(ruta, encoding="utf-8") as f:
+        fuente = f.read()
+    arbol = ast.parse(fuente, filename=ruta)
+
+    main = next((n for n in arbol.body
+                 if isinstance(n, ast.FunctionDef) and n.name == "main"), None)
+    assert main is not None, "el wrapper tiene que seguir teniendo `main()`"
+
+    # La tabla esperada se ESCRIBE aqui, a mano. Que las dos copias existan es el
+    # precio de atar el contrato: derivar la expectativa del mismo codigo que se
+    # comprueba no compararia nada.
+    esperado = collections.Counter({
+        ("WOPT_COMMIT_OK", "CODE_OK"): 1,
+        ("WOPT_REPO_OK", "CODE_OK"): 1,
+        ("WOPT_NOOP", "CODE_OK"): 2,
+        ("WOPT_FAIL", "CODE_FAIL"): 6,
+        ("WOPT_USAGE", "CODE_USAGE"): 3,
+        ("WOPT_REPO_INVALIDO", "CODE_REPO"): 2,
+    })
+    RE_MARCADOR = _re.compile(r"WOPT_[A-Z_]+")
+
+    def es_print(stmt):
+        return (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+                and isinstance(stmt.value.func, ast.Name)
+                and stmt.value.func.id == "print")
+
+    def codigo_de_salida(stmt):
+        """`CODE_*` / repr del argumento de un `sys.exit`, o `None` si no lo es."""
+        if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)):
+            return None
+        llamada = stmt.value
+        if not (isinstance(llamada.func, ast.Attribute)
+                and llamada.func.attr == "exit"):
+            return None
+        if not llamada.args:
+            return "<?>"
+        return (llamada.args[0].id if isinstance(llamada.args[0], ast.Name)
+                else ast.unparse(llamada.args[0]))
+
+    def marcadores_de(stmt):
+        if not es_print(stmt):
+            return []
+        return RE_MARCADOR.findall(ast.unparse(stmt.value))
+
+    derivado = collections.Counter()
+    sin_marcador = []
+
+    def recorrer_lista(cuerpo):
+        pendiente = None
+        for stmt in cuerpo:
+            marcadores = marcadores_de(stmt)
+            if marcadores:
+                assert len(marcadores) == 1, (
+                    f"un `print` con dos marcadores WOPT ({marcadores}) no se puede "
+                    f"atar a un codigo sin adivinar: {ast.unparse(stmt)!r}")
+                pendiente = marcadores[0]
+                continue
+            codigo = codigo_de_salida(stmt)
+            if codigo is not None:
+                if pendiente is None:
+                    sin_marcador.append(ast.unparse(stmt))
+                else:
+                    derivado[(pendiente, codigo)] += 1
+                continue
+            # Entre la linea `WOPT_*` y su `sys.exit` solo puede haber `print`:
+            # cualquier otra sentencia ejecutable es codigo que todavia podria
+            # imprimir, y entonces la linea canonica dejaria de ser la ULTIMA
+            # (regla 4 del contrato). Por eso el marcador se anula aqui.
+            if not es_print(stmt):
+                pendiente = None
+            recorrer(stmt)
+
+    def recorrer(nodo):
+        for _campo, valor in ast.iter_fields(nodo):
+            if isinstance(valor, list) and valor and all(
+                    isinstance(x, ast.stmt) for x in valor):
+                recorrer_lista(valor)
+            elif isinstance(valor, ast.AST):
+                recorrer(valor)
+
+    recorrer_lista(main.body)
+
+    assert not sin_marcador, (
+        f"hay {len(sin_marcador)} `sys.exit` de `main()` SIN linea `WOPT_*` que los "
+        f"cierre: {sin_marcador!r}. Cada salida del wrapper tiene que decir en "
+        "stdout que ha pasado: el codigo de salida es la unica informacion que el "
+        "pipeline lee cuando el actor no esta mirando la consola")
+
+    def legible(tabla):
+        return ", ".join(f"{m} -> {c} x{n}" for (m, c), n in sorted(tabla.items()))
+
+    assert derivado == esperado, (
+        "la tabla (marcador, codigo) que produce el codigo REAL no es la que el "
+        f"contrato declara.\n  esperado: {legible(esperado)}\n  derivado:  "
+        f"{legible(derivado)}\n  diferencia: "
+        f"{(esperado - derivado) or '{}'} sobra, "
+        f"{(derivado - esperado) or '{}'} de mas. Si has movido un `sys.exit` de "
+        "sitio, el cambio va con su razon aqui: esta tabla es el contrato")
+
+    constantes = {}
+    for n in arbol.body:
+        if (isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)
+                and n.targets[0].id.startswith("CODE_")):
+            constantes[n.targets[0].id] = ast.literal_eval(n.value)
+    for nombre, valor in (("CODE_OK", 0), ("CODE_FAIL", 1),
+                          ("CODE_USAGE", 2), ("CODE_REPO", 3)):
+        assert constantes.get(nombre) == valor, (
+            f"{nombre} vale {constantes.get(nombre)!r} y el contrato dice {valor}. "
+            "El codigo de salida es lo UNICO que ramifica el pipeline, y la tabla "
+            "de arriba se deriva de los NOMBRES, luego un intercambio de valores "
+            "pasaria el nombre y solo lo caza esta asercion")
+
+    # `get_env()`: la asignacion de `GIT_WORK_TREE` NO puede ser incondicional.
+    get_env = next((n for n in arbol.body
+                    if isinstance(n, ast.FunctionDef) and n.name == "get_env"), None)
+    assert get_env is not None, "el wrapper tiene que seguir teniendo `get_env()`"
+    asignaciones = [n for n in ast.walk(get_env)
+                    if isinstance(n, ast.Assign)
+                    and any(ast.unparse(t) == "env['GIT_WORK_TREE']"
+                            for t in n.targets)]
+    assert len(asignaciones) == 1, (
+        f"`get_env()` tiene que asignar `GIT_WORK_TREE` exactamente una vez y tiene "
+        f"{len(asignaciones)}: el camino normal y el del entorno tienen que ser la "
+        "MISMA sentencia, o uno de los dos deja de honrarse en silencio")
+    valor_asignado = asignaciones[0].value
+    assert not isinstance(valor_asignado, (ast.Name, ast.Attribute, ast.Constant)), (
+        f"la asignacion de `GIT_WORK_TREE` es INCONDICIONAL "
+        f"({ast.unparse(valor_asignado)!r}): vuelve a imponer `REPO_ROOT` por encima "
+        "del entorno y con eso la hermeticidad del ARBOL desaparece. Es la "
+        "regresion exacta que TASK-061 cierra")
+    assert "GIT_WORK_TREE" in ast.unparse(valor_asignado), (
+        f"el valor asignado a `GIT_WORK_TREE` no menciona la propia variable "
+        f"({ast.unparse(valor_asignado)!r}): se respeta su precedencia de entorno o "
+        "no se respeta")
+
+    # Y el `cwd` de los subprocesos sale del `env`, no de `REPO_ROOT` fijo.
+    run_git = next((n for n in arbol.body
+                    if isinstance(n, ast.FunctionDef) and n.name == "run_git"), None)
+    assert run_git is not None, "el wrapper tiene que seguir teniendo `run_git()`"
+    cwds = [ast.unparse(k.value) for n in ast.walk(run_git)
+            if isinstance(n, ast.Call)
+            for k in n.keywords if k.arg == "cwd"]
+    assert cwds, "`run_git()` tiene que pasar `cwd` a `subprocess.run`"
+    assert all("GIT_WORK_TREE" in c for c in cwds), (
+        f"el `cwd` de `run_git()` tiene que derivarse del `GIT_WORK_TREE` del "
+        f"entorno y vale {cwds!r}. MEDIDO: con `cwd=REPO_ROOT` y un work tree "
+        "temporal, `rev-parse --is-inside-work-tree` responde `false` --el "
+        "directorio de trabajo no esta dentro del work tree efectivo-- y "
+        "`validar_repo` rechaza con el codigo 3 la propia invocacion que se le "
+        "acaba de pedir, luego la hermeticidad del arbol seria nominal")
+
+    total = sum(derivado.values())
+    print(f"Contrato de codigos OK: {total} salidas atadas a su linea WOPT "
+          f"({legible(derivado)}); constantes 0/1/2/3; GIT_WORK_TREE con "
+          "precedencia del entorno y cwd derivado del env.")
+
+
+def test_un_fallo_de_git_no_sale_con_cero():
+    """TASK-061 AC-1: el codigo 1 del contrato, extremo a extremo. La vitima.
+
+    Es el UNICO test que prueba el RUNTIME, que es lo que lee la victima
+    (`.agents/agents/architect-review/agent.md:50`: comprobar el codigo de salida
+    del wrapper). El AST de la sonda hermana afirma el codigo DECLARADO; este
+    afirma el EJECUTADO. Un test solo no alcanza.
+
+    Repo y arbol TEMPORALES, arbol sucio con un fichero, identidad configurada en
+    el repo de la sonda y un `pre-commit` que sale con 1. Y cuatro cosas que se
+    exigen por separado porque cada una muere por su motivo:
+
+    1. **`returncode == 1`, y esta asercion MATA al mutante S48-2**: con
+       `CODE_OK` puesto sale 0. Si en su lugar saliera 2, el motivo seria la puerta
+       del mensaje o la de paridad, no el fallo de git, asi que el mensaje de
+       asercion lo dice.
+    2. **`WOPT_FAIL commit` en stdout, y la linea `WOPT_*` es la ULTIMA**
+       (regla 4 del contrato).
+    3. **`WOPT_COMMIT_OK` NO aparece**: un fallo nunca puede reportar commit
+       creado, que es la clase de mentira que este repo ya ha pagado.
+    4. **No hay contaminacion** (`_sin_contaminacion`): con la paridad de
+       `TASK-061` revertida, este test escribe en el arbol del dueno y el
+       testigo salta. Son dos guardianes en un test, y por eso no es tautologico.
+    """
+    print("Probando que un fallo de git NO sale con 0 (repo y arbol temporales)...")
+    import shutil
+    import tempfile
+
+    gsc = _cargar_el_wrapper()
+    wrapper = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t061_codigo1_")
+    d_repo, git_dir, arbol = _repo_y_arbol_temporales_de_la_sonda(
+        tmp, "chore(release): fixture del codigo 1")
+    nombre_testigo = PREFIXO_DE_LA_SONDA + "testigo.txt"
+    head_antes = _head_del_repo_real()
+    try:
+        # El arbol tiene que estar SUCIO de verdad (un untracked que el
+        # `status --porcelain` ve) y el commit tiene que FALLAR de verdad.
+        with open(os.path.join(arbol, nombre_testigo), "w", encoding="utf-8") as fh:
+            fh.write("suciedad de la sonda\n")
+        _instalar_pre_commit_que_falla(d_repo, tmp)
+
+        r = _invocar_el_wrapper(
+            wrapper, gsc.REPO_ROOT, git_dir, arbol,
+            "fix(t061): un fallo de git no sale con cero (ciclo 999)")
+
+        assert r.returncode == 1, (
+            f"un commit que falla tiene que salir con 1, y salio con "
+            f"{r.returncode}. ESTA es la asercion que mata al mutante S48-2 "
+            f"(`sys.exit(CODE_FAIL)` -> `sys.exit(CODE_OK)` en el camino de commit, "
+            f"el que sobrevivia a la suite entera y a `validate_docs.py`). Si sale "
+            f"con 2, el motivo es la puerta del mensaje o la de paridad y no el "
+            f"fallo de git; si sale con 0, el invariante que el ciclo #11 rompio "
+            f"ha vuelto. stdout={r.stdout!r} stderr={r.stderr!r}")
+        assert "WOPT_FAIL commit" in (r.stdout or ""), (
+            f"un fallo de commit tiene que decir WHICH fallo: {r.stdout!r}")
+        lineas = [l for l in (r.stdout or "").splitlines() if l.strip()]
+        assert lineas and lineas[-1].startswith("WOPT_FAIL commit"), (
+            "la linea `WOPT_*` tiene que ser la ULTIMA de stdout (regla 4 del "
+            f"contrato) y la ultima fue {lineas[-1]!r}. Todas: {lineas!r}")
+        assert "WOPT_COMMIT_OK" not in (r.stdout or ""), (
+            f"un fallo NUNCA puede reportar commit creado: {r.stdout!r}")
+        assert lineas[-1].encode("ascii", "strict").decode("ascii") == lineas[-1], (
+            "la linea del fallo tiene que ser ASCII puro (regla 8, trampa #16, la "
+            f"consola es cp1252): {lineas[-1]!r}")
+
+        # El fallo tiene que SER un fallo de git, no una stageacion vacia: el indice
+        # de la sonda contiene su propio fichero (por eso el `add -A` corrio) y
+        # ninguna ruta del arbol real (por eso la paridad funciona).
+        stageadas = _rutas_stageadas(d_repo)
+        assert nombre_testigo in stageadas, (
+            f"el `add -A` tiene que haber stageado el fichero de la sonda antes de "
+            f"intentar el commit, y el indice tiene {stageadas!r}. Sin esto, un "
+            "`WOPT_FAIL commit` aqui podria ser un fallo de fixture y no el "
+            "rechazo del hook")
+        _sin_contaminacion(d_repo, head_antes)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Codigo 1 OK: el fallo de commit sale con 1, dice WOPT_FAIL commit como "
+          "ULTIMA linea, no reporta commit creado y no toca el arbol del dueno.")
+
+
+def test_el_cero_esta_sobrecargado_por_dos_desenlaces_y_solo_por_esos_dos():
+    """TASK-061 AC-3: el `0` esta sobrecargado, y solo por DOS desenlaces.
+
+    Tres filas sobre un repo y un arbol TEMPORALES, y cada una muere por su
+    asercion:
+
+    1. **NOOP**: arbol limpio + mensaje anclado -> `0`, `WOPT_NOOP` presente y
+       **CERO hashes** en stdout, afirmado de forma **negativa y tipada**: tras la
+       linea `WOPT_NOOP` no aparece ningun `[0-9a-f]{7,40}`. "No hay hash" tiene que
+       ser una afirmacion, no una lectura optimista. Mata al mutante que imprime un
+       hash en el no-op, que es la forma exacta de "hashes que no existen", el dano
+       del ciclo #11.
+    2. **COMMIT_OK**: arbol sucio -> `0` y `WOPT_COMMIT_OK <hash>` cuyo hash
+       **RESUELVE** en el repo de la sonda. Un hash con la forma correcta y sin
+       objeto es la misma clase de mentira que un hash inventado.
+    3. **Paridad**: `GIT_DIR` temporal **sin** `GIT_WORK_TREE` -> `2` y
+       `WOPT_USAGE paridad-git`, con el indice de la sonda intacto y ninguna ruta
+       del arbol real en ningun sitio. **Esta fila falla HOY sin mutar nada**:
+       con el codigo anterior stageaba y commiteaba el arbol real dentro del repo
+       de temporal y salia con `0`. Es un criterio de correccion, no un guardian de
+       mutante.
+    """
+    print("Probando la sobrecarga del 0: NOOP, COMMIT_OK y paridad...")
+    import re as _re
+    import shutil
+    import tempfile
+
+    gsc = _cargar_el_wrapper()
+    wrapper = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+    RE_HASH = _re.compile(r"[0-9a-f]{7,40}")
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t061_sobrecarga_")
+    d_repo, git_dir, arbol = _repo_y_arbol_temporales_de_la_sonda(
+        tmp, "chore(release): fixture de la sobrecarga del 0")
+    head_antes = _head_del_repo_real()
+    try:
+        # --- 1) NOOP: arbol limpio -----------------------------------------
+        r = _invocar_el_wrapper(
+            wrapper, gsc.REPO_ROOT, git_dir, arbol,
+            "chore(t061): no-op esperado (ciclo 999)")
+        lineas = [l for l in (r.stdout or "").splitlines() if l.strip()]
+        assert r.returncode == 0, (
+            f"un arbol limpio tiene que salir con 0 (WOPT_NOOP, benigno); salio con "
+            f"{r.returncode}. stdout={r.stdout!r} stderr={r.stderr!r}")
+        assert any(l.startswith("WOPT_NOOP") for l in lineas), (
+            f"el no-op tiene que decir que lo es: {lineas!r}")
+        indice_noop = next(i for i, l in enumerate(lineas)
+                           if l.startswith("WOPT_NOOP"))
+        despues = "\n".join(lineas[indice_noop:])
+        assert not RE_HASH.search(despues), (
+            f"tras la linea WOPT_NOOP no puede aparecer ningun hash, y aparece uno: "
+            f"{despues!r}. `WOPT_NOOP` NUNCA imprime hash (regla 4): el no-op no "
+            "tiene commit que anclar y un hash aqui es un hash que no existe")
+
+        # --- 2) COMMIT_OK: arbol sucio, y el hash RESUELVE -------------------
+        nombre = PREFIXO_DE_LA_SONDA + "commit.txt"
+        with open(os.path.join(arbol, nombre), "w", encoding="utf-8") as fh:
+            fh.write("cambio de verdad\n")
+        r2 = _invocar_el_wrapper(
+            wrapper, gsc.REPO_ROOT, git_dir, arbol,
+            "chore(t061): commit esperado (ciclo 999)")
+        lineas2 = [l for l in (r2.stdout or "").splitlines() if l.strip()]
+        assert r2.returncode == 0, (
+            f"un commit de verdad tiene que salir con 0; salio con {r2.returncode}. "
+            f"stdout={r2.stdout!r} stderr={r2.stderr!r}")
+        assert lineas2 and lineas2[-1].startswith("WOPT_COMMIT_OK "), (
+            f"el camino bueno tiene que terminar en WOPT_COMMIT_OK (regla 4) y la "
+            f"ultima linea fue {lineas2[-1]!r}. Todas: {lineas2!r}")
+        hash_impreso = lineas2[-1].split()[1]
+        assert RE_HASH.fullmatch(hash_impreso), (
+            f"el hash impreso tiene la forma del hash: {hash_impreso!r}")
+        try:
+            rev = _git_de_fixture(
+                ["rev-parse", "--verify", hash_impreso + "^{commit}"], d_repo).strip()
+        except AssertionError as exc:
+            raise AssertionError(
+                f"el hash que el wrapper imprime con `WOPT_COMMIT_OK` NO RESUELVE en "
+                f"el repo de la sonda: {hash_impreso!r}. Un hash con la forma "
+                f"correcta y sin objeto es la misma clase de mentira que un hash "
+                f"inventado, y es lo que el ciclo #11 dejo pasar. Detalle de git: "
+                f"{exc}")
+        assert rev.startswith(hash_impreso), (
+            f"el hash impreso {hash_impreso!r} no es el prefijo de {rev!r}")
+        assert nombre in _ficheros_del_commit(d_repo), (
+            f"el commit tiene que llevar el fichero de la sonda: "
+            f"{_ficheros_del_commit(d_repo)!r}")
+
+        # --- 3) Paridad: GIT_DIR solo -> 2, y CERO escrituras ----------------
+        nombre2 = PREFIXO_DE_LA_SONDA + "paridad.txt"
+        with open(os.path.join(arbol, nombre2), "w", encoding="utf-8") as fh:
+            fh.write("arbol sucio a proposito: sin la paridad esto se commitearia\n")
+        head_sonda_antes = _git_de_fixture(["rev-parse", "HEAD"], d_repo).strip()
+        r3 = _invocar_el_wrapper(
+            wrapper, gsc.REPO_ROOT, git_dir, None,
+            "fix(t061): el par asimetrico tiene que salir con 2 (ciclo 999)")
+        lineas3 = [l for l in (r3.stdout or "").splitlines() if l.strip()]
+        assert r3.returncode == 2, (
+            f"un GIT_DIR sin GIT_WORK_TREE tiene que salir con 2 (WOPT_USAGE "
+            f"paridad-git) y sale con {r3.returncode}. Con el codigo anterior stageaba "
+            f"y commiteaba el ARBOL REAL dentro del repo de temporal y salia con 0: "
+            f"esa es exactamente la combinacion que la paridad hace no "
+            f"representable. stdout={r3.stdout!r}")
+        assert lineas3 and lineas3[-1].startswith("WOPT_USAGE paridad-git"), (
+            f"la linea canonica de la paridad tiene que ser la ULTIMA y empezar por "
+            f"`WOPT_USAGE paridad-git`; la ultima fue {lineas3[-1]!r}")
+        assert _git_de_fixture(["rev-parse", "HEAD"], d_repo).strip() \
+            == head_sonda_antes, (
+            "el par asimetrico no puede crear NINGUN commit en el repo de la sonda: "
+            "la puerta cae antes de `add -A`")
+        assert _rutas_stageadas(d_repo) == [], (
+            f"el par asimetrico no puede stagear NADA: el indice tiene "
+            f"{_rutas_stageadas(d_repo)!r}. La puerta es de SOLO LECTURA y cae antes "
+            "de la primera escritura, o rechazaria mutando el arbol para luego decir "
+            "que no")
+        _sin_contaminacion(d_repo, head_antes)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Sobrecarga del 0 OK: NOOP sin hash, COMMIT_OK con hash que resuelve, y "
+          "paridad con 2 y cero escrituras.")
 
 
 def test_las_plantillas_del_bucle_pasan_la_puerta_del_producto():
@@ -18012,4 +18631,13 @@ if __name__ == "__main__":
     # pregunta alcanzabilidad, que no se responde enumerando tipos de nodo, y
     # por eso se congela aqui. Suite: 123 -> 124 (95 backend + 29 headless).
     test_todo_pack_ofrece_el_catalogo_completo_en_apagar_y_arrancar()     # #3-E
+    # TASK-061: el codigo 1 del contrato y la hermeticidad de ARBOL. Suite:
+    # 136 -> 139. Las tres van DETRAS del marcador headless (107 backend + 32
+    # headless, derivado con `ast` por el check 7), y ninguna abre ventana: son
+    # tooling puro. El orden es el de la especificacion: el contrato declarado
+    # (AST), el runtime del fallo (subproceso) y la sobrecarga del 0 con la
+    # paridad, que es la fila que falla sin mutar nada.
+    test_el_contrato_de_codigos_esta_atado_a_cada_linea_wopt()             # T-2
+    test_un_fallo_de_git_no_sale_con_cero()                                # T-3
+    test_el_cero_esta_sobrecargado_por_dos_desenlaces_y_solo_por_esos_dos()  # T-4
     print("\nALL TESTS PASSED.")

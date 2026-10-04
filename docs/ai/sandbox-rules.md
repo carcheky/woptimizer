@@ -54,9 +54,10 @@ ciclo se da por versionado sin haberlo estado.
 |---|---|---|---|
 | `0` | Commit creado de verdad | `git commit` con returncode 0 | `WOPT_COMMIT_OK <hash-short> <mensaje>` |
 | `0` | Nada que comitear (benigno) | `git diff --cached --quiet` == 0 tras `add -A` | `WOPT_NOOP <motivo>` (**sin hash**) |
+| `0` | Repo sano (solo diagnóstico) | `--verify` y el par `GIT_DIR`/`GIT_WORK_TREE` es utilizable | `WOPT_REPO_OK <git_dir>` |
 | `1` | Fallo de una operación de git | `git status`, `git add -A` o `git commit` con rc != 0, o excepción al lanzarlos | `WOPT_FAIL <operacion> <detalle>` |
-| `2` | Uso incorrecto | sin mensaje, mensaje vacío, más de un posicional, flag desconocido, **o mensaje sin identificador de ciclo ni de tarea** | `WOPT_USAGE <detalle>` / `WOPT_USAGE ancla-mensaje <detalle>` |
-| `3` | Repositorio no verificable | `GIT_DIR` inexistente, no es un git dir, `HEAD` no resuelve, `is-inside-work-tree` != `true`, o `git` no ejecutable | `WOPT_REPO_INVALIDO <detalle>` |
+| `2` | Uso incorrecto | sin mensaje, mensaje vacío, más de un posicional, flag desconocido, **mensaje sin identificador de ciclo ni de tarea**, **o llega una sola de las dos variables `GIT_DIR`/`GIT_WORK_TREE`** | `WOPT_USAGE <detalle>` / `WOPT_USAGE ancla-mensaje <detalle>` / `WOPT_USAGE paridad-git <detalle>` |
+| `3` | Repositorio no verificable | `GIT_DIR` inexistente, no es un git dir, `GIT_WORK_TREE` que no es un directorio, `HEAD` no resuelve, `is-inside-work-tree` != `true`, o `git` no ejecutable | `WOPT_REPO_INVALIDO <detalle>` |
 
 Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
 
@@ -75,19 +76,33 @@ Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
 6. **Un `git status` fallido es un error, no "hay cambios".** Se valida el repositorio con
    `rev-parse --git-dir`, `rev-parse --is-inside-work-tree` y `rev-parse --verify HEAD`;
    `os.path.exists()` no basta.
-7. **Precedencia de `GIT_DIR`:** si el entorno ya lo trae, se respeta y no se sobrescribe (es la
-   vía documentada arriba y además el hook que permite tests herméticos). Si no, se usa
-   `%LOCALAPPDATA%\woptimizer_git\.git`. La validación se aplica igual en ambos casos.
-   **Matiz medido el 2026-10-02 (ciclo #48), porque «tests herméticos» era media verdad:** ese
-   hook hermetiza **el repositorio, no el árbol de trabajo**. `get_env()` respeta el `GIT_DIR`
-   del entorno pero **impone `GIT_WORK_TREE = REPO_ROOT` sin condición** (`git_safe_commit.py:132`;
-   el ancla que se citaba antes, `:78`, era falsa — esa línea es `_RE_MARCADOR_ANCLA` — y estaba
-   propagada por cuatro ficheros, corregida por contenido el 2026-10-04),
-   así que una invocación con un `GIT_DIR` desechable sigue haciendo `add -A` y `commit`
-   **sobre el árbol de trabajo real**. Medido: una sonda con `GIT_DIR` temporal stageó y
-   commiteó el árbol real dentro del repo temporal (el historial real quedó intacto, porque
-   `GIT_DIR` era el temporal). Por eso el test de la sección siguiente solo ejercita las dos
-   puertas que devuelven **antes de cualquier `add`**.
+7. **Precedencia de `GIT_DIR` y `GIT_WORK_TREE`, y PARIDAD entre las dos (TASK-061).** Si el
+   entorno ya trae cualquiera de las dos, se respeta y no se sobrescribe (es la vía documentada
+   arriba y además el hook que permite tests herméticos). Si no, se usa el par por defecto:
+   `%LOCALAPPDATA%\woptimizer_git\.git` + el árbol del proyecto. La validación se aplica igual en
+   ambos casos. **Y el par llega entero o no llega:** si llega **una sola** de las dos —`GIT_DIR`
+   sin `GIT_WORK_TREE`, o al revés— se rechaza con el **código 2** y `WOPT_USAGE paridad-git`, sin
+   escribir nada, también en `--verify`.
+
+   *Por qué la hermeticidad es de repo **y** de árbol.* Medido el 2026-10-02 (ciclo #48) y corregido
+   el 2026-10-04: «tests herméticos» era media verdad, porque `get_env()` respetaba el `GIT_DIR`
+   del entorno pero **imponía `GIT_WORK_TREE = REPO_ROOT` sin condición**, de modo que una sonda
+   con un `GIT_DIR` desechable hacía `add -A` y `commit` **sobre el árbol de trabajo real**: se
+   midió un `GIT_DIR` temporal que stageó y commiteó el árbol del duño dentro del repo temporal
+   (el historial real quedó intacto, porque `GIT_DIR` era el temporal). La contaminación ocurrió
+   dos veces en este repo (`STATUS.md:23`).
+
+   *Por qué la paridad no es un extra.* Honrar `GIT_WORK_TREE` sin más sería un arma de doble filo:
+   basta un `GIT_DIR` real + un árbol ajeno para versionar un árbol extranjero en el historial real.
+   La paridad es **el precio** de esa decisión, y hace **no representable** la combinación
+   «`GIT_DIR` desechable + árbol real» que produjo la medida. No añade ningún código de salida:
+   extiende la fila «cuándo» del `2`, igual que hizo TASK-059 con la puerta del mensaje.
+
+   *Y un detalle que hay que conocer para escribir sondas:* el `cwd` de cada subproceso de git se
+   **deriva del `env`** (`GIT_WORK_TREE`), no de un `REPO_ROOT` fijo. Medido: con `cwd` fijo y un
+   work tree temporal, `rev-parse --is-inside-work-tree` responde `false` —el directorio de trabajo
+   no está dentro del work tree efectivo— y `validar_repo` rechazaba con el `3` la propia
+   invocación que se le acababa de pedir. En el camino normal el valor es el de siempre, byte a byte.
 8. **Todas las cadenas de `print()` del wrapper son ASCII puro** (trampa #16: la consola es
    cp1252). Los comentarios y docstrings sí llevan acentos. La puerta del mensaje (sección
    siguiente) vive bajo esta misma regla: su motivo de rechazo es el texto que más urge y el que
@@ -111,25 +126,51 @@ si no. Es el mecanismo de diagnóstico cuando el pipeline recibe un `!= 0` sin e
 (`3` y `2`). Es un test que **discrimina**: revierte el fix del código de salida y falla. No toca
 el repositorio real ni su historial.
 
-**Lo que esta cobertura NO prueba, medido el 2026-10-02 (ciclo #48):** ninguna de las invocaciones
-del test llega a un `WOPT_FAIL`; sus cuatro aserciones de `returncode` son `3`, `3`, `2` y el `0`
-de `--verify` con repo sano (`run_tests.py:1401-1549`), y **ninguna** es `1`. El código `1`
-—**el del fallo de git**, que es el invariante
-que el ciclo #11 rompió devolviendo `0`— **no lo comprueba nadie.** Mutante medido sobre el
-`git_safe_commit.py` real (`sys.exit(CODE_FAIL)` -> `sys.exit(CODE_OK)` en el camino de commit,
-`git_safe_commit.py:409-410`): **la suite entera queda 103/103 en verde con exit 0**, y el wrapper imprime
-`WOPT_FAIL commit` mientras sale con `0`, así que un consumidor que lee el código de salida —que
-es lo que el contrato declara normativo— se lleva el falso verde. El invariante **se cumple hoy en
-el código** (medido: repo temporal con un `pre-commit` que sale con 1 -> `WOPT_FAIL commit` + exit
-1), pero **nadie lo ata a un test**: por eso vive como 🔴 en la fila del `spawn EPERM` de
-`STATUS.md:89` (corregido el 2026-10-04: se citaba la `:88`, que es la fila del `.git` corrupto y
-no lleva esta deuda). **SEGUNDA MEDICIÓN (cierre del ciclo #48):** el mutante sobrevive también a `validate_docs.py` (`110 OK / 0 FAIL` con el mutante puesto), así que los dos semi-veredictos del toolchain lo dejan pasar. **La víctima, nombrada:** el único consumidor real del código de salida es el **agente orquestador** (`.agents/agents/architect-review/agent.md:50` y `.agents/skills/id-pipeline/SKILL.md:401`, que escribe el changelog tras el commit «para tener el hash»; el 2026-10-04 se corrigió el ancla, que decía `:382` y es el encabezado de otra sección), mientras que `run_tests.py` solo mira `3` y `2` y `validate_docs.py` solo lo menciona. Y el matiz que corrige el tamaño del daño: un `WOPT_NOOP` **no lleva hash** (regla 4 de esta tabla), luego esta puerta no puede reintroducir el CHANGELOG con hashes inventados; el daño real es el ciclo cerrado sin commit. Desde el cierre del ciclo #48 tiene dueño: **`TASK-061`**. **La decisión previa ya está tomada
-(2026-10-04, `architect-review`): se honra `GIT_WORK_TREE` del entorno con PARIDAD EXIGIDA** —las dos
-variables llegan juntas o ninguna, y una sola se rechaza con `2` sin escribir nada—, porque es lo
-único que hace no representable la combinación «`GIT_DIR` desechable + árbol real» que produjo esta
-medida. Contrato y subtareas: `openspec/changes/2026-10-04-codigo-salida-fallo-git-s48-2/`. La regla 7
-de arriba y esta sección se reescriben al aterrizar el fix, no antes: **hasta entonces esta fila sigue
-siendo cierta.**
+**Lo que ese test NO probaba, medido el 2026-10-02 (ciclo #48):** ninguna de sus invocaciones
+llega a un `WOPT_FAIL`; sus cuatro aserciones de `returncode` son `3`, `3`, `2` y el `0` de
+`--verify` con repo sano, y **ninguna** es `1`. El código `1` —**el del fallo de git**, que es el
+invariante que el ciclo #11 rompió devolviendo `0`— **no lo comprobaba nadie.** Mutante medido sobre
+el `git_safe_commit.py` real (`sys.exit(CODE_FAIL)` -> `sys.exit(CODE_OK)` en el camino de commit,
+el `sys.exit` inmediatamente posterior al `print` con `WOPT_FAIL commit` — **localizado por
+contenido, nunca por número de línea**, porque la `:230` que se citaba es hoy la puerta de uso que
+TASK-059 añadió después de aquella medición): **la suite entera quedaba en verde con exit 0**, y el
+wrapper imprimía `WOPT_FAIL commit` mientras salía con `0`. Segunda medición: el mutante sobrevivía
+también a `validate_docs.py`, así que **los dos semi-veredictos del toolchain lo dejaban pasar** —son
+un semi-veredicto medido dos veces, no dos testigos.
+
+**Lo que la cubre HOY (TASK-061, cerrado el 2026-10-04).** Tres sondas, y cada una mide una cosa
+distinta porque ningún test solo alcanza:
+
+| Sonda | Qué ata | Por qué no es tautológico |
+|---|---|---|
+| `test_el_contrato_de_codigos_esta_atado_a_cada_linea_wopt` (AST, sin subproceso) | La tabla `(WOPT_*, CODE_*)` de los 15 sitios de salida de `main()`, incluido ningún `sys.exit` sin marcador canónico y los valores 0/1/2/3 | Afirma el código **declarado** |
+| `test_un_fallo_de_git_no_sale_con_cero` (subproceso, repo y árbol temporales) | `returncode == 1` ante un `pre-commit` que falla, `WOPT_FAIL commit` como última línea, `WOPT_COMMIT_OK` ausente, y no-contaminación | Afirma el código **ejecutado**, que es lo que lee la víctima |
+| `test_el_cero_esta_sobrecargado_por_dos_desenlaces_y_solo_por_esos_dos` | `0` = `WOPT_NOOP` **sin ningún hash** (afirmación negativa y tipada) o `WOPT_COMMIT_OK` con hash que **resuelve**; y el par asimétrico sale con `2` y cero escrituras | La fila de la paridad **fallaba sin mutar nada** |
+
+**Medido el 2026-10-04, con el mutante S48-2 puesto por contenido:** muere en la sonda de AST (la
+tabla que produce el código real discrepa de la que declara el contrato) **y** en la de runtime
+(sale `0` donde se exige `1`). La familia entera de `WOPT_FAIL` la cubre la tabla, y el mutante que
+añada un `print` de mentiras para parecer honesto también muere, porque su fila no está en la tabla.
+
+**La víctima, nombrada, y el tamaño real del daño:** el único consumidor real del código de salida
+es el **agente orquestador** (`.agents/agents/architect-review/agent.md:50` y
+`.agents/skills/id-pipeline/SKILL.md:401`, que escribe el changelog tras el commit «para tener el
+hash»), mientras que el validador solo lo menciona. Y el matiz que corrige el tamaño: un `WOPT_NOOP`
+**no lleva hash** (regla 4 de esta tabla), luego esta puerta no puede reintroducir el CHANGELOG con
+hashes inventados; el daño real era el **ciclo cerrado sin commit** —el panel y el changelog
+afirmaban un versionado que no ocurrió—, un grado menos explosivo que el del ciclo #11. Fila del
+panel: `STATUS.md:89`, cerrada con su ancla.
+
+**Límites declarados, no omitidos:**
+1. La sonda de AST afirma el código **declarado**, no el ejecutado. Por eso hace falta la de runtime.
+2. La paridad es más estrecha que «el repo está bien»: valida que no se pueda **mezclar** un repo de
+   un sitio con un árbol de otro. El caso «repo sano equivocado» sigue **sin detección**.
+3. `test_un_fallo_de_git_no_sale_con_cero` depende de un hook de git, que en Windows corre por el
+   `sh` de git. Si `pre-commit` resultara frágil en otro host, la fila se queda sin guardar y el
+   invariante queda solo con el AST.
+4. La puerta de paridad se comprueba **después** de `validar_repo` (y por tanto también en
+   `--verify`): si el repo no se puede comprobar, «no pude ni comprobar» (`3`) gana a «tu invocación
+   está mal» (`2`). Es la misma precedencia que fijó D2 de TASK-059, y está medida contra el código.
 
 ## La puerta del mensaje: el identificador es obligatorio (TASK-059)
 
@@ -171,7 +212,9 @@ disyuntiva que ya resolvió el check 8 con las exenciones de la Deuda).
 ### Dónde está, y por qué ahí
 
 ```
-parse_args  ->  validar_repo  ->  [--verify]  ->  status --porcelain
+parse_args  ->  validar_repo (repo + arbol)  ->  [repo invalido: 3]
+             ->  PUERTA DE PARIDAD (WOPT_USAGE paridad-git + 2)
+             ->  [--verify]  ->  status --porcelain
              ->  NOOP (WOPT_NOOP + 0, EXENTO)
              ->  PUERTA DEL MENSAJE  <- aqui
              ->  add -A  ->  diff --cached  ->  commit  ->  WOPT_COMMIT_OK
@@ -249,12 +292,14 @@ wrapper **bloquearía** al bucle si el proceso muriera con el taken), pero queda
 2. **No cubre el `git` a pelo.** El bucle tiene prohibido versionar sin el wrapper, pero la puerta
    solo existe en el wrapper. Un commit hecho a mano pasa sin identificador y el validador lo verá
    como `SIN marcador` — que es la cifra que ya se imprime, y por eso sigue viva.
-3. **El rechazo extremo a extremo con un árbol *deliberadamente* sucio no es hermético.**
-   `get_env()` impone `GIT_WORK_TREE = REPO_ROOT` sin condiciones (regla 7), luego el árbol de
-   trabajo no es controlable desde fuera del wrapper. Por eso la cobertura va por la función
-   extraida, por una aserción estructural con `ast` sobre el orden, y —con un truco declarado— por
-   un subproceso que ensucia el árbol **con un fichero untracked que el propio test crea y borra**.
-   Dueño: **`TASK-061`**.
+3. **El rechazo extremo a extremo con un árbol deliberadamente sucio ya es hermético
+   (cerrado por `TASK-061`).** Antes era falso: `get_env()` imponía
+   `GIT_WORK_TREE = REPO_ROOT` sin condiciones (regla 7), luego el árbol de trabajo no era
+   controlable desde fuera del wrapper y la cobertura necesitaba «el truco declarado» de ensuciar el
+   árbol real con un fichero untracked que la propia sonda creaba y borraba. Con `GIT_WORK_TREE`
+   honrado y la paridad exigida, las sondas trabajan sobre un **árbol temporal sucio** y ninguna
+   escribe en el árbol del duño: la medida de la hermeticidad es que el índice de la sonda no puede
+   contener ni una ruta del árbol real, y eso salta si alguien revierte la paridad.
 4. **El patrón de ciclo está DUPLICADO** (el del validador y el de la puerta) porque el wrapper no
    puede depender del validador: es la única puerta de versionado y tiene que valer con el
    validador caído. Lo único que impide que diverjan es un assert que compara las dos cadenas

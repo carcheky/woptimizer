@@ -15,6 +15,7 @@ CONTRATO DE CODIGOS DE SALIDA (normativo, documentado en docs/ai/sandbox-rules.m
     1  WOPT_FAIL <operacion> <detalle>         fallo de una operacion de git
     2  WOPT_USAGE <detalle>                    uso incorrecto
     2  WOPT_USAGE ancla-mensaje <detalle>      el mensaje no lleva identificador
+    2  WOPT_USAGE paridad-git <detalle>        llega una sola de las dos variables
     3  WOPT_REPO_INVALIDO <detalle>            repositorio no verificable
 
 PUERTA DEL MENSAJE (TASK-059): un mensaje pasa si lleva `TASK-NNN` que exista en
@@ -24,6 +25,18 @@ identificador el commit no tiene tercer testigo, asi que se rechaza con el codig
 meterla en `WOPT_FAIL` haria falsa la tabla de docs/ai/sandbox-rules.md. Se
 coloca despues de `validar_repo` y del NOOP y ANTES de `add -A`, luego un arbol
 limpio sigue diciendo WOPT_NOOP + 0 y un rechazo no muta el arbol.
+
+PARIDAD `GIT_DIR` / `GIT_WORK_TREE` (TASK-061): las dos variables del entorno se
+honran CON LA MISMA precedencia, pero no se admiten sueltas. `get_env()` devuelve
+ademas si llegaron juntas o solo una, y una sola se RECHAZA con el codigo 2
+(`WOPT_USAGE paridad-git`) sin escribir nada, en `main()` y DESPUES de
+`validar_repo` (y por tanto tambien en `--verify`). Motivo medido: con un
+`GIT_DIR` desechable y sin `GIT_WORK_TREE`, el hook hermetizaba el REPOSITORIO y
+seguia haciendo `add -A` y `commit` sobre el ARBOL DE TRABAJO REAL, que es como
+una sonda llego a stagear y commitear el arbol del dueno dentro de un repo de
+temporal. La paridad no es un extra: es el precio de honar `GIT_WORK_TREE` del
+entorno, porque sin ella bastaria un `GIT_DIR` real + un arbol ajeno para
+versionar un arbol extranjero en el historial real.
 
 `--verify` es un modo diagnostico de solo lectura: reutiliza EXACTAMENTE la misma
 validacion, imprime `WOPT_REPO_OK <git_dir>` + 0 si el repo esta sano, o
@@ -98,6 +111,21 @@ MOTIVO_SIN_ANCLA = (
     "que TASK-059 cierra. Ancla tu mensaje y repite el commit."
 )
 
+# Motivo del rechazo de PARIDAD. ASCII PURO, mismo motivo que el de la puerta del
+# mensaje: es el texto que mas urge y el que menos puede fallar al imprimirse.
+# Nombra las DOS formas que valen y el POR QUE, que es lo que permite corregir la
+# invocacion sin abrir el contrato.
+MOTIVO_PARIDAD_ROTA = (
+    "llega solo una de las dos: si el entorno trae GIT_DIR y no GIT_WORK_TREE (o al "
+    "reves), el par no es utilizable. Pon las dos al valor que quieras usar, o ninguna "
+    "y el wrapper usa su par por defecto ("
+    "'%LOCALAPPDATA%\\woptimizer_git\\.git' + el arbol del proyecto). POR QUE importa: "
+    "con un GIT_DIR desechable y el arbol del proyecto, el hook hermetizaba el "
+    "REPOSITORIO y seguia haciendo add -A y commit sobre el ARBOL REAL, que es como "
+    "una sonda llego a stagear y commitear el arbol del dueno dentro de un repo "
+    "temporal. Medido, y la hermeticidad de repo y arbol es lo que queda cerrado"
+)
+
 
 
 def detalle(texto, max_len=240):
@@ -119,18 +147,35 @@ def detalle(texto, max_len=240):
 
 
 def get_env():
-    """Construye el entorno de git para todos los subprocesos.
+    """`(env, paridad_rota)`: el entorno de git de todos los subprocesos.
 
-    Precedencia: si el entorno YA trae `GIT_DIR` se respeta tal cual (es la via
-    documentada en AGENTS.md y ademas el hook que permite tests hermeticos). Si
-    no, se fuerza el repo desacoplado de LOCALAPPDATA **aunque no exista**: asi
-    la validacion falla con codigo 3 en vez de que git descubra en silencio el
-    `.git` corrupto del arbol de trabajo (fallback prohibido por el contrato).
+    Precedencia, la MISMA para las dos variables: si el entorno ya trae
+    `GIT_DIR` se respeta tal cual (es la via documentada en AGENTS.md y ademas el
+    hook que permite tests hermeticos), y si no se fuerza el repo desacoplado de
+    LOCALAPPDATA **aunque no exista**: asi la validacion falla con codigo 3 en vez
+    de que git descubra en silencio el `.git` corrupto del arbol de trabajo
+    (fallback prohibido por el contrato). Lo MISMO vale para `GIT_WORK_TREE`, que
+    antes se imponia a `REPO_ROOT` sin condiciones.
+
+    **La hermeticidad del hook es de REPO y de ARBOL, no solo de repo (TASK-061).**
+    MEDIDO: con la imposicion incondicional, una sonda con `GIT_DIR` temporal
+    stageaba y commiteaba el ARBOL DE TRABAJO REAL dentro del repo temporal, que es
+    exactamente el mecanismo que produjo la contaminacion de `STATUS.md:23`. Honrar
+    `GIT_WORK_TREE` sin mas seria un arma de doble filo (basta un `GIT_DIR` real +
+    un arbol ajeno para versionar un arbol extranjero en el historial real), asi que
+    la paridad es **el precio** de la decision, no un extra.
+
+    Por eso `get_env()` **no puede callarse** de la asimetria: devuelve
+    `paridad_rota` y `main()` la rechaza con el codigo 2 (`WOPT_USAGE paridad-git`),
+    sin escribir nada. Una bandera interna en el propio `env` se perderia en
+    cualquier reescritura futura de esta funcion; un valor de retorno se rompe en
+    la firma, que es visible.
     """
     env = os.environ.copy()
+    paridad_rota = bool(env.get("GIT_DIR")) != bool(env.get("GIT_WORK_TREE"))
     env["GIT_DIR"] = env.get("GIT_DIR") or LOCAL_GIT_DIR
-    env["GIT_WORK_TREE"] = REPO_ROOT
-    return env
+    env["GIT_WORK_TREE"] = env.get("GIT_WORK_TREE") or REPO_ROOT
+    return env, paridad_rota
 
 
 def run_git(args, env):
@@ -140,11 +185,22 @@ def run_git(args, env):
     instalado, OSError, sandbox...). Esa distincion importa: "git fallo" es
     codigo 1, pero "no pude ni comprobar" es codigo 3. Colapsar los dos casos en
     el mismo 1 era el agujero que el contrato 3.4 corrige.
+
+    El `cwd` de cada subproceso **se deriva del propio `env`** (`GIT_WORK_TREE`),
+    no de `REPO_ROOT` fijo (TASK-061). Es lo que hace que honar `GIT_WORK_TREE`
+    sea verdad de verdad y no a medias: MEDIDO, con `cwd=REPO_ROOT` y un work tree
+    temporal, `rev-parse --is-inside-work-tree` responde `false` —el directorio de
+    trabajo no esta dentro del work tree efectivo— y `validar_repo` rechazaba con
+    el codigo 3 la propia invocacion que se le acababa de pedir. Correr git desde
+    el work tree efectivo es ademas lo coherente con que `add -A` y `commit`
+    operen sobre el. En el camino normal (`GIT_WORK_TREE = REPO_ROOT`) el valor es
+    el mismo de siempre, byte a byte. `validar_repo` comprueba que ese directorio
+    EXISTE antes de llegar aqui, luego el `cwd` de aqui siempre existe.
     """
     try:
         res = subprocess.run(
             ["git"] + args,
-            cwd=REPO_ROOT,
+            cwd=env.get("GIT_WORK_TREE") or REPO_ROOT,
             env=env,
             capture_output=True,
             text=True,
@@ -163,10 +219,22 @@ def validar_repo(env):
     `--verify`, de modo que el diagnostico nunca puede divergir del comportamiento
     real. Es de solo lectura (solo `rev-parse`) y no acepta una excepcion como
     "repo valido": `os.path.isdir` no basta, hay que preguntar a git.
+
+    Valida **el par entero** (TASK-061): el repositorio Y el arbol de trabajo
+    efectivo. Sin la comprobacion del arbol, un `GIT_WORK_TREE` a una ruta
+    inexistente caeria en un `rc` de git que nadie ha medido, y el codigo 3 tiene
+    que ser "no pude ni comprobar" de forma **determinista**, no "git dijo algo
+    raro".
     """
     git_dir = env.get("GIT_DIR") or LOCAL_GIT_DIR
     if not os.path.isdir(git_dir):
         return False, f"GIT_DIR no existe o no es un directorio: {git_dir}", git_dir
+
+    work_tree = env.get("GIT_WORK_TREE") or REPO_ROOT
+    if not os.path.isdir(work_tree):
+        return False, (
+            f"GIT_WORK_TREE no existe o no es un directorio: {work_tree}"
+        ), git_dir
 
     rc, out, err, exc = run_git(["rev-parse", "--git-dir"], env)
     if exc is not None:
@@ -330,16 +398,35 @@ def main():
         print(f"WOPT_USAGE {detalle(error_uso)}")
         sys.exit(CODE_USAGE)
 
-    env = get_env()
+    env, paridad_rota = get_env()
     ok, fallo_repo, git_dir = validar_repo(env)
+
+    # El repo se comprueba ANTES que la invocacion, y con la precedencia que fijo
+    # D2 de TASK-059: si el repo no se puede comprobar, "no pude ni comprobar" (3)
+    # gana a "tu invocacion esta mal" (2), porque si no el 3 describiria un
+    # problema del repo que en realidad nunca llego a mirarse.
+    if verify and not ok:
+        print(f"WOPT_REPO_INVALIDO {detalle(fallo_repo)}")
+        sys.exit(CODE_REPO)
+
+    # 0. PUERTA DE PARIDAD (TASK-061). Va DESPUES de `validar_repo` y ANTES del
+    #    NOOP, de `add -A` y del `WOPT_REPO_OK` de `--verify`. Los tres sitios
+    #    importan y estan medidos:
+    #    - despues de `validar_repo`: un repo no comprobable sale con 3, no con 2;
+    #    - antes del NOOP: es de SOLO LECTURA, luego un arbol limpio con el par
+    #      asimetrico sale con 2 sin haber stageado nada (rechazar despues de
+    #      `add -A` seria mutar el arbol para luego decir que no);
+    #    - antes de `WOPT_REPO_OK`: `--verify` que dice "el repo y su arbol son
+    #      usables" no puede contar una asimetria de ese par, que es justo la
+    #      mentira que un diagnostico no debe decir.
+    if paridad_rota:
+        print(f"WOPT_USAGE paridad-git {detalle(MOTIVO_PARIDAD_ROTA)}")
+        sys.exit(CODE_USAGE)
 
     if verify:
         # Modo diagnostico: misma validacion, cero escrituras.
-        if ok:
-            print(f"WOPT_REPO_OK {git_dir}")
-            sys.exit(CODE_OK)
-        print(f"WOPT_REPO_INVALIDO {detalle(fallo_repo)}")
-        sys.exit(CODE_REPO)
+        print(f"WOPT_REPO_OK {git_dir}")
+        sys.exit(CODE_OK)
 
     if not ok:
         # Sin fallback: el .git del arbol de trabajo esta corrupto en VFS.
