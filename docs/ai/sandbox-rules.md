@@ -80,7 +80,9 @@ Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
    `%LOCALAPPDATA%\woptimizer_git\.git`. La validación se aplica igual en ambos casos.
    **Matiz medido el 2026-10-02 (ciclo #48), porque «tests herméticos» era media verdad:** ese
    hook hermetiza **el repositorio, no el árbol de trabajo**. `get_env()` respeta el `GIT_DIR`
-   del entorno pero **impone `GIT_WORK_TREE = REPO_ROOT` sin condición** (`git_safe_commit.py:78`),
+   del entorno pero **impone `GIT_WORK_TREE = REPO_ROOT` sin condición** (`git_safe_commit.py:132`;
+   el ancla que se citaba antes, `:78`, era falsa — esa línea es `_RE_MARCADOR_ANCLA` — y estaba
+   propagada por cuatro ficheros, corregida por contenido el 2026-10-04),
    así que una invocación con un `GIT_DIR` desechable sigue haciendo `add -A` y `commit`
    **sobre el árbol de trabajo real**. Medido: una sonda con `GIT_DIR` temporal stageó y
    commiteó el árbol real dentro del repo temporal (el historial real quedó intacto, porque
@@ -110,17 +112,24 @@ si no. Es el mecanismo de diagnóstico cuando el pipeline recibe un `!= 0` sin e
 el repositorio real ni su historial.
 
 **Lo que esta cobertura NO prueba, medido el 2026-10-02 (ciclo #48):** ninguna de las invocaciones
-del test llega a un `WOPT_FAIL`; sus aserciones son `returncode == 3` (`run_tests.py:1399`,
-`:1413`, `:1423`) y `== 2` (`:1435`). El código `1` —**el del fallo de git**, que es el invariante
+del test llega a un `WOPT_FAIL`; sus cuatro aserciones de `returncode` son `3`, `3`, `2` y el `0`
+de `--verify` con repo sano (`run_tests.py:1401-1549`), y **ninguna** es `1`. El código `1`
+—**el del fallo de git**, que es el invariante
 que el ciclo #11 rompió devolviendo `0`— **no lo comprueba nadie.** Mutante medido sobre el
 `git_safe_commit.py` real (`sys.exit(CODE_FAIL)` -> `sys.exit(CODE_OK)` en el camino de commit,
-líneas 229-230): **la suite entera queda 103/103 en verde con exit 0**, y el wrapper imprime
+`git_safe_commit.py:409-410`): **la suite entera queda 103/103 en verde con exit 0**, y el wrapper imprime
 `WOPT_FAIL commit` mientras sale con `0`, así que un consumidor que lee el código de salida —que
 es lo que el contrato declara normativo— se lleva el falso verde. El invariante **se cumple hoy en
 el código** (medido: repo temporal con un `pre-commit` que sale con 1 -> `WOPT_FAIL commit` + exit
 1), pero **nadie lo ata a un test**: por eso vive como 🔴 en la fila del `spawn EPERM` de
-`STATUS.md:88`. **SEGUNDA MEDICIÓN (cierre del ciclo #48):** el mutante sobrevive también a `validate_docs.py` (`110 OK / 0 FAIL` con el mutante puesto), así que los dos semi-veredictos del toolchain lo dejan pasar. **La víctima, nombrada:** el único consumidor real del código de salida es el **agente orquestador** (`.agents/agents/architect-review/agent.md:50` y `.agents/skills/id-pipeline/SKILL.md:382`, que escribe el changelog tras el commit «para tener el hash»), mientras que `run_tests.py` solo mira `3` y `2` y `validate_docs.py` solo lo menciona. Y el matiz que corrige el tamaño del daño: un `WOPT_NOOP` **no lleva hash** (regla 4 de esta tabla), luego esta puerta no puede reintroducir el CHANGELOG con hashes inventados; el daño real es el ciclo cerrado sin commit. Desde el cierre del ciclo #48 tiene dueño: **`TASK-061`**. Cerrarla exige decidir antes qué se hace con `GIT_WORK_TREE` (regla 7) y después
-escribir su test.
+`STATUS.md:89` (corregido el 2026-10-04: se citaba la `:88`, que es la fila del `.git` corrupto y
+no lleva esta deuda). **SEGUNDA MEDICIÓN (cierre del ciclo #48):** el mutante sobrevive también a `validate_docs.py` (`110 OK / 0 FAIL` con el mutante puesto), así que los dos semi-veredictos del toolchain lo dejan pasar. **La víctima, nombrada:** el único consumidor real del código de salida es el **agente orquestador** (`.agents/agents/architect-review/agent.md:50` y `.agents/skills/id-pipeline/SKILL.md:401`, que escribe el changelog tras el commit «para tener el hash»; el 2026-10-04 se corrigió el ancla, que decía `:382` y es el encabezado de otra sección), mientras que `run_tests.py` solo mira `3` y `2` y `validate_docs.py` solo lo menciona. Y el matiz que corrige el tamaño del daño: un `WOPT_NOOP` **no lleva hash** (regla 4 de esta tabla), luego esta puerta no puede reintroducir el CHANGELOG con hashes inventados; el daño real es el ciclo cerrado sin commit. Desde el cierre del ciclo #48 tiene dueño: **`TASK-061`**. **La decisión previa ya está tomada
+(2026-10-04, `architect-review`): se honra `GIT_WORK_TREE` del entorno con PARIDAD EXIGIDA** —las dos
+variables llegan juntas o ninguna, y una sola se rechaza con `2` sin escribir nada—, porque es lo
+único que hace no representable la combinación «`GIT_DIR` desechable + árbol real» que produjo esta
+medida. Contrato y subtareas: `openspec/changes/2026-10-04-codigo-salida-fallo-git-s48-2/`. La regla 7
+de arriba y esta sección se reescriben al aterrizar el fix, no antes: **hasta entonces esta fila sigue
+siendo cierta.**
 
 ## La puerta del mensaje: el identificador es obligatorio (TASK-059)
 
