@@ -268,7 +268,8 @@ Todas las vistas aceptan `notification_service=None` y crean un local si no se l
 - `DashboardView.execute_pack()` → ambos helpers según `default_action`.
 - `PackManagerView.kill_pack()` / `.start_pack()` → ambos helpers.
 - `ProcessManagerView.on_kill_selected()` → `notify_kill_result`.
-- `WOptimizerApp` menú del tray (`gaming_action`) → `notify_pack_activated`.
+- `WOptimizerApp` menú del tray (`_tray_gaming_action`) → `notify_pack_activated`.
+- `WOptimizerApp` favoritos del tray (`_favorito_kill` / `_favorito_start`) → `notify_pack_activated` / `notify_apps_launched`, según `default_action`.
 
 ### Invariantes a Respetar
 - La UI **nunca** importa `pystray`; solo conoce los tres helpers.
@@ -325,6 +326,7 @@ Mensajes al `status_label`: rojo `#c22d2d` para los `⛔` de bloqueo, ámbar `#b
 | `PackManagerView` | `delete_pack(pack_id, button)` | `pack_del:{id}` | 3000 ms |
 | `PackManagerView` | `remove_app_from_pack(pack_id, app, button)` | `pack_app:{id}:{app}` | 3000 ms |
 | `DashboardView` | `execute_pack(pack, button)` | `dashboard:{id}` | **2000 ms** |
+| Menú de la bandeja | `_ejecutar_favorito` / `_confirmar_favorito` | `tray:{id}` | **4000 ms** |
 
 `execute_pack` confirma **solo** en la rama `default_action == "kill"`. Arrancar apps no es destructivo y no pide nada.
 
@@ -338,6 +340,39 @@ Por qué es la excepción y no un olvido:
 - Desde TASK-025 el tray ejecuta `self.gaming_service.execute_gaming_pack(gaming_pack)` (igual que las dos vistas), de modo que respeta `keepers` y `target_categories` y comparte la única puerta de kill.
 
 **Invariante que deja el cambio:** *ningún camino de kill nuevo puede añadirse sin `_require_double_tap`*. Las tres rutas de la ventana están inventariadas en la tabla de arriba y el guard es la única puerta dentro de ella; el tray es la única excepción documentada. Si algún día se le quiere dar confirmación, hay que añadir antes una superficie de estado al `MenuItem` (o un ítem de "confirmar"), nunca un `messagebox`.
+
+> **TASK-065 matiza el párrafo anterior, no lo deroga.** La excepción sigue siendo la del ítem `🚀 Preparar Gaming Mode`, y sigue siendo de **un** pack. Los favoritos de la bandeja **no** amplían la excepción: confirman con un ítem de "Confirmar", que es la superficie de estado que este mismo párrafo pedía. La razón por la que la excepción era aceptable —"una única entrada, con nombre explícito, sin vecinos ni selección que fallar"— no escalaba a N packs, y por eso el Amplio no se hizo por la vía de la excepción sino por la de la confirmación.
+
+### Favoritos en la bandeja, con ítem de confirmar (TASK-065)
+
+Con los packs **favoritos** en el menú, la excepción anterior dejaba de ser acotada: un clic empezaba a poder apagar **N** packs, y varios con `target_categories` activas, que cierran procesos que el usuario nunca enumeró. Una excepción que crece sin límite no es una excepción.
+
+La vía que la propia sección anterior señalaba —"un ítem de confirmar, nunca un `messagebox`"— es la que se ha construido. `ui/tray_menu.py` la sostiene sin widgets y sin `pystray`:
+
+| Superficie | Elemento | Dónde vive |
+|---|---|---|
+| Estado de la confirmación | `TrayMenuState` | `ui/tray_menu.py` |
+| Reloj de expiración | `TrayScheduler` (sin hilo) | `ui/tray_menu.py` |
+| Texto del ítem | `texto_item(pack_id, nombre, accion, estado)` | `ui/tray_menu.py` |
+| Ítem de cancelar | `texto_cancelar(estado)` → `None` si no hay nada | `ui/tray_menu.py` |
+| Construcción y callbacks | `WOptimizerApp._menu_tray`, `._ejecutar_favorito` | `ui/app.py` |
+
+**Reutiliza la máquina de estados, no la reescribe.** `TrayMenuState` envuelve un `DoubleTapGuard` con un `TrayScheduler` propio y usa `arm` / `consume` / `reset` / `is_pending` igual que las vistas. Una segunda máquina sería una segunda política de seguridad, que es justo lo que `gaming_service` existe para evitar.
+
+El flujo de un favorito de **apagado**, en el menú:
+
+1. 1.er clic → `armar()` devuelve `True` y el menú se **reconstruye** con `⛔ Pack` sustituido por `✅ Confirmar apagado de 'Pack'`. No se ejecuta nada.
+2. 2.º clic sobre ese ítem → `puede_ejecutar()` consume la pendiente y **solo entonces** nace el hilo que llama a `gaming_service.execute_pack(pack)`.
+3. `✖️ Cancelar` aparece **solo** si hay una pendiente viva, y desaparece al cancelar o al caducar.
+4. Caducada la ventana (4 s), la pendiente deja de autorizar: se ve caducada aunque nadie haya llamado a `reset`, porque `pendiente()` compara contra el reloj inyectado.
+
+**Por qué 4 s y no los 2 s de la Portada.** La Portada no exige nada entre clic y clic: el botón sigue ahí, con su estado pintado. En el menú hay que **volver a abrirlo**, elegir el ítem y pulsarlo. Copiar los 2 s de la Portada habría hecho caducar la confirmación antes de que el usuario llegue.
+
+**Lo que este cambio NO amplía.** El ítem `🚀 Preparar Gaming Mode` sigue siendo la excepción de TASK-025 y sigue invocando `execute_gaming_pack`, que **rechaza los packs que no son gaming**: por construcción no puede apagar un pack de usuario. Y los favoritos de **arranque** no confirman en absoluto, porque arrancar no es destructivo (`default_action` decide, nunca el ítem).
+
+`pystray` no permite editar el texto de un `MenuItem` en sitio: su API es `icon.update_menu(menu)`, que **sustituye** la referencia. Por eso `show_tray` delega en `_menu_tray()` y el menú se reconstruye entero — con el beneficio de que no hay dos listas de ítems que puedan divergir.
+
+**Sondas** (`run_tests.py`, 132 → 136, antes del marcador headless porque no abren ventana): `test_la_bandeja_no_amplia_la_excepcion_de_apagado` es el ladrillo y mata el atajo por el que un ítem de apagado mataría con un clic; las otras tres fijan que arrancar no confirma, que `Cancelar` solo aparece con algo que cancelar, y que pulsar otro favorito descarta la pendiente anterior (§3.5), que es lo que impide que un `✅ Confirmar` mate un pack que el usuario ya no tiene delante.
 
 ### La rama Gaming Mode dentro de la doble pulsación
 En las dos vistas, el texto del aviso se adapta al pack pero **el guard es el mismo** (`_require_double_tap` con su token y su ventana). Nada se reimplementa:

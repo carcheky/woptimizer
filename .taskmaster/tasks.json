@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-04",
-  "active_task_id": "TASK-064",
+  "active_task_id": "TASK-065",
   "tasks": [
     {
       "id": "TASK-001",
@@ -1358,6 +1358,19 @@
       "status": "in_progress",
       "dependencies": [],
       "module": "tooling"
+    },
+    {
+      "id": "TASK-065",
+      "title": "Los packs favoritos, tambien en el menu de la bandeja con item de confirmar",
+      "description": "Tarea de USUARIO, decidida por el dueno el 2026-10-04: 'los favoritos salen en la portada y en menu con clic derecho de la barra de tareas', y ante la pregunta de como resolver la falta de doble pulsacion del menu, eligio 'anadir los de apagado con un item de confirmar en el propio menu'. MEDIDO antes de escribir una linea: la Portada YA mostraba los favoritos desde TASK-048 (`DashboardView.refresh_dashboard` pinta un boton por `get_favorite_packs()`), asi que el trabajo real era la segunda superficie, y el menu de bandeja no tenia ningun item de pack. El problema de seguridad era real: `ui-design-system.md` (TASK-025) declaraba el item de Gaming Mode como la UNICA ruta de kill sin confirmar, justificado porque afectaba a UN pack; con N favoritos, un clic pasaba a poder apagar N packs, varios con `target_categories` activas. Implementado con la unica via que la propia doc senala (un item de 'confirmar', nunca un `messagebox`): `ui/tray_menu.py` aporta `TrayMenuState`, que ENVUELVE el `DoubleTapGuard` existente en vez de reescribir la maquina de estados, y `WOptimizerApp._menu_tray()` reconstruye el menu entero con `icon.update_menu()` porque `pystray` sustituye la referencia y no admite editar el texto de un `MenuItem` in situ. HALLAZGO PROPIO, y es lo importante: la primera version tenia `puede_ejecutar()` devolviendo True TAMBIEN tras la primera pulsacion, y la sonda #1 la mato en la primera corrida. La API se rehizo en `armar()` (que NO devuelve nada) y `confirmar()` (unico True que significa 'mata'), con lo que el atajo mortal es inimputable por construccion. Ventana de 4000 ms y no 2000: en el menu hay que reabrirlo, elegir el item y pulsarlo, cosa que en la Portada no ocurre. Arrancar NO confirma, porque arrancar no es destructivo. VERIFICADO: 136 tests en verde (107 backend + 29 headless, las 4 sondas antes del marcador headless por no abrir ventana), `verify_ui_syntax.py` exito, `validate_docs.py` 122 OK / 0 FAIL, y 4 mutantes de control (armar devolviendo True, confirmar saltandose la pendiente, caducidad eliminada, cancelar que no limpia) MUERTOS cada uno por su asercion, con restauracion del arbol por SHA256 verificada.",
+      "complexity": "medium",
+      "priority": "high",
+      "status": "completed",
+      "dependencies": [
+        "TASK-048",
+        "TASK-025"
+      ],
+      "module": "ui"
     }
   ]
 }

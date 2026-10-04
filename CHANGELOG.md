@@ -1,3 +1,35 @@
+## TASK-065 - 2026-10-04
+
+**Portada & Packs** - `TASK-065` (Los packs favoritos, también en el menú de la bandeja)
+
+**Estado**: **terminado.** Tests: 132 → **136** (107 backend + 29 headless), derivado con `ast`.
+
+Tus packs favoritos ya salían en la Portada desde TASK-048, pero **no** en el menú de la
+bandeja, que tenía cuatro entradas fijas y ninguna era un pack. Ahora salen en los dos
+sitios, y la pregunta de si deben pedir confirmación tiene respuesta medible.
+
+### Añadido
+
+- **Cada favorito es un ítem en el menú de la bandeja**, con su verbo: `⛔` para los que apagan, `🚀` para los que arrancan. El verbo lo decide el pack (`default_action`), nunca el ítem.
+- **Apagar desde la bandeja pide confirmación de verdad.** Pulsas `⛔ Pack` y el ítem se convierte en `✅ Confirmar apagado de 'Pack'`. Recién ahí, en la segunda pulsación, se apaga. Es la vía que tu propia documentación señalaba como la única aceptable ("un ítem de confirmar, nunca un `messagebox`").
+- **`✖️ Cancelar` aparece solo si hay algo que confirmar**, y desaparece al cancelar o al caducar. Sin una pendiente viva no hay un ítem muerto que puedas pulsar sin efecto.
+- **Al pulsar otro favorito se descarta el anterior.** La intención es tu última acción: si tenías `Pack A` a medio confirmar y pulsas `Pack B`, el `Confirmar` pasa a ser de B. Nunca mata un pack que ya no tienes delante.
+
+### Corregido
+
+- **Un bug que mis propios tests encontraron antes de que lo vieras.** La primera versión tenía un `puede_ejecutar()` que devolvía `True` **también con la primera pulsación**, es decir: el ítem de apagar podía matar con un clic. La sonda lo cazó y la API se rehízo en dos funciones separadas, `armar()` (que no devuelve nada) y `confirmar()` (el único `True` que significa "mata"). Ahora **el atajo no se puede escribir**: no hay ninguna llamada que valga a la vez para el ítem de apagar y el de confirmar.
+- **La excepción de seguridad ya no crece.** El ítem `🚀 Preparar Gaming Mode` era la única ruta que apagaba sin confirmar, justificado porque afectaba a **un** pack. Con N favoritos, un clic empezaba a poder apagar N packs, varios con categorías marcadas. Los favoritos de apagar ya no pasan por ahí.
+
+### Sin cambios, a propósito
+
+- **Arrancar no pide confirmación.** Arrancar no apaga nada, así que un "Confirmar" sería ruido.
+- **La ventana de confirmación es de 4 s, no los 2 s de la Portada.** En la Portada el botón sigue ahí con su estado pintado; en el menú hay que volver a abrirlo, elegir el ítem y pulsarlo. Con 2 s habría caducado antes de que llegaras.
+
+### Verificado
+
+- **136 tests en verde**, y las 4 sondas nuevas se auditaron con **4 mutantes, los 4 muertos** por su propia aserción: `armar` devolviendo `True`, `confirmar` saltándose la pendiente, la caducidad eliminada, y `cancelar` que no limpia. El árbol se restauró por hash y quedó intacto.
+- Las cuatro sondas corren **sin abrir ventana** (estado puro + texto, sin Tk ni `pystray`), que es lo que hace testeable un menú que no es un widget.
+
 ## CYCLE-052 - 2026-10-04
 
 **Arquitectura y Calidad** - `TASK-059` (Marcador de ciclo obligatorio y verificación de los hashes)

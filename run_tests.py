@@ -17534,6 +17534,226 @@ def test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real()
           "hecha queda escrita, y el mutante lo devuelve a dos.")
 
 
+# ---------------------------------------------------------------------------
+# TASK-065: los packs FAVORITOS en el menu de la BANDEJA.
+# ---------------------------------------------------------------------------
+# El riesgo de este cambio no es que el menu se dibuje mal: es que un UN clic en la
+# bandeja apague procesos. `docs/ai/ui-design-system.md` (TASK-025) declaro el item
+# "Preparar Gaming Mode" como la unica excepcion a `_require_double_tap`, y lo justifico
+# porque afectaba a UN pack con nombre explicito y sin vecinos. Meter los favoritos amplia
+# el alcance de esa excepcion a N packs, varios con `target_categories` activas. Estas
+# cuatro sondas comprueban que la excepcion NO se amplia.
+#
+# Se prueban sin Tk y sin pystray, que es la razon de que el estado viva en
+# `ui/tray_menu.py` y no dentro de `WOptimizerApp`: un `MenuItem` no es un widget, y
+# `DoubleTapGuard` ya es una maquina de estados pura con `scheduler` inyectable. Lo que se
+# prueba aqui es la DECISION (armar / confirmar / cancelar / caducar) y el TEXTO del item.
+
+
+def test_la_bandeja_no_amplia_la_excepcion_de_apagado():
+    """TASK-065 #1 (LADRILLO): apagar un favorito desde la bandeja exige DOS pulsaciones.
+
+    Misma forma que la sonda #16 de TASK-063: no mira COMO esta escrito el codigo, mira que
+    un clic suelto no habilite nada y que el efecto solo ocurra en la segunda pulsacion.
+    """
+    print("Testing la bandeja no amplia la excepcion de apagado (TASK-065)...")
+    from woptimizer.ui.tray_menu import TrayMenuState, VENTANA_MS_TRAY
+
+    # Reloj controlado: la ventana de 4 s no se espera, se simula.
+    reloj = {"t": 1000.0}
+    st = TrayMenuState()
+    st.set_reloj(lambda: reloj["t"])
+
+    # 1. La primera pulsacion ARMA y NO autoriza. `armar` no devuelve nada, y eso es la
+    #    mitad del invariante: no existe ninguna llamada que valga a la vez para "el item
+    #    de apagar" y para "el de confirmar".
+    armado = st.armar("pack_a")
+    assert armado is None, (
+        "`armar` no debe devolver nada: un `True` aqui invita a escribir el atajo "
+        f"'if estado.armar(id): matar', que es exactamente el fallo mortal. Devolvio {armado!r}"
+    )
+    assert st.pendiente("pack_a") is True, (
+        "tras armar, la pendiente debe estar viva: el menu depende de esto para dibujar "
+        f"el item de 'Confirmar'. st={st!r}"
+    )
+
+    # 2. ESTA es la asercion que CAYO contra la primera version, que tenia un
+    #    `puede_ejecutar` comun: devolver True con la primera pulsacion. El atajo mortal
+    #    no es un `if pendiente`, es que el gate no distinga "existe pendiente" de
+    #    "el usuario ha pulsado Confirmar".
+    assert st.confirmar("otro_pack") is False, (
+        "confirmar un pack SIN pendiente no puede autorizar nada: el item de 'Confirmar' "
+        f"no se dibuja para el, asi que esto solo puede ser un atajo. st={st!r}"
+    )
+
+    # 3. Segunda pulsacion (la del item de "Confirmar"): ahora SI.
+    assert st.confirmar("pack_a") is True, (
+        "la segunda pulsacion debe autorizar la ejecucion: es la unica via por la que un "
+        f"favorito de apagado puede matar desde la bandeja. st={st!r}"
+    )
+
+    # 4. Y NO se puede repetir: la pendiente se consumio.
+    assert st.confirmar("pack_a") is False, (
+        "la pendiente debe consumirse: sin esto, el item de 'Confirmar' mataria en "
+        f"repetido por una sola confirmacion. st={st!r}"
+    )
+    assert st.pendiente("pack_a") is False, f"tras consumir no queda pendiente: st={st!r}"
+
+    # 5. La ventana de confirmacion existe y es la declarada. Sin ella la pendiente
+    #    viviria para siempre y "Cancelar" seria la unica salida.
+    assert VENTANA_MS_TRAY == 4000, (
+        "la ventana del menu debe ser 4000 ms (mas que la de la portada: hay que reabrir "
+        f"el menu entre clic y clic), dio {VENTANA_MS_TRAY}"
+    )
+
+    # 6. Caducar por tiempo devuelve el estado a REPOSO, sin ejecutar.
+    st.armar("pack_b")
+    reloj["t"] += (VENTANA_MS_TRAY + 1) / 1000.0
+    assert st.pendiente("pack_b") is False, (
+        "una pendiente caducada no puede seguir habilitando el item de 'Confirmar': el "
+        f"menu la pintaria como disponible y el gate no la miraria. st={st!r}"
+    )
+    assert st.confirmar("pack_b") is False, (
+        f"una pendiente CADUCADA no autoriza matar: st={st!r}"
+    )
+
+    print("La bandeja no amplia la excepcion de apagado OK (TASK-065).")
+
+
+def test_arrancar_desde_la_bandeja_no_pide_confirmacion():
+    """TASK-065 #2: arrancar NO pasa por el guard, y el menu no lo muestra.
+
+    La doble pulsacion protege el clic en el objetivo equivocado de una accion que apaga.
+    Arrancar no apaga nada, asi que confirmarlo seria ruido (TASK-023). Fija las DOS
+    mitades: el item de arranque no dice "Confirmar" NUNCA, y el de apagado si lo dice.
+    """
+    print("Testing arrancar desde la bandeja no pide confirmacion (TASK-065)...")
+    from woptimizer.ui.tray_menu import TrayMenuState, texto_item
+
+    st = TrayMenuState()
+    st.set_reloj(lambda: 0.0)
+
+    # Sin nada pendiente: los dos items llevan su verbo y ninguno dice "Confirmar".
+    assert texto_item("a", "Pack A", "kill", st) == "⛔ Pack A", (
+        "el item de apagado en reposo debe llevar el verbo de apagar"
+    )
+    assert texto_item("b", "Pack B", "start", st) == "🚀 Pack B", (
+        "el item de arranque debe llevar el verbo de arrancar"
+    )
+
+    # Con A armada, el de A dice "Confirmar" y el de B NO. Este es el caso que importa:
+    # si el texto dependiera de "hay ALGUNA pendiente" en vez de "esta ESTA pendiente", el
+    # item de B se pintaria como "Confirmar" sin que hubiera nada que confirmar.
+    st.armar("a")
+    armado_a = texto_item("a", "Pack A", "kill", st)
+    armado_b = texto_item("b", "Pack B", "start", st)
+    assert "Confirmar" in armado_a, (
+        f"el item de apagado armado debe ofrecer la confirmacion: {armado_a!r}"
+    )
+    assert "Pack A" in armado_a, (
+        "el item de confirmar debe NOMBRAR el pack: sin el nombre, con varios favoritos "
+        f"el usuario no sabe que esta confirmando. Texto: {armado_a!r}"
+    )
+    assert armado_b == "🚀 Pack B", (
+        "un item de arranque NUNCA se pinta como 'Confirmar', ni con otra pendiente viva: "
+        f"texto={armado_b!r}"
+    )
+
+    # El verbo lo decide el pack, no el item.
+    assert texto_item("c", "Pack C", "start", st) == "🚀 Pack C", (
+        "el texto lo decide `default_action` del pack, no el item"
+    )
+
+    print("Arrancar desde la bandeja no pide confirmacion OK (TASK-065).")
+
+
+def test_el_texto_del_item_y_el_cancelar_siguen_al_estado():
+    """TASK-065 #3: `Cancelar` solo aparece si hay algo que cancelar.
+
+    Un "Cancelar" permanente seria un item muerto que el usuario pulsa sin efecto. El caso
+    que mata al bug: una pendiente CADUCADA sigue existiendo dentro de `DoubleTapGuard`
+    (nadie ha llamado a `reset`), asi que un `is_pending()` a secas haria aparecer un
+    "Cancelar" que no cancela nada.
+    """
+    print("Testing el texto del item y el cancelar siguen al estado (TASK-065)...")
+    from woptimizer.ui.tray_menu import TrayMenuState, texto_cancelar
+
+    reloj = {"t": 100.0}
+    st = TrayMenuState()
+    st.set_reloj(lambda: reloj["t"])
+
+    assert texto_cancelar(st) is None, (
+        "sin pendientes no hay item de 'Cancelar': seria un item muerto en el menu"
+    )
+
+    st.armar("pack_a")
+    cancela = texto_cancelar(st)
+    assert cancela is not None, f"con una pendiente viva debe haber 'Cancelar': dio {cancela!r}"
+    assert "Cancelar" in cancela, f"el item debe decir 'Cancelar': {cancela!r}"
+
+    # Cancelar de verdad: deja el estado en reposo.
+    st.cancelar()
+    assert st.pendiente("pack_a") is False, f"tras cancelar no queda pendiente: st={st!r}"
+    assert texto_cancelar(st) is None, (
+        "tras cancelar el item desaparece: si se quedara, el usuario lo pulsaria sin efecto"
+    )
+    assert st.confirmar("pack_a") is False, (
+        f"cancelar NO puede dejar la puerta de ejecucion abierta: st={st!r}"
+    )
+
+    # El caso de la pendiente caducada, que un `is_pending()` a secas no ve.
+    st.armar("pack_b")
+    reloj["t"] += (4000 + 1) / 1000.0
+    assert texto_cancelar(st) is None, (
+        "una pendiente CADUCADA no debe pintar un 'Cancelar' que no cancela nada: el item "
+        "seria pulsable y sin efecto"
+    )
+
+    print("El texto del item y el cancelar siguen al estado OK (TASK-065).")
+
+
+def test_pulsar_otro_favorito_descarta_la_pendiente_anterior():
+    """TASK-065 #4: la intencion del usuario es su ULTIMA accion.
+
+    Es el caso §3.5 de `DoubleTapGuard`, reutilizado tal cual en vez de reimplementado.
+    Pulsar B con A pendiente tiene que descartar la de A: si no, el "Confirmar" seguiria
+    apuntando a un pack que el usuario ya no quiere confirmar, y un solo "Confirmar"
+    mataria el pack equivocado.
+    """
+    print("Testing pulsar otro favorito descarta la pendiente (TASK-065)...")
+    from woptimizer.ui.tray_menu import TrayMenuState, texto_item
+
+    st = TrayMenuState()
+    st.set_reloj(lambda: 0.0)
+
+    st.armar("pack_a")
+    assert "Confirmar" in texto_item("pack_a", "A", "kill", st)
+
+    st.armar("pack_b")  # B tambien es de apagado y sustituye la pendiente de A
+
+    assert st.pendiente("pack_a") is False, (
+        f"la pendiente de A debe descartarse al pulsar B: st={st!r}"
+    )
+    assert st.pendiente("pack_b") is True, f"la pendiente que queda es la de B: st={st!r}"
+    assert "Confirmar" not in texto_item("pack_a", "A", "kill", st), (
+        "el item de A ya no debe pedir confirmacion: el usuario pulso otra accion"
+    )
+    assert "Confirmar" in texto_item("pack_b", "B", "kill", st), (
+        f"el item de B debe pedir la confirmacion: {texto_item('pack_b', 'B', 'kill', st)!r}"
+    )
+
+    # Y lo grave: confirmar ahora mata B, no A.
+    assert st.confirmar("pack_b") is True, (
+        f"tras la sustitucion, la ejecucion corresponde a B. st={st!r}"
+    )
+    assert st.confirmar("pack_a") is False, (
+        "A NO puede ejecutarse: su pendiente fue descartada. Si esto fuera True, un solo "
+        f"'Confirmar' mataria un pack que el usuario ya no tenia delante. st={st!r}"
+    )
+
+    print("Pulsar otro favorito descarta la pendiente OK (TASK-065).")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -17721,6 +17941,18 @@ if __name__ == "__main__":
     # `len(errors) == 1` lo cazo. Este fija "una causa, un mensaje" en el camino
     # REAL del validador, con su mitad mutante. Suite: 130 -> 131.
     test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real()
+    # TASK-065: los packs FAVORITOS en el menu de la BANDEJA. Suite: 132 -> 136.
+    # Las cuatro van ANTES del marcador headless porque ninguna abre una ventana: son
+    # estado puro + texto, sin Tk y sin pystray, que es justo lo que hace testeable el
+    # menu (un `MenuItem` no es un widget, y por eso el estado vive aparte, en
+    # `ui/tray_menu.py`, y se prueba sin el sistema operativo).
+    # La #1 es el LADRILLO del cambio: mata el atajo por el que un item de apagado
+    # mataria con UN clic, que es la excepcion que TASK-025 documento para UN pack y
+    # que este cambio no puede ampliar a N.
+    test_la_bandeja_no_amplia_la_excepcion_de_apagado()               # #1
+    test_arrancar_desde_la_bandeja_no_pide_confirmacion()              # #2
+    test_el_texto_del_item_y_el_cancelar_siguen_al_estado()            # #3
+    test_pulsar_otro_favorito_descarta_la_pendiente_anterior()         # #4
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.

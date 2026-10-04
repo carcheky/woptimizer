@@ -3,7 +3,7 @@
 > Cierra las apps que sobran cuando vas a jugar. Reabre tu setup cuando vuelves.
 > Pensado para que no tengas que pensar en qué procesos te están robando FPS.
 
-![Estado del proyecto](https://img.shields.io/badge/ciclos-52-blue) ![Tests](https://img.shields.io/badge/tests-132%20verdes-brightgreen)
+![Estado del proyecto](https://img.shields.io/badge/ciclos-52-blue) ![Tests](https://img.shields.io/badge/tests-136%20verdes-brightgreen)
 
 **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) · **Tablero:** [`STATUS.md`](STATUS.md) · **Docs técnicas:** [`docs/ai/`](docs/ai/INDEX.md)
 
@@ -20,7 +20,8 @@
 | 🟢🟡🔴 **Semáforo de seguridad** | Cada proceso lleva un color: 🟢 se puede cerrar, 🟡 con cuidado, 🔴 **nunca se toca**. |
 | 📊 **Qué has ganado** | Después de cada acción, un banner dice cuántos procesos se cerraron y **cuánta RAM se liberó**. |
 | 🔔 **Avisos en Windows** | Notificación del sistema al cerrar o abrir cosas, aunque la ventana esté minimizada. |
-| 📥 **Bandeja del sistema** | Cerrar la ventana la minimiza a la bandeja. Desde ahí: mostrar la app, preparar Gaming Mode, o salir. |
+| 📥 **Bandeja del sistema** | Cerrar la ventana la minimiza a la bandeja. Clic derecho y verás **tus packs favoritos** además de las acciones fijas. Los que apagan piden confirmación: pulsas el pack y luego "Confirmar". |
+| ⭐ **Favoritos en los dos sitios** | Marca un pack con la estrella del Gestor y aparece en la **Portada** y en el **menú de la bandeja**, para tenerlo a mano sin abrir la ventana. |
 | 💾 **No pierdes tu configuración** | Los packs se guardan con copia de seguridad automática y se recuperan solos si el archivo se corrompe. |
 
 ---
@@ -59,7 +60,7 @@ Otros comandos:
 
 ```bash
 python -m woptimizer      # equivalente a run.py
-python run_tests.py       # 132 tests headless (no abre ventanas)
+python run_tests.py       # 136 tests headless (no abre ventanas)
 python verify_ui_syntax.py
 ```
 

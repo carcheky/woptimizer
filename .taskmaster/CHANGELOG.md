@@ -1,3 +1,21 @@
+## [TASK-065] 2026-10-04 - favoritos en el menu de la bandeja
+
+**Area**: Portada & Packs. **Change**: sin `change-id` propio; es la continuacion de TASK-048 (`is_favorite`) y cierra el hueco que la seccion TASK-025 de `docs/ai/ui-design-system.md` dejo escrito ("si algun dia se le quiere dar confirmacion, hay que anadir antes una superficie de estado al `MenuItem` (o un item de 'confirmar'), nunca un `messagebox`").
+**Estado**: **COMPLETED.** `TASK-064` sigue `in_progress` (config de GitHub); esta es independiente.
+**Tests**: 132 -> **136** (107 backend + 29 headless), derivado con `ast` por el check 7. Las cuatro sondas van ANTES del marcador headless porque no abren ventana: son estado puro + texto, sin Tk ni `pystray`.
+
+**HALLAZGO PROPIO, y es el importante: la primera version de este cambio TENIA el fallo mortal.** La API inicial era `puede_ejecutar(pack_id) -> bool` y la sonda #1 la mato en la primera corrida: `puede_ejecutar` devolvia `True` **tambien tras la primera pulsacion** (que solo arma), porque `pendiente()` y `consume()` no distinguen "existe una pendiente" de "el usuario ha pulsado Confirmar". Con esa forma, un `if self._tray_state.puede_ejecutar(id):` en el item de apagar mata con UN clic, que es exactamente la excepcion de TASK-025 ampliada de 1 pack a N. **La API se rehizo en dos funciones separadas**: `armar()` NO devuelve nada y `confirmar()` es el unico `True` que significa "mata". Con esa forma el atajo es **inimputable por construccion**: no existe ninguna expresion que valga a la vez para el item de apagar y el de confirmar.
+
+**Diseno de la confirmacion en el menu** (la unica via que la doc senalaba): el menu se **reconstruye entero** con `icon.update_menu()`, porque `pystray` sustituye la referencia y no permite editar el texto de un `MenuItem` in situ. `show_tray` delego en `_menu_tray()` para que no haya dos listas de items que puedan divergir. El item con pendiente viva se dibuja como `✅ Confirmar apagado de 'X'` y su **callback es otro** (`_confirmar_favorito`): texto y accion salen de la MISMA consulta de estado, asi que no pueden divergir.
+
+**`DoubleTapGuard` reutilizado, no reimplementado**: `TrayMenuState` lo envuelve con un `TrayScheduler` sin hilo. El scheduler existe para que el guard conserve su ciclo de vida (cancelar al `reset`), y el reloj inyectado es lo que hace que una pendiente caducada se vea caducada sin que nadie redibuje nada. El caso §3.5 (pulsar otra accion descarta la pendiente) tambien es el del guard, no una regla nueva: por eso un `✅ Confirmar` nunca puede matar un pack que el usuario ya no tiene delante.
+
+**Ventana de 4000 ms, no 2000**: la de la portada no aplica porque ahi el boton sigue ahi con su estado pintado, mientras que en el menu hay que reabrirlo, elegir el item y pulsarlo. Con 2 s la confirmacion caducaba antes de que el usuario llegara.
+
+**Mutacion de control (4 mutantes, 4 muertos, restauracion por SHA256 y arbol intacto)**: M1 `armar` devolviendo `True` (mata por la asercion de que `armar` no devuelve nada), M2 `confirmar` saltandose `pendiente` , M3 caducidad eliminada, M4 `cancelar` que no limpia. Cada uno por SU asercion, no por un fallo de arranque.
+
+**Frontera de capas**: `ui/tray_menu.py` solo importa `typing` y `woptimizer.ui.confirmation`. Prohibido `psutil`, `json`, `os`, `threading`, `pystray`, `woptimizer.services` y `woptimizer.models`. Ni la lectura de packs ni la cuenta de procesos a apagar ocurren ahi: eso lo hacen `WOptimizerApp` y sus servicios.
+
 ## [CYCLE-052] 2026-10-04 - marcador-ciclo-y-hashes-journal
 
 **Area**: Arquitectura & Calidad. **Change**: `openspec/changes/2026-10-04-marcador-ciclo-y-hashes-journal/`
