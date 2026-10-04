@@ -983,5 +983,21 @@
     },
     "incidente": "pydantic-core 2.49.0 contra el 2.46.5 que exige pydantic 2.13.5 dejaba run_tests.py muerto ANTES de este ciclo (SystemError al importar woptimizer.models). Lo arreglo el orquestador con pip install pydantic-core==2.46.5; sin el no habia Paso 4 posible. Ademas, un escritor concurrente commiteo 20daaed y 1a06b80 y dejo el validador en rojo por llms-full.txt sin regenerar, reparado en cbf4c3f.",
     "deuda_nueva": "RuntimeError 'main thread is not in main loop' al final de la suite: process_manager_view._load llama self.after desde un hilo worker sin main loop. Anotada en STATUS.md; es src/ y ajena a esta tarea. Tambien sigue viva TASK-061 (el codigo de salida 1 de git_safe_commit no lo comprueba nadie)."
+  },
+  {
+    "cycle": 53,
+    "date": "2026-10-04",
+    "slug": "codigo-salida-fallo-git-s48-2",
+    "area": "Arquitectura & Calidad",
+    "task": "TASK-061",
+    "status": "COMPLETED - Paso 4 FAIL en la ronda 1 (6 supervivientes) y PASS en la re-auditoria tras cerrarlos",
+    "commits": [
+      "9f60e41",
+      "4879d19",
+      "ef67bf8",
+      "82f52c2"
+    ],
+    "tests": "144 = 112 backend + 32 headless (run_tests.py, ALL TESTS PASSED, exit 0)",
+    "notes": "Cierra el superviviente S48-2 (mutation-report.md del ciclo #48): un fallo de git tiene que salir con codigo distinto de 0, se cumplia en el codigo y NADIE lo comprobaba. Decision D1 del arquitecto: get_env() honra GIT_WORK_TREE con PARIDAD (una sola de las dos variables se rechaza con 2, WOPT_USAGE paridad-git, sin escribir nada), en vez de hacer que el test ensuciara el arbol real, que ya se hacia y dejaba residuo que el proximo add -A se lleva. HALLAZGO CRITICO DEL ARQUITECTO: el mutante NO estaba en git_safe_commit.py:230 (esa linea es hoy sys.exit(CODE_USAGE), la puerta que TASK-059 inserto despues de la medicion) sino en :409-410. Un auditor que mute por linea reportaria killed y cerraria S48-2 sin haberlo medido: localizar por CONTENIDO, nunca por linea. El repo ya estaba en 136 tests, no en los 103 del encargo. RONDA 1 del Paso 4: FAIL con 6 supervivientes (posicion de la puerta, cobertura de --verify, arbol que no es directorio x2, is-inside-work-tree, marcador WOPT_* huerfano) y 2 afirmaciones documentales que no se sostenian: sandbox-rules.md:227 se apoyaba en un caso NO REPRODUCIBLE, y la asercion 1 de T-2 prometia cobertura que el test no daba. RE-AUDITORIA: PASS. Los 8 mutantes del cierre mueren por su asercion, S48-2 incluido y por partida doble (T-2 ast y T-3 runtime, independientes: con T-2 autoderivada T-3 sigue matando). Queda UN ticket R4-k (🟡, no toca seguridad ni datos): mutar `if paridad_rota:` por `if paridad_rota and ok:` cambia el codigo del par asimetrico de 2 a 3 en el camino de commit, y sandbox-rules.md:83-85 promete el 2 sin condicionar al repo sano. Degradacion conservadora, no mentira. Re-auditable en tres ciclos."
   }
 ]

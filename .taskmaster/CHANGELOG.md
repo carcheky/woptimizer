@@ -1,3 +1,47 @@
+## [CYCLE-053] 2026-10-04 - codigo-salida-fallo-git-s48-2
+
+**Area**: Arquitectura & Calidad. **Change**: `openspec/changes/2026-10-04-codigo-salida-fallo-git-s48-2/`
+**Estado**: **COMPLETED con veredicto `PASS` en la re-auditoria.** `TASK-061` en `completed`. El Paso 4 dio `FAIL` en la ronda 1 con 6 supervivientes; los 6 se cerraron en `ef67bf8` y la re-auditoria los dio muertos, ademas de 14 mutantes nuevos del auditor.
+**Commits**: `9f60e41` (arquitectura), `4879d19` (implementacion T-1..T-6), `ef67bf8` (cierre de los 6 supervivientes + las 2 afirmaciones documentales), `82f52c2` (retirada de `run_tests_out.txt`, que `add -A` se habia tragado en `ef67bf8`).
+**Tests**: 132 -> **144** (112 backend + 32 headless). Las 5 sondas del cierre van **antes** del marcador headless (son tooling puro) y las 3 de T-2/T-3/T-4 **despues** (levantan la UI), de modo que "tooling puro" ya no significa "lado headless" y queda avisado en `STATUS.md` y en `testing-guide.md`.
+
+**Decision D1 (arquitecto), y la via descartada.** `get_env()` honra `GIT_WORK_TREE` del entorno igual que honra `GIT_DIR`, y exige **paridad**: llegar con una sola de las dos se rechaza con codigo 2 y `WOPT_USAGE paridad-git` sin escribir nada. La alternativa era que el test mutara el arbol real y su harness lo revirtiera; **ya se hacia** (`run_tests.py:16412-16413`, el "truco declarado del ciclo 52") y su coste medido es el residuo que el proximo `add -A` se lleva. Ademas, meter un test que escribe en un arbol con `.git` corrupto por VFS es pedir el incidente que ya ocurrio dos veces. Compatibilidad medida por enumeracion de las 3 invocaciones vivas del wrapper: las 3 ponen `GIT_DIR` **y** `GIT_WORK_TREE` al mismo valor, luego ninguna queda con una sola variable y el camino normal queda byte a byte igual.
+
+**HALLAZGO CRITICO, y es el que mas valor tiene: el mutante NO estaba en la linea que decía la ficha.** S48-2 apuntaba a `git_safe_commit.py:230`, pero hoy esa linea es `sys.exit(CODE_USAGE)`: la puerta que TASK-059 inserto **despues** de la medicion original. El mutante real esta en `:409-410` (`print` de `WOPT_FAIL commit` + el `sys.exit` que le sigue). Un auditor que hubiera mutado la `:230` reportaria `killed` (el test de TASK-059 la mata) y habria cerrado S48-2 **sin haberlo medido nunca**: un falso verde producido por una mutacion inerte. Segunda premisa falsa propagada: `get_env()` no esta en `:78` (esa es la regex del ancla) sino en `:132`, y la ancla viajo a 4 ficheros. Tercera: el repo ya estaba en 136 tests, no en los 103 del encargo, con el marcador en `run_tests.py:17956`. **Regla que sale de aqui: localizar por CONTENIDO, nunca por linea.**
+
+### Mutaciones auditadas (Paso 4)
+| Fix | Mutacion | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| S48-2 (central) | `WOPT_FAIL commit` -> `CODE_OK` | killed x2 | T-2: *"la tabla (marcador, codigo) que produce el codigo REAL no es la que el contrato declara"*; T-3: *"un commit que falla tiene que salir con 1, y salio con 0"* |
+| M5 posicion de la puerta | paridad antes de `validar_repo` | killed | *"con un par ASIMETRICO y un repo NO verificable tiene que ganar el 3 ... y salio con 2"* |
+| M6 cobertura de `--verify` | `if paridad_rota and not verify:` | killed | *"`--verify` con el par ASIMETRICO tiene que salir con 2 ... y salio con 0"* |
+| M7/M8 arbol no-directorio | quitar `isdir` / `isdir`->`exists` | killed | *"el rechazo tiene que venir del PRE-CHEQUEO del arbol ... no de un rc de git"* |
+| M9 `is-inside-work-tree` | `!= "true"` -> `!= "false"` | killed | *"que responde FALSE tiene que hacer RECHAZAR el repo ... y `validar_repo` devuelve ok=True"* |
+| M10 marcador huerfano | `print WOPT_INVENTADO` sin salida | killed | *"hay 1 marcador(es) WOPT_* impreso(s) en main() que NO estan en la tabla"* |
+| M10b reutilizacion | `WOPT_FAIL` reusado en otra salida | killed | segunda mitad: *"NO cierran un `sys.exit` en su bloque"* |
+| R2-1/R2-1b control de M9 | `validar_repo` que rechaza / acepta siempre | killed | control no decorativo: puede fallar, y M9 muere por su criterio |
+| R3-a/R3-c autoderivacion | tabla de M10 y `esperado` de T-2 derivadas del wrapper | killed | prueba de que **no** se autoderivan: si se derivaran, estos mutantes pasarian |
+| R3-b/d tablas a mano | `TABLA` sin `WOPT_REPO_OK` / `WOPT_FAIL` x5 | killed | prueba de que estan escritas a mano |
+| R4-h hash en NOOP | `WOPT_NOOP` imprime un hash | killed | *"tras la linea WOPT_NOOP no puede aparecer ningun hash"* (el dano del ciclo #11, otra puerta) |
+| P2-real ancla de mentira | `T-\d+` se acepta de verdad | killed | *"'fix(x): T-9' tiene que ser rechazado ... admitirlo es un ancla de mentira"* |
+| P5 fail-open | `ids` vacio degrada a forma | killed | dos sondas: *"Devolvio ok=True"* |
+| P6 orden de fronteras | puerta del mensaje antes del NOOP | killed | *"el orden de las cuatro fronteras del wrapper es normativo y esta roto"* |
+| **R4-k** | **`if paridad_rota:` -> `and ok:`** | **🟡 survived** | ver abajo |
+
+**EL UNICO SUPERVIVIENTE: R4-k.** Con el par asimetrico y el repo no verificable en el **camino de commit**, el codigo real es `2 WOPT_USAGE paridad-git` y con el mutante sale `3 WOPT_REPO_INVALIDO`. **No toca seguridad ni datos**: el `3` es un diagnostico MAS conservador, no una mentira como lo seria un `WOPT_REPO_OK` mintiendo. Pero `sandbox-rules.md:83-85` promete el `2` sin condicionar al repo sano, y con R4-k ese `2` no sale: **una promesa documentada sin guardian**, la misma clase que S48-2 un grado mas abajo. Arreglo que necesita: una fila en la sonda de posicion que exija `2` en el camino de commit con repo no verificable. **Queda como ticket re-auditable, NO se documenta como resuelto.**
+
+### Las dos afirmaciones documentales que NO se sostenian
+1. **`sandbox-rules.md:227`** (justificacion de la posicion de la puerta): *"los dos caminos de commit del test existente esperan **3** ... y pasarian a 2"*. **FALSA y no reproducible**: `test_git_safe_commit_fail_safe` pone `GIT_WORK_TREE = root` en **todas** sus invocaciones, luego el par nunca esta roto, la puerta no dispara y el test sigue verde. Reescrita con la combinacion que **si** distingue (`--verify` + par asimetrico + repo no verificable -> 3, y -> 2 con la puerta movida), verificada por ejecucion, y ahora sostenida por un guardian con nombre.
+2. **Asercion 1 de T-2** (`proposal.md:239`): *"cada `print` con `WOPT_*` esta en la tabla"*. Prometida y no cumplida: la tabla solo registraba un marcador si detras habia un `sys.exit`, asi que un `WOPT_*` sin salida desaparecia del contador en silencio. El dev decidio **implementarla en el test** en vez de editar el contrato, con dos mitades (conjunto + huerfanos). Correcto: era el mismo fallo que S48-2 un grado mas abajo.
+
+**Comprobado por el auditor, que es lo que mas importa de una re-auditoria:** la asercion 1 **no se autoderiva**. R3-a y R3-c (sustituir las tablas escritas a mano por derivadas del propio wrapper) **mueren**, y R3-b/d (borrar una entrada de la tabla) mueren tambien. Si la expectativa saliera del codigo, esos cuatro mutantes habrian pasado.
+
+**Mutante inerte que confieso (metodo, no resultado):** el primer P2 del auditor cambio la regex de forma incompleta y seguia exigiendo `TASK-`, asi que era inerte y lo reporto mal. Rehecho con el match completo, P2-real muerde y muere. Un mutante que no cambia el comportamiento no es cobertura, y reportarlo como superviviente habria sido ruido de auditoria.
+
+**Ruido que el `add -A` metio y se corrigio:** `ef67bf8` se trago `run_tests_out.txt` (354 lineas, el log de la propia corrida de la sonda) y un fichero literal `$null` de un `2>$null` de PowerShell. Retirados en `82f52c2`. El commit queda con ruido que ya no esta en HEAD; se declara en vez de reescribirse, porque reescribir historia por un log de sonda no compensa.
+
+**Lo que se midio del recuento, por partida triple:** el validador lo deriva, el dev lo declaro, y el auditor lo conto desde cero con `ast`: **144 definidos = 144 invocados = 112 antes del marcador + 32 despues**, sin huerfanos en ningun sentido, cuadrando con los cuatro declarantes y con la tabla de `testing-guide.md`.
+
 ## [TASK-065] 2026-10-04 - favoritos en el menu de la bandeja
 
 **Area**: Portada & Packs. **Change**: sin `change-id` propio; es la continuacion de TASK-048 (`is_favorite`) y cierra el hueco que la seccion TASK-025 de `docs/ai/ui-design-system.md` dejo escrito ("si algun dia se le quiere dar confirmacion, hay que anadir antes una superficie de estado al `MenuItem` (o un item de 'confirmar'), nunca un `messagebox`").

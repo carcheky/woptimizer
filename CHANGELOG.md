@@ -1,3 +1,28 @@
+## CYCLE-053 - 2026-10-04
+
+**Arquitectura y Calidad** - `TASK-061` (Cuando el versionado falla, que el programa lo diga)
+
+**Estado**: **terminado y auditado.** La primera auditoría dio **FAIL** con 6 huecos, se cerraron todos, y la re-auditoría dio **PASS**. Tests: 132 → **144** (112 backend + 32 headless).
+
+Esto no toca la aplicación: es la **seguridad del versionado**. Si el commit fallaba y el programa decía "todo bien", el ciclo se cerraba anunciando un commit que no existía.
+
+### Corregido
+
+- 🛡️ **Un fallo al guardar los cambios ya no puede salir saying "hecho".** El código estaba bien escrito, pero **nadie lo comprobaba**: los tests pasaban igual con el fallo escondido. Ahora hay dos comprobaciones independientes, una que mira el contrato y otra que ejecuta el programa de verdad, y **cada una lo detecta por separado**.
+- 🛡️ **La ruta que fastidiaba al owner ya no puede tocar tu carpeta de trabajo.** Antes, una prueba con una ruta desechable acababa.stageando y guardando en **tus** ficheros reales. Se منتصف que tiene que ser explícita.
+- 🛡️ **Seis huecos más, todos en esa misma puerta**, encontrados rompiéndola a propósito: que la comprobación estuviera en el sitio correcto, que también cubriera el modo de diagnóstico, que una ruta que no es una carpeta se rechace, y que un aviso suelto no pueda aparecer sin cerrar la salida que promete.
+- 🔴 **Dos frases de la documentación mentían.** Una decía que el orden de las comprobaciones estaba justificado por un caso que, ejecutado, **no se podía reproducir**: los tests ponían siempre las dos variables, así que esa situación nunca llegaba a ocurrir. Y otra prometía una cobertura que el test no tenía. Ahora las dos dicen la verdad, y la primera **tiene una prueba con nombre** que la sostiene.
+
+### Lo que aprendimos de paso (y es lo más útil del ciclo)
+
+- **El fallo que había que medir no estaba donde nadie decía.** La ficha apuntaba a la línea 230 del programa, pero esa línea hoy es otra cosa: la puerta que se añadió **después** de medir. Un auditor que hubiera seguido la línea habría visto "detectado" y habría cerrado el problema **sin haberlo comprobado nunca**. Por eso ahora los fallos se buscan por su **contenido**, nunca por su número de línea.
+- **Una puerta que promete tiene que tener quién la vigile.** Seis garantías existían en el texto y no las comprobaba nadie. No es que el programa estuviera mal: es que un escritor puede prometer lo que quiera.
+
+### Verificado
+
+- **144 tests en verde**, **124 comprobaciones de documentación sin fallos**, y sintaxis de interfaz impecable.
+- La auditoría final midió **8 mutaciones de este ciclo y 14 más** inventadas por el auditor. Murieron todas menos una, que **no toca la seguridad ni tus datos**: solo hace que un diagnóstico sea más conservador de lo que el manual promete. Queda anotada como tarea con su receta exacta, para que no se pierda.
+
 ## TASK-065 - 2026-10-04
 
 **Portada & Packs** - `TASK-065` (Los packs favoritos, también en el menú de la bandeja)
