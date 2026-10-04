@@ -1,3 +1,43 @@
+## CYCLE-052 - 2026-10-04
+
+**Arquitectura y Calidad** - `TASK-059` (Marcador de ciclo obligatorio y verificación de los hashes)
+
+**Estado**: **terminado y auditado.** La auditoría de rotura dio **FAIL** en la primera ronda con 10 huecos, y todos se cerraron antes de dar el ciclo por bueno.
+
+Esto no toca la aplicación: es la seguridad del versionado y de la trazabilidad del propio bucle. Si algún día te ha parecido raro que el historial y el cuaderno de ciclos no cuadren, este ciclo es el que lo arregla.
+
+### Añadido
+
+- **Un commit sin identificador ya no se puede versionar.** La única puerta de versionado del proyecto comprueba ahora que el mensaje diga a qué ciclo o a qué tarea pertenece. Acepta `TASK-061` (y comprueba que esa tarea exista de verdad), `CYCLE-052` o `ciclo 52`. Sin eso, un commit podía pasar sin ancla y nadie lo detectaba nunca: el validador solo podía ver los que ya traían identificador.
+- **Los hashes que declara el cuaderno de ciclos ahora se verifican.** Se comprueba que cada uno tiene forma de hash, que **existe de verdad** en el repositorio y que las pérdidas declaradas llevan su motivo.
+- **Las pérdidas se registran, no se borran.** Los 3 hashes que se perdieron con el `.git` de Nextcloud (ciclos 30, 31 y 33) y los 2 ciclos que nunca declararon ninguno (1 y 2) están escritos con su causa. Y hay una regla antihonor: **si declaras algo perdido y el repositorio lo desmiente, sale en rojo**.
+- **El validador imprime la cobertura medida**, no una promesa: cuántos ciclos cumplen, cuántos no, cuántos se han perdido y con qué causa.
+
+### Corregido
+
+- 🔴 **Las instrucciones del propio bucle eran incapaces de pasar su propia puerta.** Las 5 plantillas de mensaje que tenía escritas en `SKILL.md` fallaban la comprobación nueva. Instalarla sin tocarlas habría parado el bucle en su primer commit, con certeza. Ahora las 6 pasan.
+- 🔴 **El validador acusaba dos veces el mismo problema.** Un cuaderno de ciclos ilegible generaba dos errores en vez de uno, y un test que venía del ciclo #47 lo detectaba. Ahora es una causa, un mensaje.
+- 🛡️ **Unos tests medían su propia respuesta.** La comprobación de "ciclos sin hash" se construía usando el número que la propia comprobación declara, así que **subir el límite no hacía nada** y el test pasaba igual. Ahora el número está escrito a mano en el test y se compara.
+- 🛡️ **Un nombre de archivo con espacios se daba por existente.** La regla de resolución aceptaba como válido algo que en realidad no estaba. Corregido, y ahora se exige la respuesta exacta de Git.
+- 🛡️ **Un comentario del validador afirmaba una medición falsa.** Decía que un repositorio vacío devolvía un código que en realidad no devolvía. El caso que de verdad necesitaba protección —un repositorio recién creado, sin ningún commit— no lo cubría ningún test, y sin esa protección se habrían **inventado** unas cien pérdidas falsas.
+- **24 entradas del cuaderno de ciclos estaban mal escritas** (el hash con texto pegado, o sin lista). De ellas, **22 no estaban perdidas: eran recuperables**, y solo 2 sí lo estaban. Se repararon todas en vez de declararlas pérdida en bloque.
+
+### Lo que no cambia
+
+- **El programa sigue intacto.** Ni una línea de `src/`: este ciclo es de herramientas, y el ejecutable que usas no se ha tocado.
+- **Si el archivo de tareas se corrompe, el versionado se para** en vez de dejar pasar commits sin ancla. Es lo correcto para la seguridad, pero significa que esa tabla es ahora crítica: si se rompe, el bucle se detiene y lo dice.
+
+### Una nota sobre la auditoría
+
+La primera ronda rompió 40 garantías a propósito. **30 murieron** y 10 sobrevivieron, y una de esas 10 era la más importante: un camino por el que la puerta aceptaba identificadores que no podía comprobar. El auditor la reportó como "permite commits sin ancla" y **era al revés** —la puerta se cierra en falso y rechaza de más—, así que la medí antes de darla por buena y el resultado cambió el arreglo entero: no hacía falta abrir la puerta, sino arreglar tres documentos que describían un comportamiento que el código no tenía.
+
+### La tabla resumen
+
+| Ciclo | Fecha | Qué pasó | Estado |
+|---|---|---|---|
+| [CYCLE-052](#cycle-052---2026-10-04) | 2026-10-04 | Puerta de ancla en el versionado y verificación de hashes | Terminado, auditado con FAIL y corregido |
+| [CYCLE-051](#cycle-051---2026-10-03) | 2026-10-03 | Selección por categoría en todos los packs | Terminado, 11 rondas de auditoría |
+
 ## CYCLE-051 - 2026-10-03
 
 **Gaming y Telemetría UX** - `TASK-063` (Selección por categoría para TODOS los packs)

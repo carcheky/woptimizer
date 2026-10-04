@@ -940,5 +940,47 @@
       "not_verified": "Ronda 11 cortada por spawn EPERM del host: sin re-medir K_CATEGORIA_SOLO_DB, PREMISA y D_C_ASSERT_GATE, ni las regresiones G_VAR, G_ALIAS, G_HELPER, F_MAP_LAMBDA, S1_SOLO y Z1 (que el dev midio en la ronda 10 y no han cambiado desde entonces). Sin la lectura final de git status/log/diff del arbol real por el mismo EPERM.",
       "residual": "El residuo declarado sigue abierto y NO se cierra aqui: gatear el .pack() de cat_body no lo mata ninguna de las dos capas, y cerrarlo exigiria volver a depender del nombre del boton, que es exactamente el defecto que las nueve rondas quitaron. Su cierre es otro change-id con un punto de entrada por comportamiento. Cuatro cosas mas que el auditor de la ronda 11 encontro y que no bloquean: E4 es unidireccional (no afirma que no haya categorias de mas), la segunda pata de su union es inalcanzable en este repo, la fila 124 de la guia sigue diciendo 'el estatico de la fila 120' (que es un test de TASK-062) treinta palabras antes de decir 'fila 107', y no existe la seccion 17 que el dev dijo haber anadido (lo que commiteo en el informe fueron las 407 lineas de la 16)."
     }
+  },
+  {
+    "cycle": 52,
+    "date": "2026-10-04",
+    "slug": "marcador-ciclo-y-hashes-journal",
+    "area": "Arquitectura & Calidad",
+    "task": "TASK-059",
+    "status": "COMPLETED - Paso 4 FAIL en la ronda 1 (10 supervivientes), cerrado en d1c382a y re-auditado",
+    "commits": [
+      "531ac93",
+      "c900dbc",
+      "cbf4c3f",
+      "6420eb4",
+      "d1c382a"
+    ],
+    "tests": "132 = 103 backend + 29 headless (run_tests.py, ALL TESTS PASSED, exit 0)",
+    "change": "openspec/changes/2026-10-04-marcador-ciclo-y-hashes-journal/",
+    "summary": "Puerta de ancla en git_safe_commit.py (TASK-NNN resoluble, CYCLE-NNN, marcador de ciclo) y check 9 de validate_docs.py sobre el campo commits del journal, con R1-R5 y techo. El journal se sanea: 24 entradas que incumplian pasan a 49 conformes, 2 perdidas reales (NUNCA_DECLARADO, ciclos 1 y 2) y 3 hashes muertos (VFS_CORRUPTO, ciclos 30, 31 y 33) declarados con causa. Las 5 plantillas literales de SKILL.md fallaban la puerta nueva y se actualizan, o el bucle se habria parado en su primer commit.",
+    "mutation_audit": {
+      "verdict": "FAIL en la ronda 1 -> 10 supervivientes -> cerrados y verificados en d1c382a",
+      "mutantes": 40,
+      "muertos_por_asercion": 30,
+      "supervivientes": [
+        "S8",
+        "M6",
+        "M6b",
+        "M9",
+        "M10",
+        "S6",
+        "S9",
+        "T4",
+        "M1c",
+        "S4"
+      ],
+      "equivalentes": [
+        "S4 (_RE_CYCLE_ANCLA es redundante: todo CYCLE-NNN casa tambien con el marcador de ciclo; la propuesta decia 'tres formas' y son dos)"
+      ],
+      "nota_critica": "S8 lo reporto el mutation-auditor como fail-open y era fail-CLOSED: con tasks.json ilegible la puerta RECHAZA TASK- en vez de degradar a la forma. Lo medi antes de propagarlo. Las tres fuentes (dos docstrings y la propuesta D5) afirmaban lo contrario y se corrigieron.",
+      "informe": "openspec/changes/2026-10-04-marcador-ciclo-y-hashes-journal/mutation-report.md"
+    },
+    "incidente": "pydantic-core 2.49.0 contra el 2.46.5 que exige pydantic 2.13.5 dejaba run_tests.py muerto ANTES de este ciclo (SystemError al importar woptimizer.models). Lo arreglo el orquestador con pip install pydantic-core==2.46.5; sin el no habia Paso 4 posible. Ademas, un escritor concurrente commiteo 20daaed y 1a06b80 y dejo el validador en rojo por llms-full.txt sin regenerar, reparado en cbf4c3f.",
+    "deuda_nueva": "RuntimeError 'main thread is not in main loop' al final de la suite: process_manager_view._load llama self.after desde un hilo worker sin main loop. Anotada en STATUS.md; es src/ y ajena a esta tarea. Tambien sigue viva TASK-061 (el codigo de salida 1 de git_safe_commit no lo comprueba nadie)."
   }
 ]

@@ -1,3 +1,54 @@
+## [CYCLE-052] 2026-10-04 - marcador-ciclo-y-hashes-journal
+
+**Area**: Arquitectura & Calidad. **Change**: `openspec/changes/2026-10-04-marcador-ciclo-y-hashes-journal/`
+**Estado**: **COMPLETED.** `TASK-059` en `completed`. El **Paso 4 dio `FAIL` en la ronda 1** con 10 supervivientes de 40 mutantes; los 10 se cerraron y se re-auditaron en `d1c382a` antes de cerrar el ciclo.
+**Models**:
+
+- Paso 1 (Buscar): `inherit` — lectura de `rd_journal.json`, `STATUS.md` y `tasks.json`; la medicion de la linea base la hizo el orquestador
+- Paso 2 (Planear): `inherit` — `architect-review`; el encargo con 4 premisas, **2 refutadas por medicion**
+- Paso 3 (Ejecutar): `inherit` — `openspec-dev`, dos pasadas (feature + fix de integracion + fix de los 10 supervivientes)
+- Paso 4 (Auditar tests): `inherit` — `mutation-auditor`; 40 mutantes en 5 camaras de `%TEMP%`
+
+**HALLAZGO CRITICO, medido por el orquestador antes de propagarlo.** El `mutation-auditor` reporto S8 como un fail-open ("con `tasks.json` ilegible la puerta acepta cualquier `TASK-NNN`"). Es **invertido**: la puerta es **fail-CLOSED**. Medido importando el modulo y llamando `ancla_del_mensaje(msg, set())`, `TASK-059` devuelve `ok=False`. Ademas **tres fuentes** describian el comportamiento contrario (el docstring de `ancla_del_mensaje`, el mensaje de `ids_de_tareas` y D5 de la propuesta), y el codigo hacia una cuarta cosa. La decision de diseno fue **fail-CLOSED**, con la razon escrita: (b) degradar a la forma es exactamente el punto ciego que TASK-059 cierra. Verificar antes de propagar cambio el arreglo entero: no habia que abrir la puerta, sino alinear tres documentos con el codigo y **fijar el comportamiento con un test** (`ids_de_tareas` aparecia **0 veces** en `run_tests.py`).
+
+**Mutaciones auditadas (Paso 4)**: 40 mutantes, 30 muertos por su asercion, 10 supervivientes cerrados en `d1c382a`.
+
+| Fix | Mutacion | Ronda 1 | Cerrado en |
+|---|---|---|---|
+| S8 fail-closed de `ids_de_tareas` | `return {TASK-001..999}`, `None` | **SUPERVIVE** (0 cobertura) | test 132: fail-closed en los 3 mensajes con `TASK-`, aviso literal e `INFO` antes del rechazo |
+| M6 techo de ciclos sin hash | `MAX_CICLOS_SIN_HASH = 999` | **SUPERVIVE** (fixture tautologica) | fixture con literal 3 + `assert` de igualdad del valor |
+| M6b techo de hashes perdidos | `MAX_HASHES_PERDIDOS = 2` | **SUPERVIVE** | mismo arreglo que M6 |
+| M9 pre-vuelo del repo | borrar `_leer_el_repo_si_lo_hay` | **SUPERVIVE** | fixture de `git init` **sin commits** (rc=0 y `missing` para todo, el caso que fabrica perdidas) |
+| M10 linea de informe | `conformes += 7` | **SUPERVIVE** | fila que comprueba `1 conforme(s) a R1` |
+| M1c resolubilidad | `search` en `pedidos` | **SUPERVIVE** (fail-open latente) | exigir la forma exacta de la respuesta de `cat-file` |
+| S6 ancla sin limite de digitos | quitar el `\b` final | **SUPERVIVE** | asercion sobre `TASK-12345` vs `{TASK-1234}` |
+| S9 `INFO` de degradacion | borrarlo | **SUPERVIVE** | cubierto por el test de S8 |
+| T4 suelo de plantillas | 5 plantillas -> 1 | **SUPERVIVE** | el suelo se comprueba |
+| S4 `_RE_CYCLE_ANCLA` | borrar el patron | **SUPERVIVE = EQUIVALENTE** | barrido 4 grafias x 10 000 numeros, 0 contraejemplos: todo `CYCLE-NNN` casa tambien con el marcador. Documentado como redundante, no como fallo |
+
+**Lo que murio en la ronda 1 y no habria que volver a tocar**: `return True` fail-open, la forma `T-\d+` laxa, `TASK-999` sin resolubilidad, el `search` por `fullmatch` de R1 (el mutante clave: el hash con texto libre resuelve y daria 0 FAIL), la doble acusacion del journal ilegible, el codigo 2 de `WOPT_USAGE`, las **cuatro** colocaciones de la puerta (antes de `validar_repo`, antes del NOOP, tras `add -A`, antes de `--verify`), el `WOPT_*` no-ultimo, la degradacion silenciosa de la verificacion, y el des-cableado del check 9 en `validar()`.
+
+**LO QUE NO SE VERIFICO, declarado y no medido**: el rechazo extremo a extremo con un arbol deliberadamente sucio. `get_env()` impone `GIT_WORK_TREE = REPO_ROOT` (`git_safe_commit.py:78`), luego un `GIT_DIR` temporal hermetiza el repo, **no el arbol**. Eso es `TASK-061`, que sigue `pending` y cuyo bloque es una decision de diseno, no un test que se anada.
+
+### What
+- `git_safe_commit.py`: `ancla_del_mensaje()` pura (3 formas), `ids_de_tareas()`, puerta entre el NOOP y `add -A`, codigo `WOPT_USAGE` (2), y el envoltorio de consola movido a `__main__` para que importar el modulo no secuestre `sys.stdout` del proceso de tests.
+- `validate_docs.py`: check 9 `_comprobar_hashes_del_journal(root, errors, ok)` con R1 `fullmatch`, R2 resolubilidad, R3 `commits_perdidos` con `causa` en vocabulario cerrado, R4 antidolar y R5 techos leidos del producto. Cableado en `validar(root)`.
+- `.taskmaster/rd_journal.json`: 49 entradas conformes (antes 27), 2 `NUNCA_DECLARADO` (ciclos 1 y 2) y 3 `VFS_CORRUPTO` (ciclos 30, 31, 33). Los 3 hashes muertos se verificaron uno a uno: `Not a valid object name`, la perdida es real.
+- `SKILL.md` + los 4 `agent.md`: las 5 plantillas literales que fallaban la puerta propia del bucle. Medido: la puerta acepta 153 de 215 subjects (71%) y rechaza 60 (29%), o sea **no para el bucle**.
+- Tests: 124 -> **132** (103 backend + 29 headless), derivado con `ast`.
+
+### Outcome
+- Commits: `531ac93` (arquitecto), `c900dbc` (feature), `cbf4c3f` (rojo ajeno de `20daaed`), `6420eb4` (una causa, un mensaje), `d1c382a` (los 10 supervivientes)
+- Tests: **132/132 PASS** (`ALL TESTS PASSED.`, exit 0, verificado por el orquestador)
+- `validate_docs.py`: **122 OK / 0 FAIL**. `verify_ui_syntax.py`: EXITO. `sync_agents.py --check`: 0
+- Docs: `docs/ai/sandbox-rules.md` (+regla de la puerta, fila del codigo 2, seccion "UNA CAUSA, UN MENSAJE", 8 limites residuales), `mutation-report.md` con los 10 supervivientes por identificador
+
+### Impact
+Cierra el punto ciego que el ciclo #47 declaro: un commit ya no puede versionarse sin ancla por el unico wrapper del proyecto. El coste es deliberado y esta escrito: si `.taskmaster/tasks.json` se corrompe, el versionado se **detiene**. Se corrigio de paso un rojo ajeno que venia de `20daaed` (`llms-full.txt` sin regenerar) y un fallo de entorno que tenia la suite muerta desde antes del ciclo (`pydantic-core` 2.49.0 contra el 2.46.5 que exige `pydantic` 2.13.5).
+
+### incidente
+Dos hechos ajenos que afectaron al ciclo. (1) **Un escritor concurrente** commiteo `20daaed` y `1a06b80` a los 16 s de la ultima escritura del arquitecto y se llevo sus ficheros: su wrapper devolvio `WOPT_NOOP` y el trabajo acabo bajo un asunto ajeno. Es una instancia medida del dano del NOOP, y el asunto ajeno no llevaba identificacion, o sea el caso exacto que la puerta nueva rechaza. (2) **`run_tests.py` estaba muerto** por el desajuste de `pydantic-core`; sin el no habia Paso 4 posible, y el primer `openspec-dev` lo esquivo con un arnes temporal que **ocultaba fallos reales** (le tapaba el `NameError` de `json`). Arreglado por el orquestador; de ahi en adelante, suite real siempre.
+
 ## [CYCLE-051] 2026-10-03 - pack-seleccion-por-categoria
 
 **Area**: Gaming y Telemetria UX. **Change**: `openspec/changes/2026-10-03-pack-seleccion-por-categoria/`
