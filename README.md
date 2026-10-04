@@ -3,7 +3,7 @@
 > Cierra las apps que sobran cuando vas a jugar. Reabre tu setup cuando vuelves.
 > Pensado para que no tengas que pensar en qué procesos te están robando FPS.
 
-![Estado del proyecto](https://img.shields.io/badge/ciclos-20-blue) ![Tests](https://img.shields.io/badge/tests-57%20verdes-brightgreen)
+![Estado del proyecto](https://img.shields.io/badge/ciclos-52-blue) ![Tests](https://img.shields.io/badge/tests-132%20verdes-brightgreen)
 
 **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) · **Tablero:** [`STATUS.md`](STATUS.md) · **Docs técnicas:** [`docs/ai/`](docs/ai/INDEX.md)
 
