@@ -109,28 +109,29 @@ Este checklist lo arregla: la regla queda escrita aqui y hay que propagarla.
 - [ ] **Homepage.** Sigue en `null`. Depende del bloque 4 (no hay docs publicadas).
 - [ ] **Avatar / imagen del repo.** No configurado. Opcional, no bloquea nada.
 
-## 2. RAMAS Y PROTECCION — ⚠️ DECISION PENDIENTE
+## 2. RAMAS Y PROTECCION — ✅ HECHO (2026-10-04)
 
 - [x] **`beta` existe y esta publicada** en `origin` (`41b8061`).
 - [x] **`.releaserc.json` declara las ramas correctas**: `main` (estable), `beta`
       (`prerelease: "beta"`), y el patron `1.x` / `1.1.x` para mantenimiento.
 - [x] **`release.yml` dispara en `main` y `beta`.** Correcto.
-- [~] **Proteccion de `main`: SIN APLICAR A PROPOSITO.** No existe (API devuelve 404).
-- [ ] **Sincronizar `beta` con `main`.** `beta` esta 15 commits por detras. Sin esto,
-      el proximo push a `beta` crearia un tag de beta con una version **anterior** a la
-      estable ya publicada, y la graduation automaticaria publicaria una release
-      **descendente**. Es un redsistema, no un descuido.
-- [ ] **Decision del dueno: proteger `main` o no.**
-      - **A favor:** nadie puede publicar una estable sin pasar los tests.
-      - **En contra (razon real, no teorica):** el job `release` empuja los **tags** con
-        `GITHUB_TOKEN` y `contents: write`. Con `main` protegida, eso falla con **403**
-        y **no se publica ninguna release**. El fallo ya esta documentado en
-        `release-pipeline.md:67`.
-      - **Lo que yo haria:** proteger `main` **sin required status checks**, solo
-        `block force pushes` + `require PR to merge` desactivado, y dejar los tests como
-        puerta logica en `release.yml` (que ya lo es). Proteccion fuerte +
-        `GITHUB_TOKEN` de publicacion = releases rotas.
-      - **Pendiente de tu OK.** No lo aplico por mi cuenta porque rompe el pipeline.
+- [x] **Proteccion BLANDA de `main` aplicada y verificada.** Sin required status checks y
+      sin PR obligatorio, para no romper el empuje de tags del job `release`. Verificado
+      con una lectura independiente (`GET /branches/main/protection` → 200):
+      `allow_force_pushes: false`, `allow_deletions: false`, `enforce_admins: false`,
+      `required_status_checks: null`, `required_pull_request_reviews: null`.
+      Script reproducible en `.taskmaster/_gh_protect.py` (`apply` / `show`).
+- [x] **`beta` sincronizada con `main`.** `beta` estaba 15 commits atras; ahora apunta al
+      mismo commit. **La operacion elegida "rebasar `main` sobre `beta`" resulto ser un
+      FAST-FORWARD puro**, medido antes de tocar nada: `beta` ya era ancestro de `main`
+      (`git merge-base --is-ancestor beta main` → SI) y el rango `beta..main` tiene
+      **0 commits de merge**. Rebasar 29 commits sin merges es un no-op destructivo sin
+      ganancia: `git branch -f beta main` hace lo mismo sin reescribir un solo SHA.
+- [x] **`beta` pusheada primero**, como se decidio, para que el tramo pendiente salga
+      como pre-release y la estable se gradu sola al mergear.
+- [ ] **`main` mergeada desde `beta`.** **BLOQUEADA, y no por la configuracion de este
+      trabajo:** el pipeline de `beta` salio en ROJO en el job `commits`, y por el orden
+      `commits -> verify -> release -> build` **nada despues llego a correr**. Ver D-4.
 
 ## 3. FICHEROS QUE FALTAN EN `.github/`
 
@@ -218,14 +219,61 @@ Ninguno existe hoy. Solo hay `workflows/commitlint.yml` y `workflows/release.yml
 - [ ] **`basura/` (8 ficheros).** Fuera del indice a proposito, por decision del dueno.
       **No tocar** — se borra a mano cuando toque. Dejar como esta.
 
-### D-3. Deriva menor
+### D-4. El pipeline de `beta` esta ROJO por 8 mensajes de commit
 
-- [ ] **README badges caducados.** Dicen `ciclos-20` y `tests-57 verdes`. La realidad es
-      ciclo **51** y **124 tests**. `validate_docs.py` check 7 deriva el total de tests
-      con `ast` y compara con `AGENTS.md`, `STATUS.md` y `docs/ai/testing-guide.md` —
-      **`README.md` no lo incluye**, asi que por eso se ha quedado en 57 sin que nada
-      avise. La linea 6 de `README.md` es la unica del repo que miente en voz alta.
-- [ ] **Referencia de la doc a `softprops/action-gh-release@v2`** — mismo punto que D-1.
+**Medido el 2026-10-04, primer push de este trabajo.** La corrida
+[37228601320](https://github.com/carcheky/woptimizer/actions/runs/37228601320) fallo en
+`Commits convencionales`; los otros tres jobs quedaron `skipped`. **No se publico
+ninguna release y no se compilo ningun `.exe`.**
+
+Causa: **8 de los 29 commits del rango incumplen `.commitlintrc.json`**, medidos
+reproduciendo las seis reglas activas en Python (`.commitlintrc.json:4-27`):
+
+| # | Commit | Incumplimiento |
+|---|---|---|
+| 4 | `docs(ciclo 52): cerrar TASK-059 ... (TASK-059)` | cabecera de 125 (max 120) |
+| 5 | `fix(validador): cerrar los diez supervivientes ...` | 138 |
+| 6 | `fix(validador): el check 9 ya no acusa ...` | 127 |
+| 7 | `fix(docs): agregar al agregado llms-full.txt ...` | 188 |
+| 14 | `docs(ciclo 51): registrar la seleccion ...` | 142 |
+| 15 | `feat(tests): invariante del acordeon afirmado por efecto ...` | 212 |
+| 16 | `chore(architect): T-9 afirma el invariante ...` | subject en mayuscula |
+| 17 | `fix(tests): A3 cierra ASSERT_GATE ...` | 134 + mayuscula |
+
+**Ninguno de los 8 es de este trabajo.** Son de los ciclos 51 y 52 del bucle
+`id-pipeline`, que escriben subjects descriptivos y se pasan de 120.
+
+> **Por que no se relaja la regla.** `header-max-length: 120` esta a proposito, y asi lo
+> dice `release-pipeline.md:70`: «un guard que se relaja para que pase el que lo escribio
+> ya no guardar». Subirla a 220 dejaria pasar los 8 y **anularia la unica regla que hoy
+> detecta un mensaje mal formado antes de que semantic-release lo ignore en silencio**.
+> El fallo silencioso que ese job existe para evitar es peor que 8 cabeceras largas.
+
+- [ ] **Decidir como se resuelve. Opciones:**
+  - **(a) Rebasear los 29 commits con cabeceras cortas** y pushear `beta` con `--force`.
+        Exige relajar `allow_force_pushes` en `beta` (hoy no esta protegida) y reescribe
+        historia ya publicada en `beta`. **Es la unica que deja el pipeline verde sin
+        tocar reglas.**
+  - **(b) Subir `header-max-length` a 220** y arreglar solo el `subject-case` del #16.
+        Sin reescritura, pero desactiva el guard.
+  - **(c) Anadir `ci(github):` con commits de correccion** — **NO FUNCIONA**: commitlint
+        mira el **rango del push**, y los 8 commits siguen dentro del rango hasta que
+        `beta`receba un tag y el rango se recorra desde ahi. No se puede "borrar" un
+        commit del rango sin reescribir.
+  - **(d) Mover la rama de trabajo a una rama nueva** (p. ej. `develop`), pushear ahi y
+        dejar `beta`/`main` para lo ya publicado. Desacopla el problema de raiz.
+
+### D-5. Deriva menor
+
+- [x] **README badges corregidos.** Decian `ciclos-20` y `tests-57 verdes`; ahora
+      `ciclos-52` y `tests-132 verdes`, que es lo que el repo declara en los otros tres
+      ficheros. **Por que se habia quedado en 57 sin que nada avise:**
+      `validate_docs.py:118` vigila `README.md` con el patron
+      `run_tests\.py\s*#\s*(\d+)\s+tests` — o sea, la linea del **comando**, no la del
+      **badge**. La linea 6 era la unica del repo que miente en voz alta y ningun
+      guard la alcanzaba. Corregido en `4d86908`.
+- [ ] **Anadir el badge al check 7 de `validate_docs.py`**, para que no vuelva a caducar
+      solo. Es el mismo agujero que ya cambio una vez por el mismo motivo.
 
 ## 6. ESTADO DEL PIPELINE Y DEL PROYECTO
 
@@ -252,37 +300,58 @@ Ninguno existe hoy. Solo hay `workflows/commitlint.yml` y `workflows/release.yml
 
 ## 7. DECISIONES QUE TE TOCAN A TI
 
-Ordenadas por urgencia. Ninguna aplicada por mi cuenta.
+Resueltas el 2026-10-04; queda una abierta.
 
-- [ ] **O-1. Que se hace con los 15 commits sin pushear en `main`.**
-      - (a) **Pushear `main` tal cual** -> sale `v1.1.0` como estable sin haber pasado
-            por `beta`. Simple, pero **incumple el flujo documentado**.
-      - (b) **Rebasar `main` sobre `beta` y pushear `beta` primero** -> pre-releases,
-            luego merge a `main`. Cumple el flujo documentado. Cuesta un rebase.
-      - (c) **Fusionarlos tal cual y seguir trabajando en `beta` desde ahora**, aceptando
-            que este tramo salio sin beta.
-      *Yo haria (b) si el historial es lineal y limpio, o (c) si no quieres tocar
-      historia ya publicada. (a) es la que menos trabajo da y la que menos cumple el flujo.*
-- [ ] **O-2. Proteger `main` o no** (ver seccion 2). Mi propuesta: proteccion **blanda**,
-      sin required checks, para no romper el empuje de tags del job `release`.
-- [ ] **O-3. Licencia.** Confirmar **MIT** (es lo que `mkdocs.yml` ya afirma) u otra.
+- [x] **O-1. Que se haces con los commits sin pushear.** **Elegido: (b), pasar por `beta`
+      primero.** Hecho: `beta` movida al HEAD de `main` y pusheada
+      (`41b8061..4d86908`, FF puro). **El "rebase" resulto no ser reescritura**: `beta`
+      ya era ancestro de `main` y el rango tiene 0 merges, asi que `git branch -f beta
+      main` produce el mismo estado sin tocar un solo SHA.
+      **Consecuencia medible: el pipeline salio ROJO (D-4) y `main` sigue sin mergear.**
+- [x] **O-2. Proteger `main`.** **Elegido: proteccion blanda.** Aplicada y verificada
+      (ver seccion 2). Sin required checks, sin PR obligatorio, con force-push y borrado
+      bloqueados.
+- [x] **O-3. Licencia.** **Elegido: MIT.** `LICENSE` creado en `79039e9`. La afirmacion
+      de `mkdocs.yml:88` ya es ejecutable.
 - [ ] **O-4. Miniapps dentro o fuera del repo.** Ahora estan a la vez dentro y fuera.
+- [ ] **O-5. NUEVA y urgente: como se desbloquea el pipeline de `beta`.** Ver D-4. Las
+      cuatro opciones estan ahi; **recomiendo (a) o (d)**. No la aplico: (a) reescribe
+      historia ya publicada y (d) cambia la topologia de ramas, y las dos son decision
+      tuya.
 
 ---
 
 ## 8. LO QUE SE HA HECHO EN ESTA PASADA
 
 1. Leido `AGENTS.md`, `docs/ai/release-pipeline.md`, `.releaserc.json`, `release.yml`,
-   `commitlint.yml`, `README.md`, `mkdocs.yml`, `.gitignore`, la seccion de deuda de
-   `STATUS.md`.
+   `commitlint.yml`, `.commitlintrc.json`, `README.md`, `mkdocs.yml`, `.gitignore`, la
+   seccion de deuda de `STATUS.md` y `rd_journal.json`.
 2. Auditado el repo en GitHub por API (metadatos, ramas, proteccion, tags, releases,
    workflows, corridas, contenido de `main`).
-3. **Aplicado** (bloque 1): descripcion, 11 topics, wiki off, projects off,
-   discussions on, `delete_branch_on_merge` on.
-4. **Sin aplicar a proposito:** proteccion de ramas (rompe el pipeline de releases, ver
-   O-2) y todo lo que requiere crear ficheros nuevos o reescribir historia (bloques 3,
-   5 y 6), porque son cambios de producto y los decides tu.
-5. **Este documento.**
+3. **Metadatos aplicados y verificados por lectura:** descripcion, 11 topics, wiki off,
+   projects off, discussions on, `delete_branch_on_merge` on.
+4. **Proteccion blanda de `main` aplicada y verificada** con una segunda llamada
+   independiente. Script reproducible: `.taskmaster/_gh_protect.py`.
+5. **`LICENSE` MIT creado.**
+6. **Ramas:** `beta` FF a HEAD de `main` y pusheada primero, como se decidio.
+7. **README badges corregidos** a los valores reales (132 tests, 52 ciclos).
+8. **Puertas ejecutadas antes de publicar, todas en verde:** `run_tests.py` ->
+   `ALL TESTS PASSED` (132); `verify_ui_syntax.py` -> exito; `validate_docs.py` ->
+   **122 OK, 0 FAIL**.
+9. **Diagnostico del pipeline rojo:** 8 de los 29 commits incumplen `.commitlintrc.json`,
+   medido reproduciendo las seis reglas activas. Ninguno es de este trabajo.
+10. **Tarea TASK-064 creada** en `.taskmaster/tasks.json` con las tres decisiones y su
+    justificacion, para que el commit tenga tercer testigo.
+11. **Este documento.**
+
+**Commits de esta pasada:** `20daaed`, `79039e9` (LICENSE + proteccion), `4d86908`
+(badges), mas el amend de `20daaed` que corrigio el mensaje para declarar los artefactos
+ajenos que `add -A` arrastro.
+
+**Lo que NO se ha hecho y por que:** `main` no se ha mergeado (el pipeline de `beta` esta
+rojo, D-4); no se ha reescrito historia (O-5 es decision tuya); los ficheros que faltan
+en `.github/` (bloque 3) siguen sin crearse porque son cambios de producto, no de
+configuracion.
 
 ## 9. COMO SE MARCA
 
