@@ -190,6 +190,17 @@ Ninguno existe hoy. Solo hay `workflows/commitlint.yml` y `workflows/release.yml
       push: hay `feat` -> minor, aunque tambien haya `fix`). Es decir, el trabajo sale
       como estable **sin haber pasado por beta ni un solo dia**.
 - [ ] **Decision del dueno sobre como cerrar el desajuste.** Ver seccion 7, O-1.
+- [ ] **NADIE DICE EN QUE RAMA SE TRABAJA, y por ahi estaba el fallo de origen.** La tabla de
+      arriba de esta misma seccion lo declara desde el principio y el hueco es real. **Medido el
+      2026-10-05:** `grep -i 'beta|branch|rama|push'` da **0 coincidencias** en
+      `.agents/skills/id-pipeline/SKILL.md` y en `.agents/agents/openspec-dev/agent.md` (lo unico
+      que sale es `mainAgent: false` y `main_window.py`), y `.taskmaster/git_safe_commit.py` no
+      tiene **ni una** coincidencia de `branch` ni de `rev-parse --abbrev-ref`.
+      **O sea: el bucle no eligio `main`.** El worktree estaba en `main` y ahi fueron 52 ciclos,
+      porque nadie salio de la rama y la unica puerta de versionado **es ciega a la rama**. Por eso
+      la casilla de arriba —"la practica no lo cumple"— no se arregla moviendo ramas: se arregla
+      escribiendo la regla que falta y haciendo que el wrapper diga en que rama escribe.
+      Corregirlo es `TASK-066` (T-4 y T-5 del change de O-5), no esta tarea.
 
 ## 5. DERIVA Y FICHEROS SUCOS
 
@@ -250,18 +261,43 @@ reproduciendo las seis reglas activas en Python (`.commitlintrc.json:4-27`):
 > El fallo silencioso que ese job existe para evitar es peor que 8 cabeceras largas.
 
 - [ ] **Decidir como se resuelve. Opciones:**
-  - **(a) Rebasear los 29 commits con cabeceras cortas** y pushear `beta` con `--force`.
+  - **(a) Rebasear los 29 commits con cabeceras cortas** y pushear `beta` con `--force**.
         Exige relajar `allow_force_pushes` en `beta` (hoy no esta protegida) y reescribe
         historia ya publicada en `beta`. **Es la unica que deja el pipeline verde sin
         tocar reglas.**
-  - **(b) Subir `header-max-length` a 220** y arreglar solo el `subject-case` del #16.
-        Sin reescritura, pero desactiva el guard.
+  - **(b) Subir `header-max-length` a 220** y arreglar solo el `subject-case` — que no es uno
+        sino **dos** commits, el #16 y el #17. Sin reescritura, pero desactiva el guard.
   - **(c) Anadir `ci(github):` con commits de correccion** — **NO FUNCIONA**: commitlint
         mira el **rango del push**, y los 8 commits siguen dentro del rango hasta que
         `beta`receba un tag y el rango se recorra desde ahi. No se puede "borrar" un
         commit del rango sin reescribir.
   - **(d) Mover la rama de trabajo a una rama nueva** (p. ej. `develop`), pushear ahi y
         dejar `beta`/`main` para lo ya publicado. Desacopla el problema de raiz.
+
+  > [!IMPORTANT]
+  > **CORRECCION DEL 2026-10-05, y el diagnostico de arriba apuntaba al commit mas caro
+  > de arreglar cuando el barato estaba sin mirar.** Las cuatro opciones estan mal planteadas
+  > en su premisa, y la medicion lo dice (`openspec/changes/2026-10-04-desbloquear-pipeline-commitlint/proposal.md`
+  > seccion 2). Al reproducir las seis reglas de `.commitlintrc.json:4-27` sobre el rango que
+  > llevaria **un push nuevo**, `4d86908..main`, sale **2 de 7**, no 8 de 29: los ocho de la
+  > tabla **ya estan publicados en `origin/beta` (`4d86908`)**, y `release.yml:49-61` resuelve
+  > el rango como `github.event.before..HEAD`, luego en todo push posterior **quedan fuera del
+  > rango** — son abuelos, no miembros. El guard **no se relaja**: sigue teniendo el mismo poder
+  > sobre todo commit futuro.
+  >
+  > El bloqueante real son **`ef67bf8` (128 chars) y `82f52c2` (135 chars)**, ambos de
+  > `TASK-061`, y **ninguno esta en ninguna rama remota** (`git branch -r --contains` no devuelve
+  > ninguna para los dos). Se reescriben sus cabeceras sin `--force` a ninguna rama.
+  >
+  > Esto hunde la razon de **(c)**: no es que los commits correctores no funcionen, es que no
+  > **arreglan** el rojo, porque el rojo lo causan esos dos commits y hay que reescribirlos igual.
+  > Y hunde **(d)**: `release.yml:8-11` y `commitlint.yml:9-13` solo disparan en `main`, `beta` y
+  > el patron de mantenimiento, luego **una rama `develop` no corre ni commitlint, ni verify, ni
+  > release, ni `.exe`**. Un rojo que desaparece no es un bug que deja de existir.
+  >
+  > **Elegido: (a') + (d')** — reescribir solo lo no publicado, `beta` por fast-forward sin
+  > `--force`, y el bucle trabajando en `beta` (que ya es la rama de integracion declarada)
+  > en vez de en una rama nueva. Ver O-5.
 
 ### D-5. Deriva menor
 
@@ -314,10 +350,24 @@ Resueltas el 2026-10-04; queda una abierta.
 - [x] **O-3. Licencia.** **Elegido: MIT.** `LICENSE` creado en `79039e9`. La afirmacion
       de `mkdocs.yml:88` ya es ejecutable.
 - [ ] **O-4. Miniapps dentro o fuera del repo.** Ahora estan a la vez dentro y fuera.
-- [ ] **O-5. NUEVA y urgente: como se desbloquea el pipeline de `beta`.** Ver D-4. Las
-      cuatro opciones estan ahi; **recomiendo (a) o (d)**. No la aplico: (a) reescribe
-      historia ya publicada y (d) cambia la topologia de ramas, y las dos son decision
-      tuya.
+- [x] **O-5. NUEVA y urgente: como se desbloquea el pipeline de `beta`.** **Resuelta el
+      2026-10-05, al planificarla y no al aplicarla.** Ver D-4 y
+      `openspec/changes/2026-10-04-desbloquear-pipeline-commitlint/`.
+      **Elegido: (a') + (d').** Reescribir las cabeceras de los **dos** commits que
+      incumplen y que **no estan en ninguna rama remota** (`ef67bf8`, 128 chars, y `82f52c2`,
+      135 chars), empujar `beta` con **fast-forward y sin `--force`**, y que el bucle trabaje en
+      `beta` en vez de en una rama nueva.
+      **Por que, en tres frases medidas:** (1) los 8 commits del diagnostico original **ya no
+      bloquean nada**, porque estan publicados en `origin/beta` y el rango del push los excluye;
+      (2) los 2 que si bloquean son **locales**, luego el arreglo no cuesta un `--force` ni tocar
+      la proteccion de `main`; (3) `beta` **ya es** la rama de integracion que declara la
+      documentacion, asi que (d') consigue lo que (d) buscaba sin apagarse el CI.
+      **Lo que NO se toca:** `.commitlintrc.json`, `.releaserc.json`, `.github/workflows/` y la
+      proteccion de `main`. Es paso 3, y es cambio de producto.
+      **Lo que se acepta como precio, escrito para no leerlo como resuelto:** los 8 commits
+      largos se quedan en la historia de `beta` y saldran enteros en las notas de la release
+      (semantic-release los parsea bien: el limite de 120 es de commitlint, no del parser), y
+      `beta` sigue sin proteccion.
 
 ---
 
