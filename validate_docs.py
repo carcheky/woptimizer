@@ -564,9 +564,23 @@ def _comprobar_hashes_del_journal(root, errors, ok):
         with open(ruta, encoding="utf-8") as f:
             datos = json.load(f)
     except (OSError, ValueError) as exc:
-        errors.append(
-            "rd_journal.json commits: NO SE PUEDE LEER y un ancla ilegible no "
-            f"certifica. Motivo literal: {type(exc).__name__}: {exc}"
+        # UNA CAUSA, UN MENSAJE (MEDIDO el 2026-10-04: este `errors.append` era
+        # el segundo de la misma causa y hacia fallar `test_el_journal_ilegible_
+        # informa_en_vez_de_reventar_el_validador`, de TASK-057, que exige
+        # `len(errors) == 1` desde el ciclo #47). El ancla del changelog de raiz
+        # LEE EL MISMO FICHERO y ya lo ha acusado con "ESTA CORRUPTO", luego
+        # acusar aqui era una segunda voz sobre la misma evidencia.
+        #
+        # Lo que NO se degrada es la VERIFICACION: no se puede comprobar y no
+        # puede pasar por hecha. Se deja constancia en `ok` con el motivo LITERAL
+        # y el nombre de quien ha acusado, y se sale SIN veredicto. Un `0` en
+        # `errors` con la cuenta de hashes sin derivar seria un falso verde; lo
+        # que se evita no es el registro, es el veredicto.
+        ok.append(
+            "campo 'commits' del journal: SIN COMPROBAR porque el journal es "
+            f"ilegible (motivo literal: {type(exc).__name__}: {exc}). Este check no "
+            "acusa de nuevo: el ancla del changelog de raiz lee el mismo fichero y "
+            "ya ha acusado este hecho, y una causa produce un mensaje"
         )
         return
     if not isinstance(datos, list):
@@ -591,9 +605,20 @@ def _comprobar_hashes_del_journal(root, errors, ok):
                 pedidos.append(item)
     resueltos, motivo_git = _hashes_que_existen(root, pedidos)
     if motivo_git is not None:
-        errors.append(
-            "rd_journal.json commits: NO SE PUEDE LEER EL REPO y no se declaran ni "
-            "se absuelven perdidas sin mirarlo. Motivo literal: " + motivo_git
+        # MISMA REGLA que la del journal ilegible, y por el mismo motivo: el
+        # historial ilegible lo acusa `_comprobar_ancla_de_commits` (que corre
+        # antes, dentro del ancla del changelog) con "historial de commits: NO SE
+        # PUEDE LEER", luego acusar aqui era una segunda voz sobre la misma causa.
+        # Lo que no se degrada es la verificacion: R2 y R4 no se pueden comprobar,
+        # asi que se registra el motivo literal y NO se cuenta ningun hash. Sin
+        # esto, un repo caido y un repo con 3 hashes muertos darian el mismo
+        # informe, que es la confusion que el techo de R5 tiene que evitar.
+        ok.append(
+            "campo 'commits' del journal: SIN COMPROBAR la resolubilidad porque el "
+            f"repo no se puede leer (motivo literal: {motivo_git}). Este check no "
+            "acusa de nuevo: el ancla del historial ya ha acusado este hecho, y una "
+            "causa produce un mensaje. R1 y R3 (que no necesitan git) si se han "
+            "comprobado"
         )
 
     conformes = con_lista = sin_hash = 0

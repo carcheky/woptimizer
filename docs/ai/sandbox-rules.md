@@ -268,7 +268,37 @@ dos componentes no puedan discrepar sobre qué es un repo) el check acusaría la
 journal como «no resuelven» y **sugeriría declararlas perdidas**: fabricar una pérdida es la peor
 dirección en la que se puede equivocar un ancla. Y un `GIT_DIR` ilegible **no** se convierte en
 «nada resuelve»: R1 y R3 se comprueban igual (no necesitan git) y las que sí lo necesitan se
-**informan con el motivo literal**.
+**registran sin veredicto**, con el motivo literal (abajo).
+
+### UNA CAUSA, UN MENSAJE (y lo que sí se degrada: el veredicto, no el registro)
+
+**MEDIDO el 2026-10-04 con la suite real en marcha:** el check 9 acusaba **dos veces** un journal
+ilegible que el ancla del changelog de raíz —que lee **el mismo fichero**— ya había acusado con
+`ESTA CORRUPTO`, y el test preexistente de TASK-057
+`test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador` murió con `assert len(errors) == 1`.
+Esa aserción lleva desde el ciclo #47 diciendo lo correcto: **un estado produce un mensaje**. Dos
+acusaciones del mismo hecho son ruido que entrena a ignorar el semáforo.
+
+El reparto de responsabilidades queda así, y es el mismo para las **dos** ilegibilidades:
+
+| Estado | Quién acusa | Qué hace el check 9 |
+|---|---|---|
+| Journal ilegible | `_comprobar_ancla_del_changelog`, que es quien lo lee para el ancla del changelog | **No acusa.** Deja en `ok` una línea `SIN COMPROBAR` con el motivo **literal** (la clase de la excepción) y el nombre de quien ha acusado |
+| Repositorio ilegible | `_comprobar_ancla_de_commits`, que es quien lee el historial | **No acusa.** Igual: `ok` con `SIN COMPROBAR` y el motivo literal, y R1/R3 —que no necesitan git— sí se comprueban |
+
+La regla que separa las dos cosas es una sola: **una causa, una acusación; y una verificación que
+no se pudo hacer, escrita**. Lo que no se degrada nunca es el **veredicto**: sin esa línea en `ok`,
+«cero errores» se cumpliría igual con el check 9 *mudo*, que es el otro extremo del mismo fallo —y
+un repo caído y un repo con tres hashes muertos darían el mismo informe, que es justo la confusión
+que R5 tiene que evitar. El test que lo fija es
+`test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real`, sobre el **validador
+real ejecutado como subproceso**, con dos formas de ilegibilidad y su mitad mutante.
+
+⚠️ **MEDIDO, y corrige una expectativa fácil:** con un **directorio** donde debería estar el journal
+el validador produce **3** `[FAIL]`, no 1. Dos de ellos son otro hecho, con su acusación legítima:
+`_ruta_existente` tampoco encuentra el fichero y el check 8 acusa que el ancla de una fila no
+resuelve. Un estado puede tener varias consecuencias legítimas; lo que no puede haber es dos voces
+sobre la **misma**.
 
 ### Cobertura
 
@@ -317,6 +347,14 @@ la **fixture** construye: ninguna expectativa se deriva del fichero que se valid
    check 8—, y un validador que se pone rojo solo obliga a desactivarlo. El coste se paga en el otro
    lado del saldo: un ciclo nuevo sin hash **no** se acusa hoy, se cuenta, y el conteo se imprime en
    la línea de informe en cada pasada.
+8. **La cobertura de la puerta depende de la suite real, no de una sonda que la complete** (MEDIDO
+   el 2026-10-04): con `pydantic` roto en el host, los tests de TASK-059 se ejecutaron primero con
+   un arnés que inyectaba `json` en el espacio de nombres del módulo, y eso **hizo pasar** un
+   `NameError` que la suite real cazó al primer test. La lección no es del arnés —que era una salida
+   de emergencia razonable y está borrado—, es que **una sonda que completa el espacio de nombres
+   del producto es capaz de tapar justo el fallo que se busca**. Un test que importa el módulo real,
+   con sus imports reales, es el único veredicto; y si hace falta un arnés, que no le dé al módulo
+   lo que el módulo no declara.
 
 ## Ancla de trazabilidad en el historial (TASK-057, ciclo 47)
 

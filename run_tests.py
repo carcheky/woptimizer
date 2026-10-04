@@ -16117,6 +16117,7 @@ def _ids_reales_de_tasks_json():
     algo.
     """
     import validate_docs  # noqa: F401  (asegura que el modulo esta importable)
+    import json
 
     raiz = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(raiz, ".taskmaster", "tasks.json"),
@@ -16594,6 +16595,7 @@ def test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico():
     """
     print("Check 9 sobre arbol sintetico, 7 filas: forma, resolubilidad, registro "
           "de perdidas, antidolar y techos...")
+    import json
     import shutil
 
     import validate_docs as vd
@@ -16847,19 +16849,37 @@ def test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico():
         f"la linea de informe jamas puede ser '0 + 0' en verde: seria un falso "
         f"verde con la forma de un acierto. Linea: {linea!r}")
 
-    # Y si el journal NO se puede leer, se acusa con el MOTIVO LITERAL.
+    # (f) Journal ILEGIBLE: el check 9 NO acusa, y la razon es una REGLA, no una
+    # comodidad. MEDIDO el 2026-10-04: con un `errors.append` aqui, el
+    # `test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador` de
+    # TASK-057 (que exige `len(errors) == 1` desde el ciclo #47) moria con DOS
+    # acusaciones para UN hecho. El ancla del changelog de raiz lee el MISMO
+    # fichero y ya lo ha acusado. Lo que no puede degradarse es la
+    # VERIFICACION: se deja constancia en `ok` con el motivo LITERAL.
     escribir(journal_texto="{esto no es json")
-    errors, _ = asentar()
+    errors, ok = asentar()
     fallos = de_check_9(errors)
-    assert fallos and "NO SE PUEDE LEER" in fallos[0], (
-        "un journal ilegible tiene que ser un FAIL con el motivo literal, NUNCA un "
-        f"0 en verde: un ancla ilegible no certifica. Errores: {fallos!r}")
-    assert "JSONDecodeError" in fallos[0] or "ValueError" in fallos[0], (
-        f"el motivo tiene que ser LITERAL (la clase de la excepcion), no un texto "
-        f"generico: {fallos[0]!r}")
+    assert not fallos, (
+        "un journal ilegible NO puede producir una SEGUNDA acusacion del check 9: "
+        "el ancla del changelog de raiz lee el mismo fichero y ya lo ha acusado, y "
+        "una causa produce un mensaje. Errores del check 9: " + repr(fallos))
+    acusadores = [e for e in errors if "rd_journal.json" in e]
+    assert len(acusadores) == 1 and "CORRUPTO" in acusadores[0], (
+        "la unica acusacion del journal ilegible tiene que ser la del ancla, con su "
+        f"texto: {acusadores!r}")
+    linea_sin_comprobar = [o for o in ok if "SIN COMPROBAR" in o
+                           and "commits' del journal" in o]
+    assert linea_sin_comprobar, (
+        "y la verificacion que NO se ha hecho tiene que quedar escrita: una "
+        "verificacion que no se puede hacer no puede pasar por hecha. Lineas ok "
+        f"del check 9: {[o for o in ok if 'commits' in o]!r}")
+    assert "JSONDecodeError" in linea_sin_comprobar[0] or \
+        "ValueError" in linea_sin_comprobar[0], (
+        "el motivo tiene que ser LITERAL (la clase de la excepcion), no un texto "
+        f"generico: {linea_sin_comprobar[0]!r}")
 
-    # Y con un GIT_DIR que NO es repo, la resolubilidad no se inventa: se dice.
-    # OJO: esta fila llama a `_informe_del_validador_real` DIRECTAMENTE y no a
+    # (g) Un GIT_DIR que NO es repo: MISMA regla, y el motivo esta medido. OJO:
+    # esta fila llama a `_informe_del_validador_real` DIRECTAMENTE y no a
     # `asentar()`, porque `asentar()` vuelve a FIJAR `GIT_DIR` al repo bueno: con
     # `asentar()` esta fila no estaba midiendo un repo ilegido sino el de
     # siempre, y el fallo salia como "no se puede leer" sobre un repo
@@ -16867,16 +16887,19 @@ def test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico():
     escribir(journal(muertos=[HASH_MUERTO]))
     os.environ["GIT_DIR"] = os.path.join(tmp, "no_es_un_repo")
     os.makedirs(os.environ["GIT_DIR"], exist_ok=True)
-    errors, _ = _informe_del_validador_real(esqueleto)
+    errors, ok = _informe_del_validador_real(esqueleto)
     fallos = de_check_9(errors)
-    assert any("NO SE PUEDE LEER EL REPO" in x for x in fallos), (
-        "con un GIT_DIR que no es repo, la R2 y la R4 no se pueden comprobar y "
-        "eso se INFORMA con el motivo literal: devolver 'nada resuelve' "
-        "declararia perdidas que no se han medido. Errores: "
-        f"{fallos!r}")
-    assert not any("no lo declara" in x for x in fallos), (
-        "y sobre todo NO puede acusar hashes sin resolver: ese es el falso verde "
-        f"invertido, el que fabrica perdidas. Errores: {fallos!r}")
+    assert not fallos, (
+        "con un GIT_DIR que no es repo, el historial ya lo ha acusado `_comprobar_"
+        "ancla_de_commits`: accusinglo otra vez seria la misma doble acusacion. "
+        f"Errores del check 9: {fallos!r}")
+    linea_repo = [o for o in ok if "SIN COMPROBAR" in o and "commits' del journal" in o]
+    assert linea_repo, (
+        "y la resolubilidad NO comprobada tiene que quedar escrita con su motivo: "
+        f"devolver 'nada resuelve' declararia perdidas que no se han medido, que es "
+        f"fabricarlas. Lineas ok del check 9: {[o for o in ok if 'commits' in o]!r}")
+    assert "not a git repository" in linea_repo[0] or "rev-parse" in linea_repo[0], (
+        f"el motivo tiene que ser LITERAL: {linea_repo[0]!r}")
 
     for clave, valor in previos.items():
         if valor is None:
@@ -16909,6 +16932,7 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
     matar en vez de declararla.
     """
     print("Check 9 en el camino real del validador, con su mutante de cableado...")
+    import json
     import shutil
     import subprocess
     import sys
@@ -16988,6 +17012,180 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
         shutil.rmtree(tmp, ignore_errors=True)
     print("Check 9 cableado en el camino real OK: el residuo sale con != 0 y el "
           "mutante de cableado lo hace desaparecer.")
+
+
+def test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real():
+    """TASK-059, iteracion 2: UNA CAUSA, UN MENSAJE, en el CAMINO REAL.
+
+    MEDIDO el 2026-10-04: con la suite real ejecutandose (el bloqueo de
+    `pydantic-core` era del ENTORNO, no del repo), el test preexistente de
+    TASK-057 `test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador`
+    moria con `assert len(errors) == 1`, porque el check 9 anadia un SEGUNDO
+    `errors.append` sobre un journal ilegible que el ancla del changelog de raiz
+    ya habia acusado. Dos acusaciones para un hecho es la clase de ruido que
+    entrena a ignorar el semaforo, y ese test lleva desde el ciclo #47
+    afirmaciones que **una causa produce un mensaje**: el fix va en el check, no
+    en el test.
+
+    Este test fija esa regla donde NO existia: en el **camino real del
+    validador**, ejecutado como SUBPROCESO con el `validate_docs.py` REAL
+    copiado a un arbol temporal. Comprobarlo solo sobre la privada deja el fix
+    muerto en el cableado, que es la clase de fallo que este repo ya ha pagado
+    dos veces (ciclos #47 y #49).
+
+    DOS formas de journal ilegible, y no una: **contenido corrupto** (el
+    `ValueError` del `json`) y **ilegible de verdad** (el `PermissionError` que
+    Windows da al abrir un DIRECTORIO). La segunda es la que importa: es un
+    estado del sistema de ficheros, no un texto mal formado, y es la que el test
+    preexistente monkeypatchea.
+
+    Y una asercion que se ha tenido que CORREGIR midiendo, no leyendo: con un
+    directorio en lugar del fichero salen 3 `[FAIL]`, no 1, porque `_ruta_existente`
+    tampoco lo encuentra y el check 8 acusa que el ancla de una fila no resuelve.
+    Eso es otro hecho con su acusacion legitima, asi que la regla que se fija es
+    la del check 9 (no anade voz) y no un total unico para un estado del
+    sistema de ficheros. La forma 1, donde el arbol esta limpio de verdad, si
+    exige `len(fallos) == 1` exacto.
+    """
+    print("Journal ilegible: exactamente un error en el camino real del validador...")
+    import shutil
+    import subprocess
+    import sys
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t059_ilegible_")
+    previos = {c: os.environ.get(c) for c in ("GIT_DIR", "GIT_WORK_TREE")}
+    try:
+        os.makedirs(tmp, exist_ok=True)
+        _copiar_el_esqueleto_del_validador(tmp)
+        # Historial SIN marcadores de ciclo y changelog copiado completo: es lo
+        # que hace que el journal sea el UNICO `[FAIL]` posible, y sin ese
+        # pre-vuelo "un error" no mediria nada (habria mas por otros motivos).
+        d_hist = os.path.join(tmp, "historial")
+        os.environ["GIT_DIR"] = _repo_temporal_de_un_commit(
+            d_hist, "chore: trabajo sin marcador de ciclo")
+        ruta_journal = os.path.join(tmp, ".taskmaster", "rd_journal.json")
+        ruta_validador = os.path.join(tmp, "validate_docs.py")
+
+        def ejecutar():
+            env = os.environ.copy()
+            env["PYTHONIOENCODING"] = "utf-8"
+            ultimo = (None, "(no llego a ejecutarse)")
+            for _intento in (1, 2, 3):
+                r = subprocess.run(
+                    [sys.executable, ruta_validador], cwd=tmp, env=env,
+                    capture_output=True, text=True, encoding="utf-8",
+                    errors="replace", timeout=300,
+                )
+                ultimo = (r.returncode, (r.stdout or "") + (r.stderr or ""))
+                if "Resumen:" in ultimo[1]:
+                    return ultimo
+            return ultimo
+
+        def fallos_del_informe(informe):
+            return [l for l in informe.splitlines() if l.strip().startswith("[FAIL]")]
+
+        # --- FORMA 1: contenido corrupto (ValueError del json) ---------------
+        with open(ruta_journal, "w", encoding="utf-8") as fh:
+            fh.write("{esto no es json")
+        rc, informe = ejecutar()
+        fallos = fallos_del_informe(informe)
+        assert "Resumen:" in informe, (
+            "el validador tiene que LLEGAR AL FINAL y printar su informe; si "
+            f"`Resumen:` no esta, esta asercion esta probando una excepcion, no la "
+            f"regla. rc={rc}. Informe:\n{informe[-2000:]}")
+        assert len(fallos) == 1, (
+            "un journal con CONTENIDO corrupto tiene que producir EXACTAMENTE un "
+            f"[FAIL]: el del ancla. Hay {len(fallos)}: {fallos!r}. Dos acusaciones "
+            "del mismo hecho es la clase de ruido que hace que un validador en rojo "
+            "se lea como ruido")
+        assert "rd_journal.json" in fallos[0] and "CORRUPTO" in fallos[0], (
+            f"y el unico fallo tiene que nombrar el journal ilegible: {fallos[0]!r}")
+        assert "SIN COMPROBAR" in informe, (
+            "el check 9 puede no acusar, pero no puede DeJAR DE DECIR que no ha "
+            "verificado: una verificacion que no se pudo hacer no puede pasar por "
+            f"hecha. Informe:\n{informe[-2000:]}")
+        assert rc == 1, (
+            f"con el journal ilegible el validador tiene que salir con 1; salio con "
+            f"{rc}. Informe:\n{informe[-2000:]}")
+
+        # --- FORMA 2: ILEGIBLE de verdad (directorio) ------------------------
+        # En Windows `open()` de un directorio lanza `PermissionError`, que es la
+        # clase EXACTA que el test preexistente de TASK-057 monkeypatchea: este
+        # estado llega por el sistema de ficheros, no por un texto mal formado.
+        #
+        # MEDIDO: aqui NO se exige `len(fallos2) == 1`, y la primera redaccion de
+        # esta fila lo hacia. Sale **3**, y los otros dos son otro HECHO, no otra
+        # voz: con un directorio donde deberia estar el fichero, `_ruta_existente`
+        # tampoco lo encuentra y el check 8 acusa que el ancla de la fila 92 no
+        # resuelve. Un estado puede tener varias consecuencias legítimas; la regla
+        # que este test fija es la del check 9: **no añade una segunda acusacion
+        # del mismo hecho**. Exigir un total unico para un estado del sistema de
+        # ficheros seria exigir que el validador no viera el mundo.
+        os.unlink(ruta_journal)
+        os.makedirs(ruta_journal)
+        rc2, informe2 = ejecutar()
+        fallos2 = fallos_del_informe(informe2)
+        assert "Resumen:" in informe2, (
+            f"el validador tiene que llegar al final tambien con un journal "
+            f"ILEGIBLE. rc={rc2}. Informe:\n{informe2[-2000:]}")
+        del_check_9 = [l for l in fallos2 if "rd_journal.json commits:" in l]
+        assert not del_check_9, (
+            "con el journal ILEGIBLE de verdad, el check 9 vuelve a acusar sobre un "
+            "hecho que el ancla ya ha acusado: "
+            f"{del_check_9!r}")
+        ilegibles = [l for l in fallos2 if "rd_journal.json" in l
+                     and "CORRUPTO" in l]
+        assert len(ilegibles) == 1, (
+            "la acusacion de 'el journal es ilegible' tiene que ser UNA y la del "
+            f"ancla: hay {len(ilegibles)}. Fallos: {fallos2!r}")
+        assert "SIN COMPROBAR" in informe2, (
+            "y el check 9 tiene que dejar escrito que no verifico: sin esa linea, "
+            "'una sola acusacion' tambien se cumple con un check 9 MUDO, que es el "
+            f"otro extremo del mismo fallo. Informe:\n{informe2[-2000:]}")
+        assert rc2 == 1, (
+            f"el validador tiene que salir con 1 tambien en la forma ilegible de "
+            f"verdad; salio con {rc2}. Informe:\n{informe2[-2000:]}")
+
+        # --- LA MITAD MUTANTE: el check 9 vuelve a acusar ---------------------
+        # Con el estado de la forma 1 y el `errors.append` de vuelta en el
+        # journal ilegible, el numero de `[FAIL]` tiene que volver a 2. Asi el
+        # test demuestra que MUERE con el fix, y no que solo pasa con el.
+        # El directorio de la forma 2 se quita ANTES de escribir: abrirlo da
+        # `PermissionError` en el propio test, que es un fallo del test y no del
+        # producto (la primera redaccion de esta mitad lo hacia).
+        os.rmdir(ruta_journal)
+        with open(ruta_journal, "w", encoding="utf-8") as fh:
+            fh.write("{esto no es json")
+        with open(ruta_validador, encoding="utf-8") as f:
+            fuente = f.read()
+        ancla_mut = ('        ok.append(\n'
+                     '            "campo \'commits\' del journal: SIN COMPROBAR')
+        assert ancla_mut in fuente, (
+            "no se encuentra el `ok.append` del journal ilegible en la copia del "
+            "validador. Si el fix cambio de forma, este test hay que rehacerlo; lo "
+            "que no puede pasar es que siga en verde sin comprobar el cableado")
+        con_acusacion = fuente.replace(
+            ancla_mut,
+            '        errors.append("MUTANTE: journal ilegible, segunda acusacion")\n'
+            + ancla_mut, 1)
+        with open(ruta_validador, "w", encoding="utf-8") as f:
+            f.write(con_acusacion)
+        rc3, informe3 = ejecutar()
+        fallos3 = fallos_del_informe(informe3)
+        assert len(fallos3) == 2, (
+            "el MUTANTE (una segunda acusacion del check 9 por el mismo journal "
+            f"ilegible) tiene que producir DOS [FAIL]: hay {len(fallos3)}. Si sigue "
+            "en 1, este test no esta probando la regla y pasa por accident. "
+            f"Informe:\n{informe3[-2000:]}")
+    finally:
+        for clave, valor in previos.items():
+            if valor is None:
+                os.environ.pop(clave, None)
+            else:
+                os.environ[clave] = valor
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Journal ilegible OK: un solo [FAIL] en las dos formas, la verificacion no "
+          "hecha queda escrita, y el mutante lo devuelve a dos.")
 
 
 if __name__ == "__main__":
@@ -17168,6 +17366,11 @@ if __name__ == "__main__":
     test_las_plantillas_del_bucle_pasan_la_puerta_del_producto()
     test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico()
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
+    # TASK-059 iteracion 2 (suite real): el check 9 acusaba DOS veces un journal
+    # ilegible que el ancla ya habia acusado, y el test de TASK-057 que exige
+    # `len(errors) == 1` lo cazo. Este fija "una causa, un mensaje" en el camino
+    # REAL del validador, con su mitad mutante. Suite: 130 -> 131.
+    test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real()
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.
