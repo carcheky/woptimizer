@@ -886,7 +886,7 @@ explicar por que el numero bajo de 8 a 7.
 ### D-5. Deriva menor
 
 - [x] **README badges corregidos.** Decian `ciclos-20` y `tests-57 verdes`; ahora
-      `ciclos-52` y `tests-156 verdes`, que es lo que el repo declara en los otros tres
+      `ciclos-52` y `tests-159 verdes`, que es lo que el repo declara en los otros tres
       ficheros. *(El badge se puso en `132` el 2026-10-04 y seguia en `132` cuando ya
       eran 153: este parrafo era tambien un registro que moria, y por el mismo motivo
       que el segundo.)* **Por que se habia quedado en 57 sin que nada avise:**
@@ -973,7 +973,7 @@ Resueltas el 2026-10-04; queda una abierta.
 6. **Ramas:** `beta` FF a HEAD de `main` y pusheada primero, como se decidio.
 7. **README badges corregidos** a los valores reales (132 tests, 52 ciclos).
 8. **Puertas ejecutadas antes de publicar, todas en verde:** `run_tests.py` ->
-   `ALL TESTS PASSED` (**132 en aquel dia**; el recuento vigente es **156** y lo deriva
+   `ALL TESTS PASSED` (**132 en aquel dia**; el recuento vigente es **159** y lo deriva
    `validate_docs.py` con `ast` desde `run_tests.py`, comparandolo con `STATUS.md`,
    `AGENTS.md`, `README.md` y con la tabla de `docs/ai/testing-guide.md`, asi que esta
    cifra no se caduca sola); `verify_ui_syntax.py` -> exito; `validate_docs.py` ->
@@ -1035,7 +1035,7 @@ python -m woptimizer
 # Ejecutable compilado para distribución
 dist\woptimizer.exe
 
-# Ejecutar suite de pruebas headless (156 tests)
+# Ejecutar suite de pruebas headless (159 tests)
 python run_tests.py
 
 # Verificar sintaxis estática y validaciones documentales

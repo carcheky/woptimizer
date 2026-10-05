@@ -1,3 +1,63 @@
+## CYCLE-054 - 2026-10-05
+
+**Arquitectura y Calidad** - `TASK-064` (Cerrar los tres supervivientes del auditor de mutacion)
+
+**Estado**: **los tres supervivientes cerrados.** Tests: 156 -> **159** (112 backend + 47 headless).
+No toca la aplicacion: es la honestidad de la puerta de versionado y de sus propias pruebas.
+
+El auditor rompio el codigo a proposito y tres cosas siguieron en verde. Las tres eran la
+misma clase de fallo: **una comprobacion que no puede fallar no es una comprobacion**.
+
+### Corregido
+
+- 🛡️ **Un commit que el servidor rechaza ya no puede existir (S3, severidad ALTA).** La puerta
+  de cabecera tenia una regla `subject-empty` que nadie comprotaba, asi que se podia borrar
+  entera sin que la suite se enterase. Medido: con la comprobacion fuera, un mensaje de dos
+  lineas cuya primera acaba en `": "` pasaba el filtro, el programa de versionado salia
+  diciendo "todo bien" y **guardaba el commit**; el servidor lo rechazaba y tumbaba la corrida
+  entera, y con ella la revision, la release y el `.exe`. Ahora hay un test que lo muere por
+  su propia asercion, y que incluye lo que de verdad daba al traste: que el caso tiene que
+  ser de **dos lineas**.
+- 🛡️ **La regla de la rama de trabajo ya no se cumple escribiendo la regla donde nadie la
+  lee (S7).** El test buscaba las dos frases de la regla en el fichero entero, y las
+  encontraba igual dentro de un comentario o dentro de un bloque de codigo. O sea que
+  comprobaba que la frase estuviera escrita, no que fuera una instruccion. Ahora busca fuera
+  de esas dos capas, y hay un test que lo demuestra con tres controles.
+- 🛡️ **La comprobacion de "estoy mirando mi repo" ya no puede pasar siempre (S8).** Forzaba
+  el arbol de trabajo antes de preguntar a git, y con el arbol forzado la pregunta contestaba
+  "si" para cualquier repositorio. Medido: montando un repo ajeno, la sonda lo aceptaba y
+  leia su HEAD. Ahora compara el directorio git real, y el test **no simula el entorno**:
+  monta el repo que no debe y exige que se descarte.
+- 📄 **Ocho afirmaciones documentales que no se sostenian.** Cuatro citando una linea que no
+  existe, una sobre un fichero que ya no esta en el arbol, una que daba por abierto un
+  problema que se cerro hace dos ciclos, y **el docstring de la propia sonda**, que
+  afirmaba que su comprobacion no era decorativa: era exactamente eso.
+
+### Lo que aprendimos de paso
+
+- **El caso de dos lineas no es un detalle, es el caso.** Una cabecera de una sola linea
+  acabada en `": "` se queda sin ese espacio al limpiar el mensaje, y el filtro responde
+  "no hay tipo" antes de mirar el subject. Un test escrito con `"fix: "` habria pasado en
+  verde sin medir nada, y habria parecido una cobertura.
+- **Un guardian puede ser fuerte en un sitio y a medias en otro, y eso hay que decirlo.**
+  MEDIDO: el guardian H2 quita el repositorio del disco duro apuntando una variable de
+  entorno a un temporal, asi que en este host solo mata la mitad de los mutantes de la ruta
+  fija: el que lleva la ruta escrita de antemano sobrevive. Queda escrito en su docstring en
+  vez de dado por cerrado.
+- **Un `finally` no es una restauracion si el proceso muere antes.** Al mutar para medir, un
+  arnes dejo el fichero entero pasado a LF y el hash de "restaurado" no cuadraba. A partir de
+  ahi la restauracion se comprueba con el hash, y la conversion de finales de linea se
+  revierte a nivel de bytes.
+
+### Verificado
+
+- **159 tests en verde**, y **126 comprobaciones de documentación sin fallos**.
+- Los tres supervisores nuevos se auditaron con **cuatro mutaciones, las cuatro muertas por su
+  propia asercion** (no por un error de sintaxis ni por un fallo de importacion).
+- Los **nueve mutantes ya declarados** se repitieron uno a uno: los nueve mueren, cada uno por
+  la asercion que lo declara muerto.
+
+## CYCLE-053 - 2026-10-04
 ## CYCLE-053 - 2026-10-04
 
 **Arquitectura y Calidad** - `TASK-061` (Cuando el versionado falla, que el programa lo diga)

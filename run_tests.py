@@ -6324,12 +6324,30 @@ def _entorno_git_del_repo():
     desacoplado si existe de verdad, 3. el `.git` del arbol de trabajo, que es
     donde vive el repo en cualquier clon normal.
 
-    La VERIFICACION no es decorativa y es lo que evita el fallo que este ciclo
-    caza: la sonda tiene que mirar ESTE repo. Sin ella, una ruta que no es la
-    correcta daria verde por el motivo equivocado. Si ninguna candidata es este
-    arbol, se falla fuerte y con el motivo a la vista, en vez de skipear en
-    silencio: una guarda que se salta sola cuando no puede comprobar ya no
-    guarda nada.
+    MEDIDO y CORREGIDO el 2026-10-05 (S8 del ciclo 999, mutation-auditor): lo que
+    hay abajo **NO es decorativo**, y hasta hace un momento SI lo era, asi que la
+    frase anterior ("La VERIFICACION no es decorativa") era FALSA y esta es su
+    correccion. La causa era estructural: el codigo FORZABA
+    `GIT_WORK_TREE=repo_root` antes de preguntar, y con el arbol de trabajo
+    forzado al de este arbol, `rev-parse --show-toplevel` devuelve `repo_root`
+    para **CUALQUIER** repo valido. MEDIDO: montando un repo ajeno y poniendo
+    `GIT_DIR` a el, esta funcion lo DEVUELVIA y `_head_del_repo_real()` leia
+    `cef3e159e345` en vez de `9e83c5aeaa06`.
+
+    Lo que se compara ahora es `--absolute-git-dir` de la candidata contra la
+    REFERENCIA, y la referencia se lee del PROPIO arbol de trabajo con un entorno
+    limpio (sin `GIT_DIR` ni `GIT_WORK_TREE`), que es la unica forma de no
+    circular. Con `--show-toplevel` no habia forma de no circular: la pregunta
+    "de quien es este arbol" se respondia con una variable que el propio codigo
+    acababa de fijar. MEDIDO en este host: la referencia es
+    `%LOCALAPPDATA%\\woptimizer_git\\.git`, las dos candidatas reales (el
+    desacoplado y el puntero `.git` del arbol) resuelven a ESA MISMA, y un repo
+    ajeno resuelve a su propio `.git`, luego se descarta.
+
+    Lo que NO se relaja, y es lo que hace que esto siga siendo una guarda y no
+    un `try/except`: si ninguna candidata es de este arbol, se falla fuerte y con
+    el motivo a vista, en vez de skipear en silencio. Una guarda que se salta
+    sola cuando no puede comprobar ya no guarda nada.
     """
     repo_root = os.path.dirname(os.path.abspath(__file__))
     desacoplado = os.path.expandvars(r"%LOCALAPPDATA%\woptimizer_git\.git")
@@ -6345,9 +6363,7 @@ def _entorno_git_del_repo():
     # (`gitdir: C:/Users/carch/AppData/Local/woptimizer_git/.git`, 57 bytes), luego
     # `os.path.isdir` lo descarta y con el desacople ausente -- que es la forma del
     # runner -- no queda ninguna candidata. Con `exists` entra, y git la resuelve
-    # porque `GIT_DIR` puede apuntar a un puntero `gitdir:`. La VERIFICACION de
-    # abajo no se toca: sigue having que ser `rev-parse --show-toplevel` este arbol,
-    # luego admitir mas candidatos NO admite ningun repo ajeno.
+    # porque `GIT_DIR` puede apuntar a un puntero `gitdir:`.
     if os.path.exists(del_arbol):
         candidatas.append((del_arbol, ".git del arbol de trabajo"))
     if not candidatas:
@@ -6355,20 +6371,66 @@ def _entorno_git_del_repo():
             f"no hay ningun repositorio git desde el que comprobar {repo_root}: ni "
             f"GIT_DIR={os.environ.get('GIT_DIR')!r}, ni {desacoplado}, ni {del_arbol}"
         )
+
+    # La REFERENCIA: que git-dir dice git que es de ESTE arbol de trabajo, con un
+    # entorno limpio. Sin `GIT_DIR` ni `GIT_WORK_TREE` la unica pista es el `.git`
+    # del arbol, asi que la respuesta no puede venir de las candidatas y la
+    # comparacion no es circular. Se lee UNA vez y fuera del bucle, y si no
+    # resuelve se dice por que en vez de degradar a "vale el primero que valga".
+    referencia = _git_dir_absoluto_de_este_arbol(repo_root)
     descartadas = []
     for ruta, origen in candidatas:
         env = os.environ.copy()
         env["GIT_DIR"] = ruta
-        env["GIT_WORK_TREE"] = repo_root
-        rc, salida = _git(["rev-parse", "--show-toplevel"], env, repo_root)
-        if rc == 0 and os.path.normcase(os.path.normpath(salida.strip())) == \
-                os.path.normcase(repo_root):
+        # `GIT_WORK_TREE` NO se fuerza para la comparacion: `run_git`/`_git` lo
+        # necesitan para que `status` y `add` operen sobre el arbol efectivo, pero
+        # justamente por eso fijarlo aqui es lo que hacia la comprobacion
+        # decorativa. Se quita de la env de la COMPROBACION y se devuelve luego.
+        env.pop("GIT_WORK_TREE", None)
+        rc, salida = _git(["rev-parse", "--absolute-git-dir"], env, repo_root)
+        misma = False
+        if rc == 0 and salida.strip():
+            misma = (os.path.normcase(os.path.normpath(salida.strip()))
+                     == referencia)
+        if misma:
+            env["GIT_WORK_TREE"] = repo_root
             return repo_root, env
         descartadas.append(f"{origen} ({ruta}): rc={rc} {salida.strip()[:120]}")
     raise AssertionError(
         "ningun GIT_DIR candidato es el repo de este arbol, y una sonda que mira "
-        "otro repo pasaria por el motivo equivocado:\n  " + "\n  ".join(descartadas)
+        "otro repo pasaria por el motivo equivocado. La referencia es "
+        f"{referencia!r} (leida de {repo_root} con el entorno limpio) y los "
+        "descartados fueron:\n  " + "\n  ".join(descartadas)
     )
+
+
+def _git_dir_absoluto_de_este_arbol(repo_root):
+    """El `--absolute-git-dir` de git para ESTE arbol de trabajo, normalizado.
+
+    Se lee con un entorno SIN `GIT_DIR` ni `GIT_WORK_TREE`: la unica pista que le
+    queda a git es el `.git` del propio arbol, que puede ser un directorio (un
+    clon normal) o un fichero puntero `gitdir:` (el VFS de Nextcloud, y el caso
+    de este host). Por eso el criterio es `--absolute-git-dir` y no
+    `--show-toplevel`: este ultimo se lo puede fijar el que pregunta, y aqui lo
+    fijaba el propio codigo, luego la comparacion no decia nada.
+
+    Falla fuerte si git no responde. Degradar a `""` devolveria "" como referencia
+    y haria que la comparacion de abajo fuera `"" != ""` o, peor, que cualquier
+    vacio cuadrase: una referencia inventada no verifica nada.
+    """
+    limpio = os.environ.copy()
+    for clave in ("GIT_DIR", "GIT_WORK_TREE"):
+        limpio.pop(clave, None)
+    rc, salida = _git(["rev-parse", "--absolute-git-dir"], limpio, repo_root)
+    if rc != 0 or not salida.strip():
+        raise AssertionError(
+            f"git no resuelve `--absolute-git-dir` para {repo_root} con el entorno "
+            f"limpio (rc={rc}, salida={salida!r}), luego no hay referencia contra la "
+            f"que verificar que una candidata sea de este arbol. Falla fuerte en vez "
+            f"de devolver una referencia inventada: verificar contra una referencia "
+            f"falsa es no verificar"
+        )
+    return os.path.normcase(os.path.normpath(salida.strip()))
 
 
 def _git(args, env, cwd):
@@ -17899,6 +17961,136 @@ _FICH_DE_LA_REGLA = (
 )
 
 
+def _sin_la_capa_que_el_bucle_no_lee(texto):
+    """El texto del fichero SIN lo que el bucle no lee como instruccion.
+
+    MEDIDO por el `mutation-auditor` (ciclo 999), y por que la normalizacion
+    anterior era decorativa: quitar el `>` y unir lineas encuentra las dos frases
+    **dentro de un comentario HTML** y dentro de una valla ```, luego el test
+    pasaba con la regla entera en un sitio donde el bucle no la lee. Lo que
+    probaba era "las frases estan en el fichero", no "son contenido que el bucle
+    lee": exactamente la Confusion entre estar escrito y ser operativo.
+
+    Se excluyen DOS capas, y solo dos:
+
+    * `<!-- ... -->`: no lo renderiza nada, asi que no puede ser una instruccion
+      para un agente. MEDIDO: 0 ocurrencias en los tres ficheros hoy, luego esto
+      no crea un rojo nuevo; es la guarda del mutante, no una lectura del estado.
+    * vallas ``` ... ```: son LITERALES (un ejemplo de comando, un fichero de
+      ejemplo). MEDIDO: 15, 1 y 5 vallas en los tres ficheros, y las dos frases
+      NO viven dentro de ninguna, luego el recorte no las borra.
+
+    Y NO se excluye `#`, a proposito, porque en markdown `#` es un ENCABEZADO y las
+    reglas empiezan con `>`: un encabezado que contenga la norma es contenido
+    valido, y excluirlo abriria un agujero del mismo tipo que el que se cierra.
+    El `>` se sigue quitando porque en markdown es MARCA de cita, no contenido.
+    """
+    import re as _re
+    sin_vallas = _re.sub(r"```.*?```", " ", texto, flags=_re.DOTALL)
+    sin_comentarios = _re.sub(r"<!--.*?-->", " ", sin_vallas, flags=_re.DOTALL)
+    plano = " ".join(
+        l.lstrip(">").lstrip() for l in sin_comentarios.splitlines()
+    )
+    return " ".join(plano.split())
+
+
+def test_la_regla_de_rama_no_vive_en_un_comentario_ni_en_una_valla():
+    """TASK-066 T-5, la guarda que faltaba: la regla tiene que ser CONTENIDO.
+
+    MEDIDO (mutation-auditor, ciclo 999): la mitad positiva normalizaba el
+    fichero quitando `>` y uniendo lineas, y con esa normalizacion las dos frases
+    se encuentran igual **dentro de un comentario HTML** y **dentro de una valla
+    ```**. O sea que la prueba era "las frases estan en el fichero", y no "son
+    contenido que el bucle lee": un mutante que deja la regla entera en un
+    comentario la pasa. Es el mismo modo de fallo que la mitad negativa tapaba,
+    y por eso esta es una guarda con su propia asercion y no una nota.
+
+    Tres CONTROLES, y sin ellos la guarda no miraria nada:
+
+    * el filtro tiene que **descartar** un comentario HTML con las dos frases,
+    * y **descartar** una valla ``` con las dos frases,
+    * y **CONSERVAR** la prosa real: la cita de bloque con `>` y el encabezado con
+      `#`, porque en markdown los dos son contenido y no marca. Este control es
+      el que impide el arreglo de "excluir tambien `#`", que abriria un agujero
+      del mismo tipo.
+
+    El tercer control mide ademas algo que el filtro no puede romper: que el
+    recorte NO destruye la forma en que la regla esta escrita hoy en los tres
+    ficheros. Si el filtro se pasara de celoso, este control y la mitad positiva
+    cairian los dos.
+    """
+    print("Probando que la regla de rama no vive en un comentario ni en una valla...")
+    import os as _os
+
+    # --- CONTROL 1: comentario HTML ------------------------------------------
+    en_comentario = (
+        "<!-- nota del autor: el bucle " + _FRASE_DESTINO + " y " +
+        _FRASE_PROHIBICION + ". -->\n"
+    )
+    limpio = _sin_la_capa_que_el_bucle_no_lee(en_comentario)
+    assert _FRASE_DESTINO not in limpio, (
+        "una regla escrita SOLO dentro de un comentario HTML no es una instruccion "
+        f"que el bucle lea, y el filtro la da por presente: {limpio!r}")
+    assert _FRASE_PROHIBICION not in limpio, (
+        "lo mismo con la prohibicion: un comentario no la convierte en "
+        f"contrato. limpio={limpio!r}")
+
+    # --- CONTROL 2: valla ``` -------------------------------------------------
+    en_valla = (
+        "```bash\n# ejemplo de un fichero que NO es la regla del bucle\n"
+        "git push origin main  # aqui va " + _FRASE_DESTINO + " y " +
+        _FRASE_PROHIBICION + "\n```\n"
+    )
+    limpio2 = _sin_la_capa_que_el_bucle_no_lee(en_valla)
+    assert _FRASE_DESTINO not in limpio2, (
+        "una regla escrita SOLO dentro de una valla ``` es un literal de ejemplo, "
+        f"no una instruccion, y el filtro la da por presente: {limpio2!r}")
+    assert _FRASE_PROHIBICION not in limpio2, (
+        "lo mismo con la prohibicion dentro de la valla: "
+        f"limpio={limpio2!r}")
+
+    # --- CONTROL 3: la prosa real se conserva ---------------------------------
+    # El `>` de markdown y el `#` de encabezado son MARCA, no contenido: los dos
+    # son prosa que el bucle lee. Excluirlos seria el mismo fallo que se acaba de
+    # cerrar, y por eso se afirma que NO se tocan.
+    en_cita = ("> **REGLA DURA:** el bucle " + _FRASE_DESTINO +
+               ", y `main` " + _FRASE_PROHIBICION + ".\n")
+    limpio3 = _sin_la_capa_que_el_bucle_no_lee(en_cita)
+    assert _FRASE_DESTINO in limpio3, (
+        "la cita de bloque con `>` es PROSA que el bucle lee, y el filtro no puede "
+        f"descartarla: limpio={limpio3!r}")
+    assert _FRASE_PROHIBICION in limpio3, (
+        f"lo mismo con la prohibicion en cita: limpio={limpio3!r}")
+    en_encabezado = ("## Rama\n\n" + _FRASE_DESTINO + " y " +
+                     _FRASE_PROHIBICION + ".\n")
+    limpio4 = _sin_la_capa_que_el_bucle_no_lee(en_encabezado)
+    assert _FRASE_DESTINO in limpio4, (
+        "un ENCABEZADO con `#` es contenido valido en markdown y no se puede "
+        f"excluir: limpio={limpio4!r}")
+    assert _FRASE_PROHIBICION in limpio4, (
+        f"lo mismo con la prohibicion bajo encabezado: limpio={limpio4!r}")
+
+    # --- Y la regla de HOY sigue siendo contenido, no un literal ni un
+    #     comentario. Sin esta fila, un filtro demasiado agresivo pasaria los
+    #     cuatro controles de arriba y dejaria la mitad positiva measuring nada.
+    raiz = _os.path.dirname(_os.path.abspath(__file__))
+    solo_en_capa = []
+    for relativo in _FICH_DE_LA_REGLA:
+        ruta = _os.path.join(raiz, relativo)
+        with open(ruta, encoding="utf-8") as fh:
+            texto = fh.read()
+        if _FRASE_DESTINO not in _sin_la_capa_que_el_bucle_no_lee(texto):
+            solo_en_capa.append(relativo)
+    assert not solo_en_capa, (
+        f"en estos ficheros la frase de destino NO sobrevive al filtro de "
+        f"comentarios y vallas, o sea que la regla esta escrita dentro de una capa "
+        f"que el bucle no lee: {solo_en_capa!r}. O se escribe en prosa, o el filtro "
+        f"esta-recortando de mas")
+    print("Guarda OK: la regla esta en prosa en los tres ficheros, y el filtro "
+          "descarta comentarios y vallas sin tocar la cita de bloque ni el "
+          "encabezado.")
+
+
 def test_la_regla_de_rama_esta_escrita_donde_el_bucle_la_lee():
     """TASK-066 T-5, MITAD POSITIVA: la regla esta en los tres ficheros.
 
@@ -17913,6 +18105,16 @@ def test_la_regla_de_rama_esta_escrita_donde_el_bucle_la_lee():
     es lo que mata a "escribi la regla donde nadie la lee": el bug medido de
     este ciclo era que no decia nada, y escribirlo en un solo sitio deja dos
     agentes sin contrato.
+
+    MEDIDO y CORREGIDO (mutation-auditor, ciclo 999): la normalizacion de este
+    test era decorativa, porque buscaba las frases en el fichero CRUDO. Quitar
+    el `>` y unir lineas encuentra tambien lo que esta dentro de un comentario
+    HTML y dentro de una valla ```, luego el test pasaba con la regla entera en
+    un sitio donde el bucle no la lee. Ahora busca en
+    `_sin_la_capa_que_el_bucle_no_lee()`, y el por que de ese recorte —incluido
+    por que `#` NO se excluye— esta en el docstring de la funcion. Su mitad
+    (`test_la_regla_de_rama_no_vive_en_un_comentario_ni_en_una_valla`) afirma el
+    recorte con sus tres controles.
     """
     print("Probando que la regla de rama esta escrita en los tres ficheros...")
     raiz = os.path.dirname(os.path.abspath(__file__))
@@ -17923,21 +18125,18 @@ def test_la_regla_de_rama_esta_escrita_donde_el_bucle_la_lee():
             f"el fichero que tiene que llevar la regla no existe: {ruta}")
         with open(ruta, encoding="utf-8") as fh:
             texto = fh.read()
-        # Normalizacion minima: el fichero puede partir la frase en dos lineas y
-        # puede marcarla como cita de bloque, y el `>` de markdown es MARCA, no
-        # contenido: sin quitarlo, la frase del plan quedaria partida por un `>` en
-        # medio y el test mediria como ausente una regla que esta escrita entera.
-        plano = " ".join(
-            l.lstrip(">").lstrip() for l in texto.splitlines()
-        )
-        plano = " ".join(plano.split())
+        # Se busca en el texto SIN comentarios HTML y SIN vallas, porque el
+        # bucle no lee ninguna de las dos capas como instruccion. El `>` de
+        # markdown se sigue quitando porque es MARCA de cita, no contenido.
+        plano = _sin_la_capa_que_el_bucle_no_lee(texto)
         if _FRASE_DESTINO not in plano:
             faltan.append((relativo, "destino", _FRASE_DESTINO))
         if _FRASE_PROHIBICION not in plano:
             faltan.append((relativo, "prohibicion", _FRASE_PROHIBICION))
     assert not faltan, (
         f"la regla de rama de TASK-066 tiene que estar en los TRES ficheros, con "
-        f"las dos mitades, y falta: {faltan!r}. Sin la prohibicion que nombra "
+        f"las dos mitades, y como CONTENIDO que el bucle lea (fuera de comentarios "
+        f"HTML y de vallas), y falta: {faltan!r}. Sin la prohibicion que nombra "
         f"`main`, la regla no dice que hacer con la rama de publicacion, y sin "
         f"escribirse en los tres, dos de los cuatro agentes que versionan siguen "
         f"sin contrato")
@@ -18139,6 +18338,29 @@ def test_la_sonda_del_head_no_depende_del_desacople_del_vfs():
     este host el mutante deja la suite EN VERDE, porque el desacople del VFS si
     existe aqui. O sea: la regresion puede volver y nadie se entera.
 
+    MEDIDO OTRA VEZ en el ciclo 999, y corrige una afirmacion mia anterior: este
+    guardian es real en CI, pero **en este host solo mata la mitad de los
+    mutantes de la ruta fija**, y conviene saber cual. El truco de este test es
+    apuntar `os.environ["LOCALAPPDATA"]` a un temporal, luego solo cae un mutante
+    que resuelva `%LOCALAPPDATA%` **en el momento de la llamada**. MEDIDO:
+
+    * con `os.path.expandvars(r"%LOCALAPPDATA%\\woptimizer_git")` al llamar, el
+      mutante MUERE —pero por `NotADirectoryError` de `subprocess`, no por la
+      asercion de este test—, porque la ruta ya no existe;
+    * con la ruta como **literal** (`r"C:\\Users\\carch\\AppData\\Local\\..."`),
+      el mutante **SOBREVIVE en verde**, porque un temporal no cambia una ruta
+      ya escrita. Y esa variante es la forma REAL del bug original, que era la
+      constante de modulo `gsc.LOCAL_GIT_DIR`, ya expandida en el import.
+
+    O sea que este guardian es de FUERZA en el runner —que es donde tumbaba el
+    job `verify`— y de fuerza parcial aqui. No se corrige en este ciclo porque no
+    es ninguno de los tres supervivientes que le tocaban a esta tarea, y
+    porque la honestidad de esto es mas cara que el arreglo: queda MEDIDO y
+    escrito, que es lo que evita que alguien lo declare cerrado sin medirlo. La
+    S8 de este ciclo (`test_el_git_dir_ajeno_no_pasa_la_verificacion_del_arbol`)
+    cierra el caso hermano y SI es host-independiente, porque no simula el
+    entorno: monta un repo ajeno de verdad y exige que se descarte.
+
     El truco es el MISMO que ya usa
     `test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal`: cambiar el
     entorno para que el entorno real no pueda servir de coartada. Aqui se
@@ -18282,6 +18504,334 @@ def test_la_forma_t_menor_no_pasa_aunque_exista_su_task():
             f"seria un fix que nadie nota y el bucle se queda sin salida")
     print("Forma T-NNN OK: cinco mensajes con la forma corta rechazados y las dos "
           "formas largas de esos mismos ids aceptadas.")
+
+
+# ---------------------------------------------------------------------------
+# Ciclo 999, PASO 4 BIS: los TRES supervivientes que el `mutation-auditor`
+# dejo abiertos en la ronda anterior (S3, S7 y S8). Los tres nacen de la misma
+# pregunta --"que mutante mataria esto?"-- y los tres tienen MEDIDO por que el
+# test que los precede no los veia. Se ponen juntos porque los tres son
+# supervivientes de la MISMA ronda y porque comparten una sola leccion:
+#
+#   S3  la puerta de `subject-empty` NO TENIA NINGUN TEST. La guarda existe en
+#       `clasificar_cabecera` (`.taskmaster/git_safe_commit.py:579`), pero nadie
+#       la ejercitaba, luego `if not _subject:` -> `if False:` sobrevivia. Y el
+#       dano esta MEDIDO en tres pasos: la puerta acepta
+#       `clasificar_cabecera("fix(ciclo 999): \n\ncuerpo")` como `(True,'','')`,
+#       el wrapper REAL sale con **0** y **CREA EL COMMIT** (`WOPT_COMMIT_OK`),
+#       y git aplica cleanup `whitespace` y guarda una cabecera que la sonda
+#       independiente de las seis reglas rechaza con `type-empty`. Luego el job
+#       `commits` tumba la corrida y con su `needs` caen `verify`, `release` y
+#       `build`: no sale el `.exe` y el rojo se ve en el sitio de menos contexto.
+#       Es exactamente el daño que la puerta de T-4 existe para impedir --un
+#       commit que CI rechaza puede EXISTIR--, y por eso la severidad es ALTA.
+#   S7  la mitad positiva de la regla de rama buscaba las frases en el fichero
+#       CRUDO, luego las encontraba dentro de un comentario HTML y de una valla
+#       ```` ``` ````. Lo que probaba era "las frases estan en el fichero", no
+#       "son contenido que el bucle lee". Ver `_sin_la_capa_que_el_bucle_no_lee`
+#       y su test propio.
+#   S8  la verificacion de `_entorno_git_del_repo()` era DECORATIVA: el codigo
+#       FUERZA `GIT_WORK_TREE=repo_root` antes de `rev-parse --show-toplevel`, y
+#       con el arbol forzado la comprobacion pasa para CUALQUIER repo valido.
+#       MEDIDO: montando un repo ajeno y poniendo `GIT_DIR` a el, la funcion lo
+#       DEVUELVE y `_head_del_repo_real()` lee `cef3e159e345` en vez de
+#       `9e83c5aeaa06`. Buen dato: el guardian H2 **si lo pilla**, por la
+#       comparacion de hashes entre las dos lecturas, luego la cobertura es real
+#       aunque el MOTIVO DOCUMENTADO sea falso. Y el docstring de
+#       `run_tests.py:6327-6332` afirmaba "La VERIFICACION no es decorativa":
+#       es FALSO, y esta es la correccion de D9.
+#
+# Y una leccion que los tres comparten y que ya esta pagada dos veces en este
+# repo: **una comprobacion que no puede fallar no es una comprobacion**. En S3
+# no habia test; en S7 el test existia pero no podia fallar; en S8 la
+# comprobacion existia y no podia fallar. Las tres son la misma clase.
+# ---------------------------------------------------------------------------
+
+# El mensaje del caso de S3. MEDIDO, y el motivo por que es de DOS LINEAS esta
+# escrito aqui porque es la trampa que hace este test inalcanzable si se elige
+# mal: `parse_args` hace `.strip()` del MENSAJE ENTERO
+# (`.taskmaster/git_safe_commit.py:299`), luego una cabecera de una sola linea
+# que acaba en `": "` se queda en `"fix:"` --sin el `": "`-- y la puerta
+# responde **`type-empty`**, que es la regla 1, antes de mirar el subject. Para
+# llegar a `subject-empty` la cabecera tiene que conservar el `": "` final, y eso
+# exige que el mensaje tenga una segunda linea.
+_MENSAJE_SIN_SUBJECT = "fix(ciclo 999): \n\ncuerpo que no cabe en la cabecera"
+
+
+def test_la_puerta_de_cabecera_rechaza_un_subject_vacio():
+    """S3: `subject-empty` tiene que GUARDIAR, y el dano de que no guarde es real.
+
+    MEDIDO (mutation-auditor, ciclo 999): la guarda de la regla 4
+    (`if not _subject:` en `.taskmaster/git_safe_commit.py:579`) **no tenia
+    ningun test**, luego el mutante `if not _subject:` -> `if False:` sobrevivia
+    con la suite entera en verde. Y no es una guarda teorica: con el mutante, la
+    puerta acepta el mensaje de arriba como `(True, '', '')`, el wrapper real
+    sale con **0** y **CREA EL COMMIT**, y git aplica cleanup `whitespace` y
+    guarda una cabecera con el subject vacio. La sonda independiente de las seis
+    reglas rechaza esa cabecera con `type-empty`, luego el job `commits` tumba la
+    corrida y con su `needs` caen `verify`, `release` y `build`: no sale el
+    `.exe`. **Es el dano que la puerta de T-4 existe para impedir.**
+
+    El caso es de DOS LINEAS y el motivo esta en `_MENSAJE_SIN_SUBJECT`: con
+    `parse_args` haciendo `.strip()` del mensaje entero, una cabecera de una sola
+    linea que acaba en `": "` pierde el espacio y la puerta responde `type-empty`
+    antes de mirar el subject. Sin esa nota, un implementador razonable
+    escribiria `"fix: "`, veria que no le sale `subject-empty` y concluiria que la
+    regla es inalcanzable.
+
+    Tres mitades y cada una muere por su asercion:
+
+    1. **La puerta clasifica** el mensaje como `subject-empty`, no como otra
+       regla: con el mutante sale `(True, '', '')`, que es exactamente el fallo.
+    2. **El wrapper real** sale con **2** y dice la regla, y **NO crea ningun
+       commit** (aquí esta el dano medido, en el camino de verdad y no en la
+       funcion pura).
+    3. **La contraprueba**: un mensaje con subject de verdad y la MISMA forma
+       tiene que PASAR, porque "rechazar la cabecera con dos lineas" seria un
+       fix que nadie nota y dejaria al bucle sin poder comitear un cuerpo.
+
+    Sin la mitad 3, un fix de "rechazar todo lo que tenga un cuerpo" pasaria en
+    verde y atasca el bucle.
+    """
+    print("Probando que la puerta de cabecera rechaza un subject vacio...")
+    import shutil
+    import tempfile
+
+    gsc = _cargar_el_wrapper()
+
+    # --- (1) LA PUERTA: la regla es `subject-empty`, no "algo se rechazo" -------
+    ok, regla, motivo = gsc.clasificar_cabecera(_MENSAJE_SIN_SUBJECT)
+    assert ok is False and regla == "subject-empty", (
+        f"una cabecera con el ': ' final y nada detas tiene que rechazarse con la "
+        f"regla `subject-empty`, y sale ok={ok!r} regla={regla!r}. ESTA es la "
+        f"asercion que mata a `if not _subject:` -> `if False:`: con la guarda "
+        f"fuera, el subject vacio se salta la regla 4, se salta tambien la 5 "
+        f"(`_empieza_con_letra_con_caso('')` es False), pasa la 6 por longitud y "
+        f"clasificar_cabecera devuelve (True, '', ''), que es el commit que CI "
+        f"despues rechaza")
+    assert "subject" in motivo, (
+        f"el motivo tiene que NOMBRAR la regla que incumple: {motivo!r}")
+
+    # Pre-vuelo de la asercion: el mensaje tiene que ser de DOS LINEAS y su
+    # cabecera tiene que CONSERVAR el ": ". Sin esto, el test podria estar
+    # midiendo `type-empty` yaria en verde por la regla equivocada.
+    cabecera = _MENSAJE_SIN_SUBJECT.split("\n", 1)[0]
+    assert cabecera.endswith(": "), (
+        f"el mensaje del caso tiene que dejar el ': ' final en la cabecera para "
+        f"alcanzar `subject-empty`; su cabecera es {cabecera!r}. Con una sola linea, "
+        f"`parse_args` hace `.strip()` del mensaje entero y la puerta responde "
+        f"`type-empty` primero")
+    assert "\n" in _MENSAJE_SIN_SUBJECT, (
+        "el caso tiene que ser de DOS LINEAS: es lo que evita que el `.strip()` de "
+        "`parse_args` se coma el ': ' final")
+
+    # --- (2) EL WRAPPER REAL: 2, la regla nombrada, y CERO commits nuevos ------
+    wrapper = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+    tmp = tempfile.mkdtemp(prefix="wopt_s3_subject_")
+    d_repo, git_dir, arbol = _repo_y_arbol_temporales_de_la_sonda(
+        tmp, "chore(release): fixture del subject vacio")
+    nombre = PREFIXO_DE_LA_SONDA + "subject.txt"
+    head_antes = _head_del_repo_real()
+    try:
+        ruta = os.path.join(arbol, nombre)
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write("el arbol tiene que estar sucio para que la puerta corra\n")
+        status_antes = _status_porcelain_de_la_sonda(git_dir, arbol)
+        assert nombre in status_antes, (
+            f"antes de invocar, `status --porcelain` tiene que ver {nombre} y ve "
+            f"{status_antes!r}. Sin este pre-vuelo un arbol limpio haria que el "
+            f"wrapper saliera por WOPT_NOOP y la puerta no correria: el test "
+            f"pasaria sin medir la regla")
+
+        commits_antes = _git_de_fixture(["rev-list", "--count", "HEAD"],
+                                        d_repo).strip()
+        r = _invocar_el_wrapper(wrapper, gsc.REPO_ROOT, git_dir, arbol,
+                                _MENSAJE_SIN_SUBJECT)
+        commits_despues = _git_de_fixture(["rev-list", "--count", "HEAD"],
+                                          d_repo).strip()
+        assert commits_antes == commits_despues, (
+            f"el numero de commits tiene que ser el MISMO antes y despues: el "
+            f"subject vacio es un mensaje que el job `commits` de CI RECHAZA, y un "
+            f"commit asi puede EXISTIR: eso es el dano medido, y con la puerta "
+            f"sin la guarda el wrapper sale con 0 y lo crea. Antes={commits_antes!r} "
+            f"despues={commits_despues!r} stdout={r.stdout!r}")
+        assert r.returncode == 2, (
+            f"el wrapper tiene que salir con 2 (uso incorrecto: la puerta no ejecuta "
+            f"ninguna operacion de git) y salio con {r.returncode}. Con el mutante "
+            f"sale con 0 y `WOPT_COMMIT_OK`: stdout={r.stdout!r} "
+            f"stderr={r.stderr!r}")
+        assert "subject-empty" in (r.stdout or ""), (
+            f"la salida tiene que NOMBRAR la regla que incumple, que es lo que hay "
+            f"que arreglar: {r.stdout!r}")
+        assert "WOPT_COMMIT_OK" not in (r.stdout or ""), (
+            f"la puerta tiene que impedir que exista el commit, y sale "
+            f"`WOPT_COMMIT_OK`: {r.stdout!r}")
+        assert _rutas_stageadas(d_repo) == [], (
+            "y el rechazo no puede dejar nada stageado, porque mutar el arbol para "
+            f"luego decir que no es el error que ya se cometio con la puerta de "
+            f"ancla: {_rutas_stageadas(d_repo)!r}")
+        _sin_contaminacion(d_repo, head_antes)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # --- (3) CONTRAPRUEBA: la misma forma con subject de verdad PASA ----------
+    con_cuerpo = ("fix(ciclo 999): un subject de verdad en la primera linea\n"
+                  "\ncuerpo multilinea que el agente quiere escribir\n")
+    ok3, regla3, motivo3 = gsc.clasificar_cabecera(con_cuerpo)
+    assert ok3 is True, (
+        f"un mensaje de DOS LINEAS con subject de verdad tiene que PASAR, porque es "
+        f"la forma que el bucle escribe al documentar su trabajo, y rechazarla dejaria "
+        f"al bucle sin poder comitear un cuerpo. Devuelve ok={ok3!r} "
+        f"regla={regla3!r} motivo={motivo3!r}. Sin esta contraprueba, un fix de "
+        f"'rechazar toda cabecera con dos lineas' pasaria en verde y atascaria el "
+        f"bucle")
+    print("subject-empty OK: la cabecera con el ': ' final y nada detas se rechaza "
+          "con la regla nombrada y NO crea commit, y la de dos lineas con subject de "
+          "verdad pasa.")
+
+
+def test_el_git_dir_ajeno_no_pasa_la_verificacion_del_arbol():
+    """S8: la verificacion de `_entorno_git_del_repo()` tiene que PODER FALLAR.
+
+    MEDIDO (mutation-auditor, ciclo 999), y la causa es estructural: el codigo
+    **FUERZA `GIT_WORK_TREE=repo_root` antes de `rev-parse --show-toplevel`**
+    (`run_tests.py:6362-6363`), y con el arbol de trabajo forzado al de este
+    arbol, `--show-toplevel` devuelve `repo_root` para **CUALQUIER** repo valido.
+    Luego la comprobacion pasa siempre, y el unico motivo por el que el dano no
+    llego antes es que el guardian H2 compara los DOS hashes.
+
+    MEDIDO con el repo ajeno montado: `_entorno_git_del_repo()` lo **DEVUELVE** y
+    `_head_del_repo_real()` lee `cef3e159e345` en vez de `9e83c5aeaa06`. O sea que
+    la sonda puede estar mirando OTRO repo y dando verde por el motivo equivocado,
+    que es la clase de fallo que el propio docstring de la funcion prohibe
+    ("una sonda que mira otro repo pasaria por el motivo equivocado").
+
+    Buen dato, y por eso la cobertura es REAL aunque el motivo fuera falso: el
+    guardian H2 (`test_la_sonda_del_head_no_depende_del_desacople_del_vfs`) pilla
+    el repo ajeno por la comparacion de hashes entre las dos lecturas. Lo que se
+    arregla aquí es el MOTIVO DOCUMENTADO y la comprobacion misma, no una
+    cobertura que ya existia.
+
+    El arreglo es comparar `--absolute-git-dir` en vez de `--show-toplevel`
+    (MEDIDO: el repo ajeno resuelve a su propio `.git`, y la referencia del
+    arbol a `%LOCALAPPDATA%\\woptimizer_git\\.git`, luego difieren y el ajeno se
+    descarta), y comparar contra la REFERENCIA leida del propio arbol de trabajo
+    con un entorno limpio, que es la unica forma de no circular.
+
+    Tres mitades:
+
+    1. **El repo ajeno se RECHAZA**: con `GIT_DIR` apuntando a un repo temporal
+       ajeno, el helper NO puede devolver ese repo. Con el codigo viejo lo
+       devuelve, y esta asercion es la muerte.
+    2. **CONTROL de que el helper SIGUE funcionando**: sin `GIT_DIR` en el
+       entorno devuelve un repo que resuelve al de este arbol. Sin esta fila, un
+       helper que rechaza todas las candidativas pasaria (1).
+    3. **CONTROL del por que**: el repo ajeno esta SANO y es un repo valido de
+       verdad (`rev-parse --absolute-git-dir` responde). Si el mutante uviera
+       morido por "el repo ajeno no era valido", (1) no mediria la decoratividad
+       de la comprobacion sino una fixture rota, que es el falso verde con la
+       forma de una asercion.
+
+    Camara en `%TEMP%` y `os.environ["GIT_DIR"]` restaurado en el `finally`, con
+    el HEAD real medido antes y despues: un `GIT_DIR` envenenado se nota en los
+    tests que se ejecuten despues, dos pasos mas tarde.
+    """
+    print("Probando que la verificacion del GIT_DIR rechaza un repo ajeno...")
+    import shutil
+    import tempfile
+
+    head_antes = _head_del_repo_real()
+    git_dir_previo = os.environ.get("GIT_DIR")
+    work_tree_previo = os.environ.get("GIT_WORK_TREE")
+    tmp = tempfile.mkdtemp(prefix="wopt_s8_gitdir_")
+    try:
+        # --- El repo AJENO, sano y con un commit -------------------------------
+        ajeno = os.path.join(tmp, "ajeno")
+        os.makedirs(ajeno, exist_ok=True)
+        limpio = os.environ.copy()
+        for clave in ("GIT_DIR", "GIT_WORK_TREE"):
+            limpio.pop(clave, None)
+        limpio["GIT_AUTHOR_NAME"] = "t061"
+        limpio["GIT_AUTHOR_EMAIL"] = "t061@woptimizer.invalid"
+        limpio["GIT_COMMITTER_NAME"] = "t061"
+        limpio["GIT_COMMITTER_EMAIL"] = "t061@woptimizer.invalid"
+        for args in (["init", "-q", "-b", "main", ajeno],
+                     ["-C", ajeno, "config", "user.email", "t061@woptimizer.invalid"],
+                     ["-C", ajeno, "config", "user.name", "t061"]):
+            rc, salida = _git(args, limpio, tmp)
+            assert rc == 0, (
+                f"no se pudo montar el repo ajeno de la sonda ({args!r}): "
+                f"rc={rc} salida={salida!r}")
+        with open(os.path.join(ajeno, "x.txt"), "w", encoding="utf-8") as fh:
+            fh.write("repo ajeno\n")
+        _git(["-C", ajeno, "add", "-A"], limpio, tmp)
+        _git(["-C", ajeno, "commit", "-q", "-m", "chore: repo ajeno"], limpio, tmp)
+        git_dir_ajeno = os.path.join(ajeno, ".git")
+        assert os.path.isdir(git_dir_ajeno), (
+            f"la fixture tiene que ser un repo de verdad y no ha salido: {git_dir_ajeno}")
+
+        # --- CONTROL 3: el repo ajeno es VALIDO (si no, (1) no mide nada) ----
+        env_ajeno = limpio.copy()
+        env_ajeno["GIT_DIR"] = git_dir_ajeno
+        rc_sano, dir_ajeno = _git(
+            ["rev-parse", "--absolute-git-dir"], env_ajeno, tmp)
+        assert rc_sano == 0 and dir_ajeno.strip(), (
+            f"el repo ajeno tiene que ser un repo VALIDO para que este test mida la "
+            f"decoratividad de la comprobacion y no una fixture rota: rc={rc_sano} "
+            f"dir={dir_ajeno!r}")
+
+        # --- (1) EL CRITERIO: con GIT_DIR ajeno, el helper no lo devuelve -----
+        os.environ["GIT_DIR"] = git_dir_ajeno
+        os.environ.pop("GIT_WORK_TREE", None)
+        try:
+            _raiz, env_devuelto = _entorno_git_del_repo()
+        except AssertionError:
+            # Rechazar TODAS las candidativas no es el fix: dejaria la sonda sin
+            # repo y mataria el resto de la suite. Se distingue con (2).
+            _raiz, env_devuelto = None, None
+        assert env_devuelto is not None, (
+            "con `GIT_DIR` apuntando a un repo AJENO, `_entorno_git_del_repo()` "
+            "tiene que seguir encontrar UN repo (el de este arbol, por otra "
+            "candidata). Si falla con 'ningun GIT_DIR candidato', el arreglo roto "
+            "es que no admite ninguna: la sonda se queda sin repo y el resto de la "
+            "suite mide el motivo equivocado")
+        dir_devuelto = env_devuelto.get("GIT_DIR", "")
+        assert os.path.normcase(os.path.normpath(dir_devuelto)) != \
+                os.path.normcase(os.path.normpath(git_dir_ajeno)), (
+            f"el repo AJENO se ha DEVUELTO como si fuera el de este arbol: "
+            f"GIT_DIR={dir_devuelto!r} apunta a {git_dir_ajeno!r}, y su HEAD es "
+            f"otro hash. MEDIDO en el ciclo 999: con la comprobacion de "
+            f"`--show-toplevel` y `GIT_WORK_TREE` forzado a `repo_root`, la "
+            f"comprobacion pasa para CUALQUIER repo valido --es decorativa-- y "
+            f"`_head_del_repo_real()` lee el hash del repo ajeno. El arreglo es "
+            f"comparar `--absolute-git-dir` contra la referencia del arbol")
+    finally:
+        if git_dir_previo is None:
+            os.environ.pop("GIT_DIR", None)
+        else:
+            os.environ["GIT_DIR"] = git_dir_previo
+        if work_tree_previo is not None:
+            os.environ["GIT_WORK_TREE"] = work_tree_previo
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # --- (2) CONTROL: sin GIT_DIR en el entorno, el helper funciona ----------
+    git_dir_previo2 = os.environ.get("GIT_DIR")
+    try:
+        os.environ.pop("GIT_DIR", None)
+        raiz_ok, env_ok = _entorno_git_del_repo()
+        rc_ok, dir_ok = _git(["rev-parse", "--absolute-git-dir"], env_ok, raiz_ok)
+        assert rc_ok == 0 and dir_ok.strip(), (
+            f"sin `GIT_DIR` en el entorno, el helper tiene que devolver un repo que "
+            f"git resuelve: rc={rc_ok} dir={dir_ok!r}")
+    finally:
+        if git_dir_previo2 is not None:
+            os.environ["GIT_DIR"] = git_dir_previo2
+
+    # El HEAD del repo real no se mueve: una sonda de tooling no commitea.
+    assert _head_del_repo_real() == head_antes, (
+        "una sonda de tooling no mueve el HEAD del repo real")
+    print("Verificacion del GIT_DIR OK: el repo ajeno se rechaza y sigue habiendo "
+          "repo, que es lo que hace que la comprobacion pueda fallar.")
 
 
 def test_el_cero_esta_sobrecargado_por_dos_desenlaces_y_solo_por_esos_dos():
@@ -20145,4 +20695,15 @@ if __name__ == "__main__":
     test_la_puerta_de_cabecera_rechaza_un_tipo_fuera_de_la_lista()         # H1
     test_la_sonda_del_head_no_depende_del_desacople_del_vfs()              # H2
     test_la_forma_t_menor_no_pasa_aunque_exista_su_task()                 # H3
+    # Ciclo 999, Paso 4 BIS: los TRES supervivientes que dejo la ronda anterior.
+    # Suite: 156 -> 159. Los tres mueren por su asercion y cada uno tapa una forma
+    # de fallo DISTINTA que las anteriores no veian: una puerta sin ningun test
+    # (S3, `subject-empty`), un test cuya comprobacion no podia fallar (S7, la
+    # regla de rama en un comentario HTML o en una valla) y una comprobacion
+    # decorativa (S8, `--show-toplevel` con el arbol forzado pasa para cualquier
+    # repo). Se registran al final, detras del marcador, porque las tres son
+    # tooling puro y escriben en `%TEMP%`.
+    test_la_puerta_de_cabecera_rechaza_un_subject_vacio()                  # S3
+    test_el_git_dir_ajeno_no_pasa_la_verificacion_del_arbol()               # S8
+    test_la_regla_de_rama_no_vive_en_un_comentario_ni_en_una_valla()        # S7
     print("\nALL TESTS PASSED.")

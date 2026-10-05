@@ -67,7 +67,7 @@ src/woptimizer/
 ## Comandos Rápidos
 ```bash
 python run.py                   # Lanzar en modo desarrollo
-python run_tests.py             # 156 tests headless (no abre ventanas)
+python run_tests.py             # 159 tests headless (no abre ventanas)
 python verify_ui_syntax.py      # Verificar sintaxis estática de la UI
 python validate_docs.py         # Validar documentación y changelogs
 python .taskmaster/git_safe_commit.py "msg (TASK-NNN)"   # ÚNICA vía de versionado

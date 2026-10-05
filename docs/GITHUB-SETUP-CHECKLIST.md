@@ -237,7 +237,15 @@ Ninguno existe hoy. Solo hay `workflows/commitlint.yml` y `workflows/release.yml
 ### D-1. `release-pipeline.md` contradice a `release.yml`
 
 - [ ] **`softprops/action-gh-release@v2` -> real `@v3`** (`release.yml:190`).
-      Documentado como `v2` en `release-pipeline.md:54`.
+      Documentado como `v2` en `release-pipeline.md:87`.
+      **CORREGIDO el 2026-10-05: la cita apuntaba a `release-pipeline.md:54` y la
+      frase esta en la `:87`**, que es la linea del job `build`. La `:54` es la del
+      `git push origin main` de la topologia. Una cita que no senala el sitio
+      correcto delata que nadie la abrio. **La casilla sigue ABIERTA:** medido este
+      mismo dia, `release-pipeline.md:87` sigue diciendo `v2` de verdad, luego lo
+      que se corrigio aqui es la cita y no el hecho. Marcar `[x]` sin haber
+      arreglado el fichero habria sido exactamente el fallo que D9 y D10 corrigen
+      en las otras filas.
 - [ ] **El comando de `semantic-release` esta incompleto en la doc.** La doc dice
       `npx --yes semantic-release@25`; el real es
       `npx --yes -p semantic-release@25 -p conventional-changelog-conventionalcommits@9`.
@@ -253,10 +261,20 @@ Ninguno existe hoy. Solo hay `workflows/commitlint.yml` y `workflows/release.yml
 - [ ] **`miniapps/` esta en `.gitignore` Y versionado** (6 ficheros). Las dos cosas a
       la vez: el ignore no aplica a lo ya trackeado, asi que sigue apareciendo en el
       repo publico. O se saca del indice, o se saca del `.gitignore` y se documenta.
-- [ ] **`.taskmaster/tmp_measure_t059.py`** sin trackear, en el arbol de trabajo.
-      Peligroso: **`git_safe_commit.py` hace `add -A`** (`.taskmaster/git_safe_commit.py:206`),
+- [x] **`.taskmaster/tmp_measure_t059.py` sin trackear, en el arbol de trabajo.**
+      Peligroso: **`git_safe_commit.py` hace `add -A`** (`.taskmaster/git_safe_commit.py:776`),
       asi que el proximo commit se lo lleva. Deberia estar en `.gitignore` con un patron
       `tmp_*.py` / `_matrix_*.py`.
+      **CORREGIDO el 2026-10-05, y la casilla se cierra porque el PELIGRO ya no
+      existe: el fichero NO esta.** MEDIDO: `Test-Path` False, `git log --all --
+      .taskmaster/tmp_measure_t059.py` sale VACIO (o sea que tampoco esta en la
+      historia, en ninguna rama), y el `add -A` que se citaba como amenaza esta en
+      la **`:776`**, no en la `:206` que decia la casilla (la 206 es el docstring
+      del contrato de codigos). Una casilla que grita "peligroso" sobre algo que ya
+      no esta entrena al que la lee a buscar un peligro inexistente, que es peor que
+      no tener la casilla. La fila se conserva con su redaccion original porque
+      borrar el registro de lo que se creia seria el mismo fallo que no haberlo
+      escrito.
 - [ ] **`basura/` (8 ficheros).** Fuera del indice a proposito, por decision del dueno.
       **No tocar** — se borra a mano cuando toque. Dejar como esta.
 
@@ -300,7 +318,10 @@ explicar por que el numero bajo de 8 a 7.
 > dice `release-pipeline.md:70`: «un guard que se relaja para que pase el que lo escribio
 > ya no guardar». Subirla a 220 dejaria pasar los 7 y **anularia la unica regla que hoy
 > detecta un mensaje mal formado antes de que semantic-release lo ignore en silencio**.
-> El fallo silencioso que ese job existe para evitar es peor que 8 cabeceras largas.
+> El fallo silencioso que ese job existe para evitar es peor que 7 cabeceras largas.
+> **CORREGIDO el 2026-10-05: decia 8, y son 7** (el "`8 de 29`" de mas abajo ya
+> estaba corregido en su propia nota; este era el unico "8" contradictorio que
+> quedaba).
 
 - [ ] **Decidir como se resuelve. Opciones:**
   - **(a) Rebasear los 29 commits con cabeceras cortas** y pushear `beta` con `--force**.
@@ -420,6 +441,14 @@ explicar por que el numero bajo de 8 a 7.
         como si no hace nada (`WOPT_NOOP`), y su unico consumidor ramifica por
         `exit == 0`. **Falso verde de versionado**: un fallo de git puede pasar por
         commit correcto. Esta anotado como deuda viva desde el ciclo #48.
+        — **🔴 CERRADA, y la fila era FALSA (TASK-061, `4879d19`). MEDIDO el
+        2026-10-05:** `CODE_FAIL = 1` en `.taskmaster/git_safe_commit.py:97` y un
+        fallo de git sale con `WOPT_FAIL commit` + **1**, no con 0. El `0` sigue
+        sobrecargado por DOS desenlaces —`WOPT_COMMIT_OK` y `WOPT_NOOP`—, que es lo
+        que el contrato de `docs/ai/sandbox-rules.md` declara, pero los dos son
+        benignos y ninguno es un fallo de git. **La fila **ya no esta** en la
+        seccion `## ⚠️ Deuda Tecnica Conocida` de `STATUS.md`, y no debe volver:
+        volver a copiarla a la Deuda seria dar de alta una deuda que no existe.
       - Shell intermitente (`spawn EPERM`) en el entorno de agentes.
 - [ ] **`validate_docs.py` no corre en CI** (deliberado, y bien justificado en el
       `.yml:89-93`): deriva `GIT_DIR` de `%LOCALAPPDATA%`, que no existe en el runner.
@@ -439,7 +468,11 @@ Resueltas el 2026-10-04; queda una abierta.
       (ver seccion 2). Sin required checks, sin PR obligatorio, con force-push y borrado
       bloqueados.
 - [x] **O-3. Licencia.** **Elegido: MIT.** `LICENSE` creado en `79039e9`. La afirmacion
-      de `mkdocs.yml:88` ya es ejecutable.
+      de `mkdocs.yml:81-82` ya es ejecutable.
+      **CORREGIDO el 2026-10-05: la casilla citaba `mkdocs.yml:88` y ese fichero
+      tiene 83 lineas.** MEDIDO: `copyright: |` esta en la `:81` y
+      `Released under the MIT License.` en la `:82`. Una cita a una linea que no
+      existe no se puede verificar mirando, y por eso nadie la habiamirado.
 - [ ] **O-4. Miniapps dentro o fuera del repo.** Ahora estan a la vez dentro y fuera.
 - [x] **O-5. NUEVA y urgente: como se desbloquea el pipeline de `beta`.** **Resuelta el
       2026-10-05, al planificarla y no al aplicarla.** Ver D-4 y

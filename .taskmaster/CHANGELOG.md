@@ -1,3 +1,85 @@
+## [CYCLE-054] 2026-10-05 - cierre-de-supervivientes-s3-s7-s8
+
+**Area**: Arquitectura & Calidad. **Change**: el cierre del plan de `TASK-064` /
+`TASK-066` (Paso 4 bis, sin `openspec/changes/` nuevo: es el cierre de una ronda de
+mutacion, no un cambio de arquitectura).
+**Estado**: **los TRES supervivientes de la ronda anterior cerrados (S3, S7, S8).**
+`TASK-064` sigue `in_pending` a la espera de T-3 (la release estable), y no se marca
+`completed` hasta que `v1.1.0` este publicada con su `.exe`.
+**Tests**: 156 -> **159** (112 backend + 47 headless). Las tres sondas van **detras**
+del marcador headless: son tooling puro, no abren ventana, y escriben en `%TEMP%`.
+
+**INCERT-1, MEDIDO por API** (`GET /repos/carcheky/woptimizer/branches/main/protection`):
+la proteccion de `main` **NO tiene `required_status_checks`** —el campo no aparece en
+la respuesta, que es la forma que tiene GitHub de decir "no hay checks exigidos"—, y
+tampoco `required_pull_request_reviews`. Si tiene `allow_force_pushes: false`,
+`allow_deletions: false`, `enforce_admins: false`, `lock_branch: false`. **Por que
+decide si el push se admite:** sin checks exigidos y sin revisiones exigidas, un push
+normal a `main` no tiene ninguna condicion que lo retenga, luego el T-3 del plan
+—`git merge --ff-only beta` + `git push origin main`, sin `--force`— esta ADMISIBLE.
+La proteccion sigue bloqueando el force-push y el borrado, que es justo lo que la
+regla de TASK-066 necesita.
+
+### Mutaciones auditadas (Paso 4 bis)
+| Superviviente | Mutacion | Veredicto | Motivo literal de la muerte |
+|---|---|---|---|
+| **S3** `subject-empty` sin guardia | `if not _subject:` -> `if False:` | killed | *"una cabecera con el ': ' final y nada detas tiene que rechazarse con la regla `subject-empty`, y sale ok=True regla=''"*, mas la mitad de dano: *"el numero de commits tiene que ser el MISMO antes y despues ... un commit asi puede EXISTIR"* |
+| **S7** regla en un comentario | filtro sin `<!--...-->` | killed | *"una regla escrita SOLO dentro de un comentario HTML no es una instruccion que el bucle lea, y el filtro la da por presente"* |
+| **S7b** busqueda en crudo | mitad positiva sin el filtro | killed | *"la regla de rama ... tiene que estar en los TRES ficheros ... y falta: [('...SKILL.md', 'prohibicion', ...)]"* |
+| **S8** verificacion decorativa | referencia = `repo_root` (`--show-toplevel` con el arbol forzado) | killed | *"el repo AJENO se ha DEVUELTO como si fuera el de este arbol"* / *"ningun GIT_DIR candidato es el repo de este arbol"* |
+| H2 (medido de nuevo) | ruta fija como **literal** | **🟡 survived en este host** | ver abajo |
+
+**HALLAZGO SOBRE H2, y corrige una afirmacion previa de este mismo ciclo.** El guardian
+H2 quita el desacople del VFS apportionando `os.environ["LOCALAPPDATA"]` a un temporal,
+luego en este host **solo mata la mitad** de los mutantes de la ruta fija: MEDIDO, con
+`os.path.expandvars(...)` **al llamar** el mutante muere (por `NotADirectoryError` de
+`subprocess`, no por la asercion del test), y con la ruta como **LITERAL** **sobrevive en
+verde**, porque un temporal no cambia una ruta ya escrita — y esa es la forma real del
+bug original, que era la constante de modulo ya expandida en el import. El guardian es de
+FUERZA en el runner de GitHub, que es donde tumbaba el job `verify`, y de fuerza parcial
+aqui. **No se corrige en este ciclo** porque no es ninguno de los tres que le tocaban;
+queda MEDIDO y escrito en el docstring de H2, que es lo que evita que alguien lo declare
+cerrado sin medirlo. El test nuevo de S8 **si** es host-independiente: no simula el
+entorno, monta un repo ajeno de verdad.
+
+### Los nueve mutantes declarados, repetidos
+Los **nueve** mueren, cada uno por su asercion: `LIMITE_SUBIDO_A_220` (por c1 y por el
+corpus), `SOLO_LONGITUD`, `TIPO_FUERA_DE_LISTA` (H1), `SIN_INFO_RAMA` y
+`RAMA_DE_HARDCODE` (c6), `REGLA_EN_UN_COMENTARIO` y `BUSQUEDA_EN_CRUDO` (T-5 positiva),
+`PLANTILLA_CON_MAIN` (T-5 negativa) y `ANCLA_T_MENOR` (H3). `RUTA_FIJA_EN_LA_SONDA` (H2)
+muede por otra causa, y se cuenta aparte mas arriba.
+
+### Las ocho afirmaciones documentales (D5-D11)
+1. **D5** `CHECKLIST.md:240` citaba `release-pipeline.md:54` para el `softprops@v2`; esta
+   en la **`:87`** (la `:54` es la del `git push origin main`). Corregida. **La casilla
+   sigue ABIERTA** porque `release-pipeline.md:87` sigue diciendo `v2` de verdad.
+2. **D6** la casilla de `.taskmaster/tmp_measure_t059.py` gritaba "peligroso" por el
+   `add -A`: **el fichero no existe**, `git log --all` sale vacio, y el `add -A` esta en la
+   **`:776`**, no en la `:206` (que es el docstring). Casilla cerrada con la medicion.
+3. **D7** `CHECKLIST.md:419-422` decia que `git_safe_commit.py` sale con 0 ante un fallo de
+   git. **FALSO**: `CODE_FAIL = 1` (`:97`) y sale `WOPT_FAIL commit` + 1. TASK-061 lo cerro
+   en `4879d19` y **la fila ya no esta** en la Deuda de `STATUS.md`.
+4. **D8** `CHECKLIST.md:441` citaba `mkdocs.yml:88`; el fichero tiene **83 lineas** y la
+   licencia esta en **81-82**.
+5. **D9** el docstring de `run_tests.py` que afirmaba *"La VERIFICACION no es decorativa"*
+   es FALSO (medido) y esta reescrito con la correccion y su porque.
+6. **D10** `CHECKLIST.md:303` decia "peor que **8** cabeceras largas"; son **7**.
+7. **D11** `AGENTS.md` exige entrada en **dos** changelogs y este ciclo no tenia entrada en
+   ninguno (la ultima era CYCLE-053). Escrita en los dos. **`validate_docs.py` da 126 OK /
+   0 FAIL, o sea que NADA lo vigila**: es la brecha de D11.
+8. **El recuento**: 156 -> 159 en los cuatro declarantes (`AGENTS.md`, `README.md` x2 con
+   el badge, `STATUS.md`, `docs/index.md`), mas la tabla de `docs/ai/testing-guide.md`
+   (tres filas) y las secciones tocadas de `llms-full.txt` (tres cifras). `validate_docs.py`
+   lo deriva con `ast` y lo compara.
+
+### La rama redundante de `git_safe_commit.py:349-350`
+**No se ha tocado.** `_RE_CYCLE_ANCLA` es INERTE: `_RE_MARCADOR_ANCLA` ya la subsume, luego
+esa rama es codigo inalcanzable y **ningun test puede matarla**, ni al mutarla ni al
+borrarla. Se deja como estaba y se dice por que, porque borrarla seria un refactor ajeno
+a los tres supervivientes y porque un `finally` mal puesto en este turno ya borro un
+bloque entero a otro fichero.
+
+## [CYCLE-053] 2026-10-04 - codigo-salida-fallo-git-s48-2
 ## [CYCLE-053] 2026-10-04 - codigo-salida-fallo-git-s48-2
 
 **Area**: Arquitectura & Calidad. **Change**: `openspec/changes/2026-10-04-codigo-salida-fallo-git-s48-2/`
