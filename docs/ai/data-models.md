@@ -139,10 +139,43 @@ class AppData(BaseModel):
 ```
 
 ## Reglas de Persistencia
-- Archivo en disco: `profiles.json` ubicado en el directorio de la aplicación (`_app_dir()`).
-- Si el archivo **no existe**, `load()` **no lo crea** (TASK-031: `load()` es de solo
-  lectura). Se crea con el primer `save()` real, cuando el usuario hace algo. La app
-  funciona sin fichero: el pack `gaming` se asegura **en memoria**.
+- **TASK-069 (2026-10-05): el archivo en disco es `%APPDATA%\woptimizer\profiles.json`, y ya NO
+  está junto al ejecutable.** Antes salía de `_app_dir()`, que congelado es el directorio del
+  `.exe`: eso hacía que **dos `woptimizer.exe` en dos carpetas fueran dos bases de packs**, y por
+  eso al pasar de la 1.0.0 a la 1.1.0 arrancada desde otra carpeta el usuario veía cero packs sin
+  aviso. MEDIDO en este host: hay cuatro `profiles.json` con datos y el mismo concepto de pack
+  ("sync") tiene **tres UUID distintos** según la carpeta desde la que se arrancó.
+  - Lo resuelve `data_dir()` (`config.py`), con override por la variable de entorno
+    `WOPTIMIZER_DATA_DIR` para poder testearlo sin el perfil real. Se lee **en cada llamada**, no
+    al importar, para que un test pueda moverlo sin recargar el módulo.
+  - **`PROCESS_LIST_FILE` y el `woptimizer.log` SE QUEDAN junto al `.exe`, a propósito.** El log es
+    diagnóstico *de esta* instalación (es lo que permite que T-1 diga "están aquí" y que el
+    usuario lo mande si algo falla) y `saved_processes.json` no lo lee nadie de producción. Solo lo
+    que el usuario ha creado —los packs— cambia de sitio.
+- **La migración desde la ruta antigua es una COPIA, y el ORIGEN SE QUEDA** (`_migrar_desde()`).
+  Nunca `move`, nunca `os.replace`, nunca `unlink`: mover datos de usuario sin copia es
+  irreversible, y un fallo a mitad destruye justo lo que el usuario tenía. Las otras tres
+  condiciones del contrato: el destino se **relee** con el mismo `_read_json()` y se comparan los
+  ids antes de dar la migración por buena; el `sha256` del origen **antes y después** lo verifica
+  `test_la_migracion_deja_el_origen_intacto_byte_a_byte`; y con el destino ilegible la resolución
+  **cae al origen** (`_leer_del_candidato()`) sin escribir nada, con el destino corrupto en disco
+  para que el usuario lo repare.
+- **La AUSENCIA es observable, y antes no lo era (T-1).** `fichero_danado`/`motivo_danado` solo se
+  activaban con **corrupción**, así que "el usuario perdió sus packs" era indistinguible de
+  "instalación limpia": los dos llegaban a `mensaje_danado()` como `None`. Ahora existen
+  `ruta_sin_packs`, `packs_en_otra_ruta`, `migrado_desde` y `migracion_fallida`.
+- **El Gaming de fábrica NO se repone en silencio (T-4), y esto es seguridad, no UX.**
+  `_ensure_gaming_pack()` sigue reponiendo el pack cuando falta, pero ahora pone
+  `gaming_repuesto = True` y el mensaje **nombra las 5 categorías y los 2 keepers** que ha puesto.
+  Perder el `profiles.json` del usuario no daba "packs vacíos": daba un Gaming Mode **más
+  agresivo** (cinco categorías donde el usuario escogió dos) y la desaparición de la lista
+  anti-brick de TASK-023/030, que el código creía puesta y no lo estaba. En una instalación limpia
+  el gaming de fábrica **no** se anuncia: es la primera ejecución, que es lo que el producto
+  promete, no una incidencia.
+- Si el archivo **no existe** y no hay nada que recuperar, `load()` **no lo crea** (TASK-031:
+  `load()` es de solo lectura con respecto a ese destino). Se crea con el primer `save()` real,
+  cuando el usuario hace algo. La app funciona sin fichero: el pack `gaming` se asegura
+  **en memoria**.
 - Si el archivo está **corrupto**, se intenta recuperar del `.bak` (ver §4) y **no se
   regenera nada**: el fichero se queda **en disco tal cual**, marcado como dañado y con
   un aviso para la UI (§4.4). Antes se regeneraba de inmediato el pack protegido

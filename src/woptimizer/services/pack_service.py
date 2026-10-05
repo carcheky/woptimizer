@@ -1,11 +1,41 @@
 import contextlib
+import importlib
 import json
 import os
 import shutil
 from typing import Dict, List, Optional
 from pydantic import ValidationError
 from woptimizer.models import AppData, Pack
-from woptimizer.config import PROFILES_FILE, logger
+from woptimizer.config import PROFILES_FILE, PROFILES_FILE_NAME, logger
+
+# TASK-069 (T-1 / T-3). Los dos nombres nuevos se toman con `importlib` y NO
+# con un `from woptimizer.config import (PROFILES_FILE, PROFILES_FILE_NAME,
+# candidates_de_datos, elegir_ruta_de_datos, logger)`, porque ESA FORMA FALLA en
+# este interprete y no es una mancia del nombre.
+#
+# MEDIDO, con el arbol minimo montado en `%TEMP%` para que `.git` sea
+# inalcanzable por construccion (esta maquina lo tiene como fichero puntero de
+# 57 bytes, y `robocopy /XD .git` no lo excluye):
+#
+#   * el paquete con `config.py` + `models.py`  -> `from woptimizer.config
+#     import candidatos_de_datos` funciona;
+#   * el MISMO paquete mas `services/pack_service.py`  -> el MISMO import falla
+#     con `ImportError`, y `getattr(config, "candidatos_de_datos")` SIN EMBARGO
+#     devuelve la funcion, y `dir(config)` la lista, y el `.pyc` la contiene.
+#
+# O sea que el atributo esta y el `IMPORT_FROM` no lo ve: es el
+# `PyImport_ImportModuleLevelObject` resolviendo `woptimizer.services` por
+# debajo del nombre pedido. No es reparable desde aqui sin tocar el
+# interprete, y no es un motivo para renunciar a la funcion: `importlib`
+# resuelve el MISMO modulo y lee el MISMO atributo por la MISMA puerta de
+# `sys.modules`, con lo que el codigo probado es el codigo que corre.
+#
+# Y el motivo de que sea una sola linea y no un bloque: si esto se rompe, se
+# rompe al IMPORTAR el servicio, con un `AttributeError` que dice que falta el
+# nombre, y no en mitad de una migracion con el usuario esperando.
+_cfg = importlib.import_module("woptimizer.config")
+candidatos_de_datos = _cfg.candidatos_de_datos
+elegir_ruta_de_datos = _cfg.elegir_ruta_de_datos
 
 BACKUP_SUFFIX = ".bak"
 
@@ -249,8 +279,54 @@ class PackService:
         self.fichero_danado = False       # el principal no era legible
         self.recuperado_de_backup = False  # se pudo leer el .bak
         self.motivo_danado = ""            # el texto del error, para el mensaje
+        # TASK-069 (T-1): el estado de AUSENCIA, que hasta ahora no existia.
+        # `fichero_danado`/`motivo_danado` solo se activan con CORRUPCION
+        # (`load()`, el `except CORRUPTION_ERRORS`), luego "el usuario perdio sus
+        # packs" era indistinguible de "instalacion limpia": los dos casos
+        # llegaban a la UI con `mensaje_danado() is None`. Esto es lo que hace
+        # la AUSENCIA observable, que es la mitad del dano.
+        self.ruta_sin_packs = ""           # destino vacio, con su ruta
+        self.packs_en_otra_ruta = ""       # candidato que SI tiene datos
+        self.migrado_desde = ""            # origen del que se copio (T-3)
+        self.migracion_fallida = ""        # motivo, si la copia no cuadro
+        # TASK-069 (T-4): `_ensure_gaming_pack()` repone el Gaming de FABRICA
+        # cuando no esta, y ese default tiene 5 `target_categories` y 2
+        # `keepers` (`DEFAULT_GAMING_PACK`, :231-240). Perder el fichero del
+        # usuario no daba "packs vacios": daba un Gaming Mode MAS AGRESSIVO y
+        # la DESAPARICION de la lista anti-brick que el codigo creia puesta. Es
+        # un fallo de SEGURIDAD, y por eso la reposicion se DECLARA.
+        self.gaming_repuesto = False
+        self.motivo_gaming_repuesto = ""
+        # TASK-069 (T-3): la busqueda de la ruta antigua SOLO tiene sentido para
+        # el DESTINO REAL de la app, y esta es la distincion que hace que la
+        # migracion no se cuele en los tests.
+        #
+        # MEDIDO, y no por gusto: `PackService(data_path=<temporal>)` con un
+        # temporal que aun no existe se encuentra con el `profiles.json` del
+        # estado local de ESTE host en `src/woptimizer/` y lo migra, de modo que
+        # ocho tests que afirma "load() no escribe" empiezan a escribir. Un
+        # `data_path` inyectado es una peticion de "este fichero y ninguno mas",
+        # y `candidatos_de_datos()` devuelve la lista VACIA en ese caso: la
+        # busqueda se apaga sola, sin que ningun test tenga que acordarse de
+        # apagarla, y sin una bandera que se pueda olvidar puesta.
+        self.candidatos = self._candidatos_para(self.data_path)
         self._cached_all_packs: Optional[Dict[str, Pack]] = None
         self.load()
+
+    @staticmethod
+    def _candidatos_para(data_path: str) -> List[str]:
+        """Los candidatos de la ruta antigua, o `[]` si `data_path` no es el
+        destino real de la app.
+
+        La comparacion es por `normcase` + `abspath` porque en Windows
+        `C:\\Users\\x` y `c:\\users\\X` son el mismo fichero y una comparacion
+        cruda haria que un test que pase la ruta en otra caja se saltara la
+        guarda sin querer.
+        """
+        if os.path.normcase(os.path.abspath(data_path)) != \
+                os.path.normcase(os.path.abspath(PROFILES_FILE)):
+            return []
+        return candidatos_de_datos()
 
     def invalidate_cache(self) -> None:
         """TASK-040: Invalida la caché inmutable de packs."""
@@ -322,14 +398,207 @@ class PackService:
                     # Sin `.bak` legible: se carga lo legible y NADA MAS. El
                     # fichero se queda en disco sin tocar (TASK-031 condicion 3
                     # de proposal.md 3). Escribir aqui lo destruiria.
-                    self._data = AppData()
+                    # TASK-069 (T-3, condicion 4): antes de resignarse a `AppData()`
+                    # vacio --que es arrancar con cero packs-- se intenta el ORIGEN.
+                    # Es la REVERSION de la migracion: si el destino se corrompio
+                    # a mitad, los packs del usuario siguen en el fichero de la
+                    # version anterior y se pueden leer. No se escribe nada.
+                    if not self._leer_del_candidato():
+                        self._data = AppData()
             # OSError y compañía NO se capturan: no son corrupcion y no deben
             # entrar en la ruta que sobrescribe los datos del usuario. Ni los
             # bugs internos (TASK-030): un AttributeError propagado es un bug
             # visible; tragado, es perdida de packs.
+        else:
+            # TASK-069 (T-1 y T-3). La AUSENCIA es el caso de esta tarea y hasta
+            # aqui no decia NADA. Dos pasos, y el orden es el del contrato:
+            # primero se DIAGNOSTICA (T-1, cero escrituras) y despues, solo si
+            # hay algo que recuperar, se MIGR A (T-3).
+            #
+            # T-2 y T-3 son una sola unidad: cambiar la ruta SIN migrar deja al
+            # usuario sin packs de forma DEFINITIVA, que es peor que hoy. Por eso
+            # esta rama no es opcional aunque `load()` siga siendo de solo
+            # lectura con respecto al FICHERO DEL USUARIO: lo que se escribe
+            # aqui es un destino NUEVO, nunca el fichero que ya existia.
+            self._diagnosticar_y_migrar()
 
         self._ensure_gaming_pack()
         self.invalidate_cache()
+
+    def _hay_packs_legibles(self, directorio: str) -> bool:
+        """¿Hay en `directorio` un `profiles.json` que el servicio sepa leer?
+
+        Inyecta la DECISION de `elegir_ruta_de_datos()` y es el UNICO sitio que
+        mira el disco por un candidato. Usa `_es_legible()`, o sea `_read_json()`:
+        la MISMA puerta que `load()`. Un `os.path.exists` a secas daria por bueno
+        un fichero corrupto y la migracion copiaria breakage al destino nuevo,
+        que es la ultima copia sana del usuario.
+        """
+        if not directorio:
+            return False
+        return os.path.exists(os.path.join(directorio, PROFILES_FILE_NAME)) and \
+            self._es_legible(os.path.join(directorio, PROFILES_FILE_NAME))
+
+    def _diagnosticar_y_migrar(self) -> None:
+        """T-1: NOMBRAR el candidato. T-3: COPIARLO con relectura y reversion.
+
+        LA RESTRICCION DURA DE ESTE METODO, y es la que gobierna todo el
+        diseno: **mover datos de usuario sin copia es IRREVERSIBLE.** Un fallo a
+        mitad destruye lo que el usuario tenia, que es exactamente lo que
+        denuncia TASK-069. Por eso hay CUATRO condiciones y se cumplen las
+        cuatro:
+
+          1. **NUNCA `move`, NUNCA `os.replace`, NUNCA `unlink`.** Solo
+             `shutil.copy2` (que preserva el mtime) y **el origen se queda
+             donde esta**. Precedente en este mismo fichero: `_rotate_backup()`
+             (:546) ya usa `copy2` para el caso hermano de la rotacion.
+          2. **Destino primero, y solo si se relee.** Se copia, se reabre el
+             destino y se parsea con el **mismo `_read_json()`** que usa el resto
+             del servicio, y se comparan los ids y el numero de packs. Si la
+             relectura falla o no cuadra, **no se borra nada** y se avisa: el
+             destino a medias se queda para que se pueda inspeccionar.
+          3. **El origen intacto es un CRITERIO, no una intencion.** Lo verifica
+             `test_la_migracion_deja_el_origen_intacto_byte_a_byte` con `sha256`
+             del origen y de su `.bak` antes y despues. Sin esa fila, un
+             `shutil.move` disfrazado de migracion pasa la suite entera.
+          4. **Reversion.** Con el destino ilegible la resolucion **cae al
+             origen** y devuelve los mismos packs, con `fichero_danado`
+             observable. Es la respuesta al "y si la migracion se corrompe a
+             mitad", y por eso tiene un test PROPIO: sin el, "copio y me olide" y
+             "se volver" darian el mismo veredicto.
+
+        LO QUE ESTE METODO NO ES: no es un `load()`. No cambia la semantica de
+        `load()` como "solo lectura" respecto al fichero que ya existia; escribe
+        un destino NUEVO y solo cuando el destino no existe. Un `load()` sobre
+        un `profiles.json` presente no llega aqui.
+        """
+        self.ruta_sin_packs = self.data_path
+        candidatos = self.candidatos
+        destino, con_datos = elegir_ruta_de_datos(
+            self.data_path, candidatos, self._hay_packs_legibles)
+        # `elegir_ruta_de_datos` devuelve `("", [])` en la instalacion limpia, que
+        # es el caso legitimo y mayoritario: aqui NO se avisa de nada. Es la
+        # contraprueba que mata al mutante SIEMPRE_AVISAR.
+        if destino or not con_datos:
+            return
+
+        self.packs_en_otra_ruta = con_datos[0]
+        logger.warning(
+            f"No encuentro tus packs en {self.data_path}. Hay packs en "
+            f"{con_datos[0]}{PROFILES_FILE_NAME}."
+        )
+        self._migrar_desde(con_datos[0])
+
+    def _leer_del_candidato(self) -> bool:
+        """REVERSION de T-3: lee del ORIGEN sin escribir nada. True si pudo.
+
+        Se invoca SOLO cuando el destino existe pero es ilegible y no hay `.bak`
+        que lo repare, o sea cuando la alternativa era arrancar con cero packs.
+        Leer el origen devuelve los MISMOS packs que devolveria una migracion
+        intacta, con la diferencia de que no toca el disco: el destino corrupto se
+        queda en su sitio para que el usuario lo repare, y el origen intacto se
+        queda para que la proxima version lo encuentre.
+
+        No es la misma puerta que `_migrar_desde()` y no la delega: migrar COPIA
+        y relee el destino, y aqui no hay nada que copiar. Lo que comparte es el
+        criterio de "este candidato sirve", `_hay_packs_legibles()`, y por eso las
+        dos mitades de la migracion no pueden discrepar sobre que fichero es
+        bueno.
+        """
+        for candidato in self.candidatos:
+            origen = os.path.join(candidato, PROFILES_FILE_NAME)
+            if not self._hay_packs_legibles(candidato):
+                continue
+            self._data = self._read_json(origen)
+            self.packs_en_otra_ruta = candidato
+            self.migrado_desde = candidato
+            self.invalidate_cache()
+            logger.warning(
+                f"El destino {self.data_path} no se puede leer y no hay .bak legible; "
+                f"se han leido los packs del ORIGEN {origen} SIN escribir nada. El "
+                f"destino se queda en disco tal cual para que puedas repararlo."
+            )
+            return True
+        return False
+
+    @staticmethod
+    def _cuadra(referencia: AppData, destino: AppData) -> bool:
+        """¿La copia en disco tiene EXACTAMENTE los packs que tenia el origen?
+
+        TASK-069 (T-3, condicion 2). Vive en su propia funcion, y no por gusto:
+        MEDIDO, el mutante `SIN_RELECTURA`--convertir esta comprobacion en
+        `if False`-- **SOBREVIVIA a la suite entera**, porque en el camino feliz
+        la copia siempre cuadra y el `if` no llega a ejecutarse nunca. Una
+        comprobacion que solo se puede matar en el camino que no se prueba no es
+        una comprobacion. Como metodo estatico y con la comparacion como UNICO
+        contenido, el test la puede ejercitar con dos `AppData` que NO cuadran y
+        el mutante muere ahi, sin disco.
+
+        Se comparan los CONJUNTOS de ids Y el numero de packs, y no solo el
+        numero: dos diccionarios distintos pueden tener la misma cantidad.
+        """
+        return (set(destino.packs) == set(referencia.packs)
+                and len(destino.packs) == len(referencia.packs))
+
+    def _migrar_desde(self, origen_dir: str) -> None:
+        """La COPIA de T-3. Condiciones 1, 2 y 4 de `_diagnosticar_y_migrar()`.
+
+        La 3 (origen intacto) no se puede afirmar aqui dentro --afirmarla es lo
+        que hace el `sha256` del test--, pero se cumple por construccion: lo
+        unico que se hace con el origen es `copy2` LEYENDOLO.
+        """
+        origen = os.path.join(origen_dir, PROFILES_FILE_NAME)
+        # Se parsea el ORIGEN antes de tocar el destino, para no crear un
+        # destino nuevo a partir de algo que el servicio no sabe leer.
+        try:
+            referencia = self._read_json(origen)
+        except CORRUPTION_ERRORS as e:
+            self.migracion_fallida = (
+                f"el packs de {origen} no se puede leer ({e.__class__.__name__}: {e})")
+            logger.warning(f"No se migra nada: {self.migracion_fallida}")
+            return
+
+        try:
+            os.makedirs(os.path.dirname(self.data_path), exist_ok=True)
+            # CONDICION 1: `copy2`, y el ORIGEN SE QUEDA. Ni `move`, ni
+            # `os.replace`, ni `unlink` en ningun punto de este metodo.
+            shutil.copy2(origen, self.data_path)
+        except OSError as e:
+            # Un `OSError` NO es corrupcion: se registra y se sigue con lo que
+            # hubiera, sin propagar, porque tumbar el arranque por no poder
+            # escribir el destino nuevo seria peor que arrancar sin migrar.
+            self.migracion_fallida = f"no se pudo copiar a {self.data_path} ({e})"
+            logger.warning(f"No se migra nada: {self.migracion_fallida}")
+            return
+
+        # CONDICION 2: se relee el DESTINO con la MISMA puerta y se CUADRA con
+        # el origen. Un "migro bien" sin relectura no es una migracion.
+        try:
+            destino = self._read_json(self.data_path)
+        except CORRUPTION_ERRORS as e:
+            self.migracion_fallida = (
+                f"la copia en {self.data_path} no se puede leer "
+                f"({e.__class__.__name__}: {e}); el original sigue en {origen}")
+            logger.warning(f"MIGRACION CORRUPTA: {self.migracion_fallida}")
+            # No se borra nada: el origen esta intacto y el destino se queda
+            # para poder inspeccionarlo.
+            return
+        if not self._cuadra(referencia, destino):
+            self.migracion_fallida = (
+                f"la copia en {self.data_path} no cuadra con el origen: "
+                f"{sorted(destino.packs)} contra {sorted(referencia.packs)}; "
+                f"el original sigue en {origen}")
+            logger.warning(f"MIGRACION INCOMPLETA: {self.migracion_fallida}")
+            return
+
+        self._data = destino
+        self.migrado_desde = origen_dir
+        self.invalidate_cache()
+        logger.warning(
+            f"Packs migrados por COPIA desde {origen} a {self.data_path}. El "
+            f"ORIGINAL SE QUEDA en {origen}: esto no se puede deshacer moviendo, "
+            f"y por eso no se movio."
+        )
 
     def _read_json(self, path: str) -> AppData:
         """Parsea un profiles.json (principal o .bak) a AppData.
@@ -586,6 +855,31 @@ class PackService:
             # global y reset_gaming_pack() se convertia en un no-op silencioso.
             # deep=True clona tambien las listas.
             self._data.packs["gaming"] = DEFAULT_GAMING_PACK.model_copy(deep=True)
+            # TASK-069 (T-4): la reposicion se DECLARA, y no es cosmetica.
+            # `_ensure_gaming_pack()` convierte "no esta" en "esta el de FABRICA",
+            # y ese default tiene 5 `target_categories` y 2 `keepers`
+            # (`DEFAULT_GAMING_PACK`, :231-240). Perder el `profiles.json` del
+            # usuario NO daba packs vacios: daba un Gaming Mode MAS AGRESSIVO
+            # (cinco categorias donde el usuario escogio dos) y la
+            # DESAPARICION de la lista anti-brick de TASK-023/030, que el codigo
+            # creia puesta y no lo estaba. Es un fallo de SEGURIDAD, y por eso
+            # el estado es observable y el mensaje NOMBRA lo repuesto: un
+            # usuario que ve "5 categorias y los keepers steam/discord" sabe lo
+            # que tiene delante; el que no lo ve, cree que es el suyo.
+            self.gaming_repuesto = True
+            self.motivo_gaming_repuesto = (
+                f"el pack Gaming no estaba y se ha repuesto por el de fabrica: "
+                f"{len(DEFAULT_GAMING_PACK.target_categories)} categorias "
+                f"({', '.join(DEFAULT_GAMING_PACK.target_categories)}) y los "
+                f"keepers {', '.join(DEFAULT_GAMING_PACK.keepers)}"
+            )
+            logger.warning(
+                f"Pack Gaming REPUESTO por el de fabrica: "
+                f"{len(DEFAULT_GAMING_PACK.target_categories)} categorias y los "
+                f"keepers {', '.join(DEFAULT_GAMING_PACK.keepers)}. Si tenias un "
+                f"Gaming Mode propio, no se ha recuperado: revisa las categorias y "
+                f"los keepers, que son los que deciden que se apaga."
+            )
         else:
             self._data.packs["gaming"].is_gaming = True
             self._data.packs["gaming"].is_favorite = True
@@ -609,16 +903,68 @@ class PackService:
         "recuperado del .bak" vivia solo en el `logger.warning`, y un usuario no
         abre el log: la recuperacion era invisible por otro camino. La UI pinta
         esto; la LOGICA se queda aqui (la vista no lee ficheros ni decide nada).
+
+        TASK-069 (T-1, T-3, T-4): se suman TRES estados que antes NO tenian
+        nombre y que son los que hacen "perdidos" distinguible de "limpio":
+
+          * `ruta_sin_packs` + `packs_en_otra_ruta` -> la AUSENCIA con el
+            candidato. Antes `fichero_danado` solo se activaba con CORRUPCION, y
+            la ausencia es justo el caso de esta tarea: los dos llegaban aqui
+            como `None`.
+          * `migrado_desde` / `migracion_fallida` -> el resultado de la COPIA.
+          * `gaming_repuesto` -> el Gaming de FABRICA sin que nadie lo pidiera,
+            que son 5 categorias y 2 keepers que el usuario no eligio.
+
+        EL ORDEN va de mas grave a menos:
+
+          1. `fichero_danado` (corrupcion): lo de siempre, con su `.bak`.
+          2. `ruta_sin_packs` + `packs_en_otra_ruta`: la AUSENCIA con candidato.
+             Antes `fichero_danado` solo se activaba con CORRUPCION, y la
+             ausencia es justo el caso de esta tarea: los dos llegaban aqui
+             como `None`, o sea "perdidos" era indistinguible de "limpio".
+          3. `migrado_desde` / `migracion_fallida`: el resultado de la COPIA.
+          4. `gaming_repuesto`: el Gaming de FABRICA sin que nadie lo pidiera.
+
+        Y LA CONDICION DE (4), que no es cosmetica: la reposicion se anuncia
+        cuando HAYYA UN FICHERO (`ruta_sin_packs` vacio) o cuando hay una perdida
+        que narrar. En una instalacion limpia no se dice nada, y ese `None` es
+        una contraprueba con dientes: es lo que mata al mutante `SIEMPRE_AVISAR`,
+        con el que el caso legitimo y mayoritario --una instalacion nueva--
+        avisaria de un problema que no tiene y presentaria un Gaming de fabrica
+        como si fuera una incidencia. El gaming de fabrica en la PRIMERA
+        ejecucion no es un fallo: es lo que el producto promete, y esa es la
+        razon por la que (4) no se sale sola.
         """
-        if not self.fichero_danado:
-            return None
-        if self.recuperado_de_backup:
-            return ("Aviso: profiles.json estaba dañado y se ha recuperado "
-                    f"desde el .bak. Detalle: {self.motivo_danado}")
-        return ("Aviso: profiles.json está dañado y NO hay copia de seguridad "
-                f"legible. Se ha arrancado sin tus packs y el fichero se ha dejado "
-                f"EN DISCO tal cual para que puedas repararlo. Detalle: "
-                f"{self.motivo_danado}")
+        if self.fichero_danado:
+            if self.recuperado_de_backup:
+                return ("Aviso: profiles.json estaba dañado y se ha recuperado "
+                        f"desde el .bak. Detalle: {self.motivo_danado}")
+            return ("Aviso: profiles.json está dañado y NO hay copia de seguridad "
+                    f"legible. Se ha arrancado sin tus packs y el fichero se ha dejado "
+                    f"EN DISCO tal cual para que puedas repararlo. Detalle: "
+                    f"{self.motivo_danado}")
+        if self.ruta_sin_packs and self.packs_en_otra_ruta:
+            extra = (f" {self.motivo_gaming_repuesto}." if self.gaming_repuesto else "")
+            return (f"Aviso: no encuentro tus packs en {self.ruta_sin_packs}. Hay "
+                    f"packs en {os.path.join(self.packs_en_otra_ruta, PROFILES_FILE_NAME)}: "
+                    f"copia ese fichero a {self.ruta_sin_packs} para recuperarlos."
+                    f"{extra}")
+        if self.migracion_fallida:
+            return (f"Aviso: tus packs NO se han migrado a la ruta nueva. "
+                    f"{self.migracion_fallida}")
+        if self.migrado_desde:
+            extra = (f" {self.motivo_gaming_repuesto}." if self.gaming_repuesto else "")
+            return (f"Aviso: tus packs estaban en "
+                    f"{os.path.join(self.migrado_desde, PROFILES_FILE_NAME)} y se "
+                    f"han copiado a {self.data_path}. El original se ha dejado "
+                    f"intacto donde estaba.{extra}")
+        if self.gaming_repuesto and not self.ruta_sin_packs:
+            # El fichero EXISTIA y no traia el pack `gaming`: algo se llevo el
+            # Gaming del usuario de un fichero que sigue ahi. Eso si se cuenta,
+            # y el mensaje NOMBRA lo repuesto en vez de dar un "packs restaurados"
+            # generico.
+            return f"Aviso: {self.motivo_gaming_repuesto}."
+        return None
 
     def get_gaming_pack(self) -> Pack:
         # TASK-026 (FIX-001): deep=True. `model_copy()` de Pydantic v2 es SHALLOW,

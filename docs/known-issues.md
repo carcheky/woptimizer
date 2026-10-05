@@ -2,6 +2,45 @@
 
 > ⚠️ **LEE ESTO ANTES DE MODIFICAR** — Las trampas aquí causaron horas de debugging perdido.
 
+## 🔴 Trampa #19: dos `woptimizer.exe` en el host, TRES bases de packs, un solo dato
+
+**Sintoma:** el dueno pasa de la 1.0.0 a la 1.1.0 y ve cero packs. Los datos estan intactos: 
+la app los esta leyendo de otra carpeta.
+
+**Por que:** `PROFILES_FILE` salia de `_app_dir()`, que congelado es el directorio del `.exe`. 
+Cada carpeta con un `woptimizer.exe` es **una base de packs**, y el `profiles.json` viaja con el 
+binario. MEDIDO en este host el 2026-10-05:
+
+| Ruta | Bytes | mtime | gaming (tc / keepers) | Pack de usuario |
+|---|---|---|---|---|
+| `C:\Users\carch\Downloads\profiles.json` | 1.205 | 10-03 16:01 | 5 / 2 | `8fefbc22` "sync" - **3 apps absolutas** |
+| `...\woptimizer\dist\profiles.json` | 898 | 10-05 09:31 | **2 / 0** | `4a74a322` "sync" - 0 apps |
+| `...\woptimizer\src\woptimizer\profiles.json` | 1.309 | 10-03 00:47 | 5 / 2 | `7559c83a` "SYNC" - 4 apps absolutas |
+
+El mismo concepto de pack ("sync") tiene **TRES UUID distintos** segun la carpeta desde la que se 
+arranco. Eso no lo produce una migracion de forma: es la ruta.
+
+**Lo que MAS engaña, y no esta en el sintoma:** perder el fichero **no** daba packs vacios. 
+`_ensure_gaming_pack()` repone el Gaming de **fabrica** (5 `target_categories` y los 2 keepers 
+anti-brick) sin avisar, o sea que la perdida se traduce en un Gaming Mode **mas agresivo** y en la 
+desaparicion de una proteccion que el codigo cree puesta. Un Gaming que parece el tuyo y no lo es.
+
+**Arreglado en TASK-069 (2026-10-05):** los packs van a `%APPDATA%\woptimizer\profiles.json`, la 
+ruta antigua se diagnostica **sin escribir** y se migra por **COPIA** (`shutil.copy2`, el origen se 
+queda). **Como recuperar lo que hay ahora mismo:** los tres ficheros siguen ahi. Copia el que 
+reconozcas a `%APPDATA%\woptimizer\profiles.json` y arranca.
+
+**Como NO se diagnostica mal (medido, para no repetirlo):** `setup_logging()` construye su 
+`RotatingFileHandler` **sin `delay`**, luego arrancar la app **crea** el log aunque no haya ni un 
+aviso, y el log es un testigo de arranque fiable. Por eso se puede descartar la instalacion en 
+paralelo con una sola cifra: el `woptimizer.log` de `Downloads` tiene **0 B** con fecha **10-03** 
+mientras el `.exe` de esa carpeta es del **10-05**, o sea que **no se ha ejecutado nunca**. Hubo dos 
+carpetas, no dos instalaciones.
+
+**Lo que sigue SIN arreglar:** nada borra las tres bases, y no se sabe cual es la buena. La 
+migracion copia a proposito.
+
+
 ## 🚨 Trampa #1: `$pid` en PowerShell es variable reservada
 
 **Síntoma:** Todos los procesos aparecen con el MISMO PID en la lista. `taskkill /F /PID X` falla porque ese PID no existe o no es lo que esperas.
@@ -538,4 +577,8 @@ esta se arregla con ficheros.
    antes de ejecutar, así que un solo `ParserError` aborta también las líneas correctas y no hay
    resultados parciales. Escribe un fichero `.py` y ejecútalo. Y al mutar código, **purga
    `__pycache__` entre mutaciones**: si el mutante tiene la misma longitud y el mismo segundo de
-   mtime, Python reutiliza un `.pyc` obsoleto y el veredicto es falso (Trampa #18)
+   mtime, Python reutiliza un `.pyc` obsoleto y el veredicto es falso (Trampa #18)
+13. **NUNCA tomes `os.path.dirname(sys.executable)` como destino de datos de usuario** - un destino
+    que se mueve con el binario pierde los datos cada vez que el binario se mueve, y es un estado
+    estacionario, no un evento (Trampa #19). Y **NUNCA compiles un `profiles.json` de otro sitio**
+    con una ruta distinta esperando que el servicio lo encuentre: son bases separadas

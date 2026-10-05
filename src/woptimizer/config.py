@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Dict, Any
+from typing import Any, Dict, List
 
 def _app_dir() -> str:
     """Devuelve el directorio donde está el ejecutable (frozen o dev)."""
@@ -12,6 +12,84 @@ def _data_dir() -> str:
     if getattr(sys, 'frozen', False):
         return sys._MEIPASS
     return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+# TASK-069 / T-2: DESTINO UNICO DE LOS DATOS DEL USUARIO, y deja de estar atado
+# al ejecutable. MEDIDO, y no es una hipotesis: `_app_dir()` era la raiz de
+# `PROFILES_FILE`, o sea que dos `woptimizer.exe` en dos carpetas eran DOS bases
+# de packs. En este host hay cuatro `profiles.json` con datos y el mismo
+# concepto de pack ("sync") tiene TRES uuid distintos segun la carpeta desde la
+# que se arranco. Perder los datos de una version a la siguiente no es un
+# evento: es un ESTADO ESTACIONARIO, y por eso un destino que se mueve con el
+# binario no lo arregla.
+#
+# `%APPDATA%` y no `%LOCALAPPDATA%` por una razon medida: `%APPDATA%` es la sede
+# canonica de "configuracion de usuario que no es cache" y ya estaba en la lista
+# de RAICES PERMITIDAS de la politica de arranque (`architecture.md` §14), luego
+# no abre ninguna raiz nueva. Ademas sobrevive a reinstalar el `.exe`, a moverlo
+# y a volver a descargarlo.
+ENV_DATA_DIR = 'WOPTIMIZER_DATA_DIR'
+DATA_DIR_NAME = 'woptimizer'
+PROFILES_FILE_NAME = 'profiles.json'
+
+
+def data_dir() -> str:
+    """Directorio de datos del usuario. NO es `_app_dir()` y no lo sera.
+
+    El override por entorno existe para que la ruta se pueda probar sin el
+    `%APPDATA%` de verdad, y se lee EN CADA LLAMADA (no al importar) para que
+    cambiarlo no exija recargar el modulo: un destino cacheado en el momento del
+    import es un destino que ningun test puede mover.
+
+    Degradacion DELIBERADA y medida: sin `%APPDATA%` y sin el override se cae a
+    `_app_dir()`. Solo se alcanza en un perfil de Windows sin `%APPDATA%`, donde
+    el comportamiento de antes es mejor que romperse, y aun asi se registra para
+    que la razon aparezca en el log en vez de ser silenciosa.
+    """
+    override = os.environ.get(ENV_DATA_DIR)
+    if override:
+        return os.path.abspath(override)
+    base = os.environ.get('APPDATA') or os.environ.get('LOCALAPPDATA')
+    if not base:
+        logger.warning(
+            "Ni %APPDATA% ni %LOCALAPPDATA% estan definidos y no hay override en "
+            f"{ENV_DATA_DIR}: los datos de packs caen en {_app_dir()}, que es la "
+            "ruta atada al ejecutable que TASK-069 vino a eliminar. Es un estado "
+            "que un perfil de Windows normal no tiene."
+        )
+        return _app_dir()
+    return os.path.join(base, DATA_DIR_NAME)
+
+
+def candidatos_de_datos() -> List[str]:
+    """Directorios donde una version ANTERIOR puede haber dejado los packs.
+
+    Es la MISMA busqueda de siempre --`_app_dir()`-- porque es exactamente donde
+    la app vivia: congelado, el directorio del `.exe`; en desarrollo, el del
+    paquete. Se expone como LISTA y no como valor unico porque el diagnostico
+    (T-1) y la migracion (T-3) son la misma busqueda: si mañana hay un segundo
+    candidato, se añade aqui y los dos lo heredan.
+    """
+    return [_app_dir()]
+
+
+def elegir_ruta_de_datos(destino: str, candidatos: List[str], hay_legible) -> tuple:
+    """`(destino_elegido, candidatos_con_datos)`. Decision PURA, sin E/S.
+
+    `hay_legible(ruta_de_directorio)` es el UNICO acceso a disco de esta funcion
+    y lo INJECTA el llamante, y no por gusto: asi la decision se prueba sin
+    disco, y una segunda implementacion de "hay packs aqui" no puede nacer
+    dentro de la decision. No escribe nada, no copia nada y no borra nada: T-1 es
+    un instrumento de medicion, y un instrumento que toca el sujeto no mide.
+
+    Con el destino legible devuelve `(destino, [])`: ya se sabe donde estan los
+    packs y no hay nada que buscar. Si no, devuelve `("", [...])`: la lista
+    VACIA es el caso legitimo de instalacion limpia, y es la que distingue
+    "perdidos" de "nunca los tuve" (TASK-069 §3).
+    """
+    if hay_legible(destino):
+        return destino, []
+    return "", [c for c in candidatos if hay_legible(c)]
+
 
 import logging
 from logging.handlers import RotatingFileHandler
@@ -79,7 +157,18 @@ PROCESS_LIST_FILE = os.path.join(_app_dir(), 'saved_processes.json')
 # guardia de verdad es `test_process_list_file_sigue_siendo_un_contrato` en
 # `run_tests.py` (afirma que la constante existe, vale lo que debe y la nombran
 # los tres), no un script que nadie ejecuta.
-PROFILES_FILE = os.path.join(_app_dir(), 'profiles.json')
+# TASK-069 (T-2): `PROFILES_FILE` sale de `data_dir()`, NO de `_app_dir()`. Esta
+# es LA linea del bug: con `_app_dir()` el destino de los packs del usuario se
+# mudaba con el binario, y por eso pasar de la 1.0.0 a la 1.1.0 arrancada desde
+# otra carpeta significaba arrancar con cero packs y sin aviso.
+#
+# LO QUE NO SE MUEVE, y es deliberado: `PROCESS_LIST_FILE` (:67) y el
+# `RotatingFileHandler` de `setup_logging()` (:48) SE QUEDAN en `_app_dir()`. El
+# log es diagnostico DE ESTA instalacion -- es lo que permite que T-1 diga "estan
+# aqui" y que el usuario lo mande si algo falla--, y `saved_processes.json` no
+# lo lee nadie de produccion (`run_tests.py:6965-6975` lo ancla por texto).
+# Mover el log seria cambiar el diagnostico por el dato.
+PROFILES_FILE = os.path.join(data_dir(), PROFILES_FILE_NAME)
 
 
 # TASK-020: los emojis de categoria DEBEN coincidir exactamente con los usados en
