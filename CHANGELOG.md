@@ -1,3 +1,32 @@
+## CYCLE-058 - 2026-10-05
+
+**Portada & Packs** - `TASK-068` (Un rechazo ya no se te anuncia como un éxito)
+
+**Estado**: **código terminado y medido.** Tests: **188** (140 + 48). Documentación: **135 comprobaciones sin fallos**.
+
+### 🔴 Lo que pasaba
+
+Marcabas una categoría para **arrancar** y el programa **no la arrancaba** — y te lo contaba como **un éxito**: banner en verde diciendo "0 apps iniciadas", porque lo que se omitía no se sumaba ni como fallo. Un rechazo dice "no arranqué nada", no "lo hice bien".
+
+**Antes:** `⚡ 0 apps iniciadas` en **verde**.
+**Ahora:** `⚠️ 0 iniciadas, 1 con error (1 categoría: 🔴 Sistema de Windows)` en **ámbar**, con el motivo nombrado.
+
+### Y el bug real resultó ser otro
+
+Al planificar esto se descubrió que **arrancar categorías ya funcionaba desde hacía días**, y que el `.exe` que probaste era **posterior** a ese arreglo. Lo que fallaba era el aviso, no la acción. Con la app abierta se ve lo mismo que nunca se vio: **dos categorías no se ejecutan —una roja y otra en conflicto— y no había forma de pincharlas.**
+
+Reglas que quedan fijadas: lo que se **omite cuenta como fallo**, en el motor y no en el texto; y **una puerta sin comprobación es una puerta sin comportamiento** — el contador existía, ningún test lo leía, y por eso nadie lo notó.
+
+### Verificado
+
+- **188 tests en verde** y **12 pruebas de rotura medidas una a una**: 9 mueren por la comprobación que dicen vigilar, y **3 sobreviven porque son equivalentes**, no por falta de vigilancia. Eso se midio y se escribió: el texto solo aparece cuando no arrancó nada, y eso está protegido **por dos sitios**; romper los dos sí salta.
+- **Una prediccion del arquitecto se ejecutó y se cumplió**: borrando el bloque entero que ejecuta las dos listas, la puerta ahora **falla** con un mensaje que lo dice. Antes de este cambio ese borrado pasaba los tests en verde.
+
+### Quedan dos preguntas tuyas
+
+- 🟡 Con **🟡 Launchers Gaming** marcada para arrancar: ¿abres los N launchers a la vez y el mensaje los nombra, o **🟡 pasa a estar ignorada al arrancar** igual que 🔴? Hoy 🔴 está bloqueada en las dos listas y 🟡 solo en una: esa asimetría no está escrita en ningún sitio.
+- 🟡 ¿Quieres que el mensaje diga **por qué** se omitió cada categoría, o con ver **que** se omitió te vale?
+
 ## CYCLE-057 - 2026-10-05
 
 **Servicios / Persistencia** - `TASK-069` (Tu copia de seguridad ya no se machaca)

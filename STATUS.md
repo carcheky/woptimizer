@@ -141,7 +141,7 @@
   de 183**: el doble de test tenía `llamadas_categorias` y `arranque_categorias`
   (`run_tests.py:9177-9178`) y **ningún test los leía**, y `pack_normal`
   (`run_tests.py:9659`) no tenía `start_categories`, luego `if categorias:` no se tomaba
-  nunca — borrar `pack_manager_view.py:666-671` dejaba los 183 en verde.
+  nunca — borrar `pack_manager_view.py:666-671` **muria por asercion, medido en CYCLE-058**.
   Especificacion: `openspec/changes/2026-10-05-arranque-por-categorias-en-el-gestor/`.
   **Cierra cuando T-1..T-3 esten verdes y el `mutation-auditor` mate ese borrado por
   asercion.** Regla que deja este hallazgo: *una puerta sin asercion se lee como una puerta
