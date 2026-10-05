@@ -72,11 +72,15 @@ campo nuevo no necesita tocar ninguna.
 > fuera del enumerado es **corrupción**, no un pack válido (§4.4). Su valor por
 > defecto es **`"start"`**, no `"kill"`: el que usa el servicio es
 > `DEFAULT_GAMING_PACK` (`pack_service.py`, constante `DEFAULT_GAMING_PACK`, líneas
-> **231-240**), y el `Literal` va con `strict` implícito en los `bool` de al lado.
-> *(Corrección TASK-031 iteración 3: este documento citaba `pack_service.py:70` y
-> `pack_service.py:70-79`, líneas que no existen desde la iteración 1; el bloque vive
-> en 231-240. Se cita el símbolo además de la línea para que la deriva no vuelva a
-> producir una cita falsa.)*
+> **261-270** medidas el 2026-10-05), y el `Literal` va con `strict` implícito en los `bool` de al lado.
+> *(Corrección TASK-069 ronda 2: este documento se citaba a sí mismo en dos versiones
+> opuestas. En §"corrupto" decía que la cita por líneas que tenía era **FALSA** y que
+> el bloque "vive en 231-240", y aquí confirmaba las mismas 231-240 como si fueran
+> ciertas. Las dos frases no pueden ser verdad a la vez, y la medición dice que
+> **`231-240` era FALSA en los dos sitios**: ese rango cae en el centro de
+> `_vigilar_hojas()`, y el bloque real está en `261-270`. Se cita el símbolo
+> además de la línea porque una cita por número de línea caduca con el siguiente
+> cambio, y el número solo si se comprueba el mismo día.)*
 
 **`strict=True` en los booleanos (TASK-031 iteración 2, sondas fijadas en la 3).**
 JSON tiene un tipo booleano propio, así que una cadena en un campo `bool` no es un
@@ -172,6 +176,53 @@ class AppData(BaseModel):
   `test_el_destino_manda_sobre_el_origen_si_el_destino_se_puede_leer` (destino válido + origen
   válido; destino válido + origen **corrupto**; y la contraprueba, destino corrupto + origen
   válido, que es donde el origen gana).
+- ⚠️ **Y LA CONSECUENCIA DE ESA PRECEDENCIA, que no estaba escrita (TASK-069 ronda 2).** Una regla
+  sin su consecuencia es media regla: la precedencia dice *quién gana*, y no dice qué pasa con los
+  packs que el ganador **no tiene**. MEDIDO, y son dos combinaciones que el texto no nombraba:
+
+  | Destino | Origen | Qué hace el servicio | Qué se pierde | Qué ve el usuario |
+  |---|---|---|---|---|
+  | legible y **VACÍO** (`{"packs": {}}`) | 3 packs | **Gana el destino.** No copia, no migra, no fusiona. `ruta_sin_packs` sigue vacía (el destino existe) | Los 3 packs heredados **no vuelven** | Antes: el mensaje del Gaming y nada más. **Ahora**: la ruta del origen, cuántos packs faltan y cuáles, y que no se ha copiado nada |
+  | legible con **1 pack** | 3 packs | **Gana el destino también.** La precedencia es **estricta**: el número de packs **no entra**, no hay fusión y no gana el que tiene más | 2 packs del origen no se ven en la app | Antes: **ni el log**. **Ahora**: idem que la fila anterior |
+
+  Lo que **no** se ha cambiado es la precedencia: `test_el_destino_manda_sobre_el_origen_si_el_destino_se_puede_leer`
+  la sigue fijando y el servicio **no fusiona ni copia nada** en estas dos filas. Lo que se ha añadido
+  es la **declaración** (`packs_solo_en_el_origen`, `packs_que_no_han_venido`), porque una decisión
+  de producto no puede llevarse en silencio. Las dos filas y su contraprueba (destino con todos los
+  ids del origen → `mensaje_danado() is None`) están en
+  `test_el_destino_que_gana_tiene_que_decir_que_hay_packs_que_no_vienen`.
+
+  > **PREGUNTA CERRADA AL DUEÑO (P-069-A), sin respuesta no bloquea el código:** en esas dos filas,
+  > ¿deben volver los packs del origen? Tres opciones, con su consecuencia medible:
+  > **(a) DECLARAR Y NO HACER NADA MÁS — lo que hay hoy.** El aviso nombra la ruta y el usuario copia
+  > el fichero a mano con la app cerrada. Consecuencia: cero riesgo de pisar nada; los packs no
+  > vuelven solos. Es lo que recomienda el arquitecto, porque es la única que no inventa una segunda
+  > base de datos de packs.
+  > **(b) EL DESTINO VACÍO SE TRATA COMO AUSENTE** y se migra el origen encima. Consecuencia
+  > medible: los 3 packs vuelven solos, y las **claves extra de la raíz** del fichero vacío del
+  > usuario (con `extra="allow"`, `favorite` y cualquier clave de un build más nuevo) **desaparecen**,
+  > porque la migración es `copy2` del origen. Con el destino de 1 pack **no aplica**: la fila (b) es
+  > solo para el vacío.
+  > **(c) FUSIONAR: el origen rellena los packs que falten y el destino gana en los que tiene.**
+  > Consecuencia medible: es la única que devuelve los 4 packs, y es la que rompe el invariante de
+  > "una sola base": el origen deja de ser una foto y pasa a ser una segunda fuente que puede
+  > divergir en la siguiente escritura.
+- **La rotación del `.bak` es un anillo de UNA plaza, y la migración mete una TERCERA generación en un
+  anillo de DOS (TASK-069 ronda 2).** MEDIDO: con el destino inexistente, un `.bak` previo del
+  dueño con un pack `viejo01` y un origen con 3 packs, tras la carga el `.bak` seguía intacto y
+  **tras el `save()` el `.bak` pasó a ser copia del origen, byte a byte, y `viejo01` desapareció**.
+  El `.bak` es lo **único** que el usuario tiene si el destino se corrompe, y la migración lo
+  destruía en su primer guardado. Ahora `_rotate_backup()` **aparta** la generación con
+  `_rescatar_bak_si_guarda_lo_unico()` antes de reciclarla, y el criterio **no** es "el `.bak` es
+  distinto del destino" sino **"¿hay aquí algo que no se pueda recuperar de ningún otro sitio?"**:
+  los ids del `.bak` menos los del destino en disco menos los del origen de la migración (que se
+  queda, y por eso reconstruible). Si no queda ninguno, se rota sin más. El rescate es `copy2` a
+  `profiles.json.bak.rescate[.N]`, nunca `move` ni `unlink`, y el mensaje lo nombra. Y si el
+  rescate **no** se puede escribir, no se rota: un anillo congelado es un inconveniente, un anillo
+  que se come la única copia es el daño que este ciclo vino a cerrar. Guardian:
+  `test_la_rotacion_no_macha_el_bak_que_guarda_lo_unico`, con la contraprueba de que un `.bak`
+  sin nada único **no** genera fichero de rescate (si no, el arreglo sería apuntar un fichero por
+  cada guardado del mundo).
 - **La irreversibilidad está defendida en CUATRO sitios independientes, no en uno.** MEDIDO en
   esta ronda, mutando código **y** test a la vez: el mutante `MOVE_SIN_FILA_SHA` (sin la fila del
   `sha256`) deja **4** tests muertos y `MOVE_SIN_EXISTE_NI_SHA` (sin las dos filas de existencia y
@@ -225,6 +276,24 @@ class AppData(BaseModel):
   anti-brick de TASK-023/030, que el código creía puesta y no lo estaba. En una instalación limpia
   el gaming de fábrica **no** se anuncia: es la primera ejecución, que es lo que el producto
   promete, no una incidencia.
+  - ⚠️ **La reposición ocurre por TRES puertas, y T-4 declaraba UNA (TASK-069 ronda 2).**
+    `_ensure_gaming_pack()` se llama al **final** de `load()`, sea cual sea el camino, así que
+    la reposición no depende de por dónde se han cargado los packs. MEDIDO: con solo la primera
+    puerta escrita, las otras dos dejaban el Gaming de fábrica **sin nombrar**, y el `save()`
+    siguiente lo persistía encima del fichero del usuario:
+
+    | # | Puerta | Qué pasa | Cómo se declara |
+    |---|---|---|---|
+    | 1 | El destino **no existe** y hay packs en la ruta antigua | Se migran por copia; si el origen tampoco trae `gaming`, se repone | `migrado_desde` / `ruta_sin_packs` + `motivo_gaming_repuesto` |
+    | 2 | El destino es **ilegible**, no hay `.bak` legible **y el ORIGEN también es ilegible** | Se arranca sin packs y el fichero corrupto se deja en disco; el `save()` siguiente deja `['gaming']` | `fichero_danado` **y** `motivo_gaming_repuesto` en el mismo mensaje |
+    | 3 | El destino es **legible pero VACÍO** (`{"packs": {}}`) | Gana por precedencia, no se copia nada, y el `save()` siguiente deja `['gaming']` | `packs_solo_en_el_origen` + `motivo_gaming_repuesto` |
+
+    Una regla escrita en una rama y callada en las otras dos **no está escrita**: está medio
+    escrita, y el `save()` persiste el Gaming de fábrica sin que el mensaje haya dicho nada.
+    Es la misma clase que S7 de TASK-066 (la regla de rama en un comentario) y que el mutante
+    que T-4 no cazaba. La puerta 2 y la 3 las mide
+    `test_el_gaming_repuesto_se_declara_tambien_si_el_origen_esta_corrupto` y
+    `test_el_destino_que_gana_tiene_que_decir_que_hay_packs_que_no_vienen`.
 - Si el archivo **no existe** y no hay nada que recuperar, `load()` **no lo crea** (TASK-031:
   `load()` es de solo lectura con respecto a ese destino). Se crea con el primer `save()` real,
   cuando el usuario hace algo. La app funciona sin fichero: el pack `gaming` se asegura
@@ -234,11 +303,13 @@ class AppData(BaseModel):
   un aviso para la UI (§4.4). Antes se regeneraba de inmediato el pack protegido
   `gaming` por defecto, lo que **reescribía el fichero del usuario** con un solo pack.
   Los valores reales de ese pack son los de `DEFAULT_GAMING_PACK`
-  (`pack_service.py`; la cita por líneas que tenía este documento, **231-240**, era FALSA y
-  apuntaba al centro de `_vigilar_hojas()`, y su antecesora, `70-79`, tampoco existía. MEDIDO
-  en esta ronda: una cita por número de línea en un documento es una cita que caduca con el
-  siguiente cambio, así que el nombre del símbolo es la cita, y el número solo si se comprueba
-  el mismo día), y son:
+  (`pack_service.py`, `261-270` medidas el 2026-10-05; la cita por líneas que tenía
+  este documento, **231-240**, era FALSA —caía en el centro de `_vigilar_hojas()`— y su
+  antecesora, `70-79`, tampoco existía. Y el error vivía también en el **código**:
+  `_ensure_gaming_pack()` comentaba `(DEFAULT_GAMING_PACK, :231-240)`, o sea que la
+  cita falsa no era solo de este documento. MEDIDO: una cita por número de línea es
+  una cita que caduca con el siguiente cambio, así que el nombre del símbolo es la
+  cita, y el número solo si se comprueba el mismo día), y son:
   - `id`: `"gaming"`
   - `name`: `"🚀 Preparar para Gaming"`
   - `is_favorite`: `True`
@@ -282,6 +353,15 @@ class AppData(BaseModel):
      fichero, y el docstring de `_rotate_backup()` describe la que se ejecuta.
      Sondas: `L1` (el `.bak` sigue siendo legible tras rotar) y `L4` (recuperar no lo
      refresca).
+   - ⚠️ **Tercera guarda, y es de TASK-069 ronda 2: no se machaca un `.bak` que guarde lo único.**
+     Las dos guardas anteriores cubren "el principal está roto", no "el `.bak` es el único sitio
+     donde vive algo". MEDIDO: la migración puebla el destino con una tercera generación y el
+     anillo de una plaza se come la copia buena del dueño en su primer `save()`. Ahora, antes de
+     reciclar, `_rescatar_bak_si_guarda_lo_unico()` calcula `ids(.bak) − ids(destino en disco) −
+     ids(origen de la migración)`; si no queda nada, se rota sin más; si queda, se **aparta** con
+     `copy2` a `profiles.json.bak.rescate[.N]` y el mensaje lo nombra. Nunca `move` ni `unlink`, y
+     si el rescate no se puede escribir **no se rota**. Sonda:
+     `test_la_rotacion_no_macha_el_bak_que_guarda_lo_unico`.
 2. **Escritura atómica**: se vuelca a `profiles.json.tmp` (mismo directorio) y se publica
    con `os.replace`, así que un corte de luz no deja un `profiles.json` truncado. Si algo
    falla, el temporal se borra (con `contextlib.suppress`, para que la limpieza nunca

@@ -1,8 +1,9 @@
 import contextlib
+import filecmp
 import json
 import os
 import shutil
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from pydantic import ValidationError
 from woptimizer.models import AppData, Pack
 from woptimizer.config import (PROFILES_FILE, PROFILES_FILE_NAME, logger,
@@ -21,6 +22,22 @@ from woptimizer.config import (PROFILES_FILE, PROFILES_FILE_NAME, logger,
 # del bug, asi que se borra en vez de suavizarse.
 
 BACKUP_SUFFIX = ".bak"
+# TASK-069, ronda 2 (el hallazgo que MATA al dueño de su unica copia sana). El
+# `.bak` es un ANILLO DE UNA SOLA PLAZA: cada `save()` recycling la plaza con la
+# version anterior del principal. La migracion mete una TERCERA generacion en un
+# anillo de dos, y el.recycling se come una de las dos antiguas sin avisar.
+# MEDIDO (caso C): destino inexistente, `.bak` del dueño con `viejo01` y origen
+# con 3 packs. Tras la carga el `.bak` sigue intacto; tras el `save()` el `.bak`
+# pasa a los 4 ids de la copia y queda byte a byte igual al ORIGEN, y `viejo01`
+# --que no estaba ni en el origen ni en el destino-- DESAPARECE. El `.bak` es lo
+# UNICO que el usuario tiene si el destino se corrompe, y la migracion lo
+# destruia en su primer guardado.
+#
+# El sufijo del rescate va PEGADO al del `.bak`, y no al del principal, para que
+# un observador del directorio de datos vea la cadena entera:
+# `profiles.json` -> `profiles.json.bak` -> `profiles.json.bak.rescate[.N]`.
+RESCATE_SUFFIX = ".rescate"
+MAX_INTENTOS_DE_RESCATE = 100
 
 
 class PerfilCorruptoError(ValueError):
@@ -282,6 +299,15 @@ class PackService:
         # un fallo de SEGURIDAD, y por eso la reposicion se DECLARA.
         self.gaming_repuesto = False
         self.motivo_gaming_repuesto = ""
+        # TASK-069, ronda 2: los ESTADOS de lo que la precedencia deja fuera y de
+        # lo que la rotacion ha tenido que apartar para no destruirlo. Los dos
+        # son datos del USUARIO y por eso son observables, no `logger.warning`
+        # mudo (Trampa #14). Lo que se declara aqui es la MEDIDA, no la
+        # preferencia: ver `mensaje_danado()`.
+        self.packs_solo_en_el_origen = ""   # hay packs que SOLO estan en el origen
+        self.packs_que_no_han_venido: Set[str] = set()
+        self.bak_rescatado = ""             # generacion apartada antes de rotar
+        self.motivo_bak_rescatado = ""
         # TASK-069 (T-3): la busqueda de la ruta antigua SOLO tiene sentido para
         # el DESTINO REAL de la app. Un `data_path` inyectado es una peticion de
         # "este fichero y ninguno mas", y con ella la busqueda se apaga sola.
@@ -405,6 +431,23 @@ class PackService:
         destino es ilegible y no hay `.bak`, que es la unica situacion en la
         que arrancar con el origen es mejor que arrancar con cero packs.
         Guardian: `test_el_destino_manda_sobre_el_origen_si_el_destino_se_puede_leer`.
+
+        LO QUE LA PRECEDENCIA DEJA FUERA, escrito en la ronda 2 del auditor porque
+        la regla sin su consecuencia es media regla:
+
+          * **destino legible y VACIO** (`{"packs": {}}`) + origen con packs: gana
+            el destino, NO se copia nada y el destino NO se cuenta como "sin
+            packs" (`ruta_sin_packs` sigue vacio, porque el destino existe). Los
+            packs del origen no vuelven. Hoy es un hecho medido y sin una sola
+            palabra de aviso;
+          * **destino legible con menos packs que el origen**: gana IGUAL. La
+            precedencia es ESTRICTA y el numero de packs NO entra: no fusiona y
+            no gana el que tiene mas. El guardian de arriba lo fija como
+            comportamiento correcto, y esta frase fija su PRECIO;
+          * en los dos, la unica respuesta del servicio es DECIRLO
+            (`_anotar_packs_que_solo_viven_en_el_origen`), porque la decision de
+            si esos packs deben volver es del dueno y esta escrita como pregunta
+            en `docs/ai/data-models.md`, no como comportamiento oculto.
         """
         # El `if` de abajo ES la precedencia. Leer el origen antes -- o dejar que
         # pise `self._data` despues de leer un destino valido -- es la perdida
@@ -430,6 +473,16 @@ class PackService:
                     # version anterior y se pueden leer. No se escribe nada.
                     if not self._leer_del_candidato():
                         self._data = AppData()
+            else:
+                # TASK-069, ronda 2: el destino SE PUEDE LEER, luego por la
+                # precedencia de arriba gana y no se copia nada. Lo que la
+                # precedencia NO dice, y no se puede adivinar leyendo el
+                # destino, es si el origen tiene packs que aqui no estan. Sin
+                # esta linea el usuario con 3 packs heredados y un destino de 1
+                # no se entera de nada: no hay migracion, no hay fusion y no hay
+                # ni una palabra en el log. Solo se ANOTA, nunca se fusiona: la
+                # precedencia es un contrato cerrado y esta funcion no lo abre.
+                self._anotar_packs_que_solo_viven_en_el_origen()
             # OSError y compañía NO se capturan: no son corrupcion y no deben
             # entrar en la ruta que sobrescribe los datos del usuario. Ni los
             # bugs internos (TASK-030): un AttributeError propagado es un bug
@@ -521,6 +574,60 @@ class PackService:
             f"{ruta_candidata}."
         )
         self._migrar_desde(con_datos[0])
+
+    def _anotar_packs_que_solo_viven_en_el_origen(self) -> None:
+        """Anota los packs que existen en el ORIGEN y no en el destino. NUNCA copia.
+
+        Se invoca SOLO cuando el destino se ha leido bien, o sea cuando la
+        precedencia ya ha decidido que el destino gana. Aqui no hay nada que
+        reparar: la PRECEDENCIA es correcta y esta escrita. Lo que no estaba
+        escrito, MEDIDO en la ronda 2 del auditor, es la CONSECUENCIA, y es la
+        que toca datos:
+
+          * el destino EXISTE pero esta VACIO (`{"packs": {}}`) y el origen trae
+            3 packs: el destino gana, no se copia nada, `migrado_desde` y
+            `packs_en_otra_ruta` salen vacios y el mensaje era el del Gaming.
+            Los 3 packs heredados NO VOLVEN y NADIE LO DIJE. Y lo que el usuario
+            acaba guardando es un Gaming de FABRICA, o sea mas agresivo que el
+            suyo;
+          * el destino trae 1 pack y el origen trae 3: GANA EL DESTINO tambien.
+            El numero de packs NO entra en la precedencia, que es ESTRICTA: no
+            fusiona, no gana el que tiene mas, y antes de este metodo no lo
+            decia ni el log.
+
+        Que sea una ANOTACION y no una fusion es lo que hace que este metodo no
+        pueda romper el contrato que el guardian
+        `test_el_destino_manda_sobre_el_origen_si_el_destino_se_puede_leer` fija.
+        Decide el producto si esos packs deben volver (es una PREGUNTA ABIERTA
+        al dueno, escrita en `docs/ai/data-models.md`); lo que no es opcion es
+        que la decision se lleve en silencio.
+        """
+        if not self.candidatos:
+            return
+        for candidato in self.candidatos:
+            origen = os.path.join(candidato, PROFILES_FILE_NAME)
+            if not self._hay_packs_legibles(candidato):
+                continue
+            try:
+                packs_origen = set(self._read_json(origen).packs)
+            except CORRUPTION_ERRORS:
+                # `_hay_packs_legibles` y `_read_json` discrepan solo si el
+                # fichero cambia entre las dos llamadas. No se decide nada con
+                # una lectura que falla: la precedencia manda igual y no se
+                # inventa una historia.
+                continue
+            faltan = packs_origen - set(self._data.packs)
+            if faltan:
+                self.packs_solo_en_el_origen = candidato
+                self.packs_que_no_han_venido = faltan
+                logger.warning(
+                    f"El destino {self.data_path} se ha leido bien y por la "
+                    f"precedencia GANA, pero hay {len(faltan)} packs que solo "
+                    f"estan en {origen}: {sorted(faltan)}. No se copia nada y no se "
+                    f"fusiona: si los quieres, copia ese fichero a "
+                    f"{self.data_path} con la app cerrada."
+                )
+            return
 
     def _leer_del_candidato(self) -> bool:
         """REVERSION de T-3: lee del ORIGEN sin escribir nada. True si pudo.
@@ -836,6 +943,13 @@ class PackService:
         comprobacion era `json.load()`, que da por sano un `{"name": 7}` y por
         tanto solo protegia el caso de JSON roto a nivel de sintaxis
         (TASK-031 E-1; la frase anterior de este docstring era FALSA).
+        - Y si el `.bak` que se va a machacar guarda packs que NO estan en el
+          destino ni en el origen de la migracion --o sea, en NINGUN sitio mas--
+          NO se rota sin apartar antes esa generacion (TASK-069 ronda 2). La
+          guarda anterior cubria "el principal esta roto"; esta cubre "el `.bak`
+          es el UNICO sitio donde vive algo", que es el caso que la destruccion
+          que vaso la migracion. Guardian:
+          `test_la_rotacion_no_macha_el_bak_que_guarda_lo_unico`.
         """
         if not os.path.exists(self.data_path):
             return
@@ -845,7 +959,127 @@ class PackService:
                 f"servicio ({self.motivo_danado or 'ilegible'})."
             )
             return
-        shutil.copy2(self.data_path, self.data_path + BACKUP_SUFFIX)
+        bak_path = self.data_path + BACKUP_SUFFIX
+        if os.path.exists(bak_path) and not self._rescatar_bak_si_guarda_lo_unico(bak_path):
+            # No se puede apartar lo unico que hay: se deja el `.bak` como esta.
+            # Un anillo congelado es un inconvenience; un anillo que se come la
+            # unica copia del usuario es el fallo que este ciclo vino a cerrar.
+            return
+        shutil.copy2(self.data_path, bak_path)
+
+    def _ids_recuperables(self) -> Set[str]:
+        """Los ids de pack que se pueden volver a leer si el `.bak` se machaca.
+
+        Son los del DESTINO tal y como esta en disco ahora mismo, mas los del
+        ORIGEN de la migracion mientras siga ahi y siga legible. La migracion es
+        una COPIA y el origen se queda (T-3, condicion 1), luego esos ids son
+        reconstruibles sin el `.bak`.
+
+        `OSError` NO se traga y `CORRUPTION_ERRORS` si: un origen que ya no se
+        puede leer no hace RECONSTRUIBLE a nadie, asi que un `.bak` ilegible no
+        cuenta como generacion recuperable. Es lo que hace que la degradacion
+        vaya a "no se rota" en vez de a "se rota y se pierde".
+        """
+        recuperables: Set[str] = set()
+        with contextlib.suppress(CORRUPTION_ERRORS):
+            recuperables |= set(self._read_json(self.data_path).packs)
+        if self.migrado_desde:
+            origen = os.path.join(self.migrado_desde, PROFILES_FILE_NAME)
+            with contextlib.suppress(CORRUPTION_ERRORS):
+                recuperables |= set(self._read_json(origen).packs)
+        return recuperables
+
+    def _rescatar_bak_si_guarda_lo_unico(self, bak_path: str) -> bool:
+        """Aparta el `.bak` si guarda packs que no viven en ningun otro sitio.
+
+        True si se puede seguir y rotar (o no habia nada que apartar). False si
+        NO se ha podido apartar y el `.bak` se queda intacto.
+
+        EL PORQUE DE ESTA FUNCION, MEDIDO (el hallazgo mas grave de la ronda 2, y
+        toca datos del usuario): la rotacion es un anillo de UNA plaza y la
+        migracion introduce una TERCERA generacion en un anillo de DOS. Con el
+        destino inexistente, un `.bak` previo del dueño y un origen con 3 packs,
+        tras el `save()` de la migracion el `.bak` pasa a ser copia del origen
+        y el pack que solo vivía en el `.bak` desaparece sin dejar rastro. El
+        `.bak` es lo UNICO que el usuario tiene si el destino se corrompe, luego
+        reciclarlo a ciegas es peor que no migrar.
+
+        Y el criterio NO es "el `.bak` es distinto del destino" -- que seria la
+        regla trivial y que dejaria sin proteger el caso del `.bak` identico. Es
+        "**¿hay ALGO aqui que no se pueda recuperar de ningun otro sitio?**", que
+        es la misma pregunta que se hace la migracion con `_cuadra()` y la que
+        hace que este metodo no pueda machacar nada sin dar algo a cambio.
+
+        NUNCA `move` ni `unlink`: el rescate es `copy2`, y el `.bak` se queda
+        donde esta para que la ANIJA de la rotacion siga siendo la de siempre.
+        """
+        try:
+            bak = self._read_json(bak_path)
+        except CORRUPTION_ERRORS as e:
+            # Un `.bak` ilegible no guarda nada: se avisa y se rota, porque
+            # dejarlo puesto no salvaría a nadie y congelaría el anillo.
+            logger.warning(
+                f"El backup {bak_path} ya no es legible para el servicio "
+                f"({e.__class__.__name__}: {e}); no hay nada que apartar y se rota."
+            )
+            return True
+
+        unicos = set(bak.packs) - self._ids_recuperables()
+        if not unicos:
+            # El `.bak` no guarda nada que no se pueda releer: rotar es gratis.
+            return True
+
+        destino_rescate = self._ruta_de_rescate_libre(bak_path)
+        if destino_rescate is None:
+            logger.warning(
+                f"No se rota el backup: {bak_path} guarda {sorted(unicos)} y no se "
+                f"ha encontrado hueco libre para apartarlo tras "
+                f"{MAX_INTENTOS_DE_RESCATE} intentos."
+            )
+            return False
+        try:
+            shutil.copy2(bak_path, destino_rescate)
+        except OSError as e:
+            # No se puede escribir el rescate: se congela el anillo en vez de
+            # comerse la unica copia. Es el mismo criterio de TASK-030 P2: un
+            # `OSError` no se convierte en "sigo y sobrescribo".
+            logger.warning(
+                f"No se rota el backup: {bak_path} guarda {sorted(unicos)} y no se ha "
+                f"podido apartar en {destino_rescate} ({e.__class__.__name__}: {e})."
+            )
+            return False
+
+        self.bak_rescatado = destino_rescate
+        self.motivo_bak_rescatado = (
+            f"el backup anterior guardaba {sorted(unicos)}, que no estaban en "
+            f"{self.data_path} ni en el origen de la migracion, y rotar lo habria "
+            f"borrado: se ha apartado en {destino_rescate} antes de reciclar el "
+            f"backup"
+        )
+        logger.warning(
+            f"Backup APARTADO antes de rotar: {bak_path} -> {destino_rescate}. "
+            f"Guardaba {sorted(unicos)} y no estaban en ningun otro sitio. Es una "
+            f"COPIA: nada se mueve ni se borra."
+        )
+        return True
+
+    def _ruta_de_rescate_libre(self, bak_path: str) -> Optional[str]:
+        """Un nombre libre para el rescate, o `None` si no lo hay.
+
+        `profiles.json.bak.rescate`, y `...rescate.2`, `.3`... si ese ya existe.
+        Un rescate ya IDENTICO (mismos bytes) reutiliza su sitio en vez de
+        multiplicar ficheros: el caso normal es que se repita el mismo `.bak`, y
+        cien copias del mismo contenido no son una red, son ruido.
+        """
+        base = bak_path + RESCATE_SUFFIX
+        for intento in range(1, MAX_INTENTOS_DE_RESCATE + 1):
+            candidata = base if intento == 1 else f"{base}.{intento}"
+            if not os.path.exists(candidata):
+                return candidata
+            with contextlib.suppress(OSError):
+                if filecmp.cmp(candidata, bak_path, shallow=False):
+                    return candidata
+        return None
 
     def save(self) -> None:
         """Guarda los packs en el disco.
@@ -891,14 +1125,27 @@ class PackService:
             # TASK-069 (T-4): la reposicion se DECLARA, y no es cosmetica.
             # `_ensure_gaming_pack()` convierte "no esta" en "esta el de FABRICA",
             # y ese default tiene 5 `target_categories` y 2 `keepers`
-            # (`DEFAULT_GAMING_PACK`, :231-240). Perder el `profiles.json` del
-            # usuario NO daba packs vacios: daba un Gaming Mode MAS AGRESSIVO
-            # (cinco categorias donde el usuario escogio dos) y la
-            # DESAPARICION de la lista anti-brick de TASK-023/030, que el codigo
-            # creia puesta y no lo estaba. Es un fallo de SEGURIDAD, y por eso
-            # el estado es observable y el mensaje NOMBRA lo repuesto: un
+            # (`DEFAULT_GAMING_PACK`, el pack por defecto de este mismo fichero:
+            # la cita por numero de linea que estaba aqui, ":231-240", era FALSA
+            # y apuntaba al centro de `_vigilar_hojas()`, y el mismo error
+            # seguia vivo en `docs/ai/data-models.md`). Perder el
+            # `profiles.json` del usuario NO daba packs vacios: daba un Gaming
+            # Mode MAS AGRESSIVO (cinco categorias donde el usuario escogio dos) y
+            # la DESAPARICION de la lista anti-brick de TASK-023/030, que el
+            # codigo creia puesta y no lo estaba. Es un fallo de SEGURIDAD, y por
+            # eso el estado es observable y el mensaje NOMBRA lo repuesto: un
             # usuario que ve "5 categorias y los keepers steam/discord" sabe lo
             # que tiene delante; el que no lo ve, cree que es el suyo.
+            #
+            # Y `_ensure_gaming_pack()` se llama al FINAL de `load()`, sea cual
+            # sea la puerta por la que se han cargado los packs. Eso significa
+            # que la reposicion ocurre por TRES puertas y no por una, y T-4
+            # declaraba solo la primera. MEDIDO en la ronda 2 del auditor, las
+            # otras dos son (a) destino ilegible y sin `.bak` legible, con el
+            # origen ALSO ilegible -- o sea, ambos ficheros rotos -- y (b) el
+            # destino legible pero VACIO. En las dos el mensaje de corrupcion o
+            # el de la ausencia tapaban la reposicion y el `save()` siguiente
+            # dejaba el fichero del usuario con un solo pack, el de fabrica.
             self.gaming_repuesto = True
             self.motivo_gaming_repuesto = (
                 f"el pack Gaming no estaba y se ha repuesto por el de fabrica: "
@@ -978,15 +1225,62 @@ class PackService:
         mismo que la instalacion limpia: alli se BUSCO y no se encontro nada, y
         aqui no se busco; por eso el discriminante es `not self.candidatos` y
         no `ruta_sin_packs` a secas.
+
+        TASK-069, RONDA 2. Tres estados mas, y los tres son de esta misma
+        familia -- lo que el servicio HACE se escribe; lo que el servicio DEJA
+        FUERA y no declara, se denuncia:
+
+          * `packs_solo_en_el_origen`: el destino se lee bien y gana, y hay packs
+            que solo viven en el origen. Cubre los dos casos medidos que la
+            precedencia no nombraba (destino existente y VACIO, y destino con
+            menos packs que el origen). No fusiona y no copia: la precedencia
+            es un contrato cerrado y aquí solo se DECLARA su consecuencia.
+          * `bak_rescatado`: una generacion del `.bak` se ha apartado porque iba
+            a ser machacada por una rotacion y guardaba packs que no estaban en
+            ningun otro sitio.
+          * Y el `extra` de la reposicion del Gaming se aplica TAMBIEN en la
+            rama de corrupcion, que antes la perdia entera.
+
+        Y POR QUE LA REPOSICION DEL GAMING SE DECLARA EN CADA RAMA Y NO EN UNA
+        SOLA: porque `_ensure_gaming_pack()` se llama al final de `load()` sea
+        cual sea la puerta, luego ocurre por tres y el mensaje sale por la
+        primera que se cumple. Un estado que se declara en una rama y se calla en
+        las otras dos no esta declarado: esta medio declarado, y el
+        `save()` siguiente persiste el Gaming de FABRICA en el fichero del
+        usuario sin que el mensaje haya dicho ni una palabra de ello.
         """
+        mensaje = self._mensaje_del_estado()
+        # El RESCATE va FUERA de la cadena de ramas y se ANADE al final, y es la
+        # segunda vez que esta misma funcion se cambia por lo que la anterior
+        # callaba. MEDIDO: como rama propia, el rescate no aparecia nunca en el
+        # caso de la migracion --que es justo el caso que lo produce-- porque la
+        # rama de la AUSENCIA (`ruta_sin_packs`) devuelve antes. Un hecho que le
+        # pasa al usuario no puede depender de que otro estado este primero en
+        # una lista de `if`.
+        if self.bak_rescatado:
+            nota = f"Aviso: {self.motivo_bak_rescatado}."
+            return f"{mensaje} {nota}" if mensaje else nota
+        return mensaje
+
+    def _mensaje_del_estado(self) -> Optional[str]:
         if self.fichero_danado:
+            # TASK-069, ronda 2. LA REPOSICION SE NOMBRA AQUI TAMBIEN, y es el
+            # segundo punto ciego que cerro el mismo agujero: con el destino
+            # ILEGIBLE y el ORIGEN ALSO ilegible, `gaming_repuesto` es True
+            # (`_ensure_gaming_pack()` se llama igual al final de `load()`) y el
+            # `return` de esta rama se comia el motivo. MEDIDO: el mensaje
+            # nombraba la corrupcion y NO el Gaming de fabrica que el
+            # `save()` siguiente iba a dejar en el fichero del usuario. Un
+            # mensaje que declara una perdida y calla la otra sigue siendo un
+            # mensaje incompleto, y aqui la otra es la de SEGURIDAD.
+            extra = (f" {self.motivo_gaming_repuesto}." if self.gaming_repuesto else "")
             if self.recuperado_de_backup:
                 return ("Aviso: profiles.json estaba dañado y se ha recuperado "
-                        f"desde el .bak. Detalle: {self.motivo_danado}")
+                        f"desde el .bak. Detalle: {self.motivo_danado}{extra}")
             return ("Aviso: profiles.json está dañado y NO hay copia de seguridad "
                     f"legible. Se ha arrancado sin tus packs y el fichero se ha dejado "
                     f"EN DISCO tal cual para que puedas repararlo. Detalle: "
-                    f"{self.motivo_danado}")
+                    f"{self.motivo_danado}{extra}")
         if self.ruta_sin_packs and self.packs_en_otra_ruta:
             extra = (f" {self.motivo_gaming_repuesto}." if self.gaming_repuesto else "")
             return (f"Aviso: no encuentro tus packs en {self.ruta_sin_packs}. Hay "
@@ -1002,6 +1296,23 @@ class PackService:
                     f"{os.path.join(self.migrado_desde, PROFILES_FILE_NAME)} y se "
                     f"han copiado a {self.data_path}. El original se ha dejado "
                     f"intacto donde estaba.{extra}")
+        if self.packs_solo_en_el_origen:
+            # TASK-069, ronda 2, y es el caso que la precedencia escrita no
+            # cubria. MEDIDO: destino legible y VACIO con 3 packs en el origen, y
+            # destino con 1 pack contra 3 en el origen. En los dos gana el
+            # destino, no se copia nada y no hay fusion; lo que faltaba era
+            # DECIRLO. Sin esta rama los dos devolvian el mensaje del Gaming (o
+            # `None`) y el usuario se enteraba de que sus packs no habian vuelto
+            # por la via de que no estaban. La precedencia es correcta y no se
+            # toca: lo que se declara es su CONSECUENCIA.
+            extra = (f" {self.motivo_gaming_repuesto}." if self.gaming_repuesto else "")
+            return (f"Aviso: {self.data_path} manda por la regla de precedencia y sus "
+                    f"packs han ganado, pero hay {len(self.packs_que_no_han_venido)} "
+                    f"pack(s) que solo existen en "
+                    f"{os.path.join(self.packs_solo_en_el_origen, PROFILES_FILE_NAME)}: "
+                    f"{sorted(self.packs_que_no_han_venido)}. No se ha copiado nada y "
+                    f"no se fusiona nada; si los quieres, copia ese fichero a "
+                    f"{self.data_path} con la app cerrada.{extra}")
         if self.gaming_repuesto and not self.ruta_sin_packs:
             # El fichero EXISTIA y no traia el pack `gaming`: algo se llevo el
             # Gaming del usuario de un fichero que sigue ahi. Eso si se cuenta,

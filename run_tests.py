@@ -6,7 +6,16 @@ import time
 import threading
 import tempfile
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+# MEDIDO (TASK-069, ronda 2): esta reenvoltura nacia con SU PROPIO buffer de
+# 8192 B, y con la salida redirigida a un fichero el log se quedaba clavado ahi
+# mientras el proceso seguia VIVO: medido, `bytes=8167` con la suite todavia
+# corriendo. Un log cortado se lee como "el mutante no ha muerto" o como "el
+# arnes se ha colgado", y las dos son falsas. `-u` y `PYTHONUNBUFFERED` no lo
+# arreglan, porque el buffer que retiene no es el del interprete sino el de esta
+# envoltura. `write_through` + `line_buffering` hacen que cada `write()` baje al
+# stream de verdad, y entonces un log incompleto significa un proceso muerto.
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8',
+                              line_buffering=True, write_through=True)
 sys.path.insert(0, os.path.abspath("src"))
 
 # TASK-063: `ProcessService` sube a nivel de modulo porque `_ProcessServiceSpy`
@@ -22463,6 +22472,528 @@ def test_el_contrato_de_persistencia_se_declara_como_contrato():
     print("El contrato de persistencia se comprueba por contenido, no por cadena.")
 
 
+def _t069_ascii(texto):
+    """`texto` sin nada fuera de cp1252, para poder imprimirlo al fallar.
+
+    La consola de este host es cp1252 y `mensaje_danado()` lleva los emojis de
+    las categorias del Gaming de fabrica. Un `assert` que imprime un emoji no
+    MUERE: revienta con `UnicodeEncodeError` dentro del mensaje del fallo, y un
+    fallo que se muere por la codificacion esconde el motivo real -- que es
+    justo lo que un mutante necesita que no pase.
+    """
+    return (texto or "").encode("ascii", "replace").decode("ascii")
+
+
+def test_la_rotacion_no_macha_el_bak_que_guarda_lo_unico():
+    """TASK-069, ronda 2. EL HALLAZGO MAS GRAVE: la migracion se come el `.bak`
+    bueno del dueño en su primer guardado. TOCA DATOS DEL USUARIO.
+
+    EL CASO MEDIDO (C): destino inexistente, un `.bak` PREVIO del dueño con el
+    pack `viejo01`, y un ORIGEN con `gaming` + 3 packs. Tras la carga el `.bak`
+    sigue intacto -- la migracion es `copy2` y no toca el `.bak`. Tras el
+    `save()`, el `.bak` pasa a los 4 ids de la copia y queda BYTE A BYTE igual al
+    origen (sha identica), y `viejo01`, que no estaba ni en el origen ni en el
+    destino, DESAPARECE sin dejar rastro.
+
+    POR QUE ES PEOR QUE NO MIGRAR: el `.bak` es lo UNICO que el usuario tiene si
+    el destino se corrompe, y la migracion lo destruia en el primer guardado que
+    hiciera el usuario. La rotacion es un anillo de UNA plaza y la migracion
+    mete una TERCERA generacion en un anillo de dos: el recycled tiene que
+    comerse a alguien, y sin este fix se come a la copia buena del dueño.
+
+    LO QUE SE AFIRMA, y por que cada fila discrimina:
+      1. `viejo01` sigue siendo LEGIBLE despues del `save()`. La asercion es
+         "existe y se puede parsear", no "existe": con el mutante que BORRA el
+         fichero en vez de pisarlo, un `os.path.exists` pasaria por la razon
+         equivocada. Es el mismo criterio que usa L1 de TASK-031.
+      2. El contenido del rescate es el del `.bak` viejo, no el del destino: si
+         el rescate copiara el principal, `viejo01` desapareceria igual.
+      3. El `.bak` ANDA: la rotacion no se ha congelado. Un fix que dijera "no
+         rotas nunca" dejaria al usuario sin red anti-brick para siempre, y eso
+         es el fallo de seguridad de TASK-023/030 en su otra forma.
+      4. El mensaje NOMBRA el fichero donde se ha dejado lo apartado, que es lo
+         unico que hace que el dato serve: un rescate mudo se limpia como
+         fichero de mas.
+
+    Y LA CONTRAPRUEBA, que es lo que hace el test notrivial: con un `.bak` que
+    NO guarda nada unico (el caso de todos los dias: el `.bak` es la version
+    anterior, y todo lo que hay en el se relee en el destino), NO se crea
+    fichero de rescate y la rotacion ocurre. Sin esta fila, "no rotar" y "crear
+    un rescate por cada guardado" passerian los dos.
+    """
+    import json
+    import woptimizer.services.pack_service as ps
+    from woptimizer.services.pack_service import PackService, RESCATE_SUFFIX
+
+    raiz = tempfile.mkdtemp(prefix="wopt069_bak_")
+    try:
+        # --- CASO C: el `.bak` del dueño + migracion. ---
+        legacy, ruta_origen = _t069_crear_legacy(raiz)
+        destino_dir = os.path.join(raiz, "datos")
+        os.makedirs(destino_dir, exist_ok=True)
+        destino = os.path.join(destino_dir, "profiles.json")
+        bak = destino + ".bak"
+        # El pack del dueño que SOLO vive en su backup.
+        _t069_escribir_profiles(bak, {"packs": {
+            "viejo01": {"id": "viejo01", "name": "viejo", "apps": ["viejo.exe"]}}})
+        sha_bak_del_dueno = _t069_sha256(bak)
+        sha_origen = _t069_sha256(ruta_origen)
+
+        antes_cand = ps.candidatos_de_datos
+        antes_guarda = _t069_guarda(ps)
+        _t069_candidatos_que_apuntan_a(legacy, PackService)
+        try:
+            svc = PackService(data_path=destino)
+        finally:
+            _t069_restaura(ps, antes_cand, antes_guarda)
+
+        # La carga sola NO toca el `.bak`: la migracion copia el origen al
+        # destino y no se mete con el backup del dueño. Esta fila separa las
+        # dos mitades del fallo; sin ella, un fix en la migracion que "tampoco
+        # rota" y uno que "aparta" darian el mismo veredicto aqui.
+        assert _t069_sha256(bak) == sha_bak_del_dueno, (
+            "la carga de la migracion ya ha tocado el .bak del dueno, y el fallo "
+            "no es de la rotacion sino de la copia. Sin esta fila, arreglar la "
+            "mitida de la rotacion podria dejar la de la migracion viva."
+        )
+        assert _t069_sha256(ruta_origen) == sha_origen, "el ORIGEN se queda intacto"
+
+        # El `save()` del usuario: el momento en el que el anillo se recycling.
+        svc.save()
+
+        with open(bak, "r", encoding="utf-8") as fh:
+            bak_despues = json.load(fh)
+        assert "viejo01" not in bak_despues.get("packs", {}), (
+            "el .bak se ha reciclado con la copia de la migracion, que es lo que "
+            "hacia ANTES del fix y lo que el reporto como el hallazgo mas grave: "
+            f"quedan {sorted(bak_despues.get('packs', {}))} y `viejo01` no esta en "
+            "ningun sitio del destino. El .bak es lo unico que el usuario tiene si "
+            "el destino se corrompe, y la migracion lo destruia en su primer "
+            "guardado."
+        )
+        # El origen, ademas, tiene los 3 packs: el `.bak` no los ha ganado nunca.
+        with open(ruta_origen, "r", encoding="utf-8") as fh:
+            assert len(json.load(fh)["packs"]) == 2, "el origen de la fixture"
+
+        # 1. `viejo01` sigue LEGIBLE, y el unico sitio donde vive es el rescate.
+        assert svc.bak_rescatado, (
+            "la rotacion no ha dicho nada pese a que el .bak que iba a machacar "
+            "guardaba `viejo01`, que no esta ni en el destino ni en el origen de "
+            "la migracion. Estado vacio: "
+            f"bak_rescatado={svc.bak_rescatado!r}"
+        )
+        assert svc.bak_rescatado.startswith(bak), (
+            f"el rescate deberia vivir al lado del .bak y sale {svc.bak_rescatado!r}: "
+            f"el prefijo esperado era {bak!r}"
+        )
+        assert svc.bak_rescatado.endswith(RESCATE_SUFFIX), (
+            f"el rescate no lleva el sufijo declarado {RESCATE_SUFFIX!r}: "
+            f"{svc.bak_rescatado!r}. Sin el, el usuario no sabe que ese fichero es "
+            "suyo y lo borra como basura."
+        )
+        # 2. El contenido del rescate es el del `.bak` VIEJO, no del principal.
+        with open(svc.bak_rescatado, "r", encoding="utf-8") as fh:
+            rescatado = json.load(fh)
+        assert "viejo01" in rescatado.get("packs", {}), (
+            f"el rescate se ha escrito pero no contiene el pack que se iba a "
+            f"perder: {sorted(rescatado.get('packs', {}))}. Un rescate del "
+            "principal se lee como 'he guardado algo' y no guarda nada."
+        )
+        assert set(rescatado["packs"]) == {"viejo01"}, (
+            "el rescate deberia ser una copia LITERAL del .bak anterior, no una "
+            f"mezcla: {sorted(rescatado['packs'])}"
+        )
+        # 3. La rotacion ANDA: el anillo no se ha congelado.
+        assert set(bak_despues.get("packs", {})) == {"gaming", "8fefbc22"}, (
+            "el .bak deberia haberse reciclado con la version anterior del "
+            f"principal, y hay {sorted(bak_despues.get('packs', {}))}. Un fix que "
+            "dijera 'no se rota nunca' dejaria al usuario sin red anti-brick para "
+            "siempre, que es el fallo de TASK-023/030 en su otra forma."
+        )
+        # 4. El mensaje lo dice, con la ruta.
+        mensaje = _t069_ascii(svc.mensaje_danado() or "")
+        assert svc.bak_rescatado in mensaje, (
+            f"la generacion apartada no se nombra en el mensaje: {mensaje!r}. Un "
+            "rescate mudo se limpia como fichero de mas."
+        )
+        assert "viejo01" in mensaje, (
+            f"el mensaje no dice QUE se ha apartado: {mensaje!r}"
+        )
+
+        # --- CONTRAPRUEBA: nada unico -> no hay rescate y la rotacion ocurre. ---
+        limpio = tempfile.mkdtemp(prefix="wopt069_bak_limpio_")
+        try:
+            destino2 = os.path.join(limpio, "profiles.json")
+            svc2 = PackService(data_path=destino2)
+            svc2.create_user_pack("a", "A", ["a.exe"])   # 1er save: no hay .bak
+            bak2 = destino2 + ".bak"
+            assert not os.path.exists(bak2), (
+                f"una instalacion limpia no crea un .bak de basura: {bak2}"
+            )
+            svc2.create_user_pack("b", "B", ["b.exe"])   # 2o save: rota de verdad
+            assert os.path.exists(bak2), "el segundo guardado tiene que rotar"
+            with open(bak2, "r", encoding="utf-8") as fh:
+                rotado = json.load(fh)
+            assert set(rotado["packs"]) == {"gaming", "a"}, (
+                "la rotacion normal tiene que seguir occurrido: "
+                f"{sorted(rotado['packs'])}"
+            )
+            assert svc2.bak_rescatado == "", (
+                "se ha creado un rescate para un .bak que NO guardaba nada unico: "
+                f"{svc2.bak_rescatado!r}. Con esta fila abajo, el fix seria "
+                "apuntar un fichero por cada guardado del mundo."
+            )
+        finally:
+            _t069_borrar(limpio)
+    finally:
+        _t069_borrar(raiz)
+    print("La rotacion aparta lo unico antes de machacar el backup (C).")
+
+
+def test_el_gaming_repuesto_se_declara_tambien_si_el_origen_esta_corrupto():
+    """TASK-069, ronda 2, T-4bis. EL MISMO PUNTO CIEGO POR OTRA PUERTA.
+    TOCA DATOS Y SEGURIDAD.
+
+    `_ensure_gaming_pack()` se llama al FINAL de `load()`, sea cual sea la puerta,
+    luego la reposicion del Gaming de FABRICA ocurre por TRES puertas. T-4
+    declaraba UNA. MEDIDO: con el destino ILEGIBLE **y el ORIGEN ALSO ilegible**
+    -- los dos ficheros del usuario rotos -- `gaming_repuesto` sale True con 5
+    categorias y los keepers steam/discord, `mensaje_danado()` nombra la
+    corrupcion y **no** la reposicion (`"gaming"/"fabrica"/"repuest"` en el
+    mensaje -> False), y el `save()` siguiente deja el fichero del usuario con
+    `['gaming']`: un Gaming de fabrica MAS AGRESSIVO escrito encima de su
+    fichero.
+
+    Y POR QUE EL MUTANTE DE T-4 NO LO CAZA: el mutante que mata la rama de
+    mensaje de T-4 quita el `extra` de la rama de la AUSENCIA, que es otra. Este
+    lo quita de la rama de la CORRUPCION, que no se miraba. Es el mismo patron
+    que S7 de TASK-066 -- una regla escrita en un sitio y sin ejecutar en otro.
+
+    LAS TRES FILAS, y la tercera es la contraprueba que hace el test no trivial:
+      1. el mensaje nombra el MOTIVO de la reposicion, con sus categorias y sus
+         keepers (mismo criterio que la fila de seguridad de T-4);
+      2. el mensaje SIGUE nombrando la corrupcion, con su excepcion: declarar mas
+         no puede ser tapar lo que ya se decia;
+      3. el origen corrupto NO se repara ni se sobrescribe: cargar no escribe.
+    """
+    import json
+    import woptimizer.services.pack_service as ps
+    from woptimizer.services.pack_service import PackService, DEFAULT_GAMING_PACK
+
+    raiz = tempfile.mkdtemp(prefix="wopt069_t4bis_")
+    try:
+        legacy = os.path.join(raiz, "legacy")
+        os.makedirs(legacy, exist_ok=True)
+        ruta_origen = os.path.join(legacy, "profiles.json")
+        with open(ruta_origen, "w", encoding="utf-8") as fh:
+            fh.write("{ el origen tampoco es json")
+        destino = os.path.join(raiz, "datos", "profiles.json")
+        os.makedirs(os.path.dirname(destino), exist_ok=True)
+        with open(destino, "w", encoding="utf-8") as fh:
+            fh.write('{"packs": {"a medias": ')
+
+        antes_cand = ps.candidatos_de_datos
+        antes_guarda = _t069_guarda(ps)
+        _t069_candidatos_que_apuntan_a(legacy, PackService)
+        try:
+            svc = PackService(data_path=destino)
+        finally:
+            _t069_restaura(ps, antes_cand, antes_guarda)
+
+        assert svc.gaming_repuesto is True, (
+            "la mitad de la precondicion del hallazgo: si el Gaming de fabrica "
+            "no se repone en este caso, este test no midiria el fallo que dice "
+            "medir"
+        )
+        gaming = svc.get_gaming_pack()
+        assert len(gaming.target_categories) == 5 and \
+            sorted(gaming.keepers) == ["discord.exe", "steam.exe"], (
+            "lo que se repone tiene que ser el Gaming de FABRICA, que es lo que "
+            "hace el dano: mas categorias y keepers que los que el usuario eligio"
+        )
+
+        mensaje = svc.mensaje_danado() or ""
+        plano = _t069_ascii(mensaje)
+        # 1. La reposicion se NOMBRA. Sin esta fila el mutante pasa en verde.
+        assert svc.motivo_gaming_repuesto in mensaje, (
+            "el mensaje declara la corrupcion y se calla la reposicion del Gaming "
+            f"de FABRICA que el proximo save() va a escribir: {plano!r}. El "
+            f"motivo declarado es {plano!r} y no aparece. Un mensaje que declara "
+            "una perdida y calla la otra sigue siendo un mensaje incompleto, y "
+            "la otra es la de seguridad."
+        )
+        for keeper in ("steam.exe", "discord.exe"):
+            assert keeper in mensaje, (
+                f"el mensaje no nombra el keeper {keeper}: {plano!r}. La lista "
+                "anti-brick es justo lo que el usuario tiene que revisar."
+            )
+        # 2. La corrupcion SE SIGUE nombrando. Declarar mas no es tapar lo de antes.
+        assert "JSONDecodeError" in mensaje, (
+            f"la rama de corrupcion ha dejado de decir QUE pasa: {plano!r}"
+        )
+        assert svc.motivo_danado in mensaje, (
+            f"el detalle de la corrupcion no esta en el mensaje: {plano!r}"
+        )
+        # Y el mensaje es el de la corrupcion, no el generico del Gaming: el
+        # orden de gravedad no se ha movido para que lo nuevo lo tape.
+        assert "copia de seguridad" in mensaje, (
+            f"esta rama deberia ser la de 'NO hay copia de seguridad legible': "
+            f"{plano!r}"
+        )
+        # 3. Cargar NO escribe: el fichero roto del usuario se queda roto y el
+        #    origen tampoco se toca, para que los pueda reparar.
+        with open(destino, encoding="utf-8") as fh:
+            assert fh.read() == '{"packs": {"a medias": ', (
+                "la carga ha reescrito el fichero corrupto del usuario. "
+                "load() es de solo lectura y el destino se queda en disco tal cual"
+            )
+        with open(ruta_origen, encoding="utf-8") as fh:
+            assert fh.read() == "{ el origen tampoco es json", (
+                "la carga ha tocado el ORIGEN, que tambien esta corrupto y es del "
+                "usuario. Que este corrupto no lo convierte en un fichero que se "
+                "pueda reparar"
+            )
+        # Y lo que el `save()` siguiente haria queda MEDIDO en el docstring del
+        # hallazgo; aqui no se escribe para no perder la evidencia en disco.
+        assert sorted(svc.get_all_packs()) == ["gaming"], (
+            "el estado en memoria con los dos ficheros rotos es el Gaming de "
+            f"fabrica y nada mas: {sorted(svc.get_all_packs())}"
+        )
+    finally:
+        _t069_borrar(raiz)
+    print("El Gaming repuesto se declara tambien con el origen corrupto.")
+
+
+def test_el_diagnostico_pasa_por_el_punto_unico_de_decision():
+    """TASK-069, ronda 2, hallazgo 3. M4: `_diagnosticar_y_migrar()` LATERALIZA
+    el punto unico de decision y la suite entera no se entera.
+
+    `elegir_ruta_de_datos()` (`config.py`) es el UNICO sitio donde vive la regla
+    de instalacion limpia y la decision de ruta de T-1/T-2, y es donde se puede
+    probar la decision SIN disco. `_diagnosticar_y_migrar()` TIENE que pasar por
+    ahi. MEDIDO: el mutante `M4_COPIA_LOCAL` lo ENVUELVE con su propio
+    `_copia_local` y devuelve `(destino_, [])` cuando el destino es legible; la
+    suite completa pasa en verde (log en `ALL TESTS PASSED.`, 105 lineas de diff
+    que son ruido de Tk) y con eso cualquier cambio futuro de
+    `elegir_ruta_de_datos` deja de llegar a la migracion sin que nadie lo note.
+
+    POR QUE `ast` Y NO TEXTO, y no es purismo: `elegir_ruta_de_datos` aparece
+    tambien en el DOCSTRING de `_diagnosticar_y_migrar()` -- de ahi viene el
+    nombre -- asi que un `inspect.getsource(...)` con un `in` lo daria por
+    GOOD. Un comentario no ejecuta nada. Es la misma clase que
+    `CONTRATO_SIN_CABLEAR` de TASK-069, que medico justo asi: el nombre estaba
+    en la prosa y el mutante que borraba la LLAMADA sobrevivio.
+
+    Y POR QUE HACE FALTA ADEMAS DEL COMPORTAMIENTO: un test de contenido ("con el
+    destino legible no se migra") NO lo mata, porque la copia local decide lo
+    MISMO que la original en el caso que se puede observar; lo que la delata es
+    que la decision ha dejado de pasar por el sitio unico.
+    """
+    import ast
+    import inspect
+    import textwrap
+    from woptimizer.services.pack_service import PackService
+
+    def llamadas_de(fn):
+        """Los NOMBRES de funcion a los que `fn` llama DE VERDAD, sin prosa."""
+        arbol = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+        return {n.func.id for n in ast.walk(arbol)
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+
+    cableo = llamadas_de(PackService._diagnosticar_y_migrar)
+    assert "elegir_ruta_de_datos" in cableo, (
+        "el diagnostico tiene que CALLAR a elegir_ruta_de_datos(), que es el punto "
+        f"unico donde vive la regla de instalacion limpia y la decision de ruta: "
+        f"las llamadas reales de _diagnosticar_y_migrar son {sorted(cableo)}. Con "
+        "una copia local dentro, cualquier cambio futuro de la decision deja de "
+        "llegar a la migracion y la suite sigue en verde: M4_COPIA_LOCAL medido."
+    )
+    # Y el diagnostico no puede decidir el destino por su cuenta: si además se
+    # define `_copia_local`, es la sombra de la decision, y el mutante la trae.
+    fuente = textwrap.dedent(inspect.getsource(PackService._diagnosticar_y_migrar))
+    assert "_copia_local" not in fuente, (
+        "_diagnosticar_y_migrar() se ha definido su PROPIA copia de la decision. "
+        "Dosimplementaciones de 'que ruta gano' no pueden coexistir: la segunda "
+        "no la vigila nadie y la suite no se entera"
+    )
+    print("El diagnostico pasa por el punto unico de decision (M4).")
+
+
+def test_el_destino_que_gana_tiene_que_decir_que_hay_packs_que_no_vienen():
+    """TASK-069, ronda 2, hallazgos 4 y 5. LA PRECEDENCIA ES CORRECTA Y ESTA
+    ESCRITA; lo que no estaba escrita era su CONSECUENCIA, y toca datos.
+
+    MEDIDO por el auditor y MEDIDO aqui de nuevo, con las DOS combinaciones que
+    la precedencia escrita no nombraba:
+
+      * destino legible y VACIO (`{"packs": {}}`) + origen con 3 packs: gana el
+        destino, no se copia nada, `migrado_desde` y `packs_en_otra_ruta` salen
+        vacios, `fichero_danado` es False y el mensaje era el del Gaming. Los 3
+        packs heredados NO VUELVEN y NADIE LO DIJE, y el `save()` siguiente
+        dejaba el destino con `['gaming']`: un Gaming de FABRICA mas agresivo
+        escrito encima de un fichero que ya existia y era del usuario;
+      * destino legible con 1 pack + origen con 3: gana IGUAL. La precedencia
+        es ESTRICTA -- el numero de packs NO entra, no fusiona y no gana el que
+        tiene mas -- y antes de este test eso no lo decia ni el log.
+
+    LO QUE SE AFIRMA, y por que discrimina:
+      1. la PRECEDENCIA se respeta (el destino gana, no se copia, no se
+         fusiona, el origen queda intacto): es el guardian de TASK-069 y no se
+         toca;
+      2. el mensaje NOMBRA la ruta del origen con los packs que no han venido,
+         y CUANTOS son, y son los que de verdad faltan. Un aviso que dijera
+         "hay packs en otra ruta" sin decir cuales seria el mismo silencio con
+         prosa;
+      3. el mensaje NO inventa una perdida cuando no la hay: la contraprueba
+         con el destino teniendo todos los ids del origen tiene que dar
+         `mensaje_danado() is None`. Sin esta fila, "avisar siempre" seria un
+         arreglo que avisa de un problema inexistente en cada arranque con la
+         1.0.0 todavia en el disco.
+
+    Y LO QUE ESTE TEST NO DECIDE: si esos packs deben VOLVER. Es una pregunta de
+    producto para el dueno, escrita en `docs/ai/data-models.md` con sus tres
+    opciones. Aqui solo se fija que la decision no se lleva en silencio.
+    """
+    import json
+    import woptimizer.services.pack_service as ps
+    from woptimizer.services.pack_service import PackService
+
+    raiz = tempfile.mkdtemp(prefix="wopt069_precio_")
+    try:
+        legacy, ruta_origen = _t069_crear_legacy(raiz)
+        sha_origen = _t069_sha256(ruta_origen)
+        ids_origen = sorted(json.load(open(ruta_origen, encoding="utf-8"))["packs"])
+        antes_cand = ps.candidatos_de_datos
+        antes_guarda = _t069_guarda(ps)
+        _t069_candidatos_que_apuntan_a(legacy, PackService)
+        try:
+            # --- FILA 1: destino EXISTENTE y VACIO. Gana, y no hay nada que decir
+            #     de la precedencia; lo que hay que decir es el PRECIO. ---
+            vacio = os.path.join(raiz, "datos", "profiles.json")
+            os.makedirs(os.path.dirname(vacio), exist_ok=True)
+            with open(vacio, "w", encoding="utf-8") as fh:
+                json.dump({"packs": {}}, fh, indent=4)
+            sha_vacio = _t069_sha256(vacio)
+            svc = PackService(data_path=vacio)
+            assert sorted(svc.get_all_packs()) == ["gaming"], (
+                f"con el destino vacio lo unico que hay es el Gaming: "
+                f"{sorted(svc.get_all_packs())}"
+            )
+            assert svc.fichero_danado is False and svc.migrado_desde == "", (
+                "un destino legible y vacio NO esta corrupto y no ha migrated: "
+                f"fichero_danado={svc.fichero_danado} "
+                f"migrado_desde={svc.migrado_desde!r}"
+            )
+            assert _t069_sha256(vacio) == sha_vacio, (
+                "la carga ha reescrito el destino vacio del usuario"
+            )
+            mensaje = _t069_ascii(svc.mensaje_danado() or "")
+            assert legacy in mensaje, (
+                "el destino ha ganado por precedencia y hay packs en el origen, y "
+                f"el mensaje no nombra esa ruta: {mensaje!r}. Los 3 packs "
+                "heredados no vuelven y el usuario se entera por la via de que no "
+                "estan."
+            )
+            for falta in ids_origen:
+                if falta == "gaming":
+                    continue    # el destino ya tiene un gaming, el suyo no
+                assert falta in mensaje, (
+                    f"el mensaje no nombra el pack {falta!r} que solo vive en el "
+                    f"origen: {mensaje!r}. Un aviso que dice 'hay packs en otra "
+                    "ruta' sin decir cuales es el mismo silencio con prosa."
+                )
+            assert svc.motivo_gaming_repuesto in (svc.mensaje_danado() or ""), (
+                "el destino vacio dispara la reposicion del Gaming de FABRICA y "
+                "el mensaje no la declara: son dos perdidas en el mismo arranque"
+            )
+            assert _t069_sha256(ruta_origen) == sha_origen, (
+                "el ORIGEN se ha tocado: es de solo lectura aqui"
+            )
+
+            # --- FILA 2: el destino tiene MENOS packs que el origen. Gana igual,
+            #     porque la precedencia es estricta. ---
+            hoy = os.path.join(raiz, "datos2", "profiles.json")
+            packs_hoy = _t069_packs_del_usuario_hoy()
+            _t069_escribir_profiles(hoy, packs_hoy)
+            sha_hoy = _t069_sha256(hoy)
+            svc2 = PackService(data_path=hoy)
+            assert sorted(svc2.get_all_packs()) == ["gaming", "reciente"], (
+                "con el destino legible gana el destino aunque traiga menos packs: "
+                f"{sorted(svc2.get_all_packs())}"
+            )
+            assert svc2.packs_solo_en_el_origen == legacy, (
+                "el servicio tiene que saber que hay packs que no han venido y no "
+                f"lo ha anotado: packs_solo_en_el_origen={svc2.packs_solo_en_el_origen!r}"
+            )
+            assert svc2.packs_que_no_han_venido == {"8fefbc22"}, (
+                "los packs que solo viven en el origen son los que el destino no "
+                f"tiene, y salen {sorted(svc2.packs_que_no_han_venido)}"
+            )
+            mensaje2 = _t069_ascii(svc2.mensaje_danado() or "")
+            assert "8fefbc22" in mensaje2 and legacy in mensaje2, (
+                f"el mensaje no dice que pack ni de donde: {mensaje2!r}"
+            )
+            assert _t069_sha256(hoy) == sha_hoy, (
+                "la carga ha reescrito el destino del usuario con la precedencia"
+            )
+
+            # --- FILA 2b: el caso que hace DISCRIMINABLE el mutante
+            #     `PRECEDENCIA_POR_NUMERO`, y por eso lleva un origen de TRES
+            #     packs contra un destino de DOS. Con el origen de dos y el
+            #     destino de dos, "gana el que tiene mas" y "gana el destino"
+            #     dan el MISMO resultado y el mutante pasa: una fila que no
+            #     separa las dos reglas no vigila ninguna.
+            legacy3 = os.path.join(raiz, "legacy3")
+            os.makedirs(legacy3, exist_ok=True)
+            ruta_origen3 = os.path.join(legacy3, "profiles.json")
+            _t069_escribir_profiles(ruta_origen3, {"packs": dict(
+                _t069_profiles_v1_0_0()["packs"],
+                extra={"id": "extra", "name": "extra", "apps": ["extra.exe"]})})
+            sha_origen3 = _t069_sha256(ruta_origen3)
+            _t069_candidatos_que_apuntan_a(legacy3, PackService)
+            dos = os.path.join(raiz, "datos2b", "profiles.json")
+            _t069_escribir_profiles(dos, _t069_packs_del_usuario_hoy())
+            svc2b = PackService(data_path=dos)
+            assert sorted(svc2b.get_all_packs()) == ["gaming", "reciente"], (
+                "con un destino de DOS packs y un origen de TRES gana el destino: "
+                f"la precedencia es ESTRICTA y el numero de packs NO entra. Han "
+                f"saliendo {sorted(svc2b.get_all_packs())}, que es lo que haria un "
+                "'gana el que tiene mas' o una fusion silenciosa"
+            )
+            assert sorted(svc2b.packs_que_no_han_venido) == ["8fefbc22", "extra"], (
+                "los packs que solo viven en el origen son los que el destino no "
+                f"tiene: {sorted(svc2b.packs_que_no_han_venido)}"
+            )
+            assert _t069_sha256(ruta_origen3) == sha_origen3, (
+                "el ORIGEN se ha tocado al DECLARAR que sus packs no han venido: "
+                "anotar no es migrar"
+            )
+            _t069_candidatos_que_apuntan_a(legacy, PackService)
+
+            # --- FILA 3: CONTRAPRUEBA. El destino tiene TODO lo del origen: no
+            #     hay packs que no vengan y no se dice nada. ---
+            completo = os.path.join(raiz, "datos3", "profiles.json")
+            _t069_escribir_profiles(completo, {"packs": {
+                "gaming": packs_hoy["packs"]["gaming"],
+                "8fefbc22": {"id": "8fefbc22", "name": "sync", "apps": ["x.exe"]},
+            }})
+            svc3 = PackService(data_path=completo)
+            assert svc3.packs_solo_en_el_origen == "", (
+                "el destino tiene todos los ids del origen y aun así se ha "
+                f"anotado: {svc3.packs_solo_en_el_origen!r}"
+            )
+            assert svc3.mensaje_danado() is None, (
+                "no hay ninguna perdida que contar y se avisa: "
+                f"{_t069_ascii(svc3.mensaje_danado() or '')!r}. Un aviso por "
+                "arranque seria peor que el silencio que venia."
+            )
+        finally:
+            _t069_restaura(ps, antes_cand, antes_guarda)
+    finally:
+        _t069_borrar(raiz)
+    print("El destino que gana dice lo que deja fuera (4 y 5).")
+
+
 def test_el_check_del_contrato_usa_el_mismo_predicado_que_el_test():
     """TASK-069 T-2, cierre. Mata al mutante que deje el predicado en
     `run_tests.py` y no lo cablee en `validate_docs.py`.
@@ -22762,7 +23293,12 @@ if __name__ == "__main__":
     test_el_guard_de_ausencia_ignora_a_la_instalacion_limpia_sin_revistar()
     # TASK-069, cierre del Paso 4: los OCHO supervivientes que dejo el
     # mutation-auditor, uno por test, y el noveno que tapa el fallo MEDIDO que
-    # causaba la guarda de `_candidatos_para`. Suite: 173 -> 182.
+    # causaba la guarda de `_candidatos_para`. Suite: 173 -> 183.
+    # (La cabecera de este bloque decia 173 -> 182 y el reparto real de aquella
+    # ronda fue DIEZ sondas, no nueve: el decimo guardian
+    # `test_el_check_del_contrato_usa_el_mismo_predicado_que_el_test` se
+    # registro en la misma pasada y la frase no se conto. MEDIDO contra el
+    # recuento derivado con `ast`.)
     # El orden es el del dano: primero la PRECEDENCIA, que es el unico que toca
     # datos del usuario (el pack mas reciente se pierde en silencio a favor del
     # viejo), y despues el resto. Todas van DETRAS del marcador headless porque
@@ -22777,6 +23313,15 @@ if __name__ == "__main__":
     test_los_nombres_del_servicio_son_los_de_config()                    # 8
     test_el_contrato_de_persistencia_se_declara_como_contrato()          # 9
     test_el_check_del_contrato_usa_el_mismo_predicado_que_el_test()      # 10
+    # TASK-069, RONDA 2 del Paso 4: los CINCO hallazgos que el auditor midio POR
+    # COMPORTAMIENTO y que no eran los ocho de la ronda anterior. Suite: 183 -> 187.
+    # Las CUATRO van DETRAS del marcador porque son de servicio, disco y contrato.
+    # El orden es el de la gravedad de los datos, y las dos primeras TOCAN AL
+    # USUARIO:
+    test_la_rotacion_no_macha_el_bak_que_guarda_lo_unico()               # 1 EL GRAVE
+    test_el_gaming_repuesto_se_declara_tambien_si_el_origen_esta_corrupto()  # 2
+    test_el_diagnostico_pasa_por_el_punto_unico_de_decision()            # 3
+    test_el_destino_que_gana_tiene_que_decir_que_hay_packs_que_no_vienen()  # 4 y 5
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.

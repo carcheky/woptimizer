@@ -1,5 +1,33 @@
 # Guía de Pruebas y Validación para Agentes IA
 
+## Los finales de línea de los ficheros del arnés, MEDIDOS (TASK-069, ronda 2)
+
+Antes de escribir un arnés de mutación hay que saber en qué está el fichero que se va a
+anchorar, porque una ancla con `\n` pelado **no aplica** contra un fichero en CRLF y el
+mutante no se pone: el veredicto sale "no ha muerto" y lo que en realidad es un arnés que
+no ha hecho nada. MEDIDO en este host el 2026-10-05 con `git ls-files --eol` y contando
+bytes:
+
+| Fichero | En el árbol de trabajo | Declarado | Ancla del arnés |
+|---|---|---|---|
+| `run_tests.py` | **LF** (0 CRLF, 23 389 LF) | `* text=auto eol=lf` | `\n` pelado |
+| `validate_docs.py` | **CRLF** (2 548 CRLF, 0 LF) | `* text=auto eol=lf` | **con `\r\n`** |
+| `pack_service.py` | LF | `eol=lf` | `\n` pelado |
+| `.gitattributes` | LF, `i/lf w/lf` | se declara a sí mismo `text=auto eol=lf` | — |
+| `build.bat` | **LF**, con `*.bat text eol=crlf` declarado | — | es la fila viva de `STATUS.md` |
+
+Dos trampas, ambas medidas y ambas ya pagadas por alguien:
+
+- **"`.gitattributes` declara `eol=crlf`" es FALSO.** No se declara a sí mismo: lo cubre
+  `* text=auto eol=lf`, y solo `*.bat`, `*.cmd` y `*.ps1` llevan `eol=crlf` a la fuerza.
+  Medido: `.gitattributes` sale `i/lf w/lf attr/text=auto eol=lf`. Un documento que diga
+  lo contrario es un documento que miente, y hay que corregirlo en vez de heredarlo.
+- **"`run_tests.py` es CRLF" fue verdad y hoy es FALSO.** Lo medido ahora es `w/lf`. Quien
+  monte un arnés en binario "por si acaso" no rompe nada, pero quien afirme el dato en un
+  informe está describiendo un árbol que ya no existe. `validate_docs.py` **sí** sigue en
+  CRLF, y esa es la que importa: es la que hace que un arnés de anclas con `\n` no aplique y
+  el mutante parezca superviviente.
+
 ## Desafío en Entornos Headless
 En muchos entornos de IA no existe un monitor o display activo de Windows conectado directamente al proceso del agente. Si un script ejecuta `app.mainloop()` de CustomTkinter, el script se quedará bloqueado de forma indefinida esperando interacción humana.
 
@@ -26,7 +54,7 @@ app.run()
 Probar `process_service` y `pack_service` con tests independientes en `run_tests.py` sin levantar Tkinter.
 
 #### Suite de Tests Actual (`run_tests.py`)
-Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **183 tests**: 136 de backend + 47 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
+Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`). Contiene **187 tests**: 140 de backend + 47 headless de UI, numerados aquí en el **orden de registro** del `__main__` (los headless van al final).
 
 > **Ese 81 no se escribe a mano, y por eso ya no puede caducar solo.** Fallo medido en el cierre
 > del ciclo 26: esta tabla decía 78, `STATUS.md` decía 75 y `AGENTS.md` y `README.md` decían 28 —
@@ -1208,3 +1236,7 @@ Consecuencia práctica: al añadir cobertura, **editar siempre `run_tests.py`**.
 | 181 | `test_los_nombres_del_servicio_son_los_de_config` | **CIERRE DE PASO 4, SUPERVIVIENTE 7 (el del `importlib`).** Mata a la reintroduccion de una COPIA local de la decision o de un envoltorio propio alrededor de ella. El comentario que este test viene a sustituir afirmaba que la forma `from woptimizer.config import (a, b, c, d, e)` FALLA en este interprete con `services/pack_service.py` presente, y lo sostenia con una medicion: MEDIDO de nuevo, **no se reproduce** (CPython 3.13.8), y la linea 9 del mismo fichero —25 lineas por encima de aquel comentario— ya usaba ESA forma con tres nombres y nunca fallo. El `importlib` se ha ido porque era un rodeo para un bug inexistente, y no porque fuera incorrecto: ligaba el MISMO objeto funcion. Y lo que este test ata es la IDENTIDAD, que es lo que de verdad importa: el servicio usa la MISMA funcion que el contrato, no una copia suya, porque dos copias pueden discrepar sobre que ruta manda y esa discrepancia no se ve hasta que alguien pierde packs |
 | 182 | `test_el_contrato_de_persistencia_se_declara_como_contrato` | **CIERRE DE PASO 4, SUPERVIVIENTES 8 y 9 (los dos documentales).** Mata a `DOC_AMILLA_MIENTRAS_DICE_APPDATA` y a `DOC_APPDATA_EN_ARCHITECTURA_SOLO`. El guard anterior era POR SUBCADENA y por eso no mordia: quitar la unica mencion de `%APPDATA%` mataba, pero reescribir la frase del contrato a "junto al ejecutable" y dejar una mencion decorativa mas abajo pasaba los 173. **El mutante PASA POR EL GUARD:** se escribe el documento mutado a `%TEMP%`, se LEE DE NUEVO y se le pasa al MISMO predicado que usa `validate_docs.py`, y se exige que lo acuse —una contraprueba que muta una cadena en memoria y comprueba que el reemplazo funciono NUNCA pasa el guard, y en ese hueco cabe un predicado que devuelve siempre `[]`—. El predicado es de CONTENIDO: exige que la ruta `%APPDATA%\woptimizer\profiles.json` Y la negacion de "junto al ejecutable" esten en la MISMA unidad de texto (vinneta con sus lineas de continuacion), con lo que se cae a la vez la mencion decorativa y la frase reescrita. Los dos mutadores se escriben a disco con su pre-vuelo: el 1 quita la ruta y ANADE la decoracion, el 2 conserva la ruta y quita la negacion |
 | 183 | `test_el_check_del_contrato_usa_el_mismo_predicado_que_el_test` | **CIERRE DE PASO 4, y el que evita que los dos anteriores sean decorativos.** MEDIDO: hasta el cierre el guard vivia SOLO en `run_tests.py` y `validate_docs.py` no tenia ninguno de TASK-069, o sea que un documento reescrito se sostenia en verde mientras la suite corriera y caia en rojo cuando no: al reves de como funciona una guarda. La atadura se afirma por TEXTO con `inspect.getsource` —del predicado en `validar()`, que es donde vive el cableado, y de los DOS nombres de documento en la funcion DELEGADA, porque `validar()` solo cablea (D1) y buscar los nombres ahi seria exigirle logica que este repo se prohibe a proposito— y con un control de que un documento vacio no puede declarar el contrato |
+| 184 | `test_la_rotacion_no_macha_el_bak_que_guarda_lo_unico` | **RONDA 2 DEL PASO 4, HALLAZGO 1, Y EL QUE TOCA DATOS DEL USUARIO.** MEDIDO: con el destino inexistente, un `.bak` previo del dueno con el pack `viejo01` y un origen con 3 packs, tras la carga el `.bak` seguia intacto y **tras el `save()` el `.bak` paso a ser copia del origen, byte a byte (sha identica), y `viejo01` desaparecio**. La rotacion es un anillo de UNA plaza y la migracion mete una TERCERA generacion en un anillo de dos: el recycled se come a la copia buena del dueno, que es lo UNICO que el usuario tiene si el destino se corrompe. Las cuatro filas: `viejo01` sigue **LEGIBLE** (no "existe": con un mutante que BORRA en vez de pisar, `os.path.exists` pasaria por la razon equivocada), el rescate contiene el contenido del `.bak` viejo y no una mezcla, **el `.bak` ANDA** (un fix de "no se rota nunca" dejaria al usuario sin red anti-brick para siempre) y el mensaje nombra el fichero. Y la CONTRAPRUEBA: con un `.bak` que no guarda nada unico no se crea fichero de rescate, que es lo que mata al mutante "apunta un fichero por cada guardado" |
+| 185 | `test_el_gaming_repuesto_se_declara_tambien_si_el_origen_esta_corrupto` | **RONDA 2 DEL PASO 4, HALLAZGO 2. El mismo punto ciego de T-4 por otra puerta.** MEDIDO: con el destino ILEGIBLE **y el ORIGEN ALSO ilegible**, `gaming_repuesto` sale True con 5 categorias y los keepers steam/discord, el mensaje nombra la corrupcion y **no** la reposicion, y el `save()` siguiente deja el fichero del usuario con `["gaming"]`. El mutante que mata la rama de mensaje de T-4 quita el `extra` de OTRA rama y por eso sobrevive: es la clase de S7 de TASK-066, la regla escrita en un sitio y sin ejecutar en el otro. Tres filas: el motivo declarado aparece en el mensaje, la corrupcion **sigue** apareciendo (declarar mas no es tapar lo de antes) y cargar no escribe ni el destino ni el origen |
+| 186 | `test_el_diagnostico_pasa_por_el_punto_unico_de_decision` | **RONDA 2 DEL PASO 4, HALLAZGO 3 (M4). Un hallazgo que no nace de un mutante construido sino de uno MEDIDO por el auditor.** `elegir_ruta_de_datos()` es el punto unico donde viven la regla de instalacion limpia y la decision de ruta de T-1/T-2, y `_diagnosticar_y_migrar()` tiene que pasar por ahi. MEDIDO: el mutante `M4_COPIA_LOCAL` lo envuelve con su propia copia y devuelve `(destino_, [])` cuando el destino es legible; la suite completa pasa en VERDE y con eso cualquier cambio futuro de la decision deja de llegar a la migracion sin que nadie lo note. Por que `ast` y no texto: el nombre tambien esta en el DOCSTRING del metodo, luego `inspect.getsource` + `in` lo daria por bueno y un comentario no ejecuta nada. Y la segunda fila mata el mutante por el otro lado:`_copia_local` no puede existir en esa funcion |
+| 187 | `test_el_destino_que_gana_tiene_que_decir_que_hay_packs_que_no_vienen` | **RONDA 2 DEL PASO 4, HALLAZGOS 4 y 5. La PRECEDENCIA es correcta y esta escrita; lo que no estaba escrita era su CONSECUENCIA.** MEDIDO: (a) destino legible y VACIO con 3 packs en el origen -> gana el destino, no se copia nada, `migrado_desde` y `packs_en_otra_ruta` vacios, y el mensaje era el del Gaming: los 3 packs heredados no vuelven y NADIE LO DIJE; (b) destino con 1 pack contra 3 del origen -> gana IGUAL, la precedencia es ESTRICTA y el numero de packs NO entra, y antes no lo decia ni el log. El servicio NO fusiona ni copia: la precedencia es un contrato cerrado y lo que se anade es la DECLARACION. Tres filas: la precedencia se respeta y el origen queda intacto, el mensaje nombra la ruta **y cuantos packs y cuales** (un aviso que dijera "hay packs en otra ruta" sin decir cuales seria el mismo silencio con prosa), y la CONTRAPRUEBA de que con el destino teniendo todos los ids del origen `mensaje_danado()` es `None` |
