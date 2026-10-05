@@ -8,7 +8,7 @@
 
 Marcabas una categoría para **arrancar** y el programa **no la arrancaba** — y te lo contaba como **un éxito**: banner en verde diciendo "0 apps iniciadas", porque lo que se omitía no se sumaba ni como fallo. Un rechazo dice "no arranqué nada", no "lo hice bien".
 
-**Antes:** `⚡ 0 apps iniciadas` en **verde**.
+**Antes:** `🚀 0 apps iniciadas · 'Trabajo'.` en **verde**.
 **Ahora:** `⚠️ 0 iniciadas, 1 con error (1 categoría: 🔴 Sistema de Windows)` en **ámbar**, con el motivo nombrado.
 
 ### Y el bug real resultó ser otro

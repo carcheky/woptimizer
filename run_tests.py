@@ -1432,6 +1432,23 @@ def test_la_puerta_de_arranque_no_tiene_literal_propio_ni_omision_sin_contar():
     sin guardian" es justo la que esta fila cierra. El control negativo va en
     un arbol sintetico con un `continue` pelado, para que se vea que el detector
     detecta y no que "todo esta bien".
+
+    **HALLAZGO DE METODO, y va aqui porque el proximo que mueva esta mitad lo lee
+    antes que nada: `T3_TEXTO_CON_LITERAL_EN_LA_VISTA` tiene UNA muerte que
+    QUIERE y otras que son ruido.** MEDIDO el 2026-10-05 (CYCLE-058, Paso 4): el
+    mutante historico **eliminaba la llamada al formateador**, con lo que el
+    `import` de `mensaje_arranque_pack` quedaba **sin referencias** en esa vista
+    y lo mataba ANTES `test_dead_code_ast_guard`, con un motivo que no dice nada
+    del contrato de este test. Dos cosas se aprenden de ahi, y las dos son de
+    este turno: (a) **un mutante que ademas deja codigo muerto tiene que
+    reportar la muerte que quiere**; el resto del traceback es ruido, y leerlo
+    como veredicto hace creer que un guard mas estricto de lo que es es el que
+    esta vigilando. (b) **Se distingue dejando una referencia viva**: si el
+    mutante cambia la llamada por `pass` y **deja el `import`**, entonces este
+    guard muere en la SUYA —*"pack_manager_view.py: el literal 'apps
+    iniciadas' del recuento de arranque esta escrito en la vista"*— y no en la
+    del codigo muerto. Quien mida esta mitad sin esa precaution esta midiendo
+    `test_dead_code_ast_guard` y lo confundira con este.
     """
     print("Testing el contrato de la puerta de arranque (TASK-068)...")
     raiz = _raiz_del_paquete()
@@ -10075,7 +10092,10 @@ def test_el_feedback_de_pack_dice_la_verdad():
             assert v.status_label.texto == (
                 "⚠️ 'Trabajo': 2 iniciadas, 1 con error."
             ), f"arranque con errores: {v.status_label.texto!r}"
-            assert v.status_label.color == AMBAR
+            assert v.status_label.color == AMBAR, (
+                f"un arranque con errores no se celebra en VERDE: "
+                f"{v.status_label.color!r}"
+            )
 
             # -----------------------------------------------------------------
             # (7) TASK-068 T-1: EL GUARDIAN DE LA SUMA. El ladrillo del ciclo.
@@ -23414,6 +23434,170 @@ def test_el_check_del_contrato_usa_el_mismo_predicado_que_el_test():
     )
 
 
+def test_la_clausula_de_arranque_lista_todas_las_categorias_y_va_en_singular():
+    """TASK-068, ronda 2 del Paso 4: el RECUENTO y el PLURAL de la clausula.
+
+    **Los dos supervivientes que este test mata, MEDIDOS el 2026-10-05 (28 046 B,
+    `ALL TESTS PASSED`, con los 188 en verde):**
+
+      * `N6_CLAUSULA_SOLO_NOMBRA_LA_PRIMERA` — `', '.join(cats)` -> `', '.join(cats[:1])`
+        en `ui/feedback.py::clausula_categorias_arranque`. Con `start_categories`
+        de dos elementos el mensaje decia *"(2 categorías: 🟡 Chat y Comunicación)"*:
+        **cuenta dos y enseña uno.**
+      * `N7_CLAUSULA_PLURAL_ROTO` — `plural = "s" if n != 1 else ""` -> `plural = "s"`.
+        Con **una sola** categoria omitida imprimia *"(1 categorías: ...)"*.
+
+    **La causa es una sola y no es de las dos aserciones:** hasta este test
+    **ninguno de los 188 montaba un pack con `start_categories` de dos
+    elementos**, luego el recuento, el plural y el listado COMPLETO de la
+    clausula estaban sin vigilar. Las filas anteriores solo miran una sola
+    categoria (`_CAT_ROJO` en T-2, `CATEG_INICIO` en T-3), y con una sola el
+    `cats[:1]` es la lista entera y el plural correcto es el de una.
+
+    Por que el recuento lo pide el MOTOR y no el doble: las tres filas entran por
+    `PackManagerView.start_pack` de verdad y el recuento de categorias lo pide al
+    `ProcessService` real (`_ServicioDeArranque`) con sus barreras y sus ramas de
+    omision. Asi "las dos omitidas" es un hecho de T-2 y no un `(0, 2)` puesto a
+    mano, y el mutante "arregla el texto y no el motor" no puede pasar.
+
+    **TESTIGOS, y por que estan escritos aqui (ciclo 58).** El parte del ciclo
+    nombro el testigo equivocado en tres muertes. Las tres son de filas de
+    `test_el_feedback_de_pack_dice_la_verdad` (las linea son las del estado de
+    188 y se mueven con cada insercion anterior; el nombre de la fila no se mueve):
+      - `T1_TRASPASA` (la lista de apagado colada en la de arranque) muere en la
+        **fila 3, "la lista de APAGADO viaja"** (`procs.target_categories == ...`),
+        no en la fila 2 como se declaro: la fila 2 mira `procs.categorias` y con el
+        traspaso la lista que llega es la que el propio mutante cambio.
+      - `T3_CLAUSULA_EN_EXITO_COMPUESTO` (gate + rama `launched > 0` a la vez)
+        muere en la **fila 4, "el texto dice la SUMA de los dos recuentos"**
+        (`5 iniciadas, 1 con error`, byte a byte), no en la contraprueba.
+      - `N2` lo mata la **fila T-2, "la omision tiene que CONTAR como fallo"**
+        (`"1 con error" in texto`), no la fila 1 ampliada.
+    Ninguna de las tres cambia un veredicto; lo que cambia es que un informe que
+    nombra el testigo equivocado se reaudita mal tres ciclos despues.
+    """
+    print("Testing la clausula de arranque con dos categorias omitidas...")
+    import tempfile as _tf_clausula
+    from woptimizer.ui.confirmation import AMBAR, VERDE
+    from woptimizer.ui.views.pack_manager_view import PackManagerView
+
+    CATEG_A = _CAT_CHAT      # la primera que el pack marco
+    CATEG_B = _CAT_SYNC      # la segunda, y la que N6 no nombraba
+
+    class _Arranque:
+        """`start_pack_apps` a medida y `start_pack_categories` de VERDAD.
+
+        El doble no inventa el recuento: lo pide al `ProcessService`, con sus
+        barreras y sus ramas de omision. `categorias_reales=False` es la unica
+        manera de fabricar un `(0, 0)` desde categorias, que es justamente el
+        estado que T-2 vuelve inalcanzable y que solo sirve para la fila 3.
+        """
+
+        def __init__(self, servicio, arranque_apps=(0, 0), categorias_reales=True):
+            self.servicio = servicio
+            self.arranque_apps = arranque_apps
+            self.categorias_reales = categorias_reales
+            self.categorias = None
+            self.target = None
+
+        def start_pack_apps(self, apps):
+            return self.arranque_apps
+
+        def start_pack_categories(self, cats, targets=None):
+            self.categorias = list(cats)
+            self.target = list(targets or [])
+            if self.categorias_reales:
+                return self.servicio.start_pack_categories(cats, targets)
+            return 0, 0
+
+    def _toast(paquete, proc):
+        """Cruza la puerta REAL y devuelve el par `(texto, color)` publicado."""
+        gestor = PackManagerView.__new__(PackManagerView)
+        publicado = []
+        gestor._cancel_confirm = lambda: None
+        gestor.process_service = proc
+        gestor.pack_service = None
+        gestor.gaming_service = None
+        gestor.notification_service = _NotisFalso_()
+        gestor.status_label = _EtiquetaFalsa_()
+        gestor.after = lambda ms, func=None, *a: func(*a)
+        gestor._inline_status = lambda texto, color: publicado.append((texto, color))
+        with _HilosSincronos():
+            gestor.start_pack(paquete)
+        assert len(publicado) == 1, (
+            f"la puerta de arranque tiene que publicar UN feedback: {publicado!r}"
+        )
+        return publicado[0]
+
+    pack_dos = Pack(id="dos", name="Trabajo", apps=[],
+                    start_categories=[CATEG_A, CATEG_B])
+    pack_una = Pack(id="una", name="Trabajo", apps=[], start_categories=[CATEG_A])
+
+    with _tf_clausula.TemporaryDirectory() as _tmp_clausula:
+        # Ningun ejecutable resoluble para ninguna de las dos: las dos se OMITEN
+        # por la tercera rama (`process_service.py:949-958`), que las CUENTA una
+        # a una. Las dos barreras anteriores no muerden porque ninguna de las dos
+        # es roja y el pack no trae `target_categories` en conflicto.
+        servicio = _ServicioDeArranque(_tmp_clausula)
+        servicio._patrones_de_categoria = lambda cat: []
+
+        # -- fila 1: LAS DOS OMITIDAS. Mata `N6_CLAUSULA_SOLO_NOMBRA_LA_PRIMERA`.
+        proc = _Arranque(servicio)
+        texto, color = _toast(pack_dos, proc)
+        assert proc.categorias == [CATEG_A, CATEG_B], (
+            "precondicion: la puerta tiene que ejecutar las DOS categorias del "
+            f"pack, y ejecuto {proc.categorias!r}"
+        )
+        assert color == AMBAR, (
+            f"dos categorias marcadas y omitidas no son un exito: {color!r}"
+        )
+        assert "0 iniciadas, 2 con error" in texto, (
+            "las dos omisiones tienen que contar una a una: "
+            f"{texto!r}"
+        )
+        assert CATEG_A in texto and CATEG_B in texto, (
+            "la clausula tiene que NOMBRAR LAS DOS categorias que el usuario marco: "
+            f"en el mensaje solo sale una de las dos. Texto={texto!r}"
+        )
+        assert "(2 categorías:" in texto, (
+            "el recuento de la clausula tiene que ser el de la lista que se paso: "
+            f"dijeron 2 y no {texto!r}"
+        )
+
+        # -- fila 2: UNA OMITIDA. Contraprueba de la fila 1, y mata
+        #    `N7_CLAUSULA_PLURAL_ROTO`: con el plural fijo en "s" sale
+        #    "(1 categorías: ...)".
+        texto_una, color_una = _toast(pack_una, _Arranque(servicio))
+        assert color_una == AMBAR, f"una categoria omitida tampoco es exito: {color_una!r}"
+        assert "(1 categoría: " in texto_una, (
+            "una sola categoria se escribe en SINGULAR: con el plural fijo sale "
+            f"'(1 categorías: ...)', que es como se leia antes. Texto={texto_una!r}"
+        )
+        assert "1 con error" in texto_una, (
+            f"la categoria omitida tiene que contar como fallo: {texto_una!r}"
+        )
+        assert CATEG_A in texto_una and CATEG_B not in texto_una, (
+            "la clausula nombra lo que el pack marco y solo eso: en un pack de una "
+            f"categoria no puede aparecer la otra. Texto={texto_una!r}"
+        )
+
+        # -- fila 3: CONTROL NEGATIVO, y sobre el MISMO pack de dos. Sin esta
+        #    fila, la clausula podria meterse en la rama de exito y las dos
+        #    anteriores seguirian en verde, porque solo probarian que no sale con
+        #    UNA categoria (que es lo que mide la contraprueba de T-1).
+        texto_ok, color_ok = _toast(
+            pack_dos, _Arranque(servicio, arranque_apps=(3, 0), categorias_reales=False))
+        assert texto_ok == "🚀 3 apps iniciadas · 'Trabajo'.", (
+            "con algo arrancado la clausula NO aparece, byte a byte como el texto "
+            f"de siempre: {texto_ok!r}"
+        )
+        assert color_ok == VERDE, (
+            f"el exito real si es verde, que es lo que la degradacion a ambar no "
+            f"puede tocar: {color_ok!r}"
+        )
+    print("La clausula lista, cuenta y habla en singular OK (TASK-068).")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -23794,4 +23978,16 @@ if __name__ == "__main__":
     # sintetica, porque un guard que no tiene un arbol que DEBA rejetar se lee
     # igual que un guard que mide.
     test_la_puerta_de_arranque_no_tiene_literal_propio_ni_omision_sin_contar()
+    # TASK-068, ronda 2 del Paso 4: la clausula de categorias con DOS elementos.
+    # Suite: 188 -> 189 (140 backend + 49 headless). Va DETRAS del marcador y AL
+    # FINAL, por lo mismo que el 188: no renumera las 188 filas de la tabla de
+    # `docs/ai/testing-guide.md`, y esta es la 189. No abre ventana (dobles de
+    # widget y `_HilosSincronos`) y escribe solo en `%TEMP%`.
+    #
+    # Cierra los DOS supervivientes REALES de la ronda anterior, que no eran
+    # equivalentes: el listado truncado a la primera y el plural fijo en "s".
+    # Los dos vivian en el mismo hueco estructural —ningun test montaba un pack
+    # con `start_categories` de dos elementos— y por eso las tres filas de aqui
+    # son 2, 1 y 0 categorias omitidas con el MISMO par de categories.
+    test_la_clausula_de_arranque_lista_todas_las_categorias_y_va_en_singular()
     print("\nALL TESTS PASSED.")
