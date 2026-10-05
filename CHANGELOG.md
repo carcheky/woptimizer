@@ -1,3 +1,40 @@
+## CYCLE-056 - 2026-10-05
+
+**Servicios / Persistencia** - `TASK-069` (Tus packs ya no se pierden al actualizar)
+
+**Estado**: **terminado y auditado.** Es la queja que tu reportaste, no un hallazgo mío: al pasar de 1.0.0 a 1.1.0 la app perdía tus packs. Tests: **183** (136 + 47).
+
+### 🔴 Qué pasaba, y por qué era peor de lo que parecía
+
+Tus packs, tu sesión de apps cerradas y el registro de la app se guardaban **en la misma carpeta que el `.exe`**. Al instalar una versión nueva en otra carpeta, la app miraba en su carpeta nueva, no encontraba nada y arrancaba como si fuera la primera vez. Y hay cuatro `profiles.json` con datos distintos repartidos por el disco, con el mismo pack "sync" y **tres identificadores diferentes** según desde dónde se arrancó: la prueba de que el daño ya estaba pasando.
+
+**Lo grave no era perder packs. Era esto:** el pack Gaming de fábrica protege Steam y Discord, y `_ensure_gaming_pack()` lo repone en silencio si no lo encuentra. Así que perder el fichero **no** daba packs vacíos: daba un Gaming Mode **más agresivo que cerraba tu Discord**, y el programa creía que sus protecciones estaban puestas. Eso no era comodidad, era seguridad.
+
+### Corregido
+
+- 🛡️ **Los datos ya no dependen de dónde esté el programa.** Ahora viven en tu carpeta de usuario (`%APPDATA%\woptimizer`), la misma sea la versión que tengas. Los ficheros viejos se **copian**, nunca se mueven: tu carpeta anterior se queda intacta.
+- 🛡️ **Cuando algo se recupera, te dice dónde está.** Antes, "perdido" era **indistinguible** de una instalación limpia: el programa no avisaba de nada. Ahora te dice la ruta exacta para que puedas ir a buscarlos.
+- 🛡️ **Si un fichero está dañado, se queda ahí.** La recuperación automática **no toca** el fichero roto: lo deja donde estaba para que puedas repararlo, y deja el bueno intacto.
+- 🛡️ **El repuesto del Gaming ahora se declara.** Cuando la app repone sus protecciones de fábrica porque no encuentra el fichero, **te dice cuáles son** y cuántas categorías cierra. Ya no repone en silencio.
+- 🔴 **Arreglada una ruta que llevaba a ninguna parte.** El aviso de recuperación te announcementsaba `...legacyprofiles.json`, una ruta que **no existe**, por un fallo al pegar el nombre del fichero sin separador. Peor que no avisar, porque te mandaba a buscar algo que no está.
+
+### El bucle entero merece nombre propio, y no es el bucle
+
+- 🔴 **Un cambio de UNA línea podía perder tus packs más recientes sin avisar.** Cuando el destino estaba bien, se leía el fichero viejo **después** y lo pisaba, y el siguiente guardado lo sobrescribía. Los 173 tests anteriores pasaban porque ninguno tenía a la vez un destino válido **y** un origen con datos: la única combinación donde se ve. Por eso la regla quedó escrita **con una contraprueba**: si tu fichero bueno está dañado y el viejo sirve, gana el viejo y el dañado se queda ahí. Sin esa contraprueba, el test de "el bueno gana" habría prohibido la recuperación.
+- 🟡 **El validador de documentación es lentísimo y lo sabíamos.** Re-lee el fichero de tests entero por cada línea, y una vuelta completa pasó de 8 a 14 minutos. Anotado como `TASK-070` con la solución, sin arreglarlo: afecta al utillaje, no a tu app.
+
+### Verificado
+
+- **183 tests en verde**, y los 8 fallos que quedaban **medidos uno a uno rompiéndolos a propósito**: cada uno muere por la comprobación que dice vigilar, no por casualidad.
+- Documentación **133 comprobaciones sin fallos**, la sintaxis impecable, y el agregado de documentación coincide con sus fuentes **por contenido**, no por nombre.
+- Un detalle de método que salió bien: una de las comprobaciones del auditor se comió dos commits de prueba **dentro del repo real** por un fallo de la herramienta, y lo detectó y reparó él mismo. Está **verificado por el registro**: los commits quedaron fuera de la historia y el repo está limpio.
+
+### Lo que sigue abierto, dicho sin adornos
+
+- 🔴 `TASK-068`: un pack de arranque **solo arranca programas, no categorías**, y eso **revierte** una decisión que se tomó a propósito hace un ciclo. Requiere que decidas tú, no es un fix.
+- 🟡 **El EOL del repo no está normalizado en tu carpeta.** La política nueva está escrita, pero `build.bat` —el script que compila tu `.exe`— sigue en LF pese a declararse en CRLF. Un `.bat` en LF es justo lo que Windows no tolera. No he tocado tus ficheros; es un `git add --renormalize` pendiente.
+- 🟡 **Cuando el destino tiene menos packs que el origen**, gana el destino. Es lo razonable, pero **no está escrito en ningún sitio** y nadie lo ha decidido formalmente.
+
 ## CYCLE-055 - 2026-10-05
 
 **Arquitectura y Calidad** - `TASK-067` (Cinco promesas escritas que nadie media)
