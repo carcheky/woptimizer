@@ -54,6 +54,15 @@ desenlace: tienen su propio par de formateadores puros, con la misma disciplina
 de "una sola frase por hecho" que el resto del modulo. La razon de que esten aqui
 y no en la vista es la misma que justifica el modulo entero: una frase escrita en
 la vista es una frase que se puede copiar y divergir.
+
+LO QUE TAMBIEN VIVE AQUI (TASK-068, T-3)
+La puerta de ARRANCAR, que hasta entonces era la unica que escribia su literal
+en la vista (`pack_manager_view.py:673-675`) mientras la de apagar ya venia aqui.
+Su regla de color es la MISMA del ciclo 26, `VERDE` solo con exito real, y la
+razon de que la frase viva aqui no es que sea mas larga: es que hay TRES
+llamantes del arranque (`PackManagerView.start_pack`, la rama `start` de
+`DashboardView.execute_pack` y la restauracion del Gaming) y tres literales
+copiados son tres verdades.
 """
 
 from typing import Tuple
@@ -321,3 +330,137 @@ def texto_confirmacion_apagado(nombre: str, n_procesos: int,
     """
     return (f"⚠️ Segunda pulsación para apagar {n_procesos} procesos de '{nombre}' "
             f"({n_apps} apps y {n_categorias} categorías marcadas).")
+
+
+# ---------------------------------------------------------------------------
+# LA PUERTA DE ARRANCAR (TASK-068, T-3)
+#
+# Es la MISMA disciplina de arriba, aplicada a la otra puerta: el mensaje se
+# calcula aqui y lo publica la vista, porque hay DOS vistas de arranque
+# (`PackManagerView.start_pack` y `DashboardView.execute_pack` rama `start`) mas
+# la restauracion del Gaming, y un literal copiado en tres sitios es tres
+# verdades. Motivo textual en `ui-design-system.md:391`.
+#
+# LO QUE ESTE MODULO NO HACE, Y ES DELIBERADO: **no nombra las categorias
+# cuando el arranque va bien.** Nombrarlas tambien en el exito es la opcion (a)
+# de P-1 en `proposal.md` §7, que es una DECISION DE PRODUCTO sobre el techo del
+# arranque por categoria y sigue ABIERTA (`TASK-068` T-4). Ponerla aqui la
+# ejecutaria en silencio, que es exactamente el modo de fallo que este ciclo
+# vino a matar. Cuando se decida, el sitio es esta funcion y las dos vistas ya
+# le pasan la lista.
+# ---------------------------------------------------------------------------
+
+
+def clausula_categorias_arranque(categorias) -> str:
+    """`(1 categoría: 🟡 Launchers Gaming)`, o cadena vacia si no hay ninguna.
+
+    La lista la pasa la vista y es la que el pack tiene marcada para ARRANCAR
+    (`pack_manager_view.py:658`, `dashboard_view.py:505`): no se consulta la DB
+    para nada, porque el nombre de lo que el usuario marco ya esta a mano y una
+    segunda fuente seria una segunda verdad.
+
+    La lista se FILTRA por lo vacio (`""`) y no por `if not categorias`, porque
+    `[""]` es truthy y produciria `(1 categoría: )`.
+    """
+    cats = [c for c in (categorias or []) if c]
+    if not cats:
+        return ""
+    n = len(cats)
+    plural = "s" if n != 1 else ""
+    return f" ({n} categoría{plural}: {', '.join(cats)})"
+
+
+def _clausula_de_arranque(launched: int, categorias) -> str:
+    """La clausula de categorias, y SOLO en el caso en que tiene sentido.
+
+    **Por que depende de `launched == 0` y no de `categorias`:** con algo
+    arrancado, el recuento es de EJECUTABLES lanzados (`self._lanzar` cuenta uno
+    por candidato, tanto si viene de `apps` como si viene de una categoria), o
+    sea que "N apps iniciadas" no es una mentira: son N programas. Lo que no
+    ocurre es que el usuario no sepa que sus categorias participaron, y eso lo
+    decide P-1(a), no este modulo.
+
+    Cuando `launched == 0` la clausula es obligatoria y no es decorativa: el
+    usuario marco categorias, el producto no arranco nada de ellas, y sin
+    nombrarlas el mensaje no dice por que. Es la respuesta en pantalla a "sin
+    ningun aviso" del dueno, y cuesta un parametro, no un cambio de contrato: la
+    3-tupla de P-2(b) (nombrar el MOTIVO de cada omision) sigue pendiente de la
+    decision del dueno y aqui no se adelanta.
+
+    **MEDIDO: este gate es la PRIMERA de las dos capas, y no la unica.** Sustituir
+    su cuerpo por `return clausula_categorias_arranque(categorias)` sin mirar
+    `launched` NO cambia una sola cadena de salida, porque
+    `_frase_arranque_inline` y `_frase_arranque_banner` solo interpolan
+    `clausula` en las ramas `launched == 0`. Ese mutante es EQUIVALENTE, no un
+    superviviente: la segunda capa, que es la que de verdad sostiene el
+    comportamiento, es la ESTRUCTURA de las dos frases. Se deja el gate igual
+    porque hace la condicion legible en un sitio y no en dos, y porque el dia
+    que P-1(a) se decida el sitio del cambio va a ser aqui; pero quien lea esto
+    no debe creer que el gate es el guard.
+    """
+    return clausula_categorias_arranque(categorias) if launched == 0 else ""
+
+
+def _frase_arranque_inline(nombre: str, launched: int, failed: int,
+                           clausula: str) -> str:
+    """La frase UNICA del arranque para la familia INLINE (Gestor de Packs)."""
+    if launched > 0 and failed == 0:
+        return f"🚀 {launched} apps iniciadas · '{nombre}'."
+    if launched > 0:
+        return f"⚠️ '{nombre}': {launched} iniciadas, {failed} con error."
+    if failed == 0:
+        # INALCANZABLE desde el servicio con T-2 cerrado (una categoria no
+        # resoluble cuenta como `failed`), y se formatea IGUAL, en ambar: la
+        # rama existe para que un `(0, 0)` de cualquier origen no pueda
+        # vestirse de exito.
+        return f"⚠️ '{nombre}': no arranco nada{clausula}."
+    return f"⚠️ '{nombre}': 0 iniciadas, {failed} con error{clausula}."
+
+
+def _frase_arranque_banner(nombre: str, launched: int, failed: int,
+                           clausula: str) -> str:
+    """La frase UNICA del arranque para la familia BANNER (Portada).
+
+    Comparte `_clausula_de_arranque` y el criterio de color con la inline, y
+    cambia la redaccion, que es lo unico en lo que las dos familias pueden
+    diferir desde el ciclo 26.
+    """
+    if launched > 0 and failed == 0:
+        return f"🚀 Pack '{nombre}' iniciado ({launched} apps)."
+    if launched > 0:
+        return f"⚠️ Pack '{nombre}': {launched} apps iniciadas, {failed} fallaron."
+    if failed == 0:
+        return f"⚠️ Pack '{nombre}': no arranco nada{clausula}."
+    return f"⚠️ Pack '{nombre}': 0 apps iniciadas, {failed} fallaron{clausula}."
+
+
+def mensaje_arranque_pack(nombre: str, launched: int, failed: int,
+                          categorias=None) -> Tuple[str, str]:
+    """Feedback INLINE de `PackManagerView.start_pack`: `(texto, color)`.
+
+    **La regla del color es la del ciclo 26 trasplantada:** VERDE solo con
+    `launched > 0 and failed == 0`. Con `launched == 0` el color es AMBAR aunque
+    `failed == 0`, que es el caso que T-2 vuelve inalcanzable pero que esta
+    funcion no puede prometer que no llegue desde otro llamante.
+
+    `categorias` es la lista de arranque del pack y solo se nombra cuando no
+    arranco nada (ver `_clausula_de_arranque` para el por que, y para lo que
+    esta decision NO hace a proposito).
+    """
+    texto = _frase_arranque_inline(nombre, launched, failed,
+                                  _clausula_de_arranque(launched, categorias))
+    return texto, (VERDE if launched > 0 and failed == 0 else AMBAR)
+
+
+def mensaje_banner_arranque(nombre: str, launched: int, failed: int,
+                            categorias=None) -> Tuple[str, str]:
+    """El mismo par para la familia BANNER (`DashboardView._show_start_banner`).
+
+    El color de exito es `theme.ACCENT` y no VERDE por el mismo motivo que
+    `mensaje_banner_cierre`: el fondo del banner de la portada es `SURFACE_ALT` y
+    el par literal del cierre no cumple el contraste. `theme.WARNING` para todo
+    lo demas, incluido el `failed == 0`, que aqui tampoco es un exito.
+    """
+    texto = _frase_arranque_banner(nombre, launched, failed,
+                                   _clausula_de_arranque(launched, categorias))
+    return texto, (theme.ACCENT if launched > 0 and failed == 0 else theme.WARNING)

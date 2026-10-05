@@ -2518,15 +2518,27 @@ Previamente existía asimetría entre vistas y acciones:
 
 ### Contrato de Feedback Visual Unificado
 1. **Portada (`DashboardView`):**
-   - **Arranque (`start`):** El worker secundario despacha al hilo principal vía `self.after(0, self._show_start_banner, launched, failed, p.name)`.
-   - `_show_start_banner(launched, failed, pack_name)`:
+   - **Arranque (`start`):** El worker secundario despacha al hilo principal vía `self.after(0, self._show_start_banner, launched, failed, p.name, categorias)`.
+   - `_show_start_banner(launched, failed, pack_name, categorias=None)`:
      * Invalida la caché del servicio de procesos (`process_service.invalidate_cache()`).
      * Actualiza la barra de reposo en vivo (`_update_resting_bar()`).
-     * Configura `status_banner_frame` y `status_label` con fondo `theme.SURFACE_ALT`:
-       - `failed == 0`: texto `"🚀 Pack '{pack_name}' iniciado ({launched} apps)."` con color `theme.ACCENT`.
-       - `failed > 0`: texto `"⚠️ Pack '{pack_name}': {launched} apps iniciadas, {failed} fallaron."` con color `theme.WARNING`.
+     * **TASK-068: el texto y el color NO se escriben aquí.** Se piden a `ui/feedback.py::mensaje_banner_arranque(pack_name, launched, failed, categorias)`, y las dos frases resultantes son las que se pintan sobre fondo `theme.SURFACE_ALT`:
+       - `launched > 0 and failed == 0`: `"🚀 Pack '{pack_name}' iniciado ({launched} apps)."` con color `theme.ACCENT`.
+       - `launched > 0 and failed > 0`: `"⚠️ Pack '{pack_name}': {launched} apps iniciadas, {failed} fallaron."` con color `theme.WARNING`.
+       - `launched == 0`: `"⚠️ Pack '{pack_name}': 0 apps iniciadas, {failed} fallaron (N categorías: …)."` con color `theme.WARNING`. **Nunca `theme.ACCENT` con 0**: el color de marca solo se concede con éxito real, igual que en `mensaje_banner_cierre`.
+     * `categorias` es **opcional con defecto `None`** a propósito: la restauración del Gaming pasa por aquí sin categorías de arranque y no tiene que fabricar una lista vacía para encajar en el contrato.
      * Cancela cualquier temporizador previo de auto-ocultación y programa el nuevo, **llamando a `self._reprogramar_autoocultado()`** (cancela `self._banner_timer`, saca el handle de `_timers_ui` y programa `AUTOOCULTADO_MS = 5000` ms). Es el **único** sitio donde se programa el auto-ocultado del banner, y lo usan las dos puertas.
    - **Apagado (`kill`):** Se mantiene `_show_banner` (sin alias: `_show_kill_banner` era código muerto y se borró), mostrando procesos cerrados y MB liberados con `theme.GAMING` o `theme.ACCENT`, y refrescando la barra de reposo con `_update_resting_bar()`.
+
+> **TASK-068: la puerta de ARRANCAR recibe el contrato que el ciclo 26 dio a la de apagado.** Tres cosas, todas medidas:
+>
+> 1. **El literal del toast estaba en la vista.** `pack_manager_view.py:673-675` pintaba `f"🚀 {started} apps iniciadas · '{nombre}'."` con un `if failed == 0` al lado, y `dashboard_view.py:222-225` pintaba el suyo. Dos truths para el mismo hecho. Ahora las dos piden su par a `ui/feedback.py` (`mensaje_arranque_pack` y `mensaje_banner_arranque`), por el **mismo motivo textual que aplica a `texto_confirmacion_apagado`**: una frase escrita en la vista es una frase que se puede copiar y divergir. Lo vigila `run_tests.py::test_la_puerta_de_arranque_no_tiene_literal_propio_ni_omision_sin_contar` sobre `_codigo_ejecutable`, así que un `print` en prosa no puede hacerse pasar por código.
+> 2. **VERDE solo con `launched > 0`.** Antes la regla era `failed == 0`, y las dos ramas de omisión de `ProcessService.start_pack_categories` hacían `continue` **pelado**: una categoría marcada y omitida no sumaba ni a `started` ni a `failed`, la puerta devolvía `(0, 0)` y se pintaba `🚀 0 apps iniciadas` en **VERDE**. Con T-2 las tres ramas de omisión suman `failed` (`process_service.py:918-929`), y el invariante escrito es **«o `started > 0`, o `failed > 0`»** para cualquier lista no vacía: `(0, 0)` es inalcanzable, y el formateador lo trata en ámbar igual, porque una rama que no puede alcanzarse no es una rama que pueda mentir.
+> 3. **Con 0 arrancados, el mensaje NOMBRA las categorías marcadas**, en las dos familias: `⚠️ '{nombre}': 0 iniciadas, {failed} con error (1 categoría: 🔴 Sistema de Windows).` La lista la pasa la vista y es la que el pack tiene marcada (`pack_manager_view.py:658`); no se consulta la DB para nada.
+>
+> **Lo que NO se hizo, y es una decisión pendiente, no un olvido:** las categorías **no** se nombran cuando el arranque va bien. Nombrarlas también en el éxito es la opción **(a) de P-1** en `openspec/changes/2026-10-05-arranque-por-categorias-en-el-gestor/proposal.md` §7, que es una decisión de producto sobre el techo del arranque por categoría y sigue **abierta** (`TASK-068` T-4). El conteo es de *ejecutables lanzados*, tanto si vienen de `apps` como de una categoría, así que «N apps iniciadas» no es falso: lo que no se dice es que las categorías participaron. Cuando se decida, el sitio es `ui/feedback.py::_clausula_de_arranque` y las dos vistas ya le pasan la lista.
+>
+> **Y lo que tampoco se hizo: doble pulsación.** Arrancar por categoría sigue sin confirmar. `ui-design-system.md` (§doble pulsación, más arriba) limita el invariante a los caminos de **kill**, y la única llamada a `_lanzar` de `start_pack_categories` no destruye nada: el riesgo real de arrancar una categoría 🟡 es de **amplitud** (abre N ventanas), no de destrucción, y es una pregunta de producto (P-1), no de seguridad.
 
 2. **Gestor de Packs (`PackManagerView`):**
    - **Guarda preventiva en `start_pack`:** Si `not pack.apps and not pack.start_categories` (TASK-063: las **dos** listas que `start_pack` ejecuta; con 0 apps y 2 categorías de arranque marcadas, el aviso con solo `apps` sería la misma mentira que el "apagar 0 apps"), la UI cancela confirmaciones pendientes y emite de inmediato `self._inline_status(*mensaje_sin_apps(pack.name, "start"))` sin crear un hilo innecesario. Aquí la **acción** es arrancar, así que el verbo es "iniciar" aunque el pack sea gaming con `default_action="kill"`: quien decide el verbo es el formateador, y quien dice qué acción se ejecuta es el método.

@@ -7,8 +7,9 @@ from woptimizer.services.notification_service import NotificationService
 from woptimizer.models import Pack
 from woptimizer.ui.confirmation import AMBAR, CANCEL, MSG_EXPIRADO, VENTANA_MS_PORTADA, Confirmable
 from woptimizer.ui.feedback import (
-    clausula_mb, es_pack_inerte, mensaje_banner_cierre, mensaje_banner_gaming_inerte,
-    mensaje_banner_sin_apps, texto_confirmacion_apagado,
+    clausula_mb, es_pack_inerte, mensaje_banner_arranque, mensaje_banner_cierre,
+    mensaje_banner_gaming_inerte, mensaje_banner_sin_apps,
+    texto_confirmacion_apagado,
 )
 from woptimizer.ui import theme
 
@@ -209,20 +210,26 @@ class DashboardView(Confirmable, ctk.CTkFrame):
         """
         self._publicar_en_banner(texto, txt_color)
 
-    def _show_start_banner(self, launched: int, failed: int, pack_name: str):
+    def _show_start_banner(self, launched: int, failed: int, pack_name: str,
+                            categorias=None):
         """Muestra el banner de feedback tras arrancar apps de un pack.
 
         Debe llamarse siempre desde el hilo principal (usar self.after(0, ...)).
+
+        TASK-068 (T-3): el literal estaba aqui escrito a mano y el mismo hecho
+        se decia de dos maneras segun la puerta (esta y la del Gestor). Ahora el
+        par lo decide `ui/feedback.py::mensaje_banner_arranque`, con la misma
+        regla del ciclo 26: el color de marca solo con `launched > 0`.
+
+        `categorias` es OPCIONAL y con defecto `None` a proposito: la restauracion
+        del Gaming (`:279`) pasa por aqui sin categorias de arranque, y no tiene
+        que inventar una lista vacia para encajar en el contrato.
         """
         self.process_service.invalidate_cache()
         self._update_resting_bar()
 
-        if failed == 0:
-            txt_color = theme.ACCENT
-            msg = f"🚀 Pack '{pack_name}' iniciado ({launched} apps)."
-        else:
-            txt_color = theme.WARNING
-            msg = f"⚠️ Pack '{pack_name}': {launched} apps iniciadas, {failed} fallaron."
+        msg, txt_color = mensaje_banner_arranque(pack_name, launched, failed,
+                                                categorias)
 
         self._publicar_en_banner(msg, txt_color)
 
@@ -501,13 +508,19 @@ class DashboardView(Confirmable, ctk.CTkFrame):
                 # criterio del usuario en silencio. El conflicto de las dos listas
                 # lo resuelve el servicio, no esta vista.
                 launched, failed = self.process_service.start_pack_apps(p.apps)
-                if p.start_categories:
+                categorias = list(p.start_categories or [])
+                if categorias:
                     launched_cats, failed_cats = self.process_service.start_pack_categories(
-                        p.start_categories, p.target_categories
+                        categorias, p.target_categories
                     )
                     launched += launched_cats
                     failed += failed_cats
-                self.after(0, self._show_start_banner, launched, failed, p.name)
+                # TASK-068 (T-3): las categorias viajan al formateador para que
+                # el mensaje pueda nombrarlas cuando no arranco nada de ellas. La
+                # lista es la MISMA que se acaba de ejecutar, no una consulta
+                # nueva a la DB.
+                self.after(0, self._show_start_banner, launched, failed, p.name,
+                           categorias)
                 self.notification_service.notify_apps_launched(p.name, launched, failed)
 
             threading.Thread(target=_run_start, args=(pack,), daemon=True).start()

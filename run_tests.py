@@ -1407,6 +1407,147 @@ def _codigo_ejecutable(fuente):
     return ast.unparse(arbol)
 
 
+def test_la_puerta_de_arranque_no_tiene_literal_propio_ni_omision_sin_contar():
+    """TASK-068 T-3 (guard de contrato) y T-2 (invariante del `continue`).
+
+    **Medio de cada mitad, y por que ninguno de los dos es "se llamo":**
+
+    (1) `TEXTO_CON_LITERAL_EN_LA_VISTA`. La puerta de arranque era la UNICA de las
+    seis que escribia su propio literal en la vista (`pack_manager_view.py:673-675`
+    y `dashboard_view.py:222-225`), y por eso podia mentir en verde sin que nadie
+    lo notara: el texto no lo decidia nadie. Se exige lo contrario por FORMA
+    ejecutable, con `ast` y sobre `_codigo_ejecutable` (sin comentarios ni
+    docstrings), que es lo que impide que un `print` en prosa se haga pasar por
+    codigo: las DOS vistas tienen que LLAMAR al formateador y ninguna puede
+    contener los literales del recuento. La contraprueba va en el mismo test y
+    es la que dice que el guard no es "prohibir la palabra apps": una vista que
+    solo llama al formateador pasa.
+
+    (2) `OMITIR_SIN_CONTAR`. El invariante de T-2 escrito como regla de forma
+    sobre el `ast` REAL de `ProcessService.start_pack_categories`: **todo
+    `continue` del bucle de categorias tiene que estar precedido, en su propia
+    rama, por un incremento de `failed`.** No mira el resultado de la funcion sino
+    la forma del bucle, y por eso caza tambien el `continue` pelado que alguien
+    anada MANANA al anadir una cuarta barrera: la clase de fallo "un camino nuevo
+    sin guardian" es justo la que esta fila cierra. El control negativo va en
+    un arbol sintetico con un `continue` pelado, para que se vea que el detector
+    detecta y no que "todo esta bien".
+    """
+    print("Testing el contrato de la puerta de arranque (TASK-068)...")
+    raiz = _raiz_del_paquete()
+
+    # --- (1) las dos vistas piden el texto al formateador -------------------
+    LITERALES_PROHIBIDOS = ("apps iniciadas", "iniciado (", "fallaron.")
+    for relativo, formateador in (
+        (os.path.join("ui", "views", "pack_manager_view.py"), "mensaje_arranque_pack"),
+        (os.path.join("ui", "views", "dashboard_view.py"), "mensaje_banner_arranque"),
+    ):
+        ruta = os.path.join(raiz, relativo)
+        with io.open(ruta, encoding="utf-8") as fh:
+            cod = _codigo_ejecutable(fh.read())
+        for prohibido in LITERALES_PROHIBIDOS:
+            assert prohibido not in cod, (
+                f"{relativo}: el literal {prohibido!r} del recuento de arranque esta "
+                "escrito en la vista. El texto lo decide `ui/feedback.py` y las dos "
+                "puertas lo piden: un literal en la vista es una frase que se puede "
+                "copiar y divergir, que es lo que este modulo existe para evitar "
+                "(`ui-design-system.md:391`)."
+            )
+        assert formateador in cod, (
+            f"{relativo}: la puerta de arranque tiene que llamar a "
+            f"`{formateador}` de `ui/feedback.py`."
+        )
+
+    # --- CONTRAPRUEBA de (1): un arbol CONFORME pasa. Sin ella, un guard que
+    #     rechaza todo tambien "vigila" y no se distingue de uno que mide.
+    CONFORME = (
+        "from woptimizer.ui.feedback import mensaje_arranque_pack\n"
+        "\n"
+        "def _ok(self, nombre, started, failed, categorias):\n"
+        "    texto, color = mensaje_arranque_pack(nombre, started, failed, categorias)\n"
+        "    return texto, color\n"
+    )
+    for prohibido in LITERALES_PROHIBIDOS:
+        assert prohibido not in _codigo_ejecutable(CONFORME)
+    assert "mensaje_arranque_pack" in _codigo_ejecutable(CONFORME)
+
+    # --- (2) todo `continue` del bucle de categorias cuenta `failed` ---------
+    ruta_servicio = os.path.join(raiz, "services", "process_service.py")
+    with io.open(ruta_servicio, encoding="utf-8") as fh:
+        arbol_servicio = ast.parse(fh.read(), filename=ruta_servicio)
+    fn = next((n for n in ast.walk(arbol_servicio)
+               if isinstance(n, ast.FunctionDef)
+               and n.name == "start_pack_categories"), None)
+    assert fn is not None, (
+        "start_pack_categories no existe: el nombre de la puerta cambio y el "
+        "guard de contrato se quedaria mirando el aire."
+    )
+    assert "failed" in {t.id for t in ast.walk(fn) if isinstance(t, ast.Name)}, (
+        "start_pack_categories ya no devuelve un recuento con `failed`: el "
+        "contrato de (started, failed) cambio y hay que revisar T-2 entero."
+    )
+
+    def _continues_sin_contar(nodo_continue, cuerpo):
+        """True si en la rama del `continue` no hay un `failed += 1` ANTES."""
+        for stmt in cuerpo:
+            if stmt is nodo_continue:
+                return True          # se llego al continue sin contar
+            if _suma_failed(stmt):
+                return False
+        return True
+
+    def _suma_failed(stmt):
+        if isinstance(stmt, ast.AugAssign) and isinstance(stmt.target, ast.Name) \
+                and stmt.target.id == "failed":
+            return True
+        return False
+
+    sueltos = []
+    bucle_categorias = [n for n in ast.walk(fn)
+                        if isinstance(n, ast.For) and isinstance(n.target, ast.Name)
+                        and n.target.id == "categoria"]
+    assert len(bucle_categorias) == 1, (
+        f"start_pack_categories deberia tener UN bucle sobre `categoria` y tiene "
+        f"{len(bucle_categorias)}: el guard solo sabe medir ese."
+    )
+    for rama in ast.walk(bucle_categorias[0]):
+        if not isinstance(rama, ast.If):
+            continue
+        for cont in [n for n in rama.body if isinstance(n, ast.Continue)]:
+            if _continues_sin_contar(cont, rama.body):
+                sueltos.append(cont.lineno)
+    assert not sueltos, (
+        "hay `continue` en una rama de omision que NO suma `failed` antes "
+        f"(lineas {sueltos} de process_service.py). Una categoria que el usuario "
+        "marco y no arranca tiene que CUENTAR: sin esto la puerta devuelve "
+        "(0, 0) y el toast se pinta en VERDE con '0 apps iniciadas'. El "
+        "invariante es de T-2 y aplica a las ramas de HOY y a las que se "
+        "anadan."
+    )
+
+    # --- CONTRAPRUEBA de (2): un `continue` pelado SE DETECTA ------------------
+    # Sin esta, "no hay continue sin contar" podria ser un detector que no ve.
+    PELADO = (
+        "def f(categorias):\n"
+        "    started, failed = 0, 0\n"
+        "    for categoria in categorias or []:\n"
+        "        if categoria == 'X':\n"
+        "            continue\n"
+        "        started += 1\n"
+        "    return started, failed\n"
+    )
+    arbol_pelado = ast.parse(PELADO)
+    for_pelado = next(n for n in ast.walk(arbol_pelado) if isinstance(n, ast.For))
+    detectados = [cont.lineno for rama in ast.walk(for_pelado)
+                  if isinstance(rama, ast.If)
+                  for cont in rama.body if isinstance(cont, ast.Continue)]
+    assert len(detectados) == 1, (
+        "el detector del invariante de T-2 tiene que ver un `continue` pelado en "
+        f"un arbol sintetico y no ve ninguno: {detectados}"
+    )
+    print("El contrato de la puerta de arranque vive en feedback OK (TASK-068).")
+
+
 def test_git_safe_commit_fail_safe():
     """TASK-022: `.taskmaster/git_safe_commit.py` es fail-safe.
 
@@ -9328,6 +9469,38 @@ def test_el_feedback_de_pack_dice_la_verdad():
         ), f"texto del banner con fallos: {dash.status_label.cget('text')!r}"
         assert dash.status_label.cget("text_color") == theme.WARNING
 
+        # TASK-068 T-3: la SEGUNDA puerta. Con 0 apps y categorias marcadas que no
+        # arrancan, el banner tiene que dar el MISMO aviso que el toast del
+        # Gestor: ambar, y NOMBRANDO la categoria. Las dos frases se formatean en
+        # `ui/feedback.py`, pero cada familia tiene la suya, y esta fila es la
+        # que impide que la segunda puerta vuelva a tener su literal propio.
+        dash._show_start_banner(launched=0, failed=2, pack_name="Trabajo",
+                                categorias=[_CAT_ROJO])
+        texto_banner_arranque = dash.status_label.cget("text")
+        assert dash.status_label.cget("text_color") == theme.WARNING, (
+            "0 apps iniciadas no es un color de marca: "
+            f"{dash.status_label.cget('text_color')!r} / {texto_banner_arranque!r}"
+        )
+        assert _CAT_ROJO in texto_banner_arranque, (
+            "el banner de la Portada tiene que nombrar la categoria marcada que no "
+            f"arranco, igual que el toast del Gestor: {texto_banner_arranque!r}"
+        )
+        assert "0 apps iniciadas" in texto_banner_arranque, (
+            "y tiene que decir el cero, que es el dato: "
+            f"{texto_banner_arranque!r}"
+        )
+        # CONTRAPRUEBA: sin categorias, la frase del banner es la de siempre,
+        # byte a byte. Sin esta fila, una clausula metida donde no toca pasaria
+        # por "el banner esta bien".
+        dash._show_start_banner(launched=0, failed=2, pack_name="Trabajo",
+                                categorias=[])
+        assert dash.status_label.cget("text") == (
+            "⚠️ Pack 'Trabajo': 0 apps iniciadas, 2 fallaron."
+        ), (
+            "sin categorias marcadas el banner no puede mencionarlas: "
+            f"{dash.status_label.cget('text')!r}"
+        )
+
         # --- el banner de cierre tampoco puede mentir con 0 cerrados (S1, misma clase)
         dash._show_banner(killed=4, freed_mb=128.5, is_gaming=False)
         assert dash.status_label.cget("text") == "⚡ 4 procesos cerrados · 128.5 MB liberados", (
@@ -9903,6 +10076,154 @@ def test_el_feedback_de_pack_dice_la_verdad():
                 "⚠️ 'Trabajo': 2 iniciadas, 1 con error."
             ), f"arranque con errores: {v.status_label.texto!r}"
             assert v.status_label.color == AMBAR
+
+            # -----------------------------------------------------------------
+            # (7) TASK-068 T-1: EL GUARDIAN DE LA SUMA. El ladrillo del ciclo.
+            # -----------------------------------------------------------------
+            # El doble de la puerta ya declaraba `llamadas_categorias`,
+            # `arranque_categorias`, `categorias` y `target_categories`, y NINGUN
+            # test los leia: las cuatro tenian 2, 2, 2 y 1 ocurrencias en todo el
+            # fichero y las cuatro eran definicion o incremento. Y `pack_normal` no
+            # tiene `start_categories`, luego el `if categorias:` de la puerta no
+            # se tomaba nunca. MEDIDO antes de este bloque: borrar el bloque de
+            # la suma entero dejaba la suite COMPLETA en verde. El encargo daba
+            # por existente ese bug porque el codigo no tiene quien lo contradiga:
+            # una puerta sin asercion se lee como una puerta sin comportamiento.
+            CATEG_INICIO = "\U0001F7E1 Media y Streaming"
+            CATEG_APAGADO = "\U0001F534 Sistema de Windows"
+            pack_ambos = Pack(id="mixto", name="Trabajo", apps=list(APPS),
+                              start_categories=[CATEG_INICIO],
+                              target_categories=[CATEG_APAGADO])
+
+            # -- fila 1: la segunda llamada OCURRE (mata "borrar la suma entera")
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            procs.arranque = (2, 0)
+            procs.arranque_categorias = (3, 1)
+            _correr(_gestor(pack_ambos, procs, gaming), PackManagerView.start_pack,
+                    pack_ambos)
+            assert procs.llamadas_categorias == 1, (
+                "la puerta de arranque tiene que ejecutar SUS DOS listas: el pack "
+                f"marcaba {len(pack_ambos.start_categories)} categoria(s) y el doble "
+                f"recibio {procs.llamadas_categorias} llamada(s) a "
+                "start_pack_categories. Si esto es 0, la lista de arranque no la "
+                "ejecuta NADIE y el boton Iniciar arranca solo apps."
+            )
+            # -- fila 2: arranca LA MARCADA, y no la de apagar (efecto contrario)
+            assert procs.categorias == [CATEG_INICIO], (
+                "la lista que se arranca tiene que ser `start_categories`, no otra: "
+                f"llego {procs.categorias!r} y el pack marcaba "
+                f"{pack_ambos.start_categories!r}"
+            )
+            assert CATEG_APAGADO not in procs.categorias, (
+                "una puerta de arranque copiada de la de apagado arranca lo que debe "
+                f"apagar: {CATEG_APAGADO!r} llego a la lista de arranque"
+            )
+            # -- fila 3: la lista de APAGADO viaja (sin ella no hay resolucion)
+            assert procs.target_categories == pack_ambos.target_categories, (
+                "sin `target_categories` el servicio no puede resolver el conflicto "
+                "de las dos listas, y el conflicto lo gana apagar: llego "
+                f"{procs.target_categories!r}"
+            )
+            # -- fila 4: el texto dice la SUMA de los dos recuentos
+            v_sum = _correr(_gestor(pack_ambos, procs, gaming),
+                            PackManagerView.start_pack, pack_ambos)
+            assert v_sum.status_label.texto == "⚠️ 'Trabajo': 5 iniciadas, 1 con error.", (
+                "el toast tiene que sumar los DOS recuentos (2+3 y 0+1), no el "
+                "ultimo de los dos ni el primero: "
+                f"{v_sum.status_label.texto!r}"
+            )
+
+            # -- CONTRAPRUEBA de la fila 4 (obligatoria). Con contribution cero
+            #    el texto tiene que ser EXACTAMENTE el de siempre: sin clausula y
+            #    sin numero inventado. Sin esta fila, un `+0` metido donde no
+            #    toca pasaria por "la suma esta bien", que es el fallo espejo.
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            procs.arranque = (3, 0)
+            procs.arranque_categorias = (0, 0)
+            v2 = _correr(_gestor(pack_ambos, procs, gaming), PackManagerView.start_pack,
+                         pack_ambos)
+            assert v2.status_label.texto == "🚀 3 apps iniciadas · 'Trabajo'.", (
+                "con 0 contribution de categorias el texto tiene que ser el de "
+                f"siempre, byte a byte: {v2.status_label.texto!r}"
+            )
+            assert v2.status_label.color == VERDE
+
+            # -----------------------------------------------------------------
+            # (8) TASK-068 T-2: LO OMITIDO CUENTA, y no se anuncia como exito.
+            # -----------------------------------------------------------------
+            # Esta es la fila que falla ANTES del fix por la razon correcta: con
+            # 0 apps y su unica categoria marcada, la categoria ROJA se omite; si
+            # la rama de omision no suma, la puerta devuelve (0, 0), el toast sale
+            # VERDE con "0 apps iniciadas" y el dueno ve un exito donde no ocurrio
+            # nada. Aqui el servicio es de VERDAD (`_ServicioDeArranque`, el mismo
+            # que usan los tests de servicio), no un valor puesto a mano: el
+            # mutante "arreglar la vista y no el servicio" no puede pasar.
+            class _ProcesosConReal(_ProcesosGestor):
+                """`_ProcesosGestor` que DELEGA la categoria en un servicio real.
+
+                Registra lo mismo (para las filas 1-3) pero no inventa el
+                recuento de categorias: lo pide al `ProcessService` de verdad,
+                con su barrera roja y sus ramas de omision.
+                """
+                servicio_real = None
+
+                def start_pack_categories(self, categorias, target_categories=None):
+                    self.llamadas_categorias += 1
+                    self.categorias = list(categorias)
+                    self.target_categories = list(target_categories or [])
+                    self.arranque_categorias = self.servicio_real.start_pack_categories(
+                        categorias, target_categories)
+                    return self.arranque_categorias
+
+            import tempfile as _tf_task068
+            with _tf_task068.TemporaryDirectory() as _tmp68:
+                _exe_de_prueba(os.path.join(_tmp68, "woptimizer_t068_roja.exe"))
+                real = _ServicioDeArranque(_tmp68)
+                real._patrones_de_categoria = lambda cat: (
+                    ["woptimizer_t068_roja.exe"] if cat == _CAT_ROJO else []
+                )
+                procs, gaming = _ProcesosConReal(), _GamingGestor()
+                procs.servicio_real = real
+                pack_solo_categoria = Pack(id="roja", name="Trabajo", apps=[],
+                                           start_categories=[_CAT_ROJO])
+                v3 = _correr(_gestor(pack_solo_categoria, procs, gaming),
+                             PackManagerView.start_pack, pack_solo_categoria)
+            texto_rechazo, color_rechazo = v3.status_label.texto, v3.status_label.color
+            assert color_rechazo != VERDE, (
+                "una categoria marcada y OMITIDA no se puede publicar en VERDE: es "
+                "un rechazo y el toast lo esta anunciando como exito. "
+                f"Color={color_rechazo!r} texto={texto_rechazo!r}"
+            )
+            assert "\u2705" not in texto_rechazo, (
+                f"ningun rechazo lleva tick: {texto_rechazo!r}"
+            )
+            assert "1 con error" in texto_rechazo, (
+                "la omision tiene que CONTAR como fallo, para que el usuario vea un "
+                f"numero y no un 0: {texto_rechazo!r}"
+            )
+            assert _CAT_ROJO in texto_rechazo, (
+                "el mensaje tiene que NOMBRAR la categoria que el usuario marco y no "
+                f"arranco: {texto_rechazo!r}"
+            )
+
+            # -- T-3 por la MISMA puerta: con 0 y 0 (estado que el servicio ya no
+            #    puede devolver con T-2 cerrado) el toast tampoco puede ser verde.
+            #    Es la guarda de contrato, no un caso de runtime: mata al mutante
+            #    "VERDE_SIEMPRE" sin depender de que el servicio lo descarte.
+            procs, gaming = _ProcesosGestor(), _GamingGestor()
+            procs.arranque = (0, 0)
+            procs.arranque_categorias = (0, 0)
+            v4 = _correr(_gestor(pack_ambos, procs, gaming), PackManagerView.start_pack,
+                         pack_ambos)
+            assert v4.status_label.color != VERDE, (
+                "el (0, 0) de la puerta no tiene tick verde: sin nada que contar no "
+                f"hay exito que celebrar. Texto={v4.status_label.texto!r}"
+            )
+            assert "\u2705" not in v4.status_label.texto
+            assert CATEG_INICIO in v4.status_label.texto, (
+                "con 0 arrancados el mensaje nombra las categorias marcadas, que es "
+                f"lo unico que el usuario puede no saber: {v4.status_label.texto!r}"
+            )
 
             # (iter 3) Las dos guardas PREVENTIVAS. Sin la de `execute_pack`, un pack
             # no gaming y sin apps armaba la doble pulsacion ("para apagar 0 apps")
@@ -14984,7 +15305,21 @@ def test_start_categories_arranca_y_cuenta_honestamente():
             "una categoria sin ejecutable resoluble no es exito: "
             f"started={started2} failed={failed2}"
         )
-    print("start_categories arranca y cuenta OK (TASK-063).")
+        # TASK-068 T-2, FILA 3: EL CONTROL NEGATIVO. Una categoria CON ejecutable
+        # resoluble tiene que seguir dando `failed == 0`. Sin esta fila, el
+        # mutante "cuenta de mas" --poner el `failed += 1` en el `return` en vez
+        # de en la rama-- hace que TODO falle y las filas 1 y 2 siguen verdes:
+        # esta es la que distingue CONTAR LO OMITIDO de CONTAR TODO.
+        svc._patrones_de_categoria = lambda cat: (
+            ["woptimizer_t063_ok.exe"] if cat == _CAT_CHAT else []
+        )
+        started3, failed3 = svc.start_pack_categories([_CAT_CHAT])
+        assert (started3, failed3) == (1, 0), (
+            "una categoria que SI arranca tiene que devolver (1, 0): si devuelve un "
+            f"fallo, el contador cuenta de mas y no solo lo omitido. "
+            f"recibido ({started3}, {failed3})"
+        )
+    print("start_categories arranca y cuenta OK (TASK-063, TASK-068).")
 
 
 def test_la_barrera_roja_sigue_dentro_de_la_puerta_comun():
@@ -15076,10 +15411,29 @@ def test_categoria_roja_en_start_categories_no_arranca():
             "una categoria roja debe ser INERTE tambien al arrancar: "
             f"started={started} lanzados={svc.lanzados}"
         )
+        # TASK-068 T-2, FILA 1: lo omitido CUENTA. Antes este test miraba solo
+        # `started == 0`, y con esa asercion sola la rama de omision podia hacer
+        # `continue` pelado sin que NADIE se enterara: la puerta devolvia (0, 0)
+        # y el toast salia en VERDE con "0 apps iniciadas", que es un rechazo
+        # anunciado como exito. Ampliar el test que ya existe y no crear otro al
+        # lado es lo que deja las dos ramas con un solo guardian.
+        assert failed >= 1, (
+            "una categoria marcada y omitida tiene que CUENTAR como fallo: si no, "
+            "la puerta devuelve (0, 0) y el usuario ve un exito verde donde no "
+            f"arranco nada. started={started} failed={failed}"
+        )
         assert svc.lanzados == [], (
             f"no debe salir nada por la puerta de arranque: {svc.lanzados}"
         )
-    print("Categoria roja en start_categories no arranca OK (TASK-063).")
+        # Y lo MISMO en la otra rama de omision, la del conflicto con
+        # `target_categories`: son dos `continue` y las dos tienen que contar, o
+        # el fix se queda en la mitad y vuelve el mismo verde por el otro lado.
+        started_c, failed_c = svc.start_pack_categories([_CAT_CHAT], [_CAT_CHAT])
+        assert (started_c, failed_c) == (0, 1), (
+            "el conflicto con la lista de apagado tambien es una omision y tambien "
+            f"cuenta: se recibio ({started_c}, {failed_c}) y tiene que ser (0, 1)"
+        )
+    print("Categoria roja en start_categories no arranca OK (TASK-063, TASK-068).")
 
 
 def test_conflicto_misma_categoria_gana_kill():
@@ -23428,4 +23782,16 @@ if __name__ == "__main__":
     test_la_puerta_de_cabecera_rechaza_un_subject_vacio()                  # S3
     test_el_git_dir_ajeno_no_pasa_la_verificacion_del_arbol()               # S8
     test_la_regla_de_rama_no_vive_en_un_comentario_ni_en_una_valla()        # S7
+    # TASK-068: el contrato de la puerta de ARRANQUE. Suite: 187 -> 188
+    # (140 backend + 48 headless). Va DETRAS del marcador porque lee el arbol de
+    # `src/woptimizer/**` con `ast` y nada mas: no abre ventana, no toca disco y
+    # no escribe en la raiz del repo. Se registra AL FINAL a proposito, para que
+    # la tabla de `docs/ai/testing-guide.md` conserve los numeros de las 187
+    # filas anteriores y esta sea la 188.
+    #
+    # Cubre T-3 (la puerta no puede tener literal propio) y T-2 (el invariante
+    # de todo `continue` del bucle de categorias). Los DOS van con contraprueba
+    # sintetica, porque un guard que no tiene un arbol que DEBA rejetar se lee
+    # igual que un guard que mide.
+    test_la_puerta_de_arranque_no_tiene_literal_propio_ni_omision_sin_contar()
     print("\nALL TESTS PASSED.")

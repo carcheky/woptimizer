@@ -10,8 +10,8 @@ from woptimizer.models import Pack
 from woptimizer.config import ordenar_categorias
 from woptimizer.ui.confirmation import AMBAR, ROJO, VERDE, MSG_PACK_INEXISTENTE, Confirmable
 from woptimizer.ui.feedback import (
-    es_pack_inerte, mensaje_cierre_pack, mensaje_gaming_inerte, mensaje_sin_apps,
-    texto_confirmacion_apagado,
+    es_pack_inerte, mensaje_arranque_pack, mensaje_cierre_pack,
+    mensaje_gaming_inerte, mensaje_sin_apps, texto_confirmacion_apagado,
 )
 from woptimizer.ui import theme
 
@@ -669,10 +669,15 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
                 )
                 started += started_cats
                 failed += failed_cats
-            if failed == 0:
-                self.after(0, self._inline_status, f"🚀 {started} apps iniciadas · '{nombre}'.", VERDE)
-            else:
-                self.after(0, self._inline_status, f"⚠️ '{nombre}': {started} iniciadas, {failed} con error.", AMBAR)
+            # TASK-068 (T-3): el literal del toast estaba AQUI, escrito a mano,
+            # y el mismo hecho se decia de dos maneras distintas segun por donde
+            # se pulsara (esta puerta y la de la Portada). La frase vive ahora en
+            # `ui/feedback.py::mensaje_arranque_pack`, que aplica la regla del
+            # ciclo 26 (VERDE solo con exito real) y nombra las categorias que
+            # el usuario marco cuando no arranco nada de ellas. `categorias` es
+            # la lista que la vista YA tiene (`:658`): ni una consulta mas a la DB.
+            texto, color = mensaje_arranque_pack(nombre, started, failed, categorias)
+            self.after(0, self._inline_status, texto, color)
             self.notification_service.notify_apps_launched(nombre, started, failed)
         threading.Thread(target=_run, daemon=True).start()
 

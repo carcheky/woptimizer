@@ -904,6 +904,15 @@ class ProcessService:
         destruye estado y arrancar, como mucho, abre una ventana que el usuario
         cierra. En la UI la casilla espejo ya viene deshabilitada; esto es la
         segunda capa, para el `profiles.json` escrito a mano.
+
+        **INVARIANTE TASK-068 (T-2): las TRES ramas de omision cuentan.** Omitir
+        es `failed += 1`, nunca un `continue` que no suma: con las dos primeras en
+        `continue` pelado, una categoria marcada y omitida salia del bucle sin
+        existir en el recuento, la puerta devolvia `(0, 0)` y el llamante la
+        pintaba en VERDE ("0 apps iniciadas"). El contrato que se puede afirmar
+        desde fuera es este: **o `started > 0`, o `failed > 0`** para cualquier
+        lista no vacia. Por eso `(0, 0)` es INALCANZABLE con `categorias` no
+        vacia, y un test de contrato lo declara en vez de dejarlo raro.
         """
         en_apagado = set(target_categories or [])
         started, failed = 0, 0
@@ -916,12 +925,21 @@ class ProcessService:
             # un proceso del sistema. Sin la segunda, el mismo patron se apagaba
             # y se arrancaba en la misma sesion.
             if get_safety_badge(categoria)["tier"] == "danger":
+                # TASK-068 (T-2), y es la TERCERA rama que dice lo mismo: lo
+                # omitido CUENTA como `failed`. Antes hacia `continue` pelado y
+                # no sumaba ni a `started` ni a `failed`, o sea que con 0 apps y
+                # la unica categoria marcada la puerta devolvia `(0, 0)` y el
+                # llamante contestaba VERDE con "0 apps iniciadas": la mejora que
+                # no ocurre, anunciada como un exito. Una categoria que el
+                # usuario marco y no arranca no es un no-op que se pueda callar.
+                failed += 1
                 logger.warning(
                     f"Arranque por categoria omitido: '{categoria}' es una categoria "
                     f"de riesgo y no se arranca nada de ella."
                 )
                 continue
             if categoria in en_apagado:
+                failed += 1
                 logger.warning(
                     f"Arranque por categoria omitido: '{categoria}' esta marcada "
                     f"para apagar en este pack, y el conflicto lo gana apagar."
