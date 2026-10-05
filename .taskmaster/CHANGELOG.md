@@ -1,4 +1,47 @@
-## [CYCLE-054] 2026-10-05 - cierre-de-supervivientes-s3-s7-s8
+## [CYCLE-055] 2026-10-05 - cinco guards de trazabilidad (CYCLE-054)
+
+**Area**: Arquitectura & Calidad. **Change**: `openspec/changes/2026-10-05-trazabilidad-ciclo-054/`
+**Estado**: **COMPLETED.** `TASK-067`. Tests: **159 = 112 + 47, SIN MOVER**: las dos sondas de T-2 y la de T-3 entraron **dentro** de tests existentes, no como tests nuevos, que era la restriccion del plan para no desincronizar los cuatro declarantes.
+**Commits**: `a1be977` (arquitectura), `5cbc37e` (implementacion).
+**Documentacion**: **129 OK / 0 FAIL** (era 128: el directorio nuevo de OpenSpec suma un check). **Y esta cifra no es estable: es la cuarta vez en dos ciclos que caduca al commitear** (126 -> 128 -> 129), que es exactamente la leccion de T54-6.
+
+**Cierra los 5 tickets de CYCLE-054, y el grupo comun era uno solo:** los cinco eran *una promesa escrita que nada mide*, y en los cinco el texto ganaba cuando discrepaba. Criterio unico del ciclo: *toda afirmacion que se toque lleva el guard que la comprueba; toda cita que se toque apunta a la linea que dice*.
+
+**T-1 (T54-4) — el generador, y la direccion de la divergencia era la CONTRARIA a la urgente.** `docs/api.md` es la API **v3 vigente** (`ProcessService`, `psutil` 5 veces, `SYSTEM_PROTECTED_PROCESSES`, 0 menciones de `process_manager`) y todo lo que nombra existe. El **fosil** estaba en el agregado: `llms-full.txt` con "Funciones de `process_manager.py`" y "messagebox de error si PowerShell falla", y `process_manager.py` no existe en `src/`. Un reemplazo agregado->fuente habria escrito el fosil encima del documento bueno. **Por eso es generador y en un solo sentido: fuente->agregado.** Medido: `process_manager` 28 veces antes -> **0** ahora; divergencia **0 % en las 9** secciones, cortada por el marcador siguiente y **no** por un H1 (que es como el arquitecto dio un 100 % falso: el H1 de la seccion es el titulo del propio fichero).
+**T54-7 (ticket nuevo del arquitecto, la trampa del generador):** `docs/architecture.md` son **6 255 B** y `docs/ai/architecture.md` son **62 819 B**, y **comparten slug**. Un generador por nombre publicaria 6 KB donde iban 62 **sin ningun error visible**. Resuelto indexando por **RUTA**, con el slug como etiqueta de navegacion, y demostrado con la **pareja discriminante**: editar la pequena acusa `# architecture` (1 problema) y editar la grande no acusa nada (0). Y `docs/ui-design-system.md` **no existe**, asi que un generador por slug en `docs/` no tendria fuente para esa seccion.
+**El `--check` es agnostico al EOL**: 5 fuentes en LF y 5 en CRLF, el agregado en CRLF, y comparar bytes haria el guard dependiente de `core.autocrlf`. Dentro todo es LF; el CRLF solo se escribe.
+**El guard cambio de NATURALEZA:** antes `validate_docs.py:2153` hacia `if d not in full`, o sea miraba el **NOMBRE** del fichero y jamas su contenido. Ahora asienta por el generador, comparando el **cuerpo**, y nombra fichero, seccion y linea. Mutante medido: el validador da **128 OK / 1 FAIL** con el nombre presente 6 veces en el agregado: eso es lo que prueba que mira contenido.
+**Formateo como contrato:** la seccion 9 del agregado **no tenia** el separador `---` que las otras ocho si. El generador pone las nueve iguales, asi que el formato deja de ser costumbre.
+
+**T-2 (T54-2) — `assert total >= 6` no podia ser el guard, y medido lo confirma: `total` = 11 antes y despues del mutante.** La razon de que el fix anterior no matase al mutante: la sonda que ya existia marcaba la valla con `git_safe_commit.py "..."`, y **con el mutante seguia disparando** (`[(3, 'git push origin main')]`, PASA). La que falta marca la valla con **`git commit -m`**, y ahi el mutante deja la lista **vacia**. Segunda fila: ata `de_plantilla` a la medicion real (**45** ocurrencias: `SKILL.md` 40, `AGENTS.md` 5), porque sin ella el reconocimiento de vallas puede apagarse entero sin que `total` se entere. El limite que **si** se respeta, medido: la 4.ª forma se abre solo a **plantillas**, porque `AGENTS.md:85` contiene un `git push origin main` **legitimo** (el comando de T-3) y un guard que lo acusara bloquearia al dueno.
+
+**T-3 (T54-1) — una linea de datos, y `excluir #` NO era el arreglo.** `en_encabezado` ponia las frases en la linea **siguiente** al `##`, asi que un filtro que tirase de `#` no encontrado moria por diseno. Arreglo: frases **sobre** la linea del encabezado. Medido en 4 escenarios: hoy VERDE, hoy+mutante VERDE (P1-18 sobrevive), arreglo VERDE, arreglo+mutante **ROJO** con el motivo *"un ENCABEZADO con `#` es contenido valido en markdown y no se puede excluir"*. En markdown `#` es encabezado y las reglas empiezan con `>`, asi que excluirlo abriria otro hueco. Queda escrito en el codigo para que nadie lo intente.
+
+**P3, los tres guardianes y el 159: NO se tocaron.** Verificado: `git_safe_commit.py` **no esta** en el commit, `LIMITE_CABECERA = 120` y `_RE_TASK_ANCLA` sin relajar, `run_tests.py` sigue CRLF (20 963, 0 LF sueltos, sin BOM), y el check 7 deriva **159 definidos = 159 invocados**, 112 + 47.
+
+**Mutaciones medidas, con restauracion por `sha256` y cada una en LAS DOS direcciones** (con el codigo de HEAD el mutante sobrevive en VERDE; con el fix, muere y **solo** en su test):
+| Mutante | Motivo literal de la muerte |
+|---|---|
+| `P2-SIN-GIT-COMMIT` | *"una valla PLANTILLA marcada con un git commit ... -m '...' y NO con git_safe_commit.py tiene que sacar el git push ... main sin comillas como infraccion, y sale []"* |
+| `P2-SIN-PLANTILLA` | *"el reconocimiento de vallas PLANTILLA ha encontrado 0 lineas y se esperaban al menos 40 (MEDIDO el 2026-10-05: 45...)"* |
+| `P1-18` | *"un ENCABEZADO con # es contenido valido en markdown y no se puede excluir: limpio=''"* |
+| generador con una linea editada | *"docs/known-issues.md: la seccion '# known-issues' diverge de su fuente en la linea 2: el agregado dice '(vacio)' y la fuente dice ..."*, **exit 1** |
+
+**T-4 (T54-5) — 2 de 3 citas corregidas, y la tercera NO se reescribe a proposito.** `docs/GITHUB-SETUP-CHECKLIST.md:165` y `STATUS.md:113` corregidas a `mkdocs.yml:81-82`. `.taskmaster/CHANGELOG.md:162` **se deja**: su texto **describe el defecto** ("citaba mkdocs.yml:88; el fichero tiene 83 lineas y la licencia esta en 81-82"), que es un registro factualmente correcto. Cambiarlo a `81-82` haria que el changelog afirmara que el checklist citaba la linea correcta, que es falso. **Reescribir un registro para que deje de describir un defecto es fabricar historia**, y este changelog es append-only por regla. Las **26** citas de `openspec/changes/**` y `CHANGELOG.md` quedan **declaradas** en la fila T54-5 de `STATUS.md`, no reescritas.
+
+**T-5 — la regla de las tres cifras, escrita FUERA de la tabla 1..159** (en `docs/ai/testing-guide.md:198`), porque anadir una fila mas rompe el invariante de esa tabla. Contiene el `commitlint` = rango del push vs `.releaserc.json` = lo que publica, y la refutacion de D11 **con medicion propia del turno**: quitar `## CYCLE-054` lleva el validador de **0 FAIL a 2 FAIL** (no de 1 a 2, como decia la cifra del spec: se habia medido sobre otro arbol).
+
+**HALLAZGO DE PRODUCTO, y es lo mas importante que salio del turno: DOS BUGS REALES de la app, no del utillaje.** El trabajo de fondo los destapo, y quedan en la Deuda de `STATUS.md` con anclas verificadas, **sin tocar `src/`**:
+1. **Un pack de arranque solo arranca APPS, no CATEGORIAS.** Si se marcan categorias de inicio en un pack, el boton Iniciar no las arranca. Con la advertencia que **revierte TASK-063**, que lo decidio al reves y a proposito: es una decision consciente, no un descuido, asi que requiere decidir y no reparar de paso.
+2. **Los packs de 1.0.0 pueden perderse al pasar a 1.1.0.** Causa probable localizada: `config.py:5-9 _app_dir()` devuelve el directorio del `.exe`, y `profiles.json` vive **junto al `.exe`**, cuya carpeta cambia entre versiones. **NO MEDIDO**, y marcado como tal: un hallazgo sin medir no es un hallazgo cerrado.
+
+**Honestidad de alcance:** 11 de 13 AC cumplidos. Los 2 restantes (AC10, AC11) eran **changelogs del ciclo**, que son del orquestador, no del dev: se cerraron al escribir esta entrada y la de raiz.
+
+**Desvios del dev, declarados:** AC1 estaba mal redactado (pedia que editar la grande **no** acuse nada, cuando la grande no es fuente de ninguna seccion; la pareja inversa es la que demuestra el indice). La seccion 9 del agregado no tenia `---`. `build_llms_full.py` hubo que anadirlo a `_copiar_el_esqueleto_del_validador` (`run_tests.py:12420`), porque sin el el guard no existiria en el arbol temporal: **edicion en `run_tests.py` fuera de las sondas**, forzada por el diseno de T-1 y sin efecto en el recuento.
+
+**CIERRE, verificado antes y DESPUES de comitear** (que es donde una cifra escrita a mano se rompe): `run_tests.py` `ALL TESTS PASSED` exit 0; `verify_ui_syntax.py` exit 0; `validate_docs.py` 129 OK / 0 FAIL exit 0; `build_llms_full.py --check` exit 0; `sync_agents.py --check` exit 0. Rama `beta`, `git status` vacio, commit `5cbc37e` con `WOPT_COMMIT_OK` y **exit 0**.
+
+## [CYCLE-054] 2026-10-05 - desbloqueo-del-pipeline-y-cierre-de-supervivientes
 
 **Area**: Arquitectura & Calidad. **Change**: el cierre del plan de `TASK-064` /
 `TASK-066` (Paso 4 bis, sin `openspec/changes/` nuevo: es el cierre de una ronda de

@@ -1,4 +1,41 @@
-## CYCLE-054 - 2026-10-05
+## CYCLE-055 - 2026-10-05
+
+**Arquitectura y Calidad** - `TASK-067` (Cinco promesas escritas que nadie media)
+
+**Estado**: **terminado.** Tests: **159 = 112 backend + 47 headless**, sin mover (las sondas nuevas entraron **dentro** de tests existentes, no como tests nuevos).
+Documentacion: **129 OK / 0 FAIL** (era 128: el directorio nuevo de OpenSpec suma un check).
+
+El ciclo anterior dejo cinco tickets de trazabilidad, todos de la misma clase: **algo estaba escrito y nada lo comprobaba**. Esta vez cada afirmacion lleva su guardian.
+
+### Corregido
+
+- 🛡️ **El documento agregado de la documentacion estaba obsoleto en 4 de sus 9 secciones, y en una estaba al 100 %.** `llms-full.txt` se hacia a mano y nadie lo regeneraba. Peor: la parte mas divergente no era una version vieja, era **la v2 de PowerShell con `process_manager`, un modulo que no existe desde la v3**. Y el validador solo comprobaba que el **nombre** del fichero apareciera dentro, nunca su contenido: por eso el verde no lo veia. Ahora hay un **generador versionado** que reconstruye el agregado desde las fuentes y un check que lo verifica **por contenido**, nombrando fichero y seccion.
+- 🛡️ **La trampa del generador, resuelta antes de que mordiera.** Hay **dos** ficheros de arquitectura con el mismo nombre: uno de 6 KB y otro de **62 KB**. Un generador que buscara por nombre publicaria los 6 KB donde iban los 62 **sin dar ningun error visible**. El generador se indexa por **ruta**, no por nombre, y hay un test que lo demuestra editando uno y el otro.
+- 🟡 **Un hueco de vigilancia en el guard de la regla de rama**, y **otro** en el filtro de encabezados: dos mutantes sobrevivian a la suite entera y **la suite en verde no los veia**. Ambos mueren ahora por su asercion, y uno de ellos por un motivo que conviene recordar: *un encabezado con `#` es contenido valido en Markdown y no se puede excluir*.
+- 🔴 **Tres documentos apuntaban a una linea de `mkdocs.yml` que no existe.** El fichero tiene 83 lineas. Corregidas las dos vivas; la tercera se conserva a proposito, porque su texto **describe el defecto** y reescribirlo seria hacer que el registro mintiera.
+
+### Sin cambios, a proposito
+
+- **El limite de cabeceras sigue en 120** y el validador no se relajo. Sigue siendo la unica regla que detecta un mensaje mal formado antes de que semantic-release lo ignore en silencio.
+- **La rama de publicacion sigue siendo AVISO, no rechazo.** Un rechazo solo guardaria el wrapper y bloquearia tu commit legitimo en la rama de release.
+- **Los changelogs historicos no se reescriben.** Una entrada que dice lo que estaba mal se queda: es la evidencia de lo que se creia. Cambiarla seria fabricar historia.
+
+### Verificado
+
+- **159 tests en verde**, sintaxis impecable, y los tres verdes repetidos **despues** de comitear, que es donde una cifra escrita a mano se rompe.
+- El validador **con el mutante del generador puesto** da 1 FAIL nombrando fichero y seccion: eso es lo que prueba que el guard mira el contenido.
+- Recuento con `ast`: **159 definidos = 159 invocados**, reparto 112 + 47, tabla de `docs/ai/testing-guide.md` con 159 filas intactas.
+
+### Hallazgo de paso, y es de producto
+
+El trabajo de fondo destapo **dos fallos reales de la app**, no del utillaje:
+
+1. **Un pack de arranque solo puede arrancar apps, no categorias.** Si marcas categorias de inicio en un pack, el boton Iniciar no las arranca. Ojo: la logica de apagado por categorias se escribio **al reves a proposito** hace un ciclo, asi que esto **revierte una decision consciente** y hay que decidirlo, no repairlo de paso.
+2. **Los packs 1.0.0 podian perderse al pasar a 1.1.0.** Causa probable: el fichero de configuracion vive **junto al `.exe`**, y la carpeta de instalacion cambia de sitio entre versiones. **No medido**, y por eso no se da por cerrado.
+
+Los dos quedan anotados en la Deuda Tecnica con su estado, no resueltos a la ligera.
+
+## CYCLE-054 - 2026-10-04
 
 **Arquitectura y Calidad** - `TASK-064` (Cerrar los tres supervivientes del auditor de mutacion)
 
