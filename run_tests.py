@@ -18154,10 +18154,10 @@ def test_la_sonda_del_head_no_depende_del_desacople_del_vfs():
     muerte, y dice el motivo literal para que se pueda diagnosticar sin abrir el
     codigo.
 
-    Y no es un `skip`: los dos pre-vuelos (el HEAD legible, el desacople presente)
-    aseguran que el test mide lo que dice medir, y el `finally` restaura el
-    entorno entero. Un entorno envenenado haria fallar la sonda DOS pasos despues,
-    en el test equivocado.
+    Y no es un `skip`: los dos pre-vuelos (el HEAD legible y el desacople ausente
+    durante la sonda) aseguran que el test mide lo que dice medir, y el `finally`
+    restaura el entorno entero. Un entorno envenenado haria fallar la sonda DOS
+    pasos despues, en el test equivocado.
     """
     print("Probando que la sonda del HEAD no depende del desacople del VFS...")
     import shutil
@@ -18170,13 +18170,22 @@ def test_la_sonda_del_head_no_depende_del_desacople_del_vfs():
         f"el pre-vuelo tiene que leer un HASH del repo real y sale {head_real!r}; "
         f"sin el, un HEAD imposible haria pasar el resto del test")
 
-    # Pre-vuelo 2: el desacople EXISTE en este host, y por eso el mutante se
-    # camufla aqui. Sin esta comprobacion, "el test pasa" no significaria nada.
+    # Pre-vuelo 2: lo que este test necesita NO es que el desacople EXISTA, sino
+    # que durante la sonda NO exista, y ese estado se mide de las DOS formas.
+    # MEDIDO el 2026-10-05 en el runner (corrida 37254014860), y corrige la
+    # primera redaccion de esta fila: decia "el desacople tiene que existir en este
+    # host", que es FALSO en el runner --aqui no existe-- y hacia que el guardian se
+    #muriera solo en el unico sitio donde tiene que funcionar. Es exactamente el
+    # fallo de la corrida 37244051847, el otro lado: un test correcto con una
+    # premisa de entorno falsa. En la maquina del dueno el desacople existe y hay
+    # que esconderlo (es lo que camufla al mutante); en el runner no existe de
+    # partida y no hay nada que esconder. Las dos desembocan en la MISMA
+    # asercion, que es la unica que importa: con el desacople ausente, la sonda
+    # tiene que leer el HEAD.
     desacoplado_real = os.path.expandvars(r"%LOCALAPPDATA%\woptimizer_git\.git")
-    assert os.path.isdir(desacoplado_real), (
-        f"este test se apoya en que el desacople del VFS EXISTE en este host "
-        f"({desacoplado_real}). Si ha desaparecido, la pre-suposicion cambio: "
-        f"vuelve a medirlo y actualiza el guardian, no lo relajes")
+    habia_desacoplado = os.path.isdir(desacoplado_real)
+    print(f"  el desacople del VFS existe en este host: {habia_desacoplado} "
+          f"({desacoplado_real})")
 
     tmp = tempfile.mkdtemp(prefix="wopt_t066_runner_")
     claves = ("LOCALAPPDATA", "GIT_DIR")
@@ -18186,7 +18195,7 @@ def test_la_sonda_del_head_no_depende_del_desacople_del_vfs():
         os.environ.pop("GIT_DIR", None)
         desacoplado_ausente = os.path.expandvars(r"%LOCALAPPDATA%\woptimizer_git\.git")
         assert not os.path.isdir(desacoplado_ausente), (
-            f"el pre-vuelo del runner tiene que ver el desacople AUSENTE, y existe "
+            f"la sonda tiene que correr con el desacople AUSENTE y existe "
             f"{desacoplado_ausente}: con el desacople de verdad ahi, el mutante "
             f"pasa por la via de la ruta fija y este test no mediria nada")
         try:
@@ -18214,8 +18223,8 @@ def test_la_sonda_del_head_no_depende_del_desacople_del_vfs():
             else:
                 os.environ[clave] = valor
         shutil.rmtree(tmp, ignore_errors=True)
-    print("Sonda del HEAD OK: sin el desacople del VFS sigue leyendo el HEAD de "
-          "este repo, y el entorno queda restaurado.")
+    print("Sonda del HEAD OK: con el desacople del VFS ausente sigue leyendo el "
+          "HEAD de este repo, y el entorno queda restaurado.")
 
 
 def test_la_forma_t_menor_no_pasa_aunque_exista_su_task():

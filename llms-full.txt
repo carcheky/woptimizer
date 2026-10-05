@@ -842,6 +842,21 @@ explicar por que el numero bajo de 8 a 7.
   > runner como motivo escrito, y que no se aplico a `_head_del_repo_real()`, escrita despues.
   > Corregido con el mismo descubrimiento de tres pasos y **sin `skip`**: un skip seria una
   > guarda que se apaga sola en el unico sitio donde nadie la ve.
+  >
+  > **3. MEDIDO el 2026-10-05 en la corrida
+  > [37254014860](https://github.com/carcheky/woptimizer/actions/runs/37254014860)
+  > (`beta`, `a66d74c`): el fix FUNCIONA y la clase de fallo se repitio por el otro
+  > lado.** La sonda de hermeticidad paso de largo y el unico `[FAIL]` de los 667 renglones
+  > del log fue de un test **nuevo** de este mismo ciclo, no del fix: el guardian de
+  > `_head_del_repo_real()` afirmaba como pre-vuelo que *"el desacople del VFS existe en
+  > este host"*, y en el runner **no existe**. O sea, el mismo bug por el lado contrario --
+  > **un test correcto con una premisa de entorno falsa** -- y escrito por el mismo ciclo
+  > que documentaba el otro. Corregido: lo que el guardian exige es que el desacople este
+  > **AUSENTE durante la sonda**, que es el unico estado que discrimina, y se mide de las
+  > dos formas (en la maquina del dueno hay que esconderlo; en el runner no hay nada que
+  > esconder). **Lo que se aprende:** una pre-suposicion sobre el entorno que no se puede
+  > medir desde el propio CI es una bomba con fecha, y se paga en el unico sitio donde el
+  > fix hacia falta.
 
 ### D-5. Deriva menor
 
