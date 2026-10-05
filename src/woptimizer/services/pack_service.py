@@ -1,41 +1,24 @@
 import contextlib
-import importlib
 import json
 import os
 import shutil
 from typing import Dict, List, Optional
 from pydantic import ValidationError
 from woptimizer.models import AppData, Pack
-from woptimizer.config import PROFILES_FILE, PROFILES_FILE_NAME, logger
+from woptimizer.config import (PROFILES_FILE, PROFILES_FILE_NAME, logger,
+                               candidatos_de_datos, elegir_ruta_de_datos)
 
-# TASK-069 (T-1 / T-3). Los dos nombres nuevos se toman con `importlib` y NO
-# con un `from woptimizer.config import (PROFILES_FILE, PROFILES_FILE_NAME,
-# candidates_de_datos, elegir_ruta_de_datos, logger)`, porque ESA FORMA FALLA en
-# este interprete y no es una mancia del nombre.
-#
-# MEDIDO, con el arbol minimo montado en `%TEMP%` para que `.git` sea
-# inalcanzable por construccion (esta maquina lo tiene como fichero puntero de
-# 57 bytes, y `robocopy /XD .git` no lo excluye):
-#
-#   * el paquete con `config.py` + `models.py`  -> `from woptimizer.config
-#     import candidatos_de_datos` funciona;
-#   * el MISMO paquete mas `services/pack_service.py`  -> el MISMO import falla
-#     con `ImportError`, y `getattr(config, "candidatos_de_datos")` SIN EMBARGO
-#     devuelve la funcion, y `dir(config)` la lista, y el `.pyc` la contiene.
-#
-# O sea que el atributo esta y el `IMPORT_FROM` no lo ve: es el
-# `PyImport_ImportModuleLevelObject` resolviendo `woptimizer.services` por
-# debajo del nombre pedido. No es reparable desde aqui sin tocar el
-# interprete, y no es un motivo para renunciar a la funcion: `importlib`
-# resuelve el MISMO modulo y lee el MISMO atributo por la MISMA puerta de
-# `sys.modules`, con lo que el codigo probado es el codigo que corre.
-#
-# Y el motivo de que sea una sola linea y no un bloque: si esto se rompe, se
-# rompe al IMPORTAR el servicio, con un `AttributeError` que dice que falta el
-# nombre, y no en mitad de una migracion con el usuario esperando.
-_cfg = importlib.import_module("woptimizer.config")
-candidatos_de_datos = _cfg.candidatos_de_datos
-elegir_ruta_de_datos = _cfg.elegir_ruta_de_datos
+# TASK-069: los nombres de `config` se toman con el `from ... import (a, b, c)`
+# de toda la vida, sin `importlib`. El comentario anterior de este sitio
+# afirmaba que ESA FORMA FALLA en este interprete cuando `services/pack_service.py`
+# esta presente, y lo sostenia con una medicion en un arbol minimo montado en
+# `%TEMP%`. MEDIDO de nuevo, y NO SE REPRODUCE: con el arbol real y
+# `pack_service.py` presente, el import de cinco nombres a la vez funciona
+# (CPython 3.13.8). La linea 9 de este mismo fichero -- 25 lineas por encima de
+# aquel comentario -- ya usaba ESA forma con `PROFILES_FILE`, `PROFILES_FILE_NAME`
+# y `logger`, y nunca fallo. Un comentario que describe un bug del interprete
+# que no existe manda a la siguiente persona a diagnosear el interprete en vez
+# del bug, asi que se borra en vez de suavizarse.
 
 BACKUP_SUFFIX = ".bak"
 
@@ -291,24 +274,18 @@ class PackService:
         self.migracion_fallida = ""        # motivo, si la copia no cuadro
         # TASK-069 (T-4): `_ensure_gaming_pack()` repone el Gaming de FABRICA
         # cuando no esta, y ese default tiene 5 `target_categories` y 2
-        # `keepers` (`DEFAULT_GAMING_PACK`, :231-240). Perder el fichero del
+        # `keepers` (`DEFAULT_GAMING_PACK`, definido mas abajo en este mismo
+        # fichero; la cita por numero de linea de este comentario era FALSA y
+        # apuntaba al centro de `_vigilar_hojas()`). Perder el fichero del
         # usuario no daba "packs vacios": daba un Gaming Mode MAS AGRESSIVO y
         # la DESAPARICION de la lista anti-brick que el codigo creia puesta. Es
         # un fallo de SEGURIDAD, y por eso la reposicion se DECLARA.
         self.gaming_repuesto = False
         self.motivo_gaming_repuesto = ""
         # TASK-069 (T-3): la busqueda de la ruta antigua SOLO tiene sentido para
-        # el DESTINO REAL de la app, y esta es la distincion que hace que la
-        # migracion no se cuele en los tests.
-        #
-        # MEDIDO, y no por gusto: `PackService(data_path=<temporal>)` con un
-        # temporal que aun no existe se encuentra con el `profiles.json` del
-        # estado local de ESTE host en `src/woptimizer/` y lo migra, de modo que
-        # ocho tests que afirma "load() no escribe" empiezan a escribir. Un
-        # `data_path` inyectado es una peticion de "este fichero y ninguno mas",
-        # y `candidatos_de_datos()` devuelve la lista VACIA en ese caso: la
-        # busqueda se apaga sola, sin que ningun test tenga que acordarse de
-        # apagarla, y sin una bandera que se pueda olvidar puesta.
+        # el DESTINO REAL de la app. Un `data_path` inyectado es una peticion de
+        # "este fichero y ninguno mas", y con ella la busqueda se apaga sola.
+        # El MOTIVO de verdad, medido, esta en `_candidatos_para`.
         self.candidatos = self._candidatos_para(self.data_path)
         self._cached_all_packs: Optional[Dict[str, Pack]] = None
         self.load()
@@ -316,12 +293,42 @@ class PackService:
     @staticmethod
     def _candidatos_para(data_path: str) -> List[str]:
         """Los candidatos de la ruta antigua, o `[]` si `data_path` no es el
-        destino real de la app.
+        destino real de la app. La razon de que exista, MEDIDA, y no la que se
+        leia antes en este sitio:
+
+        * Que se mantenga. El motivo bueno no es "siete tests empiezan a
+          escribir" -- MEDIDO, y al quitar la guarda entera la suite sigue en
+          verde: ese numero no se reproduce. El motivo bueno es que
+          `src/woptimizer/profiles.json` EXISTE en el arbol de trabajo, y es la
+          ruta que `candidatos_de_datos()` devuelve al correr desde el codigo.
+          Sin la guarda, cualquier `PackService(data_path=<temporal que aun no
+          existe>)` se encontraria con ese fichero y lo migraria dentro del
+          temporal: los datos del escritorio del que desarrollo pasan a ser los
+          datos del test, y un test que espera "no hay nada" lee packs ajenos.
+          Que hoy la suite verde no depende de la guarda sino de QUE tests hay
+          escritos, y esa es exactamente la razon por la que no se quita una
+          guarda porque hoy nadie la nota.
+        * Que no la esconda. La guarda apaga la busqueda y con ella el
+          diagnostico, asi que el estado "destino vacio, origen ni mirado" no
+          puede ser un Gaming de fabrica en silencio: `mensaje_danado()` lo
+          declara por el `not self.candidatos` de su ultima rama. MEDIDO: sin
+          esa rama, con un `data_path` inyectado `mensaje_danado()` devolvia
+          `None` mientras `_ensure_gaming_pack()` reponia 5 categorias y 2
+          keepers.
+        * Lo que NO le pasa a un usuario. La app construye el servicio una vez
+          (`__main__.py`), sin `data_path`, o sea con el destino real, y ahi la
+          guarda no apaga nada. Esta guarda solo apaga cuando alguien INYECTA una
+          ruta distinta, que en este repo son los tests. El override
+          `WOPTIMIZER_DATA_DIR` tampoco la salta: `PROFILES_FILE` se calcula en
+          la importacion con ese override ya aplicado, luego las dos rutas
+          coinciden.
 
         La comparacion es por `normcase` + `abspath` porque en Windows
         `C:\\Users\\x` y `c:\\users\\X` son el mismo fichero y una comparacion
         cruda haria que un test que pase la ruta en otra caja se saltara la
         guarda sin querer.
+
+        Guardian: `test_un_data_path_inyectado_no_busca_la_ruta_antigua`.
         """
         if os.path.normcase(os.path.abspath(data_path)) != \
                 os.path.normcase(os.path.abspath(PROFILES_FILE)):
@@ -383,7 +390,25 @@ class PackService:
                 perder configuracion en silencio;
               - si `save()` falla, el temporal se limpia en su `except` y el
                 error original se propaga sin enmascararse.
+
+        PRECEDENCIA (TASK-069), que es un CONTRATO y no un detalle de orden:
+        el DESTINO manda SIEMPRE que se pueda leer, y el ORIGEN (el
+        `profiles.json` de la 1.0.0) es solo el ultimo recurso. El motivo es
+        cronologico y no negociable: el destino es donde el usuario ha ido
+        guardando packs desde la 1.1.0, o sea lo MAS NUEVO, y el origen es una
+        foto de como tenia las cosas antes. Si el origen se llegara a leer --
+        o peor, a pisar `self._data` -- cuando el destino ya es valido, el
+        usuario veria sus packs viejos y daria por perdidos los nuevos, SIN
+        AVISO, y el primer `save()` escribiria los viejos encima de los
+        nuevos: la misma familia de dano que este ciclo vino a cerrar, un paso
+        mas alla. Con la precedencia correcta el ORIGEN se lee solo cuando el
+        destino es ilegible y no hay `.bak`, que es la unica situacion en la
+        que arrancar con el origen es mejor que arrancar con cero packs.
+        Guardian: `test_el_destino_manda_sobre_el_origen_si_el_destino_se_puede_leer`.
         """
+        # El `if` de abajo ES la precedencia. Leer el origen antes -- o dejar que
+        # pise `self._data` despues de leer un destino valido -- es la perdida
+        # silenciosa que el guardian de arriba deja sin poder volver a pasar.
         if os.path.exists(self.data_path):
             try:
                 self._data = self._read_json(self.data_path)
@@ -483,9 +508,17 @@ class PackService:
             return
 
         self.packs_en_otra_ruta = con_datos[0]
+        # El nombre de la ruta se CONSTRUYE con `os.path.join`, no concatenando
+        # el directorio con el fichero. MEDIDO: `f"{con_datos[0]}{PROFILES_FILE_NAME}"`
+        # producia `...\\legacyprofiles.json`, una ruta que NO EXISTE, y el aviso
+        # de T-1 -- que existe para que el usuario vaya a buscar sus packs --
+        # leia una ruta que no lleva a ninguna parte. Peor que no avisar. El
+        # mutante `T1_AVISA_RUTA_EQUIVOCADA` devuelve el concatenado y lo mata el
+        # test que exige que la ruta nombrada exista de verdad.
+        ruta_candidata = os.path.join(con_datos[0], PROFILES_FILE_NAME)
         logger.warning(
             f"No encuentro tus packs en {self.data_path}. Hay packs en "
-            f"{con_datos[0]}{PROFILES_FILE_NAME}."
+            f"{ruta_candidata}."
         )
         self._migrar_desde(con_datos[0])
 
@@ -934,6 +967,17 @@ class PackService:
         como si fuera una incidencia. El gaming de fabrica en la PRIMERA
         ejecucion no es un fallo: es lo que el producto promete, y esa es la
         razon por la que (4) no se sale sola.
+
+        Y LA TERCERA FORMA DE (4), TASK-069: `ruta_sin_packs` Y `candidatos`
+        vacio. Es el estado en el que la busqueda de la ruta esta APAGADA
+        --`_candidatos_para` no busca cuando el `data_path` inyectado no es el
+        destino real-- y entonces no hay packs que narrar ni mensaje que dar, con
+        el Gaming de fabrica reponido y 5 categorias que el usuario no eligio.
+        MEDIDO: sin esta rama, `mensaje_danado()` devolvia `None` ahi, que es
+        justo el Gaming de fabrica en silencio que T-4 vino a quitar. No es lo
+        mismo que la instalacion limpia: alli se BUSCO y no se encontro nada, y
+        aqui no se busco; por eso el discriminante es `not self.candidatos` y
+        no `ruta_sin_packs` a secas.
         """
         if self.fichero_danado:
             if self.recuperado_de_backup:
@@ -964,6 +1008,10 @@ class PackService:
             # y el mensaje NOMBRA lo repuesto en vez de dar un "packs restaurados"
             # generico.
             return f"Aviso: {self.motivo_gaming_repuesto}."
+        if self.gaming_repuesto and self.ruta_sin_packs and not self.candidatos:
+            return (f"Aviso: {self.ruta_sin_packs} esta vacio y no se ha buscado "
+                    f"ninguna ruta antigua, asi que no hay packs que recuperar. "
+                    f"{self.motivo_gaming_repuesto}.")
         return None
 
     def get_gaming_pack(self) -> Pack:

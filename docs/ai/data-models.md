@@ -160,6 +160,59 @@ class AppData(BaseModel):
   `test_la_migracion_deja_el_origen_intacto_byte_a_byte`; y con el destino ilegible la resolución
   **cae al origen** (`_leer_del_candidato()`) sin escribir nada, con el destino corrupto en disco
   para que el usuario lo repare.
+- **La PRECEDENCIA es un contrato: el DESTINO manda siempre que se pueda leer, y el ORIGEN es
+  solo el último recurso** (`load()`). El destino es `%APPDATA%\woptimizer\profiles.json`, o sea
+  donde el usuario guarda **desde la 1.1.0**; el origen es una foto de la **1.0.0**. Leer el origen
+  —o dejar que pise `self._data`— con un destino sano no "muestra lo viejo": el usuario ve sus
+  packs viejos, da por perdidos los nuevos **sin ningún aviso**, y el primer `save()` escribe los
+  viejos encima. El origen se consulta solo cuando el destino es ilegible y no hay `.bak`, que es
+  la única situación en la que arrancar con él es mejor que arrancar con cero packs. MEDIDO: en la
+  suite anterior **ningún test tenía a la vez un destino válido y un origen con datos**, que es la
+  única combinación en la que la precedencia se puede ver; ahora la fijan las tres filas de
+  `test_el_destino_manda_sobre_el_origen_si_el_destino_se_puede_leer` (destino válido + origen
+  válido; destino válido + origen **corrupto**; y la contraprueba, destino corrupto + origen
+  válido, que es donde el origen gana).
+- **La irreversibilidad está defendida en CUATRO sitios independientes, no en uno.** MEDIDO en
+  esta ronda, mutando código **y** test a la vez: el mutante `MOVE_SIN_FILA_SHA` (sin la fila del
+  `sha256`) deja **4** tests muertos y `MOVE_SIN_EXISTE_NI_SHA` (sin las dos filas de existencia y
+  `sha256`) deja **3**. Y el detalle de por qué: con el mutante `move` en pie, la primera aserción
+  que muere es `assert os.path.exists(ruta_legacy)` y la del `sha256` **no llega a ejecutarse**. Lo
+  que cada fila protege es distinto: existencia (que el fichero siga ahí), bytes (`sha256`),
+  contenido (`_cuadra`) y `.bak` intacto.
+- **La copia conserva el `mtime` del origen (`shutil.copy2`, no `shutil.copy`).** No se ve en el
+  contenido y no da ningún error, y por eso una migración con `copy` es peor que una migración
+  rota: la base nueva parece correcta y es más nueva de lo que debería. En este repo la
+  consecuencia se paga en la rotación del `.bak`, que decide a partir de la marca de tiempo.
+  Guardian: `test_la_migracion_conserva_el_mtime_del_origen`, con una hora fija puesta con
+  `os.utime` para que "no se ha copiado" y "se ha copiado mal" sean dos resultados distintos.
+- **La búsqueda de la ruta antigua se apaga sola con un `data_path` inyectado**
+  (`PackService._candidatos_para()`): un `data_path` inyectado es una petición de "este fichero y
+  ninguno más". El motivo, MEDIDO, es que `src/woptimizer/profiles.json` **existe, es legible para
+  el servicio** y trae los packs `7559c83a` y `gaming` de quien desarrolla en esta máquina: sin la
+  guarda, cualquier test con un temporal que aún no existe se encuentra con ese fichero y lo
+  migra dentro del temporal, y el bloque de instalación limpia de `test_load_no_escribe` muere con
+  "load() no puede crear el fichero". Lo que no le pasa a un usuario: la app construye el servicio
+  una vez (`__main__.py`), sin `data_path`, y el override `WOPTIMIZER_DATA_DIR` tampoco salta la
+  guarda porque `PROFILES_FILE` se calcula en la importación con ese override ya aplicado. Y lo que
+  la guarda **no** puede hacer es tapar el diagnóstico: con la búsqueda apagada y el destino
+  vacío, `mensaje_danado()` declara también ese estado (la tercera forma de `gaming_repuesto`),
+  porque un Gaming de fábrica en silencio es el mismo fallo de seguridad que la lista anti-brick.
+  Guardian: `test_un_data_path_inyectado_no_busca_la_ruta_antigua`.
+- **La degradación a `_app_dir()` sin `%APPDATA%` se avisa en el log, con la variable buscada y la
+  ruta a la que se cae.** Devuelve los packs a la ruta atada al binario, que es justo la ruta que
+  T-2 vino a quitar. Se declara como límite: es aviso de **log**, no estado de servicio, porque
+  alcanzarlo exige un perfil de Windows sin `%APPDATA%`, `%LOCALAPPDATA%` y override. Guardian:
+  `test_la_degradacion_a_la_ruta_del_ejecutable_se_avisa`.
+- **La fila de T-1 del log nombra las DOS rutas y existe.** El destino donde no se han encontrado
+  los packs y la ruta absoluta del candidato donde sí están, en la misma fila, y la ruta que nombra
+  **existe**: se construye con `os.path.join` y no concatenando el directorio con el nombre del
+  fichero. MEDIDO: la concatenación sin separador producía `...\legacyprofiles.json`, una ruta que
+  no existe, y cinco tests pasaban porque leían el log entero y la fila hermana de
+  `_migrar_desde()` nombraba el mismo fichero bien escrito. Un aviso que manda al usuario a una
+  ruta que no lleva a ninguna parte es **peor que no avisar**. Guardians:
+  `test_la_ruta_que_anuncia_el_diagnostico_existe_de_verdad` y
+  `test_el_log_de_t1_nombra_el_destino_y_el_candidato`, que filtran por `funcName` para que la
+  aserción la satisfaga la fila de diagnóstico y no cualquier otra del mismo fichero de log.
 - **La AUSENCIA es observable, y antes no lo era (T-1).** `fichero_danado`/`motivo_danado` solo se
   activaban con **corrupción**, así que "el usuario perdió sus packs" era indistinguible de
   "instalación limpia": los dos llegaban a `mensaje_danado()` como `None`. Ahora existen
@@ -181,8 +234,11 @@ class AppData(BaseModel):
   un aviso para la UI (§4.4). Antes se regeneraba de inmediato el pack protegido
   `gaming` por defecto, lo que **reescribía el fichero del usuario** con un solo pack.
   Los valores reales de ese pack son los de `DEFAULT_GAMING_PACK`
-  (`pack_service.py`, líneas **231-240**; antes este documento citaba `70-79`, que
-  no existen), y son:
+  (`pack_service.py`; la cita por líneas que tenía este documento, **231-240**, era FALSA y
+  apuntaba al centro de `_vigilar_hojas()`, y su antecesora, `70-79`, tampoco existía. MEDIDO
+  en esta ronda: una cita por número de línea en un documento es una cita que caduca con el
+  siguiente cambio, así que el nombre del símbolo es la cita, y el número solo si se comprueba
+  el mismo día), y son:
   - `id`: `"gaming"`
   - `name`: `"🚀 Preparar para Gaming"`
   - `is_favorite`: `True`

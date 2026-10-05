@@ -2403,7 +2403,120 @@ def validar(root):
     # silencioso, y un `None` en esta posicion se lee como "no hay hashes que
     # comprobar", que es el falso verde que el check viene a cerrar.
     _comprobar_hashes_del_journal(root, errors, ok)
+    # 10. El CONTRATO DE PERSISTENCIA de TASK-069, en los dos documentos que lo
+    # declaran. Delegado a `_comprobar_contrato_de_persistencia(root, errors, ok)`,
+    # con raiz y SIN defaults por D3, y con el predicado en
+    # `violaciones_del_contrato_de_persistencia` para que `run_tests.py` pueda
+    # mutar el documento REAL y pasarlo por la MISMA puerta: un guard que solo
+    # vive en la suite se queda en verde mientras no corra, que es al reves de
+    # como funciona una guarda.
+    _comprobar_contrato_de_persistencia(root, errors, ok)
     return errors, ok
+
+
+# --- TASK-069 (cierre del Paso 4): el contrato de persistencia como PREDICADO,
+# no como subcadena. Y en `validate_docs.py`, no solo en la suite.
+
+# Las DOS mitades del contrato, y tienen que estar en la MISMA unidad de texto:
+# la ruta del fichero de packs Y la negacion de "junto al ejecutable". MEDIDO: un
+# guard por subcadena no muerde, porque el mutante que reescribe la frase del
+# contrato a "junto al ejecutable" puede dejar la mencion de `%APPDATA%` puesta
+# mas abajo como decorado y pasa. Y el otro mutante --conservar la ruta y caer la
+# negacion-- tampoco lo caza un guard que solo mire la ruta. Las dos mitades en
+# la misma unidad matan a los dos.
+_RE_RUTA_DEL_CONTRATO = re.compile(r"%APPDATA%[\\/]+woptimizer[\\/]+profiles\.json")
+
+# La negacion se mide sobre el mismo texto y SIN cruzar un punto, porque si
+# cualquier "no" del parrafo contara, bastaria con que el documento hubiera
+# escrito "no" en cualquier parte posterior a "ejecutable" para que el contrato
+# pareciera declarado. Los saltos de linea SI se cruzan (`[^\.]`), porque el
+# contrato esta partido en dos lineas en los dos documentos.
+_RE_NEGACION_DEL_EJECUTABLE = re.compile(
+    r"\bno\b[^\.]{0,80}?\bejecutable\b|\bejecutable\b[^\.]{0,80}?\bno\b",
+    re.IGNORECASE,
+)
+
+# Una "unidad de texto" es una viñeta o un parrafo CON sus lineas de
+# continuacion, no un bloque entero de markdown: en `architecture.md` §13 todas
+# las viñetas son consecutivas, y unidas en un solo bloque el predicado veria
+# la negacion de OTRA viñeta. Una linea que empieza una viñeta nueva, un
+# titulo, una cita o una tabla CIERRA la unidad.
+_INICIO_DE_UNIDAD = re.compile(r"^\s*(?:[-*+]\s|\d+[.)]\s|>\s|#{1,6}\s|\|)")
+
+
+def _unidades_de_texto(cuerpo):
+    """`(unidad, ...)` de un documento markdown: viñetas y párrafos completos.
+
+    Se separa en unidades y no se busca en el documento entero porque el
+    contrato tiene que estar escrito COHERENTE, no repartido en dos frases que
+    casualmente caen en el mismo fichero.
+    """
+    unidades = []
+    actual = []
+    for linea in cuerpo.splitlines():
+        cierra = (not linea.strip()) or bool(_INICIO_DE_UNIDAD.match(linea))
+        if cierra and any(l.strip() for l in actual):
+            unidades.append("\n".join(actual))
+            actual = []
+        if linea.strip():
+            actual.append(linea)
+    if any(l.strip() for l in actual):
+        unidades.append("\n".join(actual))
+    return unidades
+
+
+def violaciones_del_contrato_de_persistencia(cuerpo, nombre="<memoria>"):
+    """Las violaciones del contrato de persistencia de TASK-069, o `[]`.
+
+    Se exporta para que `run_tests.py` lo llame con el documento REAL MUTADO,
+    leido de disco otra vez: MEDIDO, una contraprueba que muta una cadena en
+    memoria y comprueba que el reemplazo funciono NUNCA pasa el guard por el
+    mutante, y en ese hueco cabe un predicado que devuelve siempre `[]` y sale
+    en verde.
+
+    `nombre` solo aparece en los mensajes: el predicado no decide por el nombre
+    del fichero, decide por lo que el texto dice.
+    """
+    con_ruta = [u for u in _unidades_de_texto(cuerpo)
+                if _RE_RUTA_DEL_CONTRATO.search(u)]
+    if not con_ruta:
+        return [f"{nombre}: no declara en ninguna parte la ruta "
+                "`%APPDATA%\\woptimizer\\profiles.json` del fichero de packs. "
+                "Un documento que no dice donde viven los datos deja que la "
+                "siguiente version los mueva sin que nadie se entere"]
+    if not any(_RE_NEGACION_DEL_EJECUTABLE.search(u) for u in con_ruta):
+        return [f"{nombre}: dice donde vive el `profiles.json` pero no dice que ya "
+                "NO este junto al ejecutable, que es la otra mitad del contrato: "
+                "sin esa negacion, la frase se puede leer como que las dos rutas "
+                "siguen siendo la misma"]
+    return []
+
+
+def _comprobar_contrato_de_persistencia(root, errors, ok):
+    """Cuerpo del check 10, extraido a funcion CON RAIZ y con el predicado fuera.
+
+    EXIGE EL CONTRATO EN LOS DOS DOCUMENTOS, no en uno: uno dice donde viven los
+    datos y el otro que no siguen al binario, y con uno solo se puede dejar media
+    verdad sin escribir. MEDIDO: el guard anterior vivia solo en `run_tests.py` y
+    `validate_docs.py` no tenia ninguno de TASK-069, o sea que un documento
+    reescrito se sostenia en verde mientras la suite corriera y caia en rojo
+    cuando no.
+    """
+    for relativo in ("architecture.md", "data-models.md"):
+        ruta = os.path.join(root, "docs", "ai", relativo)
+        if not os.path.exists(ruta):
+            errors.append(f"docs/ai/{relativo}: NO EXISTE, no se puede comprobar el "
+                          "contrato de persistencia")
+            continue
+        with open(ruta, encoding="utf-8") as f:
+            cuerpo = f.read()
+        fallos = violaciones_del_contrato_de_persistencia(cuerpo, relativo)
+        if fallos:
+            errors.extend(fallos)
+        else:
+            ok.append(f"docs/ai/{relativo}: declara el contrato de persistencia "
+                      "(`%APPDATA%\\woptimizer\\profiles.json` y que ya NO esta "
+                      "junto al ejecutable) en una sola unidad de texto")
 
 
 def main():

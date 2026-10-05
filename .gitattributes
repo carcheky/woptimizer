@@ -1,0 +1,38 @@
+# Politica de EOL del repo, DECLARADA aqui y no heredada del host.
+#
+# MEDIDO (TASK-069, ciclo de cierre): sin este fichero, la politica la decidia
+# `core.autocrlf` de la maquina, que aqui es `true`. Con `true`, un fichero que
+# esta en LF en el arbol se mete en el indice con CRLF, y el commit sale con el
+# diff entero: el commit `3012c48` mostraba 584/584 lineas de `docs/known-issues.md`
+# y solo 1/1 con `--ignore-cr-at-eol`, o sea unas 583 lineas de ruido puro. El
+# `c0cd687` anterior, 584/541 en crudo contra 44/1 ignorando el CR. Un diff que
+# es casi todo ruido hide el cambio de verdad, que es justo lo que un revisor
+# necesita ver.
+#
+# ESTADO REAL DEL HISTORIAL, sin retocar nada (el wrapper de commit no reescribe
+# historia y no se va a hacer aqui): el historico anterior a este fichero tiene
+# los blobs mezclados. La PUNTA si esta normalizada a LF. Los commits de este
+# ciclo que tocan ficheros ya normalizados siguen metiendo CRLF mientras no
+# hubiera politica, y con este fichero dejan de hacerlo.
+#
+# `eol=lf` es la parte que importa en Windows: el indice guarda LF y el arbol de
+# trabajo tambien, sin depender de la maquina. Los ficheros que Windows NO
+# tolera en LF se declaran al reves, y son los unicos que deben llevar CRLF.
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binarios, explicitos para que `text=auto` no los pueda tocar.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.exe binary
+*.dll binary
+*.pyd binary
+*.pdf binary
+*.zip binary
+*.woff binary
+*.woff2 binary

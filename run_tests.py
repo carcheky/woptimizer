@@ -2293,9 +2293,12 @@ def test_pack_service_backup_and_recovery():
             # cambia es el CASO que mide, y no por un parche en el test sino porque
             # `PackService._candidatos_para()` apaga la busqueda de la ruta antigua
             # cuando el `data_path` inyectado no es el destino real de la app.
-            # MEDIDO: sin eso, este bloque encontraba el `profiles.json` del
-            # estado local en `src/woptimizer/` y migraba, y la asercion de abajo
-            # moria—"load() no puede crear el fichero"— con un temporal limpio.
+            # MEDIDO en esta ronda, con la suite completa: sin
+            # `_candidatos_para`, este bloque se encuentra con el
+            # `src/woptimizer/profiles.json` del estado local —que existe, es
+            # legible para el servicio y trae los packs `7559c83a` y `gaming`—
+            # lo migra dentro del temporal y la asercion de abajo muere con
+            # "load() no puede crear el fichero".
             servicio_limpio = PackService(data_path=limpio)
             assert not os.path.exists(limpio), (
                 "load() no puede crear el fichero: es de solo lectura. Un arranque "
@@ -20762,12 +20765,18 @@ def _t069_candidatos_que_apuntan_a(legacy, service_cls):
 
     POR QUE HAY QUE PARCHEAR LAS DOS, y es la razon de que este helper exista
     solo para TASK-069: `PackService._candidatos_para()` devuelve `[]` cuando el
-    `data_path` inyectado no es el destino real de la app, para que la migracion
-    no se cuele en los tests antiguos que afirman "load() no escribe" (los que
-    se rompieron, MEDIDO). Los tests de este ciclo usan un temporal explicito, y
-    para que midan la MIGRACION y no la guarda, se abre la guarda por el mismo
-    hook que usa el servicio. Parchear solo `candidatos_de_datos` no bastaria: la
-    guarda lo apagaria antes de llegar.
+    `data_path` inyectado no es el destino real de la app, para que la busqueda
+    de la ruta antigua no se cuele en un test que ha pedido un temporal. Los
+    tests de este ciclo usan un temporal explicito y quieren medir la MIGRACION,
+    no la guarda, asi que se abre por el mismo hook que usa el servicio. Parchear
+    solo `candidatos_de_datos` no bastaria: la guarda lo apagaria antes de
+    llegar.
+
+    El motivo de fondo de la guarda, MEDIDO, esta escrito en
+    `test_un_data_path_inyectado_no_busca_la_ruta_antigua`. Este texto antes
+    citaba "los tests antiguos que se rompieron" y una cuenta que no se
+    reproduce; lo medido en esta ronda es que `src/woptimizer/profiles.json`
+    existe, es LEGIBLE para el servicio y trae los packs `7559c83a` y `gaming`.
     """
     import woptimizer.services.pack_service as ps
     ps.candidatos_de_datos = lambda: [legacy]
@@ -20812,6 +20821,104 @@ def _t069_restaura(ps, antes_candidatos, antes_guarda):
         delattr(ps.PackService, "_candidatos_para")
     else:
         setattr(ps.PackService, "_candidatos_para", antes_guarda)
+
+
+def _t069_registros():
+    """Context manager que captura los REGISTROS del logger `woptimizer`.
+
+    POR QUE NO SE LEE EL FICHERO DE LOG: el criterio de T-1 es "el log nombra al
+    CANDIDATO con su ruta absoluta", y al leer `woptimizer.log` entero la
+    asercion la satisface la fila hermana de `_migrar_desde()` en lugar de la de
+    diagnostico. MEDIDO este turno: con la fila de T-1 bajada a un aviso generico,
+    un test que solo comprueba "la ruta esta en el log" pasa en verde porque la
+    de `_migrar_desde()` sigue nombrando el mismo fichero. Un registro lleva
+    `funcName` y `lineno`, y con eso se puede exigir que lo diga LA FILA, no el
+    fichero entero. Tambien evita leer un log de 8 MB que se esta rotando.
+
+    Los registros que se capturan son los de ESTA llamada: el manejador se pone
+    al entrar y se quita al salir, y el nivel se baja a `DEBUG` para que un
+    `WARNING` del servicio no se quede en el `lastResort`.
+    """
+    import logging
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _ctx():
+        capturados = []
+
+        class _Manejador(logging.Handler):
+            def emit(self, record):
+                capturados.append(record)
+
+        manejador = _Manejador(level=logging.DEBUG)
+        log = logging.getLogger("woptimizer")
+        nivel_antes = log.level
+        manejadores_antes = list(log.handlers)
+        log.addHandler(manejador)
+        log.setLevel(logging.DEBUG)
+        try:
+            yield capturados
+        finally:
+            log.removeHandler(manejador)
+            log.setLevel(nivel_antes)
+            del manejadores_antes
+    return _ctx()
+
+
+def _t069_filas_de(registros, func_name):
+    """Los `record.getMessage()` emitidos DENTRO de `func_name`, en orden.
+
+    El filtro por `funcName` es lo que separa "la fila de T-1" de "la fila
+    hermana de la migracion", que es la confusion que hacia pasar al mutante
+    `LOG_MUDA` y al mutante de la ruta equivocada.
+    """
+    return [r.getMessage() for r in registros if r.funcName == func_name]
+
+
+def _t069_escribir_profiles(ruta, contenido):
+    """Escribe un `profiles.json` con la FORMA REAL (la de `_t069_profiles_v1_0_0`).
+
+    Devuelve la ruta. Se usa para montar el DESTINO con packs que NO son los del
+    origen, que es lo que hace falta para que "quien manda" sea una pregunta con
+    respuesta y no una tautologia.
+    """
+    import json
+    os.makedirs(os.path.dirname(ruta), exist_ok=True)
+    with open(ruta, "w", encoding="utf-8") as fh:
+        json.dump(contenido, fh, indent=4, ensure_ascii=False)
+    return ruta
+
+
+def _t069_packs_del_usuario_hoy():
+    """El destino "de hoy": el Gaming DEL USUARIO y un pack reciente.
+
+    Deliberadamente DISTINTO del origen de la 1.0.0 en los dos ids de pack
+    (`gaming` + `reciente` contra `gaming` + `8fefbc22`) y en los keepers del
+    Gaming: si el destino y el origen se parecieran, cualquier prueba de "quien
+    manda" pasaria con cualquiera de los dos.
+    """
+    return {
+        "packs": {
+            "gaming": {
+                "id": "gaming",
+                "name": "GAMING DEL USUARIO",
+                "is_gaming": True,
+                "is_favorite": True,
+                "default_action": "kill",
+                "apps": ["chrome.exe", "firefox.exe"],
+                "keepers": ["steam.exe"],
+                "target_categories": ["Solo Browsers"],
+            },
+            "reciente": {
+                "id": "reciente",
+                "name": "guardado hoy",
+                "is_gaming": False,
+                "is_favorite": True,
+                "default_action": "kill",
+                "apps": ["notepad.exe"],
+            },
+        }
+    }
 
 
 def test_la_ruta_de_datos_no_sigue_al_ejecutable():
@@ -21129,15 +21236,29 @@ def test_la_migracion_copia_el_1_0_0_y_no_pierde_nada():
 
 
 def test_la_migracion_deja_el_origen_intacto_byte_a_byte():
-    """TASK-069 T-3. **LA FILA QUE MATA LA IRREVERSIBILIDAD.**
+    """TASK-069 T-3. UNA de las CUATRO filas que defienden la irreversibilidad.
 
     El `sha256` del ORIGEN y el de su `.bak` son IDENTICOS antes y despues de la
-    migracion. Por que discrimina y no es un aserto mas: con el mutante
-    `MOVE_EN_VEZ_DE_COPY` el origen ya no existe, el `sha256` no se puede leer y
-    ESTA fila muere; mientras tanto "migro bien" FALSO pasa cualquier otro
-    aserto del test de migracion, porque los ids, las apps y las categorias estan
-    todos en su sitio despues de mover. O sea: sin esta fila, la irreversible
-    pasa la suite entera.
+    migracion.
+
+    CORRECCION DE UNA AFIRMACION QUE ESTA MISMA RONDA DESMIENTIO, y es de las que
+    masheen: este docstring decia que con el mutante `MOVE_EN_VEZ_DE_COPY` "el
+    origen ya no existe, el `sha256` no se puede leer y ESTA fila muere", y la
+    fila del `sha256` NO LLEGA a ejecutarse: la que muere es la de la linea
+    anterior, `assert os.path.exists(ruta_legacy)`, porque va la PRIMERA. MEDIDO
+    en la suite completa de 173.
+
+    Y hay mas, que es lo que hace que la afirmacion vieja fuera pequena ademas de
+    falsa. Mutando codigo Y TEST a la vez:
+      * `MOVE_SIN_FILA_SHA` (el mutante de este fichero sin la fila del `sha256`)
+        -> siguen muriendo 4 tests;
+      * `MOVE_SIN_EXISTE_NI_SHA` (el mutante sin las DOS filas de este fichero)
+        -> siguen muriendo 3.
+    O sea que la irreversibilidad NO esta defendida en un sitio sino en CUATRO
+    independientes, y esta fila es uno de ellos. Lo que se puede afirmar de cada
+    fila es que mira algo DISTINTO, no que sea la unica: esta mira los BYTES, la
+    de `exists` mira que el fichero siga ahi, y las otras dos miran el
+    CONTENIDO y el `.bak`.
     """
     from woptimizer.services.pack_service import PackService
     import woptimizer.services.pack_service as ps
@@ -21615,6 +21736,799 @@ def test_el_guard_de_ausencia_ignora_a_la_instalacion_limpia_sin_revistar():
     print("La decision distingue los tres casos sin tocar el disco.")
 
 
+# =====================================================================
+# TASK-069, cierre del Paso 4. Los OCHO supervivientes que dejo el
+# mutation-auditor, uno por test, y cada uno muerto por SU asercion.
+#
+# El primero es `REVERSION_ANTES_DE_MIRAR_EL_DESTINO` y va primero porque es el
+# unico que TOCA DATOS DEL USUARIO: no pierde un fichero, cambia cual de los dos
+# ficheros GANA, y el que gana mal es el que se reescribe en el proximo `save()`.
+# =====================================================================
+
+
+def test_el_destino_manda_sobre_el_origen_si_el_destino_se_puede_leer():
+    """TASK-069 T-3, cierre del ciclo. Mata al mutante
+    `REVERSION_ANTES_DE_MIRAR_EL_DESTINO`, y TOCA DATOS DEL USUARIO.
+
+    El DESTINO es `%APPDATA%\\woptimizer\\profiles.json`, o sea donde el usuario
+    guarda desde la 1.1.0. El ORIGEN es el `profiles.json` de la 1.0.0, o sea una
+    foto de como tenia las cosas ANTES. El origen se consulta SOLO cuando el
+    destino no se puede leer y no hay `.bak` que lo repare, que es la unica
+    situacion en la que arrancar con el origen es mejor que arrancar con cero
+    packs. Invertirlo no "muestra lo viejo": el usuario ve sus packs VIEJOS, da
+    por perdidos los nuevos SIN NINGUN AVISO, y el primer `save()` escribe los
+    viejos encima de los nuevos. La misma familia de dano que este ciclo vino a
+    cerrar, un paso mas alla, y por eso la precedencia queda FIJADA aqui y no
+    solo descrita.
+
+    POR QUE HACE FALTA UN TEST NUEVO y no vale el de la migracion: hasta ahora
+    ningun test de la suite tenia a la vez un destino VALIDO y un origen con
+    datos. Los tres estados medidos eran destino ausente (migra), destino
+    corrupto (revierte) y destino solo (no hay origen), y en ninguno se puede
+    preguntar quien manda. MEDIDO con el mutante puesto: la suite entera pasa en
+    verde sin este test.
+
+    LAS TRES FILAS, y las tres hacen falta:
+      1. destino valido + origen valido: gana el destino, y no se escribe nada;
+      2. destino valido + origen CORRUPTO: gana el destino y la corrupcion del
+         ORIGEN no es un problema del usuario ni se le atribuye;
+      3. destino corrupto + origen valido: gana el ORIGEN. Esta fila es la
+         CONTRAPRUEBA: sin ella, "el destino manda" seria un test que prohibe la
+         reversion y que pasaria por correcto en un producto sin ella.
+    """
+    import woptimizer.services.pack_service as ps
+    from woptimizer.services.pack_service import PackService
+
+    temp = tempfile.mkdtemp(prefix="wopt_t069_precedencia_")
+    try:
+        legacy, ruta_origen = _t069_crear_legacy(temp)
+        antes_candidatos = ps.candidatos_de_datos
+        antes_guarda = _t069_guarda(ps)
+        try:
+            _t069_candidatos_que_apuntan_a(legacy, PackService)
+
+            # --- FILA 1: destino valido y origen valido. GANA EL DESTINO. ---
+            ruta_destino = _t069_escribir_profiles(
+                os.path.join(temp, "destino", "profiles.json"),
+                _t069_packs_del_usuario_hoy())
+            sha_destino = _t069_sha256(ruta_destino)
+            sha_origen = _t069_sha256(ruta_origen)
+            mtime_destino = os.stat(ruta_destino).st_mtime_ns
+            svc = PackService(data_path=ruta_destino)
+            ids = sorted(svc.get_all_packs())
+            assert ids == ["gaming", "reciente"], (
+                f"con el destino legible TIENE que ganar el destino (los packs de "
+                f"hoy), y han salido {ids}. Si sale ['8fefbc22', 'gaming'] lo que "
+                f"ha pasado es que el ORIGEN se ha leido y ha pisado al destino: "
+                f"el usuario ve sus packs viejos, cree perdidos los nuevos y el "
+                f"primer save() los sobrescribe. Perder lo que el dueno tiene "
+                f"ultimo, en silencio, a favor de lo que tenia antes."
+            )
+            assert svc.migrado_desde == "", (
+                f"no se ha migrado nada y aun asi migrado_desde={svc.migrado_desde!r}"
+            )
+            assert svc.packs_en_otra_ruta == "", (
+                f"con el destino bien no hay ninguna historia que contar en otra "
+                f"ruta, y packs_en_otra_ruta={svc.packs_en_otra_ruta!r}"
+            )
+            assert svc.fichero_danado is False, (
+                f"el destino se ha leido bien y aun asi fichero_danado=True: "
+                f"{svc.motivo_danado}"
+            )
+            assert _t069_sha256(ruta_destino) == sha_destino, (
+                "el destino del usuario se ha reescrito al cargar. load() es de "
+                "solo lectura (TASK-031) y con el destino presente no hay nada "
+                "que migrar"
+            )
+            assert os.stat(ruta_destino).st_mtime_ns == mtime_destino, (
+                "el mtime del destino cambio: alguien lo reescribio"
+            )
+            assert _t069_sha256(ruta_origen) == sha_origen, (
+                "el ORIGEN se ha tocado: es el fichero de la 1.0.0 y la migracion "
+                "lo deja intacto byte a byte (T-3, condicion 3)"
+            )
+            svc.load()
+            assert sorted(svc.get_all_packs()) == ["gaming", "reciente"], (
+                "la segunda carga tampoco puede cambiar quien manda"
+            )
+
+            # --- FILA 2: destino valido y ORIGEN CORRUPTO. GANA EL DESTINO. ---
+            with open(ruta_origen, "w", encoding="utf-8") as fh:
+                fh.write("{ esto no es json")
+            svc2 = PackService(data_path=ruta_destino)
+            assert sorted(svc2.get_all_packs()) == ["gaming", "reciente"], (
+                f"un origen ilegible no puede decidir nada: el destino es bueno y "
+                f"han salido {sorted(svc2.get_all_packs())}"
+            )
+            assert svc2.fichero_danado is False, (
+                f"la corrupcion del ORIGEN se le esta atribuyendo al usuario: "
+                f"fichero_danado=True con {svc2.motivo_danado}. El destino se lee "
+                f"bien, luego no hay nada que recuperar y nada que avisar"
+            )
+            assert svc2.migrado_desde == "" and svc2.migracion_fallida == "", (
+                "con el destino legible no hay migracion que haya podido fallar"
+            )
+
+            # --- FILA 3: destino CORRUPTO y origen valido. GANA EL ORIGEN. ---
+            _t069_crear_legacy(temp)  # el origen vuelve a estar bien
+            os.remove(ruta_destino)
+            with open(ruta_destino, "w", encoding="utf-8") as fh:
+                fh.write("{ tampoco esto")
+            svc3 = PackService(data_path=ruta_destino)
+            assert sorted(svc3.get_all_packs()) == ["8fefbc22", "gaming"], (
+                f"con el destino ILEGIBLE y sin .bak, arrancar con cero packs es "
+                f"peor que arrancar con los del origen: han salido "
+                f"{sorted(svc3.get_all_packs())}"
+            )
+            assert svc3.migrado_desde == legacy and svc3.packs_en_otra_ruta == legacy, (
+                f"la reversion tiene que DECLARAR de donde se leyo: "
+                f"migrado_desde={svc3.migrado_desde!r} "
+                f"packs_en_otra_ruta={svc3.packs_en_otra_ruta!r}"
+            )
+            assert svc3.fichero_danado is True, (
+                "el destino roto se queda marcado: el usuario tiene que saber que "
+                "su fichero esta dano aunque la app arrancara"
+            )
+            with open(ruta_destino, encoding="utf-8") as fh:
+                assert fh.read() == "{ tampoco esto", (
+                    "la reversion NO escribe: el destino se queda en disco tal "
+                    "cual para que el usuario lo repare (T-3, condicion 4)"
+                )
+        finally:
+            _t069_restaura(ps, antes_candidatos, antes_guarda)
+    finally:
+        _t069_borrar(temp)
+    print("El destino manda cuando se puede leer, y el origen solo cuando no.")
+
+
+def test_un_data_path_inyectado_no_busca_la_ruta_antigua():
+    """TASK-069 T-3. Mata al mutante `GUARDA_CANDIDATOS_DESACTIVADA`.
+
+    Lo que se afirma es una SEMANTICA DE Peticion: un `data_path` inyectado es
+    "este fichero y ninguno mas". Sin la guarda de `_candidatos_para`, el
+    servicio busca la ruta antigua igualmente y ME TRAE un fichero que nadie le
+    pidio: en este host `candidatos_de_datos()` es `[_app_dir()]` y
+    `src/woptimizer/profiles.json` EXISTE, es LEGIBLE (medido) y trae los packs
+    `7559c83a` y `gaming` de quien desarrollo en esta maquina. O sea que el
+    defecto del mutante no es teorico: el temporal del test se llenaba con los
+    packs del escritorio de otro.
+
+    Y el motivo por el que la guarda se queda esta MEDIDO, contra lo que decia el
+    comentario anterior (que blames "ocho tests que afirman que load() no
+    escribe", una cuenta que no se reproduce) y contra lo que midi por otra via
+    ("quitar la guarda deja la suite en verde", que tampoco se reproduce):
+    MEDIDO este turno, el bloque de instalacion limpia de `test_load_no_escribe`
+    (`run_tests.py:2300`, `assert not os.path.exists(limpio)`) MUERE sin la
+    guarda, porque encuentra ese `profiles.json` y migra. Las dos afirmaciones
+    contrarias eran falsas, y la guarda sigue por el motivo de aqui.
+
+    Las dos filas: con la guarda el temporal intacto, y SIN ella -- o sea, con el
+    destino real de la app -- la busqueda sigue viva. Una guarda que apaga
+    siempre tambien pasaria el primer test.
+    """
+    import woptimizer.services.pack_service as ps
+    from woptimizer.services.pack_service import PackService
+    from woptimizer.config import PROFILES_FILE
+
+    temp = tempfile.mkdtemp(prefix="wopt_t069_guarda_")
+    try:
+        legacy, ruta_origen = _t069_crear_legacy(temp)
+        sha_origen = _t069_sha256(ruta_origen)
+        antes_candidatos = ps.candidatos_de_datos
+        try:
+            # Solo se parchea `candidatos_de_datos`: la guarda REAL sigue en su
+            # sitio, que es lo que se quiere medir.
+            ps.candidatos_de_datos = lambda: [legacy]
+            ruta_destino = os.path.join(temp, "inyectado", "profiles.json")
+            svc = PackService(data_path=ruta_destino)
+            assert svc.candidatos == [], (
+                f"un data_path que no es el destino real de la app no puede "
+                f"arrastrar la busqueda de la ruta antigua, y ha trailed "
+                f"{svc.candidatos!r}"
+            )
+            assert not os.path.exists(ruta_destino), (
+                f"nadie pidio migrar nada y el destino se ha creado: "
+                f"{ruta_destino}. Sin la guarda, el `profiles.json` del arbol de "
+                f"trabajo entra en el temporal del test y sus packs pasan a ser "
+                f"los del test."
+            )
+            assert svc.migrado_desde == "" and svc.packs_en_otra_ruta == "", (
+                f"con la busqueda apagada no hay migracion ni historia que contar: "
+                f"{svc.migrado_desde!r} {svc.packs_en_otra_ruta!r}"
+            )
+            assert _t069_sha256(ruta_origen) == sha_origen, "el origen esta intacto"
+            assert sorted(os.listdir(legacy)) == ["profiles.json"], (
+                f"la busqueda apagada no puede ni tocar el directorio: "
+                f"{sorted(os.listdir(legacy))}"
+            )
+
+            # CONTRAPRUEBA: el destino REAL de la app si busca. Sin esta fila, una
+            # guarda que devolviera `[]` siempre pasaria el test entero.
+            assert ps.PackService._candidatos_para(PROFILES_FILE) == [legacy], (
+                "con el destino real de la app la busqueda tiene que estar viva: "
+                f"ha dado {ps.PackService._candidatos_para(PROFILES_FILE)!r}"
+            )
+        finally:
+            ps.candidatos_de_datos = antes_candidatos
+    finally:
+        _t069_borrar(temp)
+    print("Un data_path inyectado no arrastra la busqueda de la ruta antigua.")
+
+
+def test_la_migracion_conserva_el_mtime_del_origen():
+    """TASK-069 T-3. Mata al mutante `COPY_NO_COPY2` (`copy2` -> `copy`).
+
+    `copy2` copia los metadatos y `copy` solo el contenido, asi que con `copy` el
+    `profiles.json` del usuario llega al destino con la HORA DE LA COPIA. No se ve
+    en el contenido, no da ningun error, y por eso es peor que una migracion
+    rota: la base nueva parece correcta y es mas nueva de lo que deberia. En
+    este repo la consecuencia de medir se paga en la rotacion del `.bak`, que
+    decide a partir de la marca de tiempo, y en cualquier copia de seguridad que
+    el usuario haga del fichero.
+
+    La asercion mira la marca de tiempo CON VALOR FIJO: se pone con `os.utime` a
+    una hora del pasado que el test declara, de modo que "no se ha copiado" y "se
+    ha copiado mal" son dos resultados distinguibles y no dos finales de prueba.
+    """
+    import woptimizer.services.pack_service as ps
+    from woptimizer.services.pack_service import PackService
+
+    temp = tempfile.mkdtemp(prefix="wopt_t069_mtime_")
+    try:
+        legacy, ruta_origen = _t069_crear_legacy(temp)
+        # Hora fija del pasado: 2020-01-02 03:04:05 UTC, en nanosegundos.
+        fijo = 1577934245_000000000
+        os.utime(ruta_origen, ns=(fijo, fijo))
+        assert os.stat(ruta_origen).st_mtime_ns == fijo, "el utime del test no cuela"
+        antes_candidatos = ps.candidatos_de_datos
+        antes_guarda = _t069_guarda(ps)
+        try:
+            _t069_candidatos_que_apuntan_a(legacy, PackService)
+            ruta_destino = os.path.join(temp, "destino", "profiles.json")
+            svc = PackService(data_path=ruta_destino)
+            assert svc.migrado_desde == legacy, (
+                f"sin migracion no hay nada que medir: {svc.migrado_desde!r}"
+            )
+            assert os.path.exists(ruta_destino), "la migracion no creo el destino"
+            mtime_destino = os.stat(ruta_destino).st_mtime_ns
+            assert mtime_destino == fijo, (
+                f"el destino tiene la hora {mtime_destino} y el origen la tiene "
+                f"{fijo}: la copia se ha hecho con `copy` en vez de `copy2` y el "
+                f"fichero del usuario ha llegado marcado como recien escrito"
+            )
+            assert os.stat(ruta_destino).st_size == os.stat(ruta_origen).st_size, (
+                "ademas de la fecha, el contenido tiene que ser el del origen"
+            )
+        finally:
+            _t069_restaura(ps, antes_candidatos, antes_guarda)
+    finally:
+        _t069_borrar(temp)
+    print("La migracion copia el contenido y tambien la hora del origen.")
+
+
+def test_la_degradacion_a_la_ruta_del_ejecutable_se_avisa():
+    """TASK-069 T-2. Mata al mutante `DEGRADA_AL_EXE_SIN_AVISO`.
+
+    `data_dir()` cae a `_app_dir()` cuando no hay `%APPDATA%`, ni
+    `%LOCALAPPDATA%`, ni override. Eso devuelve los packs a la ruta ATADA AL
+    BINARIO, que es justo la ruta que T-2 vino a quitar, y es un estado en el que
+    dos instalaciones distintas se vuelven a separar los packs sin que nadie se
+    entere. El codigo lo avisa, y el aviso no lo miraba nadie: MEDIDO, quitar el
+    `logger.warning` de esa rama pasa los 173 tests de este ciclo.
+
+    La asercion no es "ha fleeting un warning" sino que el aviso diga LAS DOS
+    COSAS QUE LO HACEN ACCIONABLE: la variable de entorno que se ha buscado y la
+    ruta a la que se ha caido, con su valor real. Un aviso generico ("no hay
+    APPDATA, usando la ruta por defecto") deja al usuario sin poder arreglarlo.
+    """
+    import woptimizer.config as config
+
+    temp = tempfile.mkdtemp(prefix="wopt_t069_degradacion_")
+    try:
+        entorno = {k: os.environ.pop(k, None)
+                   for k in (config.ENV_DATA_DIR, "APPDATA", "LOCALAPPDATA")}
+        try:
+            with _t069_registros() as registros:
+                destino = config.data_dir()
+        finally:
+            for clave, valor in entorno.items():
+                if valor is not None:
+                    os.environ[clave] = valor
+        assert destino == config._app_dir(), (
+            f"sin %APPDATA% la degradacion es a _app_dir() y ha salido {destino!r}"
+        )
+        filas = [r.getMessage() for r in registros
+                 if r.funcName == "data_dir" and r.levelname == "WARNING"]
+        assert len(filas) == 1, (
+            f"la degradacion tiene que emitir UN aviso y ha emitido {len(filas)}: "
+            f"{filas}"
+        )
+        aviso = filas[0]
+        assert config.ENV_DATA_DIR in aviso, (
+            f"el aviso no dice que variable se ha buscado, asi que el usuario no "
+            f"sabe que puede poner: {aviso!r}"
+        )
+        assert config._app_dir() in aviso, (
+            f"el aviso no dice DONDE han caído los datos, que es lo unico que "
+            f"hace falta para recuperarlos: {aviso!r}"
+        )
+        assert os.path.basename(config._app_dir()) in aviso, (
+            f"el aviso deberia pouvoir la ruta en su forma legible: {aviso!r}"
+        )
+    finally:
+        _t069_borrar(temp)
+    print("Degradar a la ruta del ejecutable se dice, con la ruta y la variable.")
+
+
+def test_la_ruta_que_anuncia_el_diagnostico_existe_de_verdad():
+    """TASK-069 T-1. Mata a los mutantes `T1_AVISA_RUTA_EQUIVOCADA` y
+    `LOG_NOMBRA_RUTA_EQUIVOCADA`.
+
+    Defecto REAL en HEAD, no hipotetico: la fila de T-1 concatenaba el
+    directorio del candidato con el nombre del fichero SIN separador y decia
+    "...\\legacyprofiles.json", una ruta que no existe. MEDIDO: el defecto no se
+    ve solo porque la asercion anterior leia el log ENTERO, y la fila hermana de
+    `_migrar_desde()` nombra el mismo fichero bien escrito; o sea, cinco tests
+    pasaban con la fila de diagnostico rota. Un aviso que manda al usuario a una
+    ruta que no lleva a ninguna parte es PEOR que no avisar, porque pierde la
+    confianza en el aviso y el usuario no vuelve a mirar el siguiente.
+
+    POR QUE se mira el REGISTRO y no el fichero de log: para que la asercion la
+    satisfaga LA FILA DE DIAGNOSTICO y no cualquier otra del mismo fichero de log.
+    Y el contenido se afirma en dos niveles: la ruta exacta que se nombra
+    (`os.path.join(legacy, "profiles.json")`) y que esa ruta EXISTA, que es lo que
+    distingue la fila bien escrita de la concatenada. La contraprueba final
+    afirma que la ruta de la concatenacion NO existe, o sea que la comprobacion de
+    existencia discrimina de verdad y no acepta cualquier cadena.
+    """
+    import woptimizer.services.pack_service as ps
+    from woptimizer.services.pack_service import PackService
+
+    temp = tempfile.mkdtemp(prefix="wopt_t069_ruta_")
+    try:
+        legacy, ruta_origen = _t069_crear_legacy(temp)
+        antes_candidatos = ps.candidatos_de_datos
+        antes_guarda = _t069_guarda(ps)
+        try:
+            _t069_candidatos_que_apuntan_a(legacy, PackService)
+            ruta_destino = os.path.join(temp, "destino", "profiles.json")
+            with _t069_registros() as registros:
+                PackService(data_path=ruta_destino)
+            filas = _t069_filas_de(registros, "_diagnosticar_y_migrar")
+            assert len(filas) == 1, (
+                f"la fila de diagnostico tiene que emitir UN aviso y ha emitido "
+                f"{len(filas)}: {filas}"
+            )
+            aviso = filas[0]
+            buena = os.path.join(legacy, "profiles.json")
+            assert buena in aviso, (
+                f"el aviso tiene que nombrar la ruta REAL del candidato. Dice "
+                f"{aviso!r} y la ruta buena es {buena!r}"
+            )
+            mal = f"{legacy}profiles.json"
+            assert mal not in aviso, (
+                f"el aviso nombra la ruta concatenada SIN separador {mal!r}, que "
+                f"no existe en ningun sitio"
+            )
+            assert os.path.exists(buena), "el fichero del origen no esta"
+            assert not os.path.exists(mal), (
+                f"CONTRAPRUEBA rota: {mal!r} deberia ser una ruta imposible, y "
+                f"existe. Si existe, la comprobacion de existencia de este test "
+                f"no distingue la concatenacion de la ruta buena y este test no "
+                f"mide nada."
+            )
+            # Y la asercion de verdad: de lo que el aviso nombra, existe.
+            import re
+            # El punto de "profiles.json" es PARTE de la ruta, asi que el patron
+            # no puede cortar en el: `[^\\s.;]+` partia el path en "profiles" y la
+            # comprobacion de existencia miraba un fichero que no existe nunca.
+            # Y el separador de frase es ". " (punto y espacio), que es lo unico
+            # que cierra un token con seguridad: `[^\s]` partia el path en un
+            # `%TEMP%` CON ESPACIOS, que es un host legitimo. MEDIDO aqui con el
+            # temporal sin espacios; el patron se escribe para que tambien
+            # funcione con ellos, y `\.$` cierra el ultimo.
+            nombradas = re.findall(r"[A-Za-z]:[\\/].*?(?=\. |\.?$)", aviso)
+            assert nombradas, f"el aviso no nombra ninguna ruta absoluta: {aviso!r}"
+            for nombrada in nombradas:
+                assert os.path.exists(nombrada), (
+                    f"el aviso manda al usuario a {nombrada!r} y ese path no "
+                    f"existe. Lo que se ofrece como ayuda tiene que estar ahi."
+                )
+
+            # Y LA FILA HERMANA, que es la MISMA clase de defecto y la que toca
+            # el mutante `LOG_NOMBRA_RUTA_EQUIVOCADA`. MEDIDO, y por eso esta
+            # fila existe con la forma que tiene: una version del mutante que
+            # rompia la RUTA de LECTURA moria con `FileNotFoundError`, y una
+            # excepcion no es una asercion del contrato sino el sintoma de un
+            # mutante mal construido. El mutante de verdad nombra un path que SI
+            # existe y que NO es el origen --el directorio en vez del fichero--.
+            #
+            # Y POR QUE LA ASERCION MIRA LA COLA DEL MENSAJE y no "la ruta buena
+            # aparece en el mensaje": MEDIDO, con el mutante puesto la ruta buena
+            # SEGUIA apareciendo en la otra mitad de la frase ("Packs migrados
+            # por COPIA desde {origen} a ..."), luego la asercion la satisfacia
+            # la mitad que el mutante no tocaba y el test pasaba en verde. La
+            # cola que va detras de "EL ORIGINAL SE QUEDA en " es la que dice
+            # donde se ha quedado el original, y esa no la puede satisfacer
+            # nadie mas.
+            filas_mig = _t069_filas_de(registros, "_migrar_desde")
+            assert len(filas_mig) == 1, (
+                f"la fila de la migracion tiene que emitir UN aviso y ha emitido "
+                f"{len(filas_mig)}: {filas_mig}"
+            )
+            # El marcador se busca SIN la "El" del principio porque en el codigo
+            # la frase se parte entre dos literales y la "El" queda en el
+            # anterior: MEDIDO, buscarla con "EL ORIGINAL" hacia fallar el test
+            # en verde, o sea un guard que no miraba nada.
+            assert "ORIGINAL SE QUEDA en " in filas_mig[0], (
+                f"la fila de la migracion tiene que decir donde se queda el "
+                f"ORIGEN: {filas_mig[0]!r}"
+            )
+            cola = filas_mig[0].split("ORIGINAL SE QUEDA en ", 1)[1]
+            assert cola.startswith(buena), (
+                f"lo que dice que se queda el original es {cola[:90]!r} y el "
+                f"origen es {buena!r}. Nombrar el DIRECTORIO en vez del fichero "
+                f"manda al usuario a una carpeta y le hace buscar dentro a mano."
+            )
+            assert os.path.isfile(buena), (
+                f"lo que dice que se queda es un FICHERO y {buena!r} no lo es"
+            )
+            assert ruta_destino in filas_mig[0], (
+                f"la fila de la migracion tiene que decir a donde se ha copiado, "
+                f"que es {ruta_destino!r}. Dice {filas_mig[0]!r}"
+            )
+        finally:
+            _t069_restaura(ps, antes_candidatos, antes_guarda)
+    finally:
+        _t069_borrar(temp)
+    print("La ruta que anuncia el diagnostico existe y esta escrita con separador.")
+
+
+def test_el_log_de_t1_nombra_el_destino_y_el_candidato():
+    """TASK-069 T-1. Mata al mutante `LOG_MUDA` (bajar la fila a un aviso
+    generico).
+
+    El criterio de T-1, escrito en la especificacion, es que el log nombre al
+    CANDIDATO con su ruta absoluta: eso es lo que convierte "no encuentro tus
+    packs" en algo accionable. Ese criterio no tenia guardian, y MEDIDO: bajar
+    la fila a "Hay packs en otra carpeta; se van a recuperar" pasa los 173
+    tests, porque ninguna asercion exigia que la fila dijera el QUÉ y el DÓNDE.
+
+    Las dos rutas, las dos en la MISMA fila de la MISMA funcion, y por eso el
+    filtro es por `funcName`: con la fila bajada, `_migrar_desde()` sigue
+    nombrando el origen y un test que leyera el log entero pasaria en verde.
+    """
+    import woptimizer.services.pack_service as ps
+    from woptimizer.services.pack_service import PackService
+
+    temp = tempfile.mkdtemp(prefix="wopt_t069_logt1_")
+    try:
+        legacy, ruta_origen = _t069_crear_legacy(temp)
+        antes_candidatos = ps.candidatos_de_datos
+        antes_guarda = _t069_guarda(ps)
+        try:
+            _t069_candidatos_que_apuntan_a(legacy, PackService)
+            ruta_destino = os.path.join(temp, "destino", "profiles.json")
+            with _t069_registros() as registros:
+                PackService(data_path=ruta_destino)
+            filas = _t069_filas_de(registros, "_diagnosticar_y_migrar")
+            assert len(filas) == 1, f"filas de diagnostico: {filas}"
+            aviso = filas[0]
+            assert ruta_destino in aviso, (
+                f"el aviso tiene que decir DONDE no se han encontrado los packs "
+                f"({ruta_destino!r}), que es el dato que distingue 'no estan' de "
+                f"'no los he buscado'. Dice {aviso!r}"
+            )
+            assert os.path.join(legacy, "profiles.json") in aviso, (
+                f"el aviso tiene que decir DONDE estan ({legacy}), con la ruta "
+                f"absoluta del fichero y no el nombre de la carpeta. Dice "
+                f"{aviso!r}"
+            )
+            assert os.path.isabs(os.path.join(legacy, "profiles.json")), (
+                "la ruta del candidato tiene que ser absoluta: una relativa no "
+                "sirve para que el usuario la encuentre"
+            )
+            assert aviso.count(os.sep) > 1, (
+                f"un aviso de una frase sin separadores no trae ninguna ruta: "
+                f"{aviso!r}"
+            )
+        finally:
+            _t069_restaura(ps, antes_candidatos, antes_guarda)
+    finally:
+        _t069_borrar(temp)
+    print("La fila de T-1 dice las dos rutas: donde faltan y donde estan.")
+
+
+def test_el_gaming_repuesto_a_ciegas_no_es_silencioso():
+    """TASK-069 T-4, y es el fallo MEDIDO que la guarda de `_candidatos_para`
+    estaba causando. No lo mata ningun mutante de este turno: es el precio de
+    dejar la guarda puesta, y el precio se paga aqui o no se paga.
+
+    MEDIDO con la guarda puesta y sin esta rama: con un `data_path` inyectado
+    -- o sea un destino que NO es el de la app, con la busqueda de la ruta
+    antigua apagada por construccion -- el servicio llega a
+    `_ensure_gaming_pack()`, repone el Gaming de FABRICA con sus 5 categorias y
+    sus 2 keepers, y `mensaje_danado()` devuelve `None`. Cero diagnostico para un
+    Gaming de fabrica que el usuario no eligio, que es exactamente el fallo que
+    T-4 vino a cerrar por el otro lado (TASK-063: la lista anti-brick que
+    desaparecia en silencio).
+
+    Y NO se resuelve avisando siempre, porque entonces la instalacion limpia
+    --el caso legitimo y mayoritario-- avisaria de un problema que no tiene. La
+    contraprueba de abajo afirma que en la instalacion limpia, con la busqueda
+    ENCENDIDA y sin nada que encontrar, sigue sin decirse nada.
+    """
+    import woptimizer.services.pack_service as ps
+    from woptimizer.services.pack_service import PackService, DEFAULT_GAMING_PACK
+
+    temp = tempfile.mkdtemp(prefix="wopt_t069_ciegas_")
+    try:
+        # La guarda REAL: `candidatos` queda vacio sin tocar nada.
+        ruta_destino = os.path.join(temp, "inyectado", "profiles.json")
+        svc = PackService(data_path=ruta_destino)
+        assert svc.candidatos == [], (
+            f"este test mide el estado de la guarda puesta y hay "
+            f"{svc.candidatos!r} candidatos"
+        )
+        assert svc.gaming_repuesto is True, (
+            "sin fichero, el Gaming de fabrica se repone (T-4)"
+        )
+        gaming = svc.get_all_packs()["gaming"]
+        assert gaming.target_categories == DEFAULT_GAMING_PACK.target_categories, (
+            "lo que se repone es el Gaming de fabrica, con sus categorias"
+        )
+        assert gaming.keepers == DEFAULT_GAMING_PACK.keepers, (
+            "y con sus keepers, que son los que deciden que se apaga"
+        )
+        mensaje = svc.mensaje_danado()
+        assert mensaje, (
+            "el Gaming de fabrica se ha reponido y nadie lo va a decir: "
+            "mensaje_danado() es None. Un Gaming de fabrica en silencio es el "
+            "mismo fallo de seguridad que la lista anti-brick que se perdia sin "
+            "avisar, y por eso T-4 lo declara"
+        )
+        assert ruta_destino in mensaje, (
+            f"el mensaje tiene que nombrar el fichero vacio, que es lo que el "
+            f"usuario puede rellenar o revisar: {mensaje!r}"
+        )
+        assert svc.motivo_gaming_repuesto in mensaje, (
+            f"el mensaje tiene que llevar el MOTIVO declarado, que es lo que "
+            f"nombra las categorias y los keepers repuestos, y no solo que "
+            f"falta el fichero: {mensaje!r}"
+        )
+        assert f"{len(DEFAULT_GAMING_PACK.target_categories)} categorias" in mensaje, (
+            f"el mensaje tiene que decir CON CUANTAS categorias, que es lo que "
+            f"explica que el modo se cierre de mas: {mensaje!r}"
+        )
+
+        # CONTRAPRUEBA: instalacion limpia, con la busqueda ENCENDIDA. Aqui el
+        # `None` es lo correcto y es lo que mata al mutante `SIEMPRE_AVISAR`.
+        antes_guarda = _t069_guarda(ps)
+        try:
+            vacio = os.path.join(temp, "vacio")
+            os.makedirs(vacio, exist_ok=True)
+            ps.PackService._candidatos_para = staticmethod(lambda data_path: [vacio])
+            limpio = PackService(data_path=os.path.join(temp, "limpio", "profiles.json"))
+            assert limpio.gaming_repuesto is True, "tambien se repone al arrancar"
+            assert limpio.mensaje_danado() is None, (
+                f"una instalacion LIMPIA no tiene nada que contar y esta "
+                f"diciendo {limpio.mensaje_danado()!r}: se ha buscado en la ruta "
+                f"antigua y no habia nada, que es lo que el producto promete en su "
+                f"primera ejecucion"
+            )
+        finally:
+            _t069_restaura(ps, None, antes_guarda)
+    finally:
+        _t069_borrar(temp)
+    print("Un Gaming repuesto a ciegas se declara; una instalacion limpia no avisa.")
+
+
+def test_los_nombres_del_servicio_son_los_de_config():
+    """TASK-069 T-3, cierre del cierre. Mata al mutante que vuelva a meter una
+    COPIA local de la decision o un envoltorio propio alrededor de ella.
+
+    El comentario que este test viene a sustituir afirmaba que la forma
+    `from woptimizer.config import (a, b, c, d, e)` FALLA en este interprete
+    cuando `services/pack_service.py` esta presente, y lo sostenia con una
+    medicion. MEDIDO de nuevo: no se reproduce (CPython 3.13.8), y la linea 9 de
+    este mismo fichero -- 25 lineas por encima de aquel comentario -- ya usaba
+    ESA forma con tres nombres y nunca fallo. El `importlib` se ha ido porque era
+    un rodeo para un bug que no existe, y no porque fuera incorrecto: ligaba el
+    MISMO objeto funcion.
+
+    Y este test ata lo que de verdad importa del asunto, que no es el rodeo sino
+    la IDENTIDAD: el servicio usa la MISMA funcion que el contrato, no una copia
+    suya. Si alguien reintroduce un envoltorio -- "por seguridad", "por no tocar
+    config" -- la decision de que ruta manda y la del diagnostico pueden
+    discrepar, y esa clase de discrepancia es invisible hasta que un usuario
+    pierde packs.
+    """
+    import woptimizer.config as config
+    import woptimizer.services.pack_service as ps
+
+    for nombre in ("PROFILES_FILE", "PROFILES_FILE_NAME",
+                   "candidatos_de_datos", "elegir_ruta_de_datos"):
+        assert getattr(ps, nombre) is getattr(config, nombre), (
+            f"pack_service.{nombre} no es el MISMO objeto que config.{nombre}. "
+            f"El servicio tiene que usar la funcion del contrato, no una copia "
+            f"local: dos copias pueden discrepar sobre que ruta manda y esa "
+            f"discrepancia no se ve hasta que alguien pierde packs"
+        )
+
+
+def test_el_contrato_de_persistencia_se_declara_como_contrato():
+    """TASK-069 T-2, cierre. Mata a los mutantes `DOC_AMILLA_MIENTRAS_DICE_APPDATA`
+    y `DOC_APPDATA_EN_ARCHITECTURA_SOLO`.
+
+    EL GUARD ANTERIOR ERA POR SUBCADENA, y por eso no mordia: quitaba la unica
+    mencion de `%APPDATA%`, si, pero reescribir la frase del contrato a "junto al
+    ejecutable" y dejar una mencion decorativa de `%APPDATA%` mas abajo pasaba
+    los 173. Un guard que busca una cadena en un documento que el mutante puede
+    dejar puesta en otro parrafo no vigila el contrato: vigila la cadena.
+
+    EL PREDICADO es de CONTENIDO y exige que las dos mitades del contrato esten en
+    la MISMAunidad de texto: la ruta `%APPDATA%\\woptimizer\\profiles.json` Y la
+    negacion de "junto al ejecutable". Con las dos dentro del mismo parrafo se cae
+    a la vez la mencion decorativa y la frase reescrita, y ninguna de las dos
+    puede sustituir a la otra.
+
+    Y, que es lo que el guard anterior no hacia: el mutante PASA POR EL GUARD. Se
+    escribe el documento mutado a `%TEMP%`, se LEE DE NUEVO y se le pasa al
+    MISMO predicado que usa el validador, y se exige que lo acuse. Un guard que
+    devuelve siempre lista vacia no puede pasar esto porque la contraprueba es el
+    documento real mutado, no una cadena en memoria.
+    """
+    import validate_docs
+
+    root = os.path.dirname(os.path.abspath(__file__))
+    docs = ("architecture.md", "data-models.md")
+    predicado = validate_docs.violaciones_del_contrato_de_persistencia
+
+    for nombre in docs:
+        with open(os.path.join(root, "docs", "ai", nombre), encoding="utf-8") as fh:
+            cuerpo = fh.read()
+        assert predicado(cuerpo, nombre) == [], (
+            f"{nombre} declara el contrato de persistencia y el predicado lo "
+            f"acusa: {predicado(cuerpo, nombre)}"
+        )
+
+    temp = tempfile.mkdtemp(prefix="wopt_t069_contrato_")
+    try:
+        with open(os.path.join(root, "docs", "ai", "data-models.md"),
+                  encoding="utf-8") as fh:
+            base = fh.read()
+
+        # MUTANTE 1: la frase del contrato pasa a decir "junto al ejecutable" y se
+        # AÑADE una mencion DECORATIVA de `%APPDATA%` mas abajo, que es lo que
+        # hacia pasar el guard por subcadena. La mencion se añade de verdad
+        # (append) y no se cambia por otra: en `data-models.md` el unico sitio
+        # donde se nombra `%APPDATA%` es la propia frase del contrato, asi que un
+        # mutante "realista" tiene que dejar la cadena puesta en otra parte.
+        m1 = base.replace(
+            "el archivo en disco es `%APPDATA%\\woptimizer\\profiles.json`, y ya NO\n"
+            "  está junto al ejecutable.",
+            "el archivo en disco vive junto al ejecutable.")
+        m1 = m1 + ("\n- Nota de entorno de este host: `%APPDATA%` apunta a la carpeta de\n"
+                   "  Roaming del usuario y aqui solo se menciona de pasada.\n")
+        # El pre-vuelo mira la FRASE DEL CONTRATO y no la ruta a secas. MEDIDO en
+        # esta misma pasada: la ruta `%APPDATA%\woptimizer\profiles.json` sale
+        # tambien en la fila de la precedencia, que esta dos parrafos mas abajo, y
+        # un pre-vuelo que exigiera "la ruta no aparece" moria con el mutante
+        # CORRECTAMENTE aplicado. Un pre-vuelo que no distingue es un pre-vuelo
+        # que obliga a aflojar la asercion buena.
+        assert "y ya NO\n  está junto al ejecutable" not in m1, (
+            "el mutante 1 tiene que quitar la NEGACION de la frase del contrato, y "
+            "el remplazo no ha aplicado: la prueba de que el mutante es lo que dice "
+            "no vale"
+        )
+        assert "el archivo en disco vive junto al ejecutable" in m1, (
+            "el mutante 1 tiene que reescribir la frase del contrato a 'junto al "
+            "ejecutable', y el remplazo no ha aplicado"
+        )
+        ruta_m1 = os.path.join(temp, "data-models-mutado-1.md")
+        with open(ruta_m1, "w", encoding="utf-8") as fh:
+            fh.write(m1)
+        with open(ruta_m1, encoding="utf-8", newline="") as fh:
+            leido = fh.read()
+        assert "%APPDATA%" in leido, (
+            "CONTRAPRUEBA del mutante 1: la mencion decorativa tiene que seguir "
+            "ahi, o el guard anterior (por subcadena) lo habria muerto y este "
+            "test no estaria probando lo que dice probar"
+        )
+        assert predicado(leido, "data-models.md mutado 1"), (
+            "un contrato reescrito a 'junto al ejecutable' con una mencion "
+            "decorativa de `%APPDATA%` mas abajo tiene que ser acusado: lo que "
+            "dice el documento y donde estan de verdad los datos han divergido"
+        )
+
+        # MUTANTE 2: la ruta entera se queda y se cae la NEGACION, que es la otra
+        # mitad del contrato. Un guard que solo mirase la ruta pasaria.
+        m2 = base.replace("y ya NO\n  está junto al ejecutable.",
+                          "y además\n  está junto al ejecutable.")
+        ruta_m2 = os.path.join(temp, "data-models-mutado-2.md")
+        with open(ruta_m2, "w", encoding="utf-8") as fh:
+            fh.write(m2)
+        with open(ruta_m2, encoding="utf-8", newline="") as fh:
+            leido2 = fh.read()
+        assert "`%APPDATA%\\woptimizer\\profiles.json`" in leido2, (
+            "el mutante 2 conserva la ruta a proposito"
+        )
+        assert predicado(leido2, "data-models.md mutado 2"), (
+            "un contrato que dice la ruta correcta y no dice que ya NO este junto "
+            "al ejecutable esta a medio camino: la mitad de la frase que evita que "
+            "alguien lo vuelva a mover tiene que estar escrita"
+        )
+    finally:
+        _t069_borrar(temp)
+    print("El contrato de persistencia se comprueba por contenido, no por cadena.")
+
+
+def test_el_check_del_contrato_usa_el_mismo_predicado_que_el_test():
+    """TASK-069 T-2, cierre. Mata al mutante que deje el predicado en
+    `run_tests.py` y no lo cablee en `validate_docs.py`.
+
+    MEDIDO: hasta este cierre el guard vivia SOLO en `run_tests.py`, y
+    `validate_docs.py` no tenia ninguno de TASK-069. O sea que un documento
+    reescrito se sostenia en verde mientras la suite corriera y caia en rojo
+    cuando no corriera: al reves de como funciona una guarda.
+
+    Y la atadura se afirma por AST, no por TEXTO, y no es purismo. MEDIDO en esta
+    misma ronda: la primera version de esta fila buscaba el nombre del predicado
+    con `inspect.getsource(validar)` y el mutante `CONTRATO_SIN_CABLEAR` --que
+    borra la LLAMADA-- **sobrevivio**, porque el nombre del predicado esta
+    tambien en el COMENTARIO que explica por que se delega, y un comentario no
+    ejecuta nada. Es la misma clase que el superviviente S7 de TASK-066 ("la
+    regla de rama escrita en un comentario"), y este repo ya lo pago una vez.
+    """
+    import ast
+    import inspect
+    import textwrap
+    import validate_docs
+
+    def llamadas_de(fn):
+        """Los NOMBRES de funcion a los que `fn` llama DE VERDAD, sin prosa.
+
+        `inspect.getsource` + un `in` no distinguen codigo de comentario, y `ast`
+        si: un comentario no es un nodo `ast.Call`.
+        """
+        arbol = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+        return {n.func.id for n in ast.walk(arbol)
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+
+    cableo = llamadas_de(validate_docs.validar)
+    assert "_comprobar_contrato_de_persistencia" in cableo, (
+        "el check del contrato tiene que estar CALLADO en validar(), no "
+        f"mencionado: las llamadas reales de validar() son {sorted(cableo)}. Un "
+        "check que solo aparece en un comentario no se ejecuta cuando nadie "
+        "mira el comentario."
+    )
+    dentro = llamadas_de(validate_docs._comprobar_contrato_de_persistencia)
+    assert "violaciones_del_contrato_de_persistencia" in dentro, (
+        "el check tiene que CALLAR al predicado que este test usa, y sus "
+        f"llamadas reales son {sorted(dentro)}"
+    )
+    # Y el predicado tiene que ser el MISMO OBJETO, no uno con el mismo nombre.
+    assert (validate_docs._comprobar_contrato_de_persistencia.__module__
+            == validate_docs.violaciones_del_contrato_de_persistencia.__module__), (
+        "el predicado que usa el validador y el que usa este test tienen que "
+        "salir del MISMO modulo"
+    )
+    # Los DOS documentos se nombran en la FUNCION DELEGADA, no en `validar()`:
+    # `validar()` solo cablea el check (D1), y buscar los nombres ahi seria
+    # exigirle logica que este repo se prohibe a proposito.
+    cuerpo_del_check = inspect.getsource(
+        validate_docs._comprobar_contrato_de_persistencia)
+    assert "data-models.md" in cuerpo_del_check and "architecture.md" in cuerpo_del_check, (
+        "el contrato se declara en los DOS documentos: el uno dice donde viven los "
+        "datos y el otro dice que no siguen al binario, y con uno solo se puede "
+        "dejar la mitad sin escribir"
+    )
+    assert validate_docs.violaciones_del_contrato_de_persistencia("", "vacio"), (
+        "un documento vacio no puede declarar el contrato: el predicado tiene que "
+        "poder decir 'no' y no solo 'si'"
+    )
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -21846,6 +22760,23 @@ if __name__ == "__main__":
     test_el_contrato_de_persistencia_no_promete_el_ejecutable()
     test_la_comprobacion_de_la_cuadra_es_de_verdad_una_comprobacion()
     test_el_guard_de_ausencia_ignora_a_la_instalacion_limpia_sin_revistar()
+    # TASK-069, cierre del Paso 4: los OCHO supervivientes que dejo el
+    # mutation-auditor, uno por test, y el noveno que tapa el fallo MEDIDO que
+    # causaba la guarda de `_candidatos_para`. Suite: 173 -> 182.
+    # El orden es el del dano: primero la PRECEDENCIA, que es el unico que toca
+    # datos del usuario (el pack mas reciente se pierde en silencio a favor del
+    # viejo), y despues el resto. Todas van DETRAS del marcador headless porque
+    # son de servicio, disco, entorno y contrato: ninguna abre ventana.
+    test_el_destino_manda_sobre_el_origen_si_el_destino_se_puede_leer()  # 1 el grave
+    test_un_data_path_inyectado_no_busca_la_ruta_antigua()               # 2
+    test_la_migracion_conserva_el_mtime_del_origen()                      # 3
+    test_la_degradacion_a_la_ruta_del_ejecutable_se_avisa()              # 4
+    test_la_ruta_que_anuncia_el_diagnostico_existe_de_verdad()            # 5
+    test_el_log_de_t1_nombra_el_destino_y_el_candidato()                 # 6
+    test_el_gaming_repuesto_a_ciegas_no_es_silencioso()                  # 7
+    test_los_nombres_del_servicio_son_los_de_config()                    # 8
+    test_el_contrato_de_persistencia_se_declara_como_contrato()          # 9
+    test_el_check_del_contrato_usa_el_mismo_predicado_que_el_test()      # 10
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.

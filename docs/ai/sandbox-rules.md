@@ -695,6 +695,20 @@ no lo estaba (ciclo #15):
    comporta como antes.
 4. La independencia real de actor **no existe dentro de la banda**: solo la puerta humana la da,
    y el proyecto es explícitamente autónomo.
+5. **PUNTO CIEGO MEDIDO el 2026-10-05 (cierre de TASK-069), y es de los que no se ven porque el
+   validador sale en verde.** El residuo se indexa por el **número de ciclo que aparece en el
+   asunto** (`ciclo N`, `CYCLE-NNN`), luego un asunto que lleva **solo** `(TASK-NNN)` no entra en
+   ninguna de las dos mitades del ancla: no aporta ciclo al historial y tampoco se le pide entrada
+   de journal por ese numero. MEDIDO en este repo: **20 de los 40 ultimos commits** —los cuatro de
+   TASK-069 incluidos— no estan en `rd_journal.json`, y `validate_docs.py` informa **0 FAIL**.
+   No es un fallo de la puerta del mensaje, que si exige identificador: `TASK-069` es un
+   identificador valido y resuelve. Es un fallo de **granularidad**: el identificador de tarea
+   ancla el commit contra la lista de ids, y el de ciclo ancla el commit contra el journal, y
+   un commit de tarea no deja rastro de ciclo. La parte es del orquestador (es quien escribe
+   `rd_journal.json`) y la parte de aqui es una regla: **el asunto de un commit de cierre de
+   ciclo lleva las dos marcas**, `(ciclo N)` y `(TASK-NNN)`, para que el commit tenga tercer
+   testigo sea cual sea la vía. Con esa regla el punto 2 de arriba sigue valiendo y este deja de
+   tener hueco.
 
 El número de commits sin marcador se imprime en el informe del validador a propósito, para que
 el punto ciego se **mida** en cada pasada en lugar de quedar verde.
