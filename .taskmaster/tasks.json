@@ -1520,6 +1520,18 @@
       "status": "pending",
       "dependencies": [],
       "module": "validate_docs.py"
+    },
+    {
+      "id": "TASK-071",
+      "title": "Aplicaciones protegidas: un pack que no se ejecuta y cuyas apps no se matan nunca",
+      "description": "FEATURE pedida por el dueno el 2026-10-05, textual: 'aplicaciones protegidas. sera un pack especial, su funcionamiento sera que las aplicaciones que esten ahi, no seran matadas nunca por la ejecucion de otro pack. este pack no se puede matar ni iniciar ni nada, las aplicaciones que esten en este pack, no apareceran en ningun otro lugar, ni en la ventana de todos los procesos ni en los demas packs'. LO QUE ESTA YA MEDIDO, porque el pack de keepers EXISTE y se puede reutilizar en vez de inventar el mecanismo: (1) `models.py:40 keepers` es la lista de PROCESOS PROTEGIDOS y `Pack.keepers` es un `list[str]` de PATRONES; (2) el motor de `gaming_service.py` y `process_service.py` ya sabe filtrar por `keepers` y ya lo hace en la ruta de apagado, o sea que el 'no se matan nunca' es CORTA DE CODIGO y no una invencion; (3) el Traffic Light ya tiene rojo = 'nunca se toca' y `SYSTEM_PROTECTED_PROCESSES` cubre los procesos de sistema, asi que la UI tiene vocabulario para esto. LO QUE ES NUEVO Y HAY QUE DISEÑAR, y son las cuatro preguntas que hacen que esto sea mas que un filtro: (a) LA INVISIBILIDAD es la parte fuerte del encargo y tiene consecuencias que hay que escribir antes de codificar: si un proceso no aparece en la ventana de todos los procesos, el usuario no lo ve, no lo puede quitar del pack a mano, y si se cuelga **no hay ninguna forma de matarlo desde la app**. Eso hay que decidirlo explicitamente, porque 'invisible' y 'recuperable' se parecen pero no son lo mismo. (b) LA MUTUAL EXCLUSION con los otros packs: un proceso protegido no puede estar a la vez en un pack que se mata, y el filtro tiene que ganar SIEMPRE, no segun el orden de ejecucion, o el resultado dependeria de que pack se ejecutara antes. (c) EL PACK MISMO 'no se puede matar ni iniciar ni nada': eso es un `default_action` imposible y la UI tiene que dejar de ofrecer esos botones para el, no basta con que el boton no haga nada. (d) LA PERSISTENCIA: `keepers` hoy son PATRONES y este pack guardaria APLICACIONES, asi que hay que decidir si se guarda como patron o como ejecutable resuelto, que es la diferencia entre 'protegido Discord' y 'protegido todo lo que se llame discord'. DEPENDENCIA CRITICA que hay que escribir: esto se apoya en `keepers`, y `keepers` es exactamente lo que se pierde cuando la app no encuentra sus packs y repone el Gaming de fabrica (TASK-069, hallazgo de seguridad de CYCLE-056, medido: el Gaming de fabrica repone `keepers [steam.exe, discord.exe]` y 5 categorias SIN avisar). O sea: este pack solo vale si la reposicion del Gaming de fabrica **deja de reponer keepers en silencio**. Construir el pack sin cerrar eso es edificar sobre arena.",
+      "complexity": "high",
+      "priority": "medium",
+      "status": "pending",
+      "dependencies": [
+        "TASK-069"
+      ],
+      "module": "models/services/ui"
     }
   ]
 }

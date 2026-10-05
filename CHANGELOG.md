@@ -1,3 +1,31 @@
+## CYCLE-057 - 2026-10-05
+
+**Servicios / Persistencia** - `TASK-069` (Tu copia de seguridad ya no se machaca)
+
+**Estado**: **terminado y auditado.** Tests: **187** (140 + 47). Documentación: **134 comprobaciones sin fallos**.
+
+Esta es la segunda mitad del arreglo de tus packs, y es la parte que no se veía pero dolía igual.
+
+### 🔴 Lo que se había roto y no sabíamos
+
+- 🛡️ **Tu copia de seguridad desaparecía en el primer guardado tras recuperar tus packs.** El proceso era: se recuperaban tus packs, y al guardar por primera vez la copia de seguridad **anterior** se sustituía por la recién copiada. O sea, perdías la red de seguridad justo cuando la acababas de usar. Además solo pasaba por el camino de la recuperación: si ya tenías packs donde tocaba, no se perdía. **Arreglado** con un guardado aparte antes de rotar, y si ese guardado no se puede escribir, **no se rota nada** — prefiero un aviso a comerse tu única copia.
+- 🛡️ **Un Gaming Mode más agresivo, sin decirlo, por otra puerta.** Cuando **los dos** ficheros estaban dañados, el programa te avisaba de la corrupción (bien), pero en silencio reponía el pack Gaming de fábrica con 5 categorías y Steam y Discord protegidos **por él**, y el siguiente guardado **sobrescribía tu fichero dañado** con eso. El aviso de la reposición solo funcionaba en una de las dos puertas.
+- 🟡 **La decisión sobre qué packs ganan se aplicaba sin que nadie la hubiera escrito.** Ahora está escrita con su consecuencia exacta: **gana el fichero de donde corre la app siempre**, aunque tenga menos packs que el antiguo, y en el caso de un fichero **existente y vacío** tus packs heredados **no vuelven** y **no se avisa**. No es un fallo: es una decisión que había que tomar y nadie tomó. **Está documentada**, y te la dejo como pregunta abierta con tres opciones y su coste.
+- 🟡 **Una puerta interna que decide dónde están tus datos podía esquivarse sin que ningún test se enterara.** No perdía datos hoy, pero dejaba la decisión de "instalación limpia" en dos sitios distintos, y el siguiente cambio en uno no habría llegado al otro. **Cerrado con una comprobación de verdad**, que busca la llamada en el código y no en un texto.
+
+### Un bug de producto que resultó ser otro
+
+Al planificar el arranque por categorías (TASK-068) se descubrió que **esa función ya sumaba las categorías**, y que la premisa del encargo era falsa contra el código. Lo que sí falla es otra cosa: **una categoría rechazada se anuncia como un éxito** — el programa cuenta cero fallos y te enseña un "0 apps iniciadas" en verde, cuando en realidad no lanzó nada. **Un rechazo anunciado como éxito es peor que un rechazo visible**, y se cierra en el ciclo siguiente.
+
+### Verificado
+
+- **187 tests en verde**, y **7 de los fallos anteriores medidos uno a uno rompiéndolos a propósito**: cada uno muere por la comprobación que dice vigilar.
+- Detalle de método que sale de este turno: **un log de prueba truncado no es un veredicto**, es "no medido". Un corte de memoria puede hacerse pasar por una prueba verde, y aquí eso habría cerrado un hallazgo con los datos del usuario. Los siete registros de este turno se comprobaron uno a uno.
+
+### Una puerta sin comprobación es una puerta sin comportamiento
+
+El hallazgo más reutilizable del turno, y no es de código: el doble de una puerta ya **declaraba** los contadores de categorías y **ningún test los leía**. Nadie estaba mintiendo, ningún test fallaba y la premisa del encargo era una **lectura honesta de un código que nadie vigilaba**. De ahí sale el reparto de este turno: doble, contador y aserción van juntos.
+
 ## CYCLE-056 - 2026-10-05
 
 **Servicios / Persistencia** - `TASK-069` (Tus packs ya no se pierden al actualizar)
