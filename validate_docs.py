@@ -10,6 +10,12 @@ import sys
 import subprocess
 
 
+# Tope de problemas del guard de contenido del agregado que se reportan.
+# MEDIDO: como mucho uno por seccion (9) mas los de forma y de conjunto, y un
+# FAIL que se trunca SIN decirlo seria otro fallo que no se ve.
+MAX_PROBLEMAS_DEL_AGREGADO = 8
+
+
 def _recuento_de_tests(ruta_run_tests):
     """`(defined, invoked, solo_definidos, solo_invocados)` de `run_tests.py`.
 
@@ -2100,6 +2106,77 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
     )
 
 
+def _cargar_el_generador_del_agregado(root):
+    """`(modulo, "")` o `(None, motivo)`: el guard de contenido del agregado.
+
+    Se carga POR RUTA con `importlib` y NO con `import`, por un motivo medido:
+    el validador corre tambien sobre el ARBOL COPIADO de los tests, y un
+    `import` resolveria el nombre contra el `sys.path` del proceso --que es el
+    repo del dueno, no la copia-- y el check 2 mediria una cosa que no es la que
+    esta delante. Con la ruta, cada arbol se guarda a si mismo.
+
+    Un `None` aqui es un FALLO DECLARADO y no un silencio, por el motivo de D1 y
+    D2 de este mismo fichero: el guard que no se puede cargar tiene que decir que
+    no se pudo cargar. Guardarlo en silencio seria el falso verde que el check 2
+    viene a cerrar.
+    """
+    nombre = "build_llms_full.py"
+    ruta = os.path.join(root, nombre)
+    if not os.path.exists(ruta):
+        return None, f"{nombre} no existe en el arbol que se esta validando"
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("wopt_llms_full", ruta)
+        modulo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(modulo)
+    except Exception as exc:
+        return None, f"{nombre} no se puede cargar: {type(exc).__name__}: {exc}"
+    return modulo, ""
+
+
+def _comprobar_contenido_del_agregado(root, errors, ok):
+    """Check 2: el CONTENIDO de cada seccion de `llms-full.txt` es el de su fuente.
+
+    Este check vivia en `if d not in full` (la linea 2153 antes de TASK-067), que
+    mira el NOMBRE del fichero. MEDIDO lo que eso deja pasar: editar una linea de
+`docs/known-issues.md` sin tocar el marcador deja el nombre dentro y el
+validador en VERDE. El agregado estaba caducado en 4 de sus 9 secciones --hasta el
+98,9 % en `api`, donde el agregado llevaba el FOSIL v2 con `process_manager.py` y
+la fuente lleva la API v3-- y el nombre de los nueve si aparecia, asi que nadie
+lo notaba.
+
+    Ahora asienta por el generador, que es donde vive la lista de secciones
+DECLARADA, y las dos cosas que el nombre no podia mirar tambien se miran: que el
+conjunto y el ORDEN de secciones sea el declarado, y que cada marcador lleve su
+cabecera de cinco lineas.
+
+    El numero de secciones sale de `len(generador.SECCIONES)`, DERIVADO de la
+fuente y no escrito a mano: una cifra de veredicto copiada aqui caduca en el
+commit, que es la leccion de T54-6.
+    """
+    generador, motivo = _cargar_el_generador_del_agregado(root)
+    if generador is None:
+        errors.append(f"llms-full.txt: sin guard de contenido, {motivo}")
+        return
+    try:
+        problemas = generador.comparar(root)
+    except Exception as exc:
+        errors.append("llms-full.txt: el guard de contenido no se puede ejecutar: "
+                      f"{type(exc).__name__}: {exc}")
+        return
+    if problemas:
+        for problema in problemas[:MAX_PROBLEMAS_DEL_AGREGADO]:
+            errors.append(f"llms-full.txt: {problema}")
+        if len(problemas) > MAX_PROBLEMAS_DEL_AGREGADO:
+            errors.append(f"llms-full.txt: y "
+                          f"{len(problemas) - MAX_PROBLEMAS_DEL_AGREGADO} "
+                          f"problema(s) mas del guard de contenido, sin mostrar")
+    else:
+        ok.append(f"llms-full.txt: las {len(generador.SECCIONES)} secciones "
+                  f"coinciden con su fuente por CONTENIDO "
+                  f"(build_llms_full.py --check)")
+
+
 def validar(root):
     """Los checks 1-8 enteros. -> `(errors, ok)`. Sin imprimir y sin salir.
 
@@ -2140,21 +2217,18 @@ def validar(root):
     else:
         errors.append("llms.txt: sin secciones H2")
 
-    # 2. llms-full.txt debe existir y concatenar todos los docs/*.md
+    # 2. llms-full.txt debe existir, y su CONTENIDO lo declara
+    #    `build_llms_full.py`, no el nombre del fichero. Delegado a
+    #    `_comprobar_contenido_del_agregado(root, errors, ok)`, con raiz y SIN
+    #    defaults por el motivo de D1 y D2 que ya pagaron dos veces en este
+    #    fichero: un default convierte un cableado roto en un `None` que se lee
+    #    como 'no hay nada que comprobar'.
     full_path = os.path.join(root, "llms-full.txt")
     if not os.path.exists(full_path):
         errors.append("llms-full.txt: no existe")
     else:
-        with open(full_path, encoding="utf-8") as f:
-            full = f.read()
-        full_size = os.path.getsize(full_path)
-        docs_dir = os.path.join(root, "docs")
-        docs_files = sorted(f for f in os.listdir(docs_dir) if f.endswith(".md"))
-        missing = [d for d in docs_files if d not in full]
-        if missing:
-            errors.append(f"llms-full.txt: faltan secciones: {missing}")
-        else:
-            ok.append(f"llms-full.txt: incluye todos los {len(docs_files)} docs/*.md ({full_size} bytes)")
+        ok.append(f"llms-full.txt: existe ({os.path.getsize(full_path)} bytes)")
+        _comprobar_contenido_del_agregado(root, errors, ok)
 
     # 3. OpenSpec structure (dinamico: detecta proposal id actual)
     openspec = os.path.join(root, "openspec")

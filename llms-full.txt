@@ -5,165 +5,140 @@
 
 ---
 
-# API Reference
+# Referencia de API (v3)
 
-Funciones principales que un agente IA podría necesitar llamar o extender.
+Referencia arquitectónica y de servicios del core de `woptimizer` (v3).
 
-## Funciones de `process_manager.py` (módulo)
+La versión 3 de `woptimizer` desacopla completamente la interfaz de usuario de las llamadas a sistema operativo mediante la capa de servicios (`src/woptimizer/services/`), tipado estricto con Pydantic v2 (`models.py`) e invocaciones nativas con `psutil`.
 
-### `get_running_processes() -> list[dict]`
+---
 
-Retorna lista de procesos en ejecución.
+## 1. Servicios del Backend (`src/woptimizer/services/`)
 
-**Returns:** Lista de dicts con esta estructura:
+### `ProcessService` (`process_service.py`)
 
-```python
-{
-    'name': 'chrome',           # nombre sin extensión
-    'full_name': 'chrome.exe',  # nombre con extensión
-    'pid': '1234',              # string (de PowerShell)
-    'commandline': 'C:\\...\\chrome.exe --type=renderer'
-}
-```
+Servicio central para inspección, categorización, arranque seguro y cierre de procesos.
 
-**Side effects:** Muestra messagebox de error si PowerShell falla.
+#### Métodos Principales
+- **`get_running_processes() -> List[ProcessInfo]`**
+  - Escanea los procesos activos del sistema utilizando `psutil.process_iter(['pid', 'name', 'memory_info'])`.
+  - Optimizado para baja latencia (<5 ms en frío, <0.01 ms en lecturas cacheadas con TTL de 2s).
+  - Resolución perezosa (*lazy*) de rutas de ejecutables con `get_process_exe_path(pid)`.
+- **`kill_processes(pids: List[int]) -> Tuple[int, int, int, float]`**
+  - Cierra una lista de PIDs mediante `psutil`.
+  - **Kill Recursivo:** Elimina siempre primero los procesos hijos (`parent.children(recursive=True)`) antes de terminar al padre.
+  - **Blindaje Anti-Brick:** Filtra y protege de forma indestructible los 34 procesos esenciales del sistema definidos en `SYSTEM_PROTECTED_PROCESSES`.
+  - **Retorno:** Tupla `(killed, failed, skipped, freed_mb)`.
+- **`kill_pack_apps(apps: List[str]) -> Tuple[int, int, int, float]`**
+  - Identifica los procesos activos coincidentes con la lista de nombres o rutas absolutas de `apps` y los cierra de forma segura.
+- **`start_pack_apps(apps: List[str]) -> Tuple[int, int]`**
+  - Inicia las aplicaciones declaradas en el pack.
+  - **Sin `shell=True`:** Toda ruta es normalizada y contenida con `_resolver_app()`. Rechaza traversals, rutas relativas vulnerables a CWD, y junctions no autorizados.
+  - **Verificación PE:** Valida la cabecera binaria `MZ` / `PE` (`_es_imagen_pe`), rechazando scripts camuflados como `.exe`.
+  - **Retorno:** Tupla `(started, failed)`.
+- **`load_db_async(callback=None, on_error=None)`**
+  - Descarga asíncrona no bloqueante de la base de datos de procesos desde `DB_REMOTE_URL` (GitHub).
+  - Reporta fallos de conectividad u HTTP de forma observable al callback `on_error(err_msg)`.
+  - Mantiene fallback local síncrono indestructible (`assets/process_db.json`) preservando la operatividad offline.
+- **`invalidate_cache()`**
+  - Invalida de forma atómica la caché de procesos activos y metadatos de categorización.
 
-**Performance:** 1-3 segundos (PowerShell Get-CimInstance).
+---
 
-### `kill_processes(processes_seleccionados, kill_tree=True) -> tuple[list, list]`
+### `PackService` (`pack_service.py`)
 
-Mata procesos via `taskkill /F`.
+Gestor de persistencia, CRUD de packs y perfiles de usuario.
 
-**Args:**
-- `processes_seleccionados`: list of dicts (mismo formato que `get_running_processes`)
-- `kill_tree`: si True, añade `/T` para matar hijos también
+#### Métodos Principales
+- **`get_all_packs() -> Dict[str, Pack]`**
+  - Retorna diccionario de packs activos indexados por ID.
+- **`create_user_pack(pack_id: str, name: str, apps: List[str], default_action: str = "kill") -> bool`**
+  - Crea un nuevo pack de usuario y persiste a disco.
+- **`update_pack(pack: Pack) -> bool`**
+  - Actualiza la configuración de un pack existente.
+- **`delete_pack(pack_id: str) -> bool`**
+  - Elimina un pack propio de usuario. Lanza `ValueError` si se intenta eliminar el pack Gaming (`is_gaming=True`).
+- **`set_favorite(pack_id: str, value: bool) -> None`**
+  - Modifica el estado de favorito de un pack de forma acumulativa (multi-favoritos).
+- **`toggle_favorite(pack_id: str) -> bool`**
+  - Lee el estado vivo en memoria, invierte `is_favorite`, persiste atómicamente y retorna el nuevo booleano.
+- **`get_favorite_packs() -> List[Pack]`**
+  - Retorna la lista de packs marcados como favoritos.
+- **`reset_gaming_pack() -> bool`**
+  - Restablece el pack Gaming a sus valores predeterminados de fábrica usando una copia profunda (`model_copy(deep=True)`).
+- **`save()` / `load()`**
+  - Persistencia segura en `profiles.json` con volcado atómico (`.tmp`), rotación preventiva a copia de respaldo (`profiles.json.bak`) y tolerancia a campos extra.
 
-**Returns:** `(killed, failed)`:
-- `killed`: list of dicts con `{name, pid, commandline, killed_at, already_gone}`
-- `failed`: list of strings con mensaje de error por proceso
+---
 
-**Exit codes de taskkill:**
-- 0 = success
-- 128 = proceso ya no existe (tratado como success)
-- 1 = acceso denegado u otro error
+### `GamingService` (`gaming_service.py`)
 
-### `categorize_process(proc_name) -> str`
+Coordinador de sesiones de juego y telemetría de optimización.
 
-Matchea nombre contra `PROCESS_CATEGORIES`, retorna nombre de categoría o `'⚪ Otros'`.
+#### Métodos Principales
+- **`execute_gaming_pack(pack: Pack) -> Tuple[int, int, int, float]`**
+  - Única puerta autorizada para la ejecución de Gaming Mode.
+  - Aplica barreras estrictas de seguridad: exclusión de procesos en `keepers`, evaluación por categoría y bloqueo de procesos de sistema.
+  - Guarda en memoria (`_last_closed_apps`) los ejecutables cerrados para su posterior reapertura.
+- **`restore_gaming_session() -> Tuple[int, int]`**
+  - Sincronizado concurrentemente mediante `threading.RLock()`.
+  - Reabre las aplicaciones cerradas durante la sesión de juego y vacía el historial de forma atómica.
+- **`should_kill_for_gaming(process_name: str, gaming_pack: Pack) -> bool`**
+  - Evalúa si un proceso debe cerrarse según la política de exclusión de keepers, apps explícitas y categorías objetivo.
+- **`get_last_closed_apps() -> List[str]`**
+  - Retorna una copia defensiva de los ejecutables pendientes de reapertura.
 
-**Args:** `proc_name` (str) — nombre del proceso (sin .exe o con .exe)
+---
 
-**Returns:** String con el nombre de categoría.
+### `NotificationService` (`notification_service.py`)
 
-### `save_processes_to_relaunch(processes) -> bool`
+Notificaciones de sistema en segundo plano integradas con la bandeja de Windows (`pystray`).
 
-Añade procesos al JSON con dedup por `(name, pid)`.
+#### Métodos Principales
+- **`attach_tray(icon: Any)`** / **`detach_tray()`**
+  - Vincula o desvincula la referencia al icono de bandeja del sistema (`pystray.Icon`).
+- **`notify(title: str, message: str) -> bool`**
+  - Emite una notificación nativa. Degrada de forma segura a logging si no hay bandeja disponible o el backend del SO no soporta toasts.
+- **`notify_pack_activated(pack_name: str, killed: int, freed_mb: float)`**
+- **`notify_apps_launched(pack_name: str, launched: int, failed: int)`**
+- **`notify_kill_result(killed: int, failed: int, freed_mb: float)`**
 
-**Args:** `processes`: list of dicts con al menos `name`, `pid`, `commandline`
+---
 
-**Returns:** True si escribió OK.
+## 2. Modelos de Datos Pydantic (`src/woptimizer/models.py`)
 
-### `load_saved_processes() -> list`
+- **`ProcessInfo`:**
+  - `pid: int`
+  - `name: str`
+  - `full_name: str`
+  - `exe_path: str`
+  - `memory_mb: float`
+  - `category: str`
+  - `status: str`
+  - `is_system_protected: bool`
+- **`Pack`:**
+  - `id: str`
+  - `name: str`
+  - `apps: List[str]`
+  - `target_categories: List[str]`
+  - `keepers: List[str]`
+  - `is_gaming: bool`
+  - `is_favorite: bool`
+  - `default_action: Literal["kill", "start"]`
+- **`AppData`:**
+  - `packs: Dict[str, Pack]`
+  - Soporta persistencia de campos adicionales mediante `model_config = ConfigDict(extra="allow")`.
 
-Lee `saved_processes.json`, retorna lista (vacía si no existe o corrupto).
+---
 
-### `clear_saved_processes() -> bool`
+## 3. Resumen de Ejecución y Sistema Operativo
 
-Borra el archivo JSON.
-
-### `relaunch_processes(processes) -> tuple[list, list]**
-
-Relanza procesos via `subprocess.Popen` con `shlex.split` o fallback shell.
-
-**Returns:** `(launched, failed)`
-
-### `is_admin() -> bool`
-
-Detecta si el proceso actual corre con permisos admin via `ctypes`.
-
-## Constantes
-
-### `PROCESS_CATEGORIES` (dict)
-
-```python
-{
-    '🔴 Navegadores': {
-        'priority': 'high',     # 'high' | 'medium' | 'low' | 'none'
-        'patterns': ['chrome', 'firefox', ...],
-        'description': '...',
-    },
-    ...
-}
-```
-
-### `CATEGORY_ORDER` (list)
-
-Orden de visualización de categorías en el treeview.
-
-### `SIMPLE_CATEGORIES` (list)
-
-Categorías que se muestran en modo Simple (gamer-friendly).
-
-### `PROCESS_LIST_FILE` (str)
-
-Path absoluto a `saved_processes.json` (mismo dir que el script).
-
-### `MAX_CMDLINE_LEN` (int)
-
-4000 — commandlines más largos se truncan.
-
-### `CREATE_NO_WINDOW` (int)
-
-0x08000000 — flag de Windows para subprocess sin ventana de consola.
-
-## Clase `ProcessManagerApp`
-
-Métodos principales (sin self):
-
-| Método | Propósito |
-|--------|-----------|
-| `__init__(root)` | Configura ventana, llama `create_widgets` y `load_processes` |
-| `create_widgets()` | Construye toda la UI (botones, treeview, etc.) |
-| `load_processes()` | Async, lanza thread que llama `get_running_processes` |
-| `_on_processes_loaded(processes)` | Callback UI: actualiza treeview |
-| `populate_tree()` | Llena treeview con categorías |
-| `filter_processes()` / `_schedule_filter()` / `_do_filter()` | Búsqueda con debounce |
-| `toggle_select_all()` | Selecciona/deselecciona todas las hojas |
-| `kill_selected()` | Mata procesos seleccionados (con confirmación) |
-| `save_selected()` | Guarda seleccionados para relaunch |
-| `relaunch_saved()` | Relanza procesos guardados |
-| `prepare_for_gaming()` | Mata high+medium priority (botón Gaming) |
-| `clear_saved()` | Limpia lista guardada |
-| `update_count()` | Actualiza contador en status bar |
-| `_on_click(event)` | Handler click izquierdo (toggle) |
-| `_on_double_click(event)` | Handler doble click (expand/collapse categoría) |
-| `_show_context_menu(event)` | Muestra menú click derecho |
-| `_ctx_kill()`, `_ctx_save()`, `_ctx_copy_pids()`, `_ctx_copy_cmdlines()` | Acciones del menú |
-
-## Atajos de teclado
-
-| Atajo | Acción |
-|-------|--------|
-| `Ctrl+A` | Seleccionar todas las hojas |
-| `Delete` | Matar seleccionados |
-| `F5` / `Ctrl+R` | Refrescar lista |
-| `Escape` | Limpiar búsqueda |
-
-## Subprocess calls (resumen)
-
-| Operación | Comando | Flags |
-|-----------|---------|-------|
-| Listar procesos | `powershell -NoProfile -NonInteractive -Command <script>` | `CREATE_NO_WINDOW` |
-| Matar proceso | `taskkill /F [/T] /PID X` | `CREATE_NO_WINDOW` |
-| Relanzar proceso | `subprocess.Popen(args, detached=True, windowsHide=True)` | (windowsHide) |
-
-## Estados de la app
-
-- `self.processes`: list of dicts (procesos actuales)
-- `self.saved_processes`: list of dicts (cargado de JSON al inicio)
-- `self.simple_mode_var`: BooleanVar — toggle Simple/Completo
-- `self.kill_tree_var`: BooleanVar — checkbox `/T`
-- `self._loading`: bool — evita cargas concurrentes
+| Operación | Mecanismo v3 | Garantías de Seguridad |
+|---|---|---|
+| **Listar procesos** | `psutil.process_iter` | Cero subprocesos; lectura directa de memoria del SO en C. |
+| **Cierre de procesos** | `psutil.Process.kill()` | Kill recursivo (árbol de hijos); filtrado indestructible de `SYSTEM_PROTECTED_PROCESSES`. |
+| **Arranque de apps** | `os.startfile` / `subprocess.Popen(shell=False)` | Sin intérprete de comandos (`shell=False`); validación de contención y verificación de cabecera PE. |
+| **Actualización DB** | `urllib.request.urlopen` (asíncrono) | Timeout de 5s, notificación observable a `on_error` y fallback local empaquetado. |
 
 
 # architecture
@@ -658,7 +633,7 @@ Ninguno existe hoy. Solo hay `workflows/commitlint.yml` y `workflows/release.yml
 
 ### Bloque 3A — Salud del proyecto (recomendado, bajo coste)
 
-- [ ] **`LICENSE`.** **Ausente, y es lo mas grave de este bloque.** `mkdocs.yml:88` ya
+- [ ] **`LICENSE`.** **Ausente, y es lo mas grave de este bloque.** `mkdocs.yml:81-82` ya
       declara `Released under the MIT License`, es decir, **el pie de la documentacion
       afirma una licencia que no existe en el repo**. Sin LICENSE, GitHub no muestra la
       etiqueta de licencia en la pagina y la afirmacion no es ejecutable.
@@ -733,7 +708,15 @@ Ninguno existe hoy. Solo hay `workflows/commitlint.yml` y `workflows/release.yml
 ### D-1. `release-pipeline.md` contradice a `release.yml`
 
 - [ ] **`softprops/action-gh-release@v2` -> real `@v3`** (`release.yml:190`).
-      Documentado como `v2` en `release-pipeline.md:54`.
+      Documentado como `v2` en `release-pipeline.md:87`.
+      **CORREGIDO el 2026-10-05: la cita apuntaba a `release-pipeline.md:54` y la
+      frase esta en la `:87`**, que es la linea del job `build`. La `:54` es la del
+      `git push origin main` de la topologia. Una cita que no senala el sitio
+      correcto delata que nadie la abrio. **La casilla sigue ABIERTA:** medido este
+      mismo dia, `release-pipeline.md:87` sigue diciendo `v2` de verdad, luego lo
+      que se corrigio aqui es la cita y no el hecho. Marcar `[x]` sin haber
+      arreglado el fichero habria sido exactamente el fallo que D9 y D10 corrigen
+      en las otras filas.
 - [ ] **El comando de `semantic-release` esta incompleto en la doc.** La doc dice
       `npx --yes semantic-release@25`; el real es
       `npx --yes -p semantic-release@25 -p conventional-changelog-conventionalcommits@9`.
@@ -749,10 +732,20 @@ Ninguno existe hoy. Solo hay `workflows/commitlint.yml` y `workflows/release.yml
 - [ ] **`miniapps/` esta en `.gitignore` Y versionado** (6 ficheros). Las dos cosas a
       la vez: el ignore no aplica a lo ya trackeado, asi que sigue apareciendo en el
       repo publico. O se saca del indice, o se saca del `.gitignore` y se documenta.
-- [ ] **`.taskmaster/tmp_measure_t059.py`** sin trackear, en el arbol de trabajo.
-      Peligroso: **`git_safe_commit.py` hace `add -A`** (`.taskmaster/git_safe_commit.py:206`),
+- [x] **`.taskmaster/tmp_measure_t059.py` sin trackear, en el arbol de trabajo.**
+      Peligroso: **`git_safe_commit.py` hace `add -A`** (`.taskmaster/git_safe_commit.py:776`),
       asi que el proximo commit se lo lleva. Deberia estar en `.gitignore` con un patron
       `tmp_*.py` / `_matrix_*.py`.
+      **CORREGIDO el 2026-10-05, y la casilla se cierra porque el PELIGRO ya no
+      existe: el fichero NO esta.** MEDIDO: `Test-Path` False, `git log --all --
+      .taskmaster/tmp_measure_t059.py` sale VACIO (o sea que tampoco esta en la
+      historia, en ninguna rama), y el `add -A` que se citaba como amenaza esta en
+      la **`:776`**, no en la `:206` que decia la casilla (la 206 es el docstring
+      del contrato de codigos). Una casilla que grita "peligroso" sobre algo que ya
+      no esta entrena al que la lee a buscar un peligro inexistente, que es peor que
+      no tener la casilla. La fila se conserva con su redaccion original porque
+      borrar el registro de lo que se creia seria el mismo fallo que no haberlo
+      escrito.
 - [ ] **`basura/` (8 ficheros).** Fuera del indice a proposito, por decision del dueno.
       **No tocar** — se borra a mano cuando toque. Dejar como esta.
 
@@ -797,18 +790,20 @@ explicar por que el numero bajo de 8 a 7.
 > ya no guardar». Subirla a 220 dejaria pasar los 7 y **anularia la unica regla que hoy
 > detecta un mensaje mal formado antes de que semantic-release lo ignore en silencio**.
 > El fallo silencioso que ese job existe para evitar es peor que 7 cabeceras largas.
-> **CORREGIDO el 2026-10-05: aqui decia 8, y son 7**, contadas con `git log` en el
-> rango `41b8061..4d86908`: 29 commits, exactamente 7 con cabecera >120.
-> **Y la nota que se le anadio a la fuente decia que este era "el unico 8
-> contradictorio que quedaba", y era FALSO (corregido el mismo dia):** este
-> agregado lleva su PROPIA copia de la linea y seguia diciendo 8, porque
+> **CORREGIDO el 2026-10-05: decia 8, y son 7**, MEDIDO con `git log` en el rango
+> `41b8061..4d86908`: 29 commits, exactamente 7 con cabecera >120 (el "`8 de 29`" de
+> mas abajo ya estaba corregido en su propia nota).
+> **Y la nota anterior de este bloque decia que este era "el unico 8 contradictorio
+> que quedaba", y era FALSO**, corregido el mismo dia: el agregado `llms-full.txt`
+> lleva su PROPIA copia de esta linea y seguia diciendo 8, porque
 > **`validate_docs.py:2153` solo comprueba `if d not in full`, o sea el NOMBRE del
 > fichero, no su contenido**. Un agregado que no se autovigila deja la cifra vieja
-> viva en el sitio que un agente lee primero, y el verde del validador no lo ve.
-> MEDIDO ademas el 2026-10-05: el agregado esta CADUCADO en 4 de sus 9 secciones
-> (`api.md` con 102 de sus 109 lineas fuera, `known-issues.md` con 185 de 381, esta
-> con 86 de 530 y `testing.md` con 10 de 128), luego **no es un espejo de sus
-> fuentes** y regenerarlo es un trabajo propio, no un retoque de una linea.
+> viva en el sitio que un agente lee primero, y el verde del validador no lo ve: por
+> eso la linea esta corregida en los DOS ficheros y no solo aqui. MEDIDO el mismo
+> dia, el agregado esta ademas CADUCADO en 4 de sus 9 secciones (`api.md` con 102 de
+> sus 109 lineas de contenido fuera, `known-issues.md` con 185 de 381, este con 86 de
+> 530 y `testing.md` con 10 de 128), luego no es un espejo de sus fuentes y
+> regenerarlo es un trabajo propio, no un retoque de una linea.
 
 - [ ] **Decidir como se resuelve. Opciones:**
   - **(a) Rebasear los 29 commits con cabeceras cortas** y pushear `beta` con `--force**.
@@ -929,6 +924,14 @@ explicar por que el numero bajo de 8 a 7.
         como si no hace nada (`WOPT_NOOP`), y su unico consumidor ramifica por
         `exit == 0`. **Falso verde de versionado**: un fallo de git puede pasar por
         commit correcto. Esta anotado como deuda viva desde el ciclo #48.
+        — **🔴 CERRADA, y la fila era FALSA (TASK-061, `4879d19`). MEDIDO el
+        2026-10-05:** `CODE_FAIL = 1` en `.taskmaster/git_safe_commit.py:97` y un
+        fallo de git sale con `WOPT_FAIL commit` + **1**, no con 0. El `0` sigue
+        sobrecargado por DOS desenlaces —`WOPT_COMMIT_OK` y `WOPT_NOOP`—, que es lo
+        que el contrato de `docs/ai/sandbox-rules.md` declara, pero los dos son
+        benignos y ninguno es un fallo de git. **La fila **ya no esta** en la
+        seccion `## ⚠️ Deuda Tecnica Conocida` de `STATUS.md`, y no debe volver:
+        volver a copiarla a la Deuda seria dar de alta una deuda que no existe.
       - Shell intermitente (`spawn EPERM`) en el entorno de agentes.
 - [ ] **`validate_docs.py` no corre en CI** (deliberado, y bien justificado en el
       `.yml:89-93`): deriva `GIT_DIR` de `%LOCALAPPDATA%`, que no existe en el runner.
@@ -948,7 +951,11 @@ Resueltas el 2026-10-04; queda una abierta.
       (ver seccion 2). Sin required checks, sin PR obligatorio, con force-push y borrado
       bloqueados.
 - [x] **O-3. Licencia.** **Elegido: MIT.** `LICENSE` creado en `79039e9`. La afirmacion
-      de `mkdocs.yml:88` ya es ejecutable.
+      de `mkdocs.yml:81-82` ya es ejecutable.
+      **CORREGIDO el 2026-10-05: la casilla citaba `mkdocs.yml:88` y ese fichero
+      tiene 83 lineas.** MEDIDO: `copyright: |` esta en la `:81` y
+      `Released under the MIT License.` en la `:82`. Una cita a una linea que no
+      existe no se puede verificar mirando, y por eso nadie la habiamirado.
 - [ ] **O-4. Miniapps dentro o fuera del repo.** Ahora estan a la vez dentro y fuera.
 - [x] **O-5. NUEVA y urgente: como se desbloquea el pipeline de `beta`.** **Resuelta el
       2026-10-05, al planificarla y no al aplicarla.** Ver D-4 y
@@ -968,6 +975,58 @@ Resueltas el 2026-10-04; queda una abierta.
       largos se quedan en la historia de `beta` y saldran enteros en las notas de la release
       (semantic-release los parsea bien: el limite de 120 es de commitlint, no del parser), y
       `beta` sigue sin proteccion.
+
+## 7bis. T-3: LA TERCERA VIA, EJECUTADA EL 2026-10-05
+
+> [!IMPORTANT]
+> **Lo que hacia imposible la cura no era la cura, era una operacion que nadie iba a
+> hacer.** El argumento de que "7 publicados + `main` protegida = reescribir es
+> imposible" es cierto e **irrelevante**: eso bloquea **reescribir**, no **empujar**. Y
+> `main` ya era **ancestro estricto** de `beta`, luego el T-3 del plan funcionaba tal cual.
+> Ejecutado: `git switch main` / `git merge --ff-only beta` (**FF puro**,
+> `d568804..9b0ea8c`) / `git push origin main` (**push normal, sin `--force`**) /
+> `git switch beta`. **Sin tocar `release.yml`, sin `--force`, sin reescribir y sin
+> cambiar la proteccion.**
+
+- [x] **INCERT-1 MEDIDO por API** (`GET /repos/carcheky/woptimizer/branches/main/protection`,
+      sonda reproducible `.taskmaster/_gh_incert1.py`): la proteccion de `main`
+      **NO tiene `required_status_checks`** —el campo **no aparece** en la respuesta, que
+      es como GitHub dice "no hay checks exigidos"— ni
+      `required_pull_request_reviews`. Si tiene `allow_force_pushes: false`,
+      `allow_deletions: false`, `enforce_admins: false`, `lock_branch: false`.
+      **Por que decide si el push se admite:** sin checks ni revisiones exigidas, un push
+      normal a `main` no tiene ninguna condicion que lo retenga, luego el T-3 esta
+      ADMISIBLE. Y medido: lo esta —`git push origin main` salio con `PUSH_EXIT=0`.
+- [x] **El rango del push a `main` no incumple ninguna regla.** MEDIDO: el rango
+      `d568804..9b0ea8c` son **3 commits** de 64, 79 y 77 caracteres, los tres
+      conventional y los tres por debajo de 120.
+- [x] **VERIFICADO POR API: `v1.1.0` ESTABLE, con su `.exe`.** Corrida
+      [`37265499693`](https://github.com/carcheky/woptimizer/actions/runs/37265499693),
+      push a `main`, `head_sha` `9b0ea8c0b9ef`, **los cuatro jobs en `success`**:
+      `Commits convencionales`, `Verificar en Windows`, `semantic-release` y
+      `Compilar el .exe y adjuntarlo`. Y la release
+      **`v1.1.0`, `prerelease=False`, publicada el 2026-10-05T05:04:36Z, con el asset
+      `woptimizer.exe`**. En el camino salio tambien `v1.1.0-beta.2` de la corrida de
+      `beta` del mismo commit. **`main` y `beta` quedan las dos en `9b0ea8c`.**
+      Con esto **T-3 queda cerrado**: la release estable existe y lleva el ejecutable.
+
+> [!NOTE]
+> **Una correccion al razonamiento del turno anterior, y es la que de verdad decide si
+> sale la release.** Decia "punta nueva => corrida nueva => `commits` verde => `v1.1.0`
+> estable". El **`commits` en verde es cierto** y el resultado **tambien**, pero por un
+> motivo distinto del que se creia, y si se hubiera dejado sin medir la conclusion habria
+> sido casualidad. Lo que decide la release **NO es el rango del push**: es
+> `.releaserc.json`, que declara **`"type": "docs", "release": false`**. MEDIDO: el rango
+> del push tal como estaba antes de este ciclo eran **2 commits, los dos `docs(github)`,
+> y por lo tanto CUALQUIER push habria salido SIN tag**: el job `release` no publica nada y
+> el `build` se salta por `if: needs.release.outputs.tag != ''`. Un `docs` **no publica**.
+> Lo que publica la version de `main` es el **historial sin publicar desde la ultima
+> release estable del canal** (`v1.0.0`): ahi hay **42 commits, 21 de ellos publicables**,
+> y entre ellos hay `feat` (`feat(tooling)`, `feat(tray)`, `feat(categorias)`, ...), luego
+> sale un **minor = 1.1.0**. Y el commit de este ciclo es `fix(...)`, que tambien publica,
+> luego no dependia de la buena voluntad de nadie: **con `docs` tampoco habria publicado,
+> y con `fix` si** — que es justo el motivo de que el mensaje de este ciclo sea `fix` y no
+> `docs`.
 
 ---
 
@@ -1017,6 +1076,7 @@ configuracion.
   escrita vale mas que una marcada sin comprobar: el bucle trata como cerrada una fila
   que no dice nada.
 - Al cerrar una sesion, `python .taskmaster/git_safe_commit.py "docs(github): ..."`.
+
 
 # index
 
@@ -1117,6 +1177,7 @@ mkdocs build
 - Consulta [`architecture.md`](architecture.md) para comprender la separación estricta de capas entre UI y Services.
 - Revisa [`api.md`](api.md) para conocer las firmas y contratos de la capa de servicios.
 - Lee [`ui-design-system.md`](ui-design-system.md) para conocer los tokens de CustomTkinter y las pautas de accesibilidad.
+
 
 # known-issues
 
@@ -1315,6 +1376,7 @@ kill_process_tree(proc.pid)  # /T = tree, mata tambien los hijos
 ```
 
 **Aplicado en:** `verify_app.py` y `verify_pyw.py` (función `kill_process_tree`).
+*(CYCLE-050: `verify_pyw.py` se movió a `basura/` porque verificaba `process_manager.pyw`, que ya no existe. `verify_app.py` sigue ahí y es la copia viva del patrón.)*
 
 **Aplicación futura:** Si en algún momento `process_manager.py` lanza procesos `Popen` no-bloqueantes (PowerShell para queries periódicas, watchers de procesos, etc.), el cleanup al cerrar la app debe usar `taskkill /F /T` también. Hoy es seguro porque todos los subprocess son `run()` bloqueantes que mueren al retornar, pero el patrón sigue aplicando.
 
@@ -1405,6 +1467,242 @@ killed, failed, skipped = kill_processes(
 
 **Test de regresión:** `python test_kill_expansion.py` valida la lógica del helper y la integración.
 
+## Trampa #14: la reescritura v3 perdio la doble pulsacion (y con ella, la seguridad)
+
+**Síntoma:** Un clic de más y se cierran 40 pestañas del navegador. En la v3 las 5 acciones destructivas (`on_kill_selected`, `kill_pack`, `delete_pack`, `remove_app_from_pack` y `execute_pack` en rama `kill`) ejecutan **a pelo**, sin pedir nada.
+
+**Causa:** Regresión silenciosa de la reescritura v2 -> v3, no una decisión de diseño. El patrón existía en `process_manager.py` v2.0.2 con los helpers `_request_confirm` / `_reset_pending_action`, y se había instaurado tras un incidente concreto: un `messagebox.askyesno` se abría **por detrás** de la ventana principal, el usuario pulsaba "Cerrar", no veía nada y reportó "se ha roto, no mata procesos". Conclusión registrada: **nunca `messagebox` en la ventana principal**; la seguridad se consigue exigiendo una segunda pulsación, no con un diálogo. Al reescribir la UI se copiaron los botones y no el patrón, y como la v2 ya no está en el repo, nadie lo notó.
+
+**Cómo se comprueba que sigue ahí** (si algún día vuelve a dar cero, se ha perdido otra vez):
+
+```
+messagebox | askyesno | showinfo | showwarning | _request_confirm | "OTRA VEZ" | confirm
+```
+
+Debe seguir dando cero en `src/`. Si aparece un `messagebox`, es que alguien ha resuelto el problema por la puerta prohibida.
+
+**Fix en woptimizer (v3.1, TASK-023):** toda la lógica vive **una sola vez** en `src/woptimizer/ui/confirmation.py`, en dos capas:
+1. `DoubleTapGuard` — máquina de estados ** pura, sin `customtkinter` ni `tkinter`, con un `scheduler` inyectable. Es la que se testea headless en `run_tests.py::test_double_tap_guard`.
+2. `Confirmable` — mixin fino que solo configura widgets (estado ámbar del botón) y escribe en el `status_label`.
+
+Las tres vistas la usan y sobrescriben `destroy()` para matar el `after` vivo.
+
+**Reglas que no se pueden romper:**
+- **Congelar la INTENCIÓN, recalcular los DATOS.** En `on_kill_selected` el token es el conjunto de claves marcadas; los `ProcessInfo` se recalculan en la segunda pulsación. Congelar la lista sería un fallo de seguridad: entre pulsaciones el **PID se recicla** y matarías a un inocente.
+- **Programar con `self.after(...)`, nunca con `self.master.after(...)`.** `master` es `content_frame`, que sobrevive al cambio de pestaña, y toda navegación destruye la vista y crea una instancia nueva: el callback huérfano reconfigura widgets ya destruidos.
+- **Nada se traga en silencio.** `delete_pack` devolvía `False` cuando el pack no existía y la vista ignoraba el retorno; ahora los tres estados (armado, error, éxito) salen por el `status_label` inline.
+- La portada **solo** confirma en la rama `default_action == "kill"`, con ventana de 2000 ms; arrancar apps no pide nada.
+
+**Trampa dentro de la trampa:** `PackManagerView` no tenía ningún `status_label` (solo header y `scroll_frame`). Sin él, el requisito de "feedback inline" es literalmente inimplementable. Si añades una vista nueva y quieres usar el patrón, primero créale el label.
+
+## 🚨 Trampa #15: un changelog en una carpeta oculta es un changelog que no existe
+
+**Síntoma (ciclo #15):** el owner dice "no veo el changelog". El registro llevaba 15 ciclos
+escrito, completo y con formato impecable — en `.taskmaster/CHANGELOG.md`. `.taskmaster/` es una
+**carpeta oculta**: no aparece en el explorador de ficheros, ni en la vista por defecto de un IDE,
+ni en un `ls` sin `-a`.
+
+**Causa:** el motor escribía su registro donde le resultaba cómodo a la máquina (junto a
+`rd_journal.json` y `tasks.json`, que también consumen `tm.py`), sin问一下se quién lo lee.
+El agente que lo escribía lo encontraba siempre. El humano, nunca.
+
+**Por qué no lo detectó nadie en 15 ciclos:** la skill decía "es MANDATORY escribir el changelog",
+y el validador comprobaba que **existiera**. La regla estaba satisfecha y el objetivo no. Un
+`validate_docs.py` que verifica *que el fichero esté* no verifica *que el usuario lo pueda leer*.
+
+**Fix aplicado:**
+1. **Doble escritura obligatoria**: `CHANGELOG.md` en la raíz (para el dueño, en lenguaje de
+   usuario, con tabla resumen) + `.taskmaster/CHANGELOG.md` (para el pipeline, con decisiones
+   técnicas y modelos por paso). La skill lo exige explícitamente y avisa de saltarse el primero.
+2. `validate_docs.py` comprueba que el de raíz exista, use secciones legibles (`### Corregido`) y
+   tenga entrada propia para el último ciclo.
+
+**Trampa dentro de la trampa — el ancla se auto-referencia y se deja engañar.** La primera versión
+de esa comprobación derivaba el ciclo exigido **del propio registro técnico** y buscaba el número
+como *substring*. Daba falso verde por partida doble:
+- Al borrar la entrada, `"015"` seguía apareciendo dentro de `TASK-015` en otra entrada → verde.
+- Al borrarla en **los dos** changelogs, el requisito desaparecía → verde.
+
+Un validador que se deduce a sí mismo no puede detectar que le han mentido. El ancla tiene que
+venir de un artefacto **independiente** que se escriba **antes**: aquí, `rd_journal.json`.
+Límite conocido y documentado: si el journal falta o está corrupto, el ancla no se comprueba.
+
+**Corolario general:** un guard automático que valida *la existencia de un artefacto* no valida
+*que el artefacto cumpla su propósito*. Pregunta siempre "¿quién lee esto y puede encontrarlo?",
+y ancla las comprobaciones de consistencia en una fuente que no puedas editar a la vez que lo que
+verificas.
+
+## Trampa #16: `sorted()` NO ordena "alfabéticamente" cuando la cadena empieza por un emoji
+
+**Medido en TASK-027 / FIX-004**, sobre la lista real de categorías:
+
+```text
+CATEGORY_ORDER : 🟢Nav 🟢Sinc 🟡Chat 🟢Prod 🟡Media 🔴Over 🟡Launch 🔴Anti 🔴Sist ⚪Otros
+sorted()       : ⚪Otros 🔴Anti 🔴Over 🔴Sist 🟡Chat 🟡Launch 🟡Media 🟢Nav 🟢Prod 🟢Sinc
+primer caracter : 0x26aa 0x1f534 0x1f534 0x1f534 0x1f7e1 0x1f7e1 0x1f7e1 0x1f7e2 0x1f7e2 0x1f7e2
+```
+
+`sorted()` de cadenas ordena por **punto de código Unicode**, no por el significado del emoji. El
+círculo `⚪ Otros` (U+26AA) vive en el plano Basic Multilingual, mientras que 🟢 🟡 🔴
+(U+1F7E2, U+1F7E1, U+1F534) viven en el plano suplementario, que empieza **después**. Resultado: el
+bloque rojo «NO CERRAR» se pinta por encima del verde «SEGURO» y el «sin clasificar» sale el primero.
+
+```python
+# MAL - ordena por punto de codigo del emoji
+for cat in sorted(categories.keys()):
+    ...
+sorted_cats = sorted(list(all_cats))   # el SEGUNDO sitio del mismo defecto
+
+# BIEN - la politica vive en UN sitio, en config.py
+from woptimizer.config import ordenar_categorias
+for cat in ordenar_categorias(categories.keys()):
+    ...
+```
+
+**Corolario para cualquier lista de este proyecto** (categorías, nombres de pack, prioridades): si el
+orden tiene un significado, el «alfabético» **no** es una opción neutra. Y si además hay
+elementos desconocidos, `sorted(cats, key=idx.get)` los manda al final **gracias a la estabilidad**, no
+porque `999` sea especial.
+
+> Nota de numeración: algunos documentos de ciclo se refieren como «Trampa #16» al problema de
+> codificación `cp1252` en la consola de Windows, que en este fichero es la **Trampa #6**. Si las dos
+> numeraciones se mezclan, manda este fichero.
+
+**Sondas:** `test_orden_de_categorias_no_es_alfabetico` en `run_tests.py` (comportamiento + guarda
+`ast` sobre los DOS ficheros, para que el defecto no vuelva por la puerta que se olvide).
+
+## Trampa #17: `normpath` y `commonpath` son LÉXICOS: no atraviesan un junction
+
+**Medido en TASK-027 iteración 2** (el `mutation-auditor` lo encontró aceptando apps), sobre un
+junction **real** creado con `mklink /J <TEMP>\jdir C:\Windows\System32`:
+
+```text
+ruta                     <TEMP>\jdir\cmd.exe
+os.path.normpath(ruta)   <TEMP>\jdir\cmd.exe          <- intacta, no toca el enlace
+commonpath([ruta, LOCALAPPDATA])   C:\...\AppData\Local   <- "contiene": FALSO
+os.path.isfile(ruta)     True                            <- sigue el enlace
+os.stat(ruta).st_file_attributes    0x20                  <- ni reparse: no lo ve
+os.path.realpath(ruta)   C:\Windows\System32\cmd.exe      <- la verdad
+```
+
+O sea: una comprobación de contención hecha con `normpath` + `commonpath` **dice que un
+`cmd.exe` está dentro de `%LOCALAPPDATA%`**, y el filtro de extensiones tampoco ayuda porque la
+extensión se mira en el **alias**. Dos ataques en la misma idea:
+
+1. junction/enlace **fuera** de las raíces → se acepta y se ejecuta;
+2. `.exe` que es un enlace a un `.bat` **de una raíz permitida** → la contención real lo acepta y
+   la lista blanca se esquiva entera, porque `ShellExecute` pasa el `.bat` por `cmd.exe /c`.
+
+**Y la variante de atributo tampoco sirve:** `os.stat`/`os.lstat` sobre la ruta **a través** de un
+junction de directorio intermedio devuelven `0x20` (sin `FILE_ATTRIBUTE_REPARSE_POINT`), porque
+siguen el enlace. Solo el enlace **final** lo delata (`0x420`, medido). Es decir: el atributo
+solo ve el último tramo.
+
+**El arreglo** es resolver por descriptor y repetir las comprobaciones sobre la ruta real. En
+Windows eso es `os.path.realpath(ruta, strict=True)` (por debajo `GetFinalPathNameByHandleW`), y
+`strict=True` es lo que hace la regla **fail-closed**: si el SO no resuelve, no se arranca. Las
+**raíces** se resuelven por el mismo camino, o el criterio se aplica a dos medidas distintas y se
+rechazan apps legítimas.
+
+**Corolario para cualquier validación de rutas de este proyecto:** *normalizar* no es *resolver*.
+Si la pregunta que responde la comprobación es «¿esto está dentro de la raíz?», y la raíz
+puede tener enlaces, hay que preguntar al SO. Y hay que devolver **la ruta por la que se
+contesta que sí**, no la que se escribió.
+
+**Lo que seguía SIN cerrar, y cómo se cerró en la iteración 3 de TASK-027.** Este apartado decía que un
+**hard link** (`mklink /H`) "no es un reparse point, así que ni `realpath` ni los atributos lo ven" y que
+"no es arreglable con esta regla, y no hace falta". **Las dos mitades de esa razón eran falsas:**
+
+1. **"Ningún filtro lo ve" es falso.** `os.stat(ruta).st_nlink` vale **2** en un hard link (medido). Sí lo ve.
+2. **Y da igual que lo vea, porque el hard link no era el agujero.** Medido en esta máquina con las dos
+   variantes construidas de verdad, el validador acepta el hard link (`alias.exe` → `payload.bat` fuera de
+   las raíces, `st_nlink == 2`) **y también una copia plena** del mismo `.bat` con nombre `.exe`
+   (`st_nlink == 1`, sin un solo enlace, sin junction, sin symlink, sin privilegios). Rechazar
+   `st_nlink > 1` habría cerrado el caso exótico y habría dejado abierto el trivial.
+3. **La variante "rechazar solo si el destino no está en las raíces" no es implementable.** Un hard link no
+   tiene destino consultable: no hay API en Windows que devuelva los otros nombres de un fichero a partir
+   de su ruta. Y aunque la hubiera, sería irrelevante: el atacante elige qué nombre queda dentro de la raíz.
+4. **Por qué no se usa `st_nlink` a pelo:** porque el **8,32 % de los ejecutables instalados** tienen
+   enlaces duros legítimos. Medido en las seis raíces: de **2273** `.exe`/`.com`, **189** tienen
+   `st_nlink > 1` (hasta 6), y son programas de Microsoft (`msinfo32.exe`, `TabTip.exe`, los auxiliares de
+   Edge, las herramientas de Hyper-V). "Rechazar cualquier `st_nlink > 1`" es un falso positivo del 8 %.
+
+**El cierre real es la regla 9 (`_es_imagen_pe`): el contenido, no el nombre.** La lista blanca de`.exe`/`.com` siempre quiso expresar que `.exe` significa "imagen PE", no "algo que se arranca", pero se
+cumplía mirando el **nombre**, y un hard link (o una copia) tiene el nombre que le pongas. La regla 9
+comprueba que el fichero lleva `MZ` y la firma `PE\0\0` en el offset que declara `e_lfanew`, **después** de
+la resolución real, sobre el fichero que se va a arrancar de verdad. Coste medido antes de escribirla:
+**2200 de 2273** `.exe`/`.com` instalados la cumplen, y **ninguno de los 189 multi-enlazados falla** (0
+falsos negativos en justo el caso que se quería cerrar). Los 19 que no la cumplen son appx de WindowsApps,
+la caché de MSI de `%APPDATA%\Microsoft\Installer` y un `.COM` DOS de 16 bits: ninguno es una app
+lanzable. Fail-closed: lo que no se puede leer, no es un PE y no se arranca.
+
+> **Corolario, y es la parte que más cuesta aprender:** *cerrar un agujero de nombres no es cerrar el
+> agujero.* El filtro de rutas miraba el nombre del fichero; el nombre es lo primero que elige el atacante.
+> La pregunta que sobrevive a todos los ejemplos de directorios es: **¿el fichero es lo que dice ser?**
+
+**Corolario para las sondas de este repo:** un caso de seguridad que necesita un objeto del
+sistema de ficheros (un junction, un hard link, una permisos denegada) **no se puede simular con
+un doble**: o se crea el objeto de verdad, o el test pasa por el motivo equivocado. Y si no se
+puede crear, el test **falla ruidosamente** (helper `_mklink` en `run_tests.py`), porque un test
+que se pone verde por no poder construir su caso es peor que no tener test.
+
+**Y el corolario de los corolarios, medido en esta iteración:** al añadir la regla 9, los fixtures que
+hacían de "una app" eran ficheros **vacíos** — y un `.exe` vacío no es un PE, así que la regla nueva los
+rechazaba **por el motivo equivocado**. Dos propiedades dejaron de estar probadas sin que ninguna sonda
+se quejara: la extensión real (mutación **A3** de la iteración 2) y la lista blanca (caso (b)). Una sonda
+que sigue verde puede estar midiendo otra cosa. Se arregla poniendo en las fixtures lo que dicen
+representar (`_escribir_pe_minimo`) y, mejor, haciendo que **el mismo contenido** con `.bat` no arranque y
+con `.exe` sí: así la diferencia la tiene que hacer la extensión y no el contenido.
+
+**Sondas:** `test_un_junction_no_puede_colar_lo_que_hay_detras`,
+`test_la_contencion_no_acepta_un_hermano_de_prefijo`, `test_la_contencion_no_depende_de_la_caja` y
+`test_un_hard_link_no_es_una_hoja_y_el_script_no_pasa`
+en `run_tests.py`; matriz de mutación en `_mutmatrix_t027_iter2.py` (21 mutaciones, 21 muertas, re-verificada
+en la iteración 3) y `_mutmatrix_t027_iter3.py` (5 mutaciones, 5 muertas), y la
+tabla en `docs/ai/testing-guide.md`.
+
+## Trampa #18: PowerShell parsea el bloque entero ANTES de ejecutar: una regex inline tumba todo
+
+**Medido en el ciclo 21** (2026-09-30), y lo encontraron tres actores independientes en la misma tarde:
+`openspec-dev` ("Shell escaping mangled it"), `mutation-auditor` ("PowerShell quoting is fighting the
+regex") y el propio orquestador. No es un incidente aislado: es el fallo por defecto.
+
+```powershell
+# FALLA
+python -c "import re; print(re.findall(r'\"([a-z]+)\"', 'k=\"v\"'))"
+# ParserError: Falta ] al final del atributo o literal de tipo.   (senala el corchete, NO la causa)
+```
+
+**Por qué es peor que un error de escapado normal.** PowerShell **analiza el bloque entero antes de
+ejecutar ninguna línea**. Un solo `ParserError` aborta *todas* las líneas del comando, incluidas las
+correctas: no hay resultados parciales. Y el mensaje apunta a una posición engañosa (el corchete de la
+regex), así que depurar el escapado consume iteraciones que vuelven a perder el bloque completo. El
+propio mensaje sale con los caracteres de la regex ya reinterpretados, así que ni se lee bien.
+
+**El patrón que funciona** (here-string → fichero → ejecutar):
+
+```powershell
+$code = @'
+import re
+print("findall:", re.findall(r'"([a-z]+)"', 'key="value" other="x"'))
+'@
+Set-Content -Path probe.py -Value $code -Encoding UTF8
+python probe.py
+# findall: ['value', 'x']    exit=0
+```
+
+**Regla:** en cuanto el inline deje de ser trivial —una regex, dos tipos de comilla, una barra
+invertida, un f-string con llaves— pasa a fichero de una vez. No dediques iteraciones al escapado.
+
+**Corolario de la misma clase, en Python:** al mutar código, **purga `__pycache__` entre mutaciones**.
+Python reutiliza un `.pyc` obsoleto si el mutante tiene la misma longitud en bytes y el mismo segundo de
+mtime, y entonces el veredicto es FALSO. Contamina además el mutante *siguiente*, que es exactamente
+como se cuela un "sobreviviente" que no existe. Le costó un lote entero al `mutation-auditor` del ciclo 21.
+
+**No confundir con la Trampa #16** (consola `cp1252`): aquella es Python *escribiendo* emoji y flechas;
+esta es PowerShell *parseando* antes de que Python exista. `cp1252` se arregla con ASCII en `print()`;
+esta se arregla con ficheros.
+
 ## Resumen de reglas para IA que modifique este proyecto
 
 1. **NUNCA uses `$pid` en scripts PowerShell** — usa `$procId` u otro nombre
@@ -1415,6 +1713,19 @@ killed, failed, skipped = kill_processes(
 6. **USA `root.after(0, callback)`** para actualizar widgets desde threads
 7. **USA TAB como delimitador** entre Python y PowerShell
 8. **NO añadas features sin test** — un cambio a la vez, validando cada uno
+9. **NUNCA valides rutas de este proyecto solo con `normpath`/`commonpath`** — son léxicos y no
+   atraviesan un junction; resuelve con `os.path.realpath(..., strict=True)` y compara la ruta
+   real (Trampa #17)
+10. **NUNCA des `os.startfile` por confianza**: ejecuta por intérprete lo que sea `.bat`/`.cmd`,
+   aunque la ruta esté dentro de la raíz permitida — la extensión se mira en la ruta **real**
+11. **NUNCA simules con un doble un caso de seguridad que necesita un objeto real del sistema de
+   ficheros** (junction, permisos, hard link): constrúyelo, y si no puedes, falla en voz alta
+   (Trampa #17)
+12. **NUNCA pases una regex a `python -c` desde PowerShell** — PowerShell parsea el bloque entero
+   antes de ejecutar, así que un solo `ParserError` aborta también las líneas correctas y no hay
+   resultados parciales. Escribe un fichero `.py` y ejecútalo. Y al mutar código, **purga
+   `__pycache__` entre mutaciones**: si el mutante tiene la misma longitud y el mismo segundo de
+   mtime, Python reutiliza un `.pyc` obsoleto y el veredicto es falso (Trampa #18)
 
 
 # mini-app-status
@@ -1559,6 +1870,18 @@ Para usar la Mini App, alguna de estas:
 # Testing
 
 > ⚠️ **REGLA DE ORO:** Nunca digas "listo" sin haber validado con un test real.
+
+> 🟡 **Este documento describe la v2 (`process_manager.py`, `ProcessManager.vbs`) y está
+>caducado.** No lo uses para validar cambios actuales. La guía vigente es
+>[`docs/ai/testing-guide.md`](ai/testing-guide.md), y la puerta de entrada es
+>`python run_tests.py` (suite headless, la única con cobertura viva) más
+>`python verify_ui_syntax.py`.
+>
+> Los que enumera abajo que **ya no están en la raíz**:
+> `verify_pyw.py`, `test_kill_real.py`, `test_harness.py` y `test_gaming_profile.py`
+> (los dos últimos están archivados en `docs/archive/legacy-root-tests/`; los otros
+> dos se movieron a `basura/` en CYCLE-050). Siguen aquí como registro de qué se
+> comprobaba, no como instrucciones ejecutables.
 
 ## Scripts de validación incluidos
 
@@ -1734,6 +2057,8 @@ Si kill falla → problema de taskkill (permisos o PID incorrecto).
 # ui-design-system
 
 <!-- source: docs/ai/ui-design-system.md -->
+
+---
 
 # Sistema de Diseño y Flujo UI CustomTkinter (v3)
 

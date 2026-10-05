@@ -195,6 +195,46 @@ Ejecutar con `python run_tests.py` (PowerShell: `$env:PYTHONIOENCODING="utf-8"`)
 
 
 
+### Las tres cifras que caducan (TASK-067 T-5)
+
+Regla que sale de una afirmación escrita a mano que nadie vigilaba, y que este ciclo midió
+por tercera vez. **Una cifra escrita a mano caduca en el commit, no en el mes.**
+
+1. **Toda cifra de veredicto escrita en prosa lleva su fecha y su "de aquel día".** Como ya
+   hacen `docs/GITHUB-SETUP-CHECKLIST.md:581` y la sección correspondiente del agregado. Sin
+   fecha, una cifra es una promesa sin ancla: el lector no puede distinguir "hoy son 126" de
+   "fueron 126", y las dos se leen igual.
+2. **Un guard que DERIVA la cifra de la fuente no caduca; uno que la CUENTA A MANO caduca en
+   el commit.** MEDIDO: el "126 OK / 0 FAIL" que afirmaba la entrada 7 de
+   `.taskmaster/CHANGELOG.md` era cierto antes de `d68bf8b` y se rompió **al commitear** —el
+   journal no tenía el ciclo 54—, y ese rojo lo cerró `a82dca5` a mano. El total de tests ya
+   está así (lo deriva el check 7 con `ast`); el número de `OK` del validador **no**, y por eso
+   se rompe. **Ésta es la razón por la que el número de `OK` no se cita como cifra estable en
+   ningún sitio de este repositorio, y por la que el check nuevo de `validate_docs.py`
+   escribe `len(generador.SECCIONES)` —que sale de la fuente— en vez de un número copiado.**
+3. **`commitlint` mira el RANGO DEL PUSH y la release la decide `.releaserc.json`**
+   (`type:docs -> release:false`). Sin esa distinción se promete una release que no sale: el
+   job `commits` sale verde y no se publica nada. Por eso el commit de un ciclo de
+   trazabilidad es `chore`/`docs` y **no** se promete ninguna release.
+
+**Y la afirmación que se retracta, con la medición que la retracta (D11).** D11 afirmaba que
+"nada vigila la entrada de los changelogs". **Es FALSO.** MEDIDO hoy en cámara, sobre una
+copia con `git clone` real: quitar el encabezado `## CYCLE-054` del changelog **de la raíz**
+(`CHANGELOG.md:1`, que es donde está; en `.taskmaster/CHANGELOG.md` el encabezado es
+`## [CYCLE-054]` y la sustitución no encuentra nada — MEDIDO, y por eso la primera cámara no
+tenía nada que mutar) sube el validador de **0 FAIL a 2 FAIL**, con los dos motivos
+literales de `_comprobar_ancla_del_changelog` (`validate_docs.py:833`): *"rd_journal.json
+registra el ciclo 054 pero el changelog legible no tiene su entrada"* y *"sin entrada para
+el/los ciclo/s 054, exigido por rd_journal.json y/o por el historial de commits"*. El ancla
+es **externa** (`rd_journal.json`), y por eso borrar el ciclo de los dos changelogs no borra
+el requisito: eso es lo que hace que el guard exista en vez de ser una promesa.
+
+**Lo que sí queda de D11 no es un agujero del guard, es una cifra escrita a mano** — el
+"126 OK / 0 FAIL" de esa misma entrada 7 —, o sea el punto 2 de esta sección. Y la cifra
+"1 FAIL → 2 FAIL" con la que se registró la refutación se midió sobre otro estado del árbol;
+**hoy el mismo experimento da `0 FAIL → 2 FAIL`**, y esa diferencia es la regla 1
+funcionando.
+
 ### El validador tiene UN solo camino de validación (D1–D4, TASK-057 iteración 3)
 
 Regla que sale de tres `FAIL` seguidos del `mutation-auditor` sobre el mismo código, y que se

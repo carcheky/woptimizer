@@ -162,7 +162,7 @@ Ninguno existe hoy. Solo hay `workflows/commitlint.yml` y `workflows/release.yml
 
 ### Bloque 3A — Salud del proyecto (recomendado, bajo coste)
 
-- [ ] **`LICENSE`.** **Ausente, y es lo mas grave de este bloque.** `mkdocs.yml:88` ya
+- [ ] **`LICENSE`.** **Ausente, y es lo mas grave de este bloque.** `mkdocs.yml:81-82` ya
       declara `Released under the MIT License`, es decir, **el pie de la documentacion
       afirma una licencia que no existe en el repo**. Sin LICENSE, GitHub no muestra la
       etiqueta de licencia en la pagina y la afirmacion no es ejecutable.

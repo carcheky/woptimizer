@@ -12418,7 +12418,8 @@ def _copiar_el_esqueleto_del_validador(destino):
 
     raiz_repo = os.path.dirname(os.path.abspath(__file__))
     ficheros = ("llms.txt", "llms-full.txt", "AGENTS.md", "README.md", "STATUS.md",
-                "CHANGELOG.md", "mkdocs.yml", "run_tests.py", "validate_docs.py")
+                "CHANGELOG.md", "mkdocs.yml", "run_tests.py", "validate_docs.py",
+                "build_llms_full.py")
     arboles = ("docs", "openspec", "src")
     ocultos = (os.path.join(".taskmaster", "CHANGELOG.md"),
                os.path.join(".taskmaster", "rd_journal.json"),
@@ -18013,19 +18014,28 @@ def test_la_regla_de_rama_no_vive_en_un_comentario_ni_en_una_valla():
       **bajo** un encabezado con `#`, porque en markdown los dos son contenido y
       no marca.
 
-    MEDIDO el 2026-10-05 (este ciclo) y CORRIGE la redaccion anterior de este
-    docstring, que decia que este tercer control "es el que impide el arreglo de
-    excluir tambien `#`". **NO lo impide.** MEDIDO, con el recorte tirando
-    tambien de las lineas que empiezan por `#` la suite sigue en VERDE, porque en
-    los tres ficheros hay **CERO** lineas que a la vez empiecen por `#` y lleven la
-    regla: el control no tiene donde morder. La mitad del `>` si que tiene
-    dientes —MEDIDO: tirando de las lineas que empiezan por `>` mueren los dos
-    tests, con el motivo literal *"la cita de bloque con `>` es PROSA que el bucle
-    lee, y el filtro no puede descartarla"*—, y lo que el control afirma de `#` es
-    una CONSTATACION del recorte (que un encabezado no es una capa), no una guarda
-    contra ese cambio. Se deja escrito para que nadie lo lea como mas de lo que
-    es: el arreglo correcto era este texto, y NO excluir `#` del filtro, que
-    abriria otro agujero del mismo tipo.
+    MEDIDO el 2026-10-05 dos veces en este ciclo, y las dos reescriben una
+    PROMESA FALSA de este docstring. La primera redaccion decia que este tercer
+    control "es el que impide el arreglo de excluir tambien `#`"; la segunda
+    decia que el control del `#` "NO lo impide" y que era "una CONSTATACION del
+    recorte, no una guarda". Las dos eran mentira, y la segunda por su propia
+    razon: **no tenia donde morder** porque las frases de la regla estaban en la
+    linea SIGUIENTE al encabezado, no en la del encabezado. MEDIDO: en los tres
+    ficheros hay CERO lineas que a la vez empiecen por `#` y lleven la regla.
+
+    El arreglo es de UNA LINEA DE DATOS DE TEST (TASK-067 T-3): las frases van
+    **sobre** la linea del encabezado. Con eso el control del `#` SI es una
+    guarda, y MEDIDO: con el recorte tirando tambien de las lineas que empiezan
+    por `#` este test sale en ROJO, con el motivo literal *"un ENCABEZADO con `#`
+    es contenido valido en markdown y no se puede excluir"*. La mitad del `>`
+    ya tenia dientes antes —MEDIDO: tirando de las lineas que empiezan por `>`
+    mueren los dos tests—.
+
+    **LO QUE NO ES EL ARREGLO, escrito para que nadie lo intente despues:**
+    excluir `#` del filtro. En markdown `#` es ENCABEZADO y las reglas empiezan
+    por `>`, asi que una regla dentro de un encabezado es contenido valido, y
+    excluirlo abriria otro agujero del mismo tipo que el que este control cierra.
+    El arreglo era el DATO, no el filtro.
 
     El tercer control mide ademas algo que el filtro no puede romper: que el
     recorte NO destruye la forma en que la regla esta escrita hoy en los tres
@@ -18064,10 +18074,16 @@ def test_la_regla_de_rama_no_vive_en_un_comentario_ni_en_una_valla():
 
     # --- CONTROL 3: la prosa real se conserva ---------------------------------
     # El `>` de markdown y el `#` de encabezado son MARCA, no contenido: los dos
-    # son prosa que el bucle lee. MEDIDO: la mitad del `>` tiene dientes (tirar de
-    # las lineas que empiezan por `>` mata los dos tests) y la del `#` fija que un
-    # encabezado NO es una capa, sin pretender tapar el cambio de tirar tambien de
-    # las lineas que empiezan por `#`: eso no lo caza nadie y el docstring lo dice.
+    # son prosa que el bucle lee. Las dos mitades tienen dientes, MEDIDO: tirando
+    # de las lineas que empiezan por `>` mueren los dos tests, y tirando de las que
+    # empiezan por `#` muere ESTE por la fila del encabezado.
+    #
+    # Y por eso las frases de la regla de prueba van **sobre** la linea del
+    # encabezado y no en la siguiente (TASK-067 T-3). MEDIDO, con el recorte
+    # tirando tambien de `#`: con las frases en la linea SIGUIENTE la suite sigue
+    # en VERDE y el control no vigila nada, porque el filtro se lleva el
+    # encabezado y la frase sobrevive igual. Es el dato, no el filtro, lo que
+    # convierte esta fila en una guarda.
     en_cita = ("> **REGLA DURA:** el bucle " + _FRASE_DESTINO +
                ", y `main` " + _FRASE_PROHIBICION + ".\n")
     limpio3 = _sin_la_capa_que_el_bucle_no_lee(en_cita)
@@ -18076,14 +18092,14 @@ def test_la_regla_de_rama_no_vive_en_un_comentario_ni_en_una_valla():
         f"descartarla: limpio={limpio3!r}")
     assert _FRASE_PROHIBICION in limpio3, (
         f"lo mismo con la prohibicion en cita: limpio={limpio3!r}")
-    en_encabezado = ("## Rama\n\n" + _FRASE_DESTINO + " y " +
+    en_encabezado = ("## Rama: el bucle " + _FRASE_DESTINO + " y " +
                      _FRASE_PROHIBICION + ".\n")
     limpio4 = _sin_la_capa_que_el_bucle_no_lee(en_encabezado)
     assert _FRASE_DESTINO in limpio4, (
         "un ENCABEZADO con `#` es contenido valido en markdown y no se puede "
         f"excluir: limpio={limpio4!r}")
     assert _FRASE_PROHIBICION in limpio4, (
-        f"lo mismo con la prohibicion bajo encabezado: limpio={limpio4!r}")
+        f"lo mismo con la prohibicion EN el encabezado: limpio={limpio4!r}")
 
     # --- Y la regla de HOY sigue siendo contenido, no un literal ni un
     #     comentario. Sin esta fila, un filtro demasiado agresivo pasaria los
@@ -18217,9 +18233,20 @@ def _destinos_de_versionado_de_un_fichero(texto):
     destino sin comillas tambien es el del comando LEGITIMO de T-3, y un guard que
     accuse al dueno por su propio release es peor que el mutante que tapa.
 
-    `total` cuenta **todo** lo extraido, no solo lo malo, porque es lo que hace que
-    un criterio de extraccion que deja de encontrar plantillas no pueda pasar en
-    verde sin mirar nada.
+    **`total` NO cuenta todo lo extraido**, y esta redaccion anterior de este
+    docstring si lo prometia. MEDIDO el 2026-10-05 (TASK-067 T-2) sobre los
+    ficheros reales: `total` = **11**, y con el mutante `P2-SIN-GIT-COMMIT` —que
+    quita la alternativa `git commit ... -m "..."` del RECONOCIMIENTO de vallas—
+    sigue siendo **11**, porque en `.agents/**` y `AGENTS.md` hay **CERO**
+    ocurrencias que solo la cuarta forma pueda ver. O sea que este numero no puede
+    ser el guard de la cuarta forma, y el `assert total >= 6` que hay aguas abajo
+    no la vigila: el mutante sobrevive a los 159.
+
+    Lo que SI ata la cuarta forma a una cifra medida es `de_plantilla`, medido en
+    **45** lineas de plantilla (`.agents/skills/id-pipeline/SKILL.md` 40,
+    `AGENTS.md` 5), y lo que ata el alcance de la cuarta forma a una sonda es la
+    que monta una valla marcada con `git commit ... -m "..."` y no con
+    `git_safe_commit.py "..."`.
     """
     import re as _re
     con_comillas = (
@@ -18305,6 +18332,44 @@ def test_ninguna_plantilla_de_commit_nombra_main():
         f"han salido {total}. Si el criterio de extraccion deja de encontrar los, "
         f"este test pasa en verde SIN MIRAR NADA, que es el falso verde con la "
         f"forma de una asercion")
+
+    # --- Y `total` NO es el guard del RECONOCIMIENTO de vallas, asi que este
+    #     test trae uno. MEDIDO (TASK-067 T-2): `total` = 11 antes y despues del
+    #     mutante `P2-SIN-GIT-COMMIT`, y `assert total >= 6` no lo nota. Lo que SI
+    #     se mueve cuando `_lineas_de_una_plantilla_de_commit` deja de reconocer
+    #     vallas es el numero de lineas de PLANTILLA, y eso es lo que esta fila ata
+    #     a una cifra medida y no a la promesa del docstring: **45** hoy.
+    #
+    #     El suelo es 40 y no 45 a proposito, para que anadir una linea de
+    #     plantilla no trocee el ciclo entero; y los dos ficheros se exigen POR
+    #     SEPARADO porque un 45 en uno solo con 0 en el otro seria otro falso
+    #     verde con forma de cifra.
+    por_fichero = {}
+    for ruta in rutas:
+        with open(ruta, encoding="utf-8") as fh:
+            lineas_de_ruta = fh.read().splitlines()
+        cuantas = len(list(_lineas_de_una_plantilla_de_commit(lineas_de_ruta)))
+        if cuantas:
+            por_fichero[os.path.relpath(ruta, raiz)] = cuantas
+    lineas_de_plantilla = sum(por_fichero.values())
+    assert lineas_de_plantilla >= 40, (
+        f"el reconocimiento de vallas PLANTILLA ha encontrado {lineas_de_plantilla} "
+        f"lineas y se esperaban al menos 40 (MEDIDO el 2026-10-05: 45, con "
+        f"`.agents/skills/id-pipeline/SKILL.md` 40 y `AGENTS.md` 5). Con el "
+        f"reconocimiento apagado del todo salen 0 y la cuarta forma no tiene por "
+        f"donde mirar, sin que `total` se entere: por eso esta fila existe y no "
+        f"basta con `assert total >= 6`. Desglose medido hoy: {por_fichero!r}")
+    con_skill = {rel: n for rel, n in por_fichero.items()
+                 if os.path.basename(rel) == "SKILL.md"}
+    assert con_skill, (
+        "ningun SKILL.md aporta lineas de plantilla y el reparto medido es "
+        f"SKILL.md 40 y AGENTS.md 5: un total que saliera solo de `AGENTS.md` "
+        f"cumpliria el suelo sin las plantillas que el bucle copia. "
+        f"Desglose: {por_fichero!r}")
+    assert por_fichero.get("AGENTS.md", 0) > 0, (
+        "`AGENTS.md` es donde vive la regla de rama y sus cinco lineas de "
+        f"plantilla, asi que si no aporta ninguna el reparto de "
+        f"{por_fichero!r} no es el que se midio")
     assert not infracciones, (
         "ninguna plantilla literal de commit puede nombrar `main` como destino: "
         f"la regla de TASK-066 dice que el bucle empuja a `beta` y que `main` solo "
@@ -18326,6 +18391,28 @@ def test_ninguna_plantilla_de_commit_nombra_main():
         f"antes solo miraban la forma entrecomillada, asi que un ejemplo de push "
         f"escrito como se escribe de verdad se cuela por debajo del guard: es el "
         f"punto ciego que este arreglo cierra")
+
+    # --- MITAD 1b: la MISMA sonda con la OTRA marca de valla, y es la que hace
+    #     que el mutante `P2-SIN-GIT-COMMIT` MUERA. MEDIDO, y por eso la mitad 1
+    #     de arriba NO lo coge: su valla esta marcada con `git_safe_commit.py
+    #     "..."`, que el mutante no toca, y con el mutante sigue disparando
+    #     (`[(3, 'git push origin main')]`, PASA). Aqui la UNICA marca de la valla
+    #     es `git commit ... -m "..."`: con el reconocimiento de vallas muerto esa
+    #     valla deja de ser plantilla, la cuarta forma no la ve, y la lista sale
+    #     VACIA.
+    con_push_2 = ('```bash\n'
+                  'git commit -m "fix(tests): cerrar los vivos (TASK-066)"\n'
+                  'git push origin main\n'
+                  '```\n')
+    _cuantos1b, hallazgos1b = _destinos_de_versionado_de_un_fichero(con_push_2)
+    assert [h for h in hallazgos1b if "push" in h[1]], (
+        "una valla PLANTILLA marcada con un `git commit ... -m \"...\"` y NO con "
+        "`git_safe_commit.py` tiene que sacar el `git push ... main` sin comillas "
+        f"como infraccion, y sale {hallazgos1b!r}. Sin reconocimiento de vallas esa "
+        "valla no es plantilla, la cuarta forma no la ve, y el mutante "
+        "`P2-SIN-GIT-COMMIT` pasa: la sonda de la mitad 1 no lo coge porque su "
+        "valla lleva la OTRA marca, y con las dos marcas la cuarta forma queda "
+        "atada a una sonda y no a una promesa")
 
     # --- MITAD 2: la CONTRAPRUEBA, y va en el mismo test y no al final por
     #     accidento. El bloque de publicacion de `AGENTS.md` es legitimo y su
