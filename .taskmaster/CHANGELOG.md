@@ -3,11 +3,25 @@
 **Area**: Arquitectura & Calidad. **Change**: el cierre del plan de `TASK-064` /
 `TASK-066` (Paso 4 bis, sin `openspec/changes/` nuevo: es el cierre de una ronda de
 mutacion, no un cambio de arquitectura).
-**Estado**: **los TRES supervivientes de la ronda anterior cerrados (S3, S7, S8).**
-`TASK-064` sigue `in_pending` a la espera de T-3 (la release estable), y no se marca
-`completed` hasta que `v1.1.0` este publicada con su `.exe`.
+**Estado**: **los TRES supervivientes de la ronda anterior cerrados (S3, S7, S8) y
+T-3 CERRADO: `v1.1.0` ESTABLE publicada con su `.exe`.** `TASK-064` en `completed`.
+**Commits**: `9b0ea8c` (`fix(tests)`, lleva S3, S7, S8, las ocho correcciones
+documentales, el recuento a 159 y la entrada de este ciclo) + el commit de cierre de
+T-3. **Push**: `beta` FF `9e83c5a..9b0ea8c`, luego `main` FF `d568804..9b0ea8c`
+**sin `--force`** y con la proteccion sin tocar.
 **Tests**: 156 -> **159** (112 backend + 47 headless). Las tres sondas van **detras**
 del marcador headless: son tooling puro, no abren ventana, y escriben en `%TEMP%`.
+
+**LA TERCERA VIA, MEDIDA Y EJECUTADA.** El argumento de que "7 publicados + `main`
+protegida = reescribir es imposible" es cierto e **irrelevante para la cura**: eso
+bloquea **reescribir**, no **empujar**, y `main` ya era ancestro estricto de `beta`.
+Ejecutado tal cual: `git switch main` / `git merge --ff-only beta` (FF puro,
+`d568804..9b0ea8c`) / `git push origin main` (normal, `PUSH_EXIT=0`) / `git switch
+beta`. **Sin tocar `release.yml`, sin `--force`, sin reescribir y sin cambiar la
+proteccion.** Corrida
+[`37265499693`](https://github.com/carcheky/woptimizer/actions/runs/37265499693) con
+**los cuatro jobs en `success`** y la release **`v1.1.0`, `prerelease=False`,
+`2026-10-05T05:04:36Z`, asset `woptimizer.exe`**. `main` y `beta` quedan en `9b0ea8c`.
 
 **INCERT-1, MEDIDO por API** (`GET /repos/carcheky/woptimizer/branches/main/protection`):
 la proteccion de `main` **NO tiene `required_status_checks`** —el campo no aparece en
@@ -18,7 +32,22 @@ decide si el push se admite:** sin checks exigidos y sin revisiones exigidas, un
 normal a `main` no tiene ninguna condicion que lo retenga, luego el T-3 del plan
 —`git merge --ff-only beta` + `git push origin main`, sin `--force`— esta ADMISIBLE.
 La proteccion sigue bloqueando el force-push y el borrado, que es justo lo que la
-regla de TASK-066 necesita.
+regla de TASK-066 necesita. Sonda reproducible versionada:
+`.taskmaster/_gh_incert1.py`.
+
+**CORRECCION AL RAZONAMIENTO DEL TURNO ANTERIOR, y es la que de verdad decide si sale
+la release.** Decia "punta nueva => corrida nueva => `commits` verde => `v1.1.0`". El
+`commits` en verde es cierto y el resultado tambien, pero por un motivo distinto. Lo
+que decide la release **NO es el rango del push**: es `.releaserc.json`, que declara
+**`"type": "docs", "release": false`**. MEDIDO: el rango del push tal como estaba antes
+de este ciclo eran **2 commits, los dos `docs(github)`, y CUALQUIER push habria salido
+SIN tag** —el job `release` no publica nada y el `build` se salta por
+`if: needs.release.outputs.tag != ''`. Un `docs` **no publica**. Lo que publica la
+version de `main` es el historial sin publicar desde la ultima release estable del
+canal (`v1.0.0`): ahi hay **42 commits, 21 publicables**, y entre ellos hay `feat`
+(`feat(tooling)`, `feat(tray)`, `feat(categorias)`, ...), luego sale un minor = 1.1.0.
+Y por eso el mensaje de este ciclo es **`fix(...)` y no `docs(...)`**: con `docs` el
+`commits` tambien habria salido verde y la release tampoco se habria publicado.
 
 ### Mutaciones auditadas (Paso 4 bis)
 | Superviviente | Mutacion | Veredicto | Motivo literal de la muerte |

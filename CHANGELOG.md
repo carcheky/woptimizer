@@ -56,6 +56,9 @@ misma clase de fallo: **una comprobacion que no puede fallar no es una comprobac
   propia asercion** (no por un error de sintaxis ni por un fallo de importacion).
 - Los **nueve mutantes ya declarados** se repitieron uno a uno: los nueve mueren, cada uno por
   la asercion que lo declara muerto.
+- **Y la release estable existe, con su ejecutable.** `v1.1.0`, sin marcar como prerelease,
+  con `woptimizer.exe` adjunto. La corrida de `main` dio los cuatro trabajos en verde. Puedes
+  descargarla desde la pagina de releases.
 
 ## CYCLE-053 - 2026-10-04
 ## CYCLE-053 - 2026-10-04
