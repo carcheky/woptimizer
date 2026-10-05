@@ -577,7 +577,7 @@ esta se arregla con ficheros.
    antes de ejecutar, así que un solo `ParserError` aborta también las líneas correctas y no hay
    resultados parciales. Escribe un fichero `.py` y ejecútalo. Y al mutar código, **purga
    `__pycache__` entre mutaciones**: si el mutante tiene la misma longitud y el mismo segundo de
-   mtime, Python reutiliza un `.pyc` obsoleto y el veredicto es falso (Trampa #18)
+   mtime, Python reutiliza un `.pyc` obsoleto y el veredicto es falso (Trampa #18)
 13. **NUNCA tomes `os.path.dirname(sys.executable)` como destino de datos de usuario** - un destino
     que se mueve con el binario pierde los datos cada vez que el binario se mueve, y es un estado
     estacionario, no un evento (Trampa #19). Y **NUNCA compiles un `profiles.json` de otro sitio**
