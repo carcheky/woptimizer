@@ -84,6 +84,10 @@
 ---
 
 
+- **Dos decisiones del dueno bloquean el cierre de `TASK-068` (T-4). El codigo ya esta hecho y medido: 189 tests, ladrillo muerto, `(0,0) -> (0,1)`, toast en AMBAR.**
+  - **P-1 / T-4 DECIDIR: con una categoria 🟡 (p. ej. 🟡 Launchers Gaming) marcada para **arrancar**, ¿se aceptan N launchers de golpe y el mensaje los nombra, o **🟡 pasa a ser inerte al arrancar igual que 🔴**? MEDIDO: arrancar **no mata nada** (unico efecto `self._lanzar`), o sea que 🟡 aqui es riesgo de **amplitud**, no de destruccion. La asimetria actual es que 🔴 esta bloqueada en las dos listas y 🟡 **solo en una**, y esa asimetria **no esta escrita en ningun sitio**. La opcion de 🟡 inerte es simetrica con `gaming_service.py:104`. Coste de esa via: para abrir un launcher se usaria la lista `apps` (un ejecutable).
+  - **P-2(b) / T-4 DECIDIR: ¿entra este ciclo que el mensaje diga POR QUE se omite cada categoria** (3-tupla `started, failed, motivo`), o con ver QUE se omite —que ya funciona y esta medido— te vale? El suelo (contar lo omitido como fallo) ya esta hecho; lo pendiente es solo el **motivo**.
+
 ## 🛡 Features Pedidas (aun no planificadas)
 > Esto **no** es deuda tecnica: son features pedidas por el dueno que todavia **no entran en el bucle**. Viven aqui para que no se pierdan, y cada una tiene su tarea para que el validador pueda exigir su fuente.
 
