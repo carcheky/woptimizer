@@ -16,7 +16,27 @@ CONTRATO DE CODIGOS DE SALIDA (normativo, documentado en docs/ai/sandbox-rules.m
     2  WOPT_USAGE <detalle>                    uso incorrecto
     2  WOPT_USAGE ancla-mensaje <detalle>      el mensaje no lleva identificador
     2  WOPT_USAGE paridad-git <detalle>        llega una sola de las dos variables
+    2  WOPT_USAGE cabecera-larga <que> <med>   la cabecera pasa de 120 caracteres
+    2  WOPT_USAGE cabecera-regla <regla> <mot> la cabecera incumple otra regla
     3  WOPT_REPO_INVALIDO <detalle>            repositorio no verificable
+
+PUERTA DE LA CABECERA (TASK-066): el mensaje tiene que parsear como
+conventional commit y su cabecera no pasar de 120, con el criterio COPIADO del
+codigo de commitlint y no inventado (ver `clasificar_cabecera`). Sin ella un
+commit de 135 caracteres si puede existir, y el dia que puede volver a existir
+vuelve el rojo: el job `commits` tumba la corrida entera y nada despues corre.
+Va en el mismo sitio que la puerta de ancla, por la misma razon y con el mismo
+codigo 2: la puerta no ejecuta ninguna operacion de git, luego un `WOPT_FAIL`
+seria indistinguible de un fallo de git para el unico consumidor que ramifica
+por el codigo.
+
+LA RAMA ES AVISO, NO RECHAZO (proposal.md seccion 3.2). Estar en `main` imprime
+un bloque `AVISO` que nombra la regla de TASK-066 y **se sigue con codigo 0**.
+El motivo es evidencia ya pagada por este repo (`STATUS.md:95(b)`): una puerta
+que solo existe en el wrapper no puede cerrar un `git commit` escrito a mano, y
+un rechazo duro sobre `main` solo guardaria el camino guardado --el wrapper-- y
+**bloquearia el commit legitimo del dueno en la rama de release**, que es el
+caso para el que `main` existe. Lo que se rechaza es la cabecera, no la rama.
 
 PUERTA DEL MENSAJE (TASK-059): un mensaje pasa si lleva `TASK-NNN` que exista en
 `.taskmaster/tasks.json`, o `CYCLE-NNN`, o un marcador de ciclo (`ciclo N`). Sin
@@ -380,6 +400,211 @@ def ids_de_tareas():
     return ids, None
 
 
+# --- La puerta de la cabecera (TASK-066) ------------------------------------
+#
+# Copia del criterio de commitlint, LEIDO de su codigo y no supuesto. Las
+# cuatro fuentes, para que un cambio de criterio sea rastreable en vez de
+#opinionado:
+#
+#   - parse:  `@commitlint/parse` usa `conventional-changelog-angular`, cuyo
+#             `headerPattern` es `/^(\w*)(?:\((.*)\))?!?: (.*)$/` con
+#             `headerCorrespondence` [type, scope, subject]. Si el patron NO
+#             casa, `type` y `subject` quedan a **null**.
+#   - case:   `@commitlint/ensure/src/case.ts` borra `x` / "x" / 'x', hace
+#             `trim`, y compara `toCase(entrada, objetivo) === entrada`, con DOS
+#             excepciones: si el resultado es "" o **empieza por digito**
+#             devuelve True (indeterminado, y por eso pasa).
+#   - toCase: `@commitlint/ensure/src/to-case.ts`: `upper-case` es
+#             `toUpperCase()` de **TODA** la cadena; `pascal-case` es
+#             `upperFirst(camelCase(entrada))`.
+#   - regla:  `@commitlint/rules/src/subject-case.ts`: si el subject NO empieza
+#             por una letra CON CASO (`\p{Ll}\p{Lu}\p{Lt}`) la regla PASA sin
+#             mirar; si empieza, `never` falla en cuanto `ensureCase` dice que
+#             ES uno de los cases.
+#
+# MEDIDO (2026-10-05) y escrito porque es contraintuitivo: `subject-case` **no**
+# es "no empezar por mayuscula". Rechaza el subject **entero** en mayusculas y
+# el subject en PascalCase; uno que solo empieza en mayuscula y lleva espacios
+# ("T-9 afirma el invariante") PASA. La premisa de que el primer caracter es lo
+# que se mira era FALSA, y con ella la cuenta de commits rojos del rango
+#historico: son 7, no 8.
+LIMITE_CABECERA = 120
+# Ramas por las que sale una version ESTABLE. Estar en una de ellas es AVISO,
+# no rechazo (proposal.md seccion 3.2). La razon esta en el docstring del
+# contrato: un `sys.exit` aqui solo guardaria el wrapper y bloquearia el commit
+# legitimo del dueno en la rama de release.
+RAMAS_DE_PUBLICACION = ("main",)
+TIPOS_ADMITIDOS = (
+    "feat", "fix", "docs", "style", "refactor", "perf",
+    "test", "build", "ci", "chore", "revert",
+)
+# `\w` NO incluye `/`, asi que `feat/fix: ...` NO casa con el patron y el `type`
+# queda a null: eso es lo que hace que el job `commits` lo rechace.
+_RE_CABECERA = re.compile(r"^(\w*)(?:\((.*)\))?!?: (.*)$")
+# Lo que `case.ts` borra antes de comparar cualquier cosa.
+_RE_COTILLAS = re.compile(r"`.*?`|\".*?\"|'.*?'", re.DOTALL)
+# Palabras de `camelCase`: mayusculas en serie, o mayuscula+minusculas, o
+# minusculas/digitos. Es la aproximacion de `es-toolkit` para los casos que
+# aparecen en este repo.
+_RE_PALABRAS = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+")
+
+# El rechazo de longitud, en la FORMA que pide el contrato: que se espera y
+# medicion. ASCII PURO (trampa #16, consola cp1252). Nombra la regla de
+# `.commitlintrc.json` de la que sale, para que corregir el mensaje no obligue a
+# abrir el codigo.
+MOTIVO_CABECERA_LARGA = (
+    "la cabecera pasa de 120 caracteres y el job 'commits' de "
+    ".github/workflows/release.yml tumba la corrida entera con eso. Se espera "
+    "una cabecera de 120 caracteres o menos, con el tipo pegado al subject por "
+    "': ' y el ancla al final. POR QUE importa: sin esta puerta un mensaje de "
+    "135 caracteres si puede existir, y el dia que puede volver a existir vuelve "
+    "el rojo --'commits' tumba la corrida, y 'verify', 'release' y 'build' no "
+    "llegan a correr, asi que tampoco sale el .exe. Ancla tu mensaje y acortalo"
+)
+
+# El rechazo de las otras cinco reglas. El nombre de la regla va DENTRO del
+# mensaje porque es lo que hay que arreglar, y el texto dice que hacer con ella.
+MOTIVO_CABECERA_REGLA = {
+    "type-empty": (
+        "la cabecera no tiene tipo. El job 'commits' espera un conventional "
+        "commit que empiece por 'tipo: ' o 'tipo(scope): '. Revisa que el tipo "
+        "esté pegado al subject con ': ' y con un solo espacio"
+    ),
+    "type-enum": (
+        "el tipo no es uno de los que admite la regla 'type-enum' de "
+        ".commitlintrc.json. Ojo con los tipos compuestos: 'feat/fix: ...' NO "
+        "parsea, porque '/' no es un caracter de tipo para el parser de CI, y "
+        "el tipo tiene que ser UNO de los de la lista. Pon el tipo que "
+        "corresponda al cambio y ya"
+    ),
+    "type-case": (
+        "el tipo no va en minusculas, y la regla 'type-case' lo exige. "
+        "Escribe 'fix', no 'Fix' ni 'FIX'"
+    ),
+    "subject-empty": (
+        "la cabecera no tiene subject: sobra el ': ' o falta el texto detras. "
+        "El job 'commits' espera 'tipo(scope): texto' con texto no vacio"
+    ),
+    "subject-case": (
+        "el subject va enteramente en mayusculas o en PascalCase, y la regla "
+        "'subject-case' lo prohibe. Ponlo en minusculas, con solo la primera "
+        "palabra en mayuscula si hace falta. Ojo: lo que se prohibe aqui es el "
+        "subject ENTERO en mayusculas, no empezar por mayuscula, asi que "
+        "'T-9 afirma el invariante' es valido y 'T-9 AFIRMA EL INVARIANTE' no"
+    ),
+}
+
+
+def _empieza_con_letra_con_caso(texto):
+    r"""El `\p{Ll}\p{Lu}\p{Lt}` de `subject-case.ts`, sin `regex` de terceros.
+
+    Lo que importa es distinguir una letra **con caso** de una que no lo tiene:
+    `str.isupper()` y `str.islower()` de Python son las dos False en una letra
+    `Lo` (otras letras, p. ej. las de los alfabetos sin caja), y para `subject-case`
+    esas NO cuentan. El modulo `re` de la biblioteca estandar no entiende `\p{}`.
+    """
+    if not texto:
+        return False
+    primero = texto[0]
+    if not primero.isalpha():
+        return False
+    return primero.isupper() != primero.islower()
+
+
+def _camel_case(texto):
+    partes = _RE_PALABRAS.findall(texto)
+    if not partes:
+        return texto
+    return partes[0].lower() + "".join(
+        p[:1].upper() + p[1:] for p in partes[1:]
+    )
+
+
+def _ensure_case(texto, objetivo):
+    """`(bool)` de `ensureCase` de commitlint. Copia, no aproximacion.
+
+    Incluye las DOS excepciones de `case.ts`, que son las que hacen que un
+    subject que empieza por digito pase siempre.
+    """
+    entrada = _RE_COTILLAS.sub("", texto or "").strip()
+    if objetivo == "upper-case":
+        transformado = entrada.upper()
+    elif objetivo == "pascal-case":
+        camel = _camel_case(entrada)
+        transformado = camel[:1].upper() + camel[1:]
+    else:
+        transformado = entrada.lower()
+    if transformado == "" or transformado[0].isdigit():
+        return True
+    return transformado == entrada
+
+
+def clasificar_cabecera(mensaje):
+    """`(ok, codigo_regla, texto)`: el PRIMER fallo de las 6 reglas de nivel 2.
+
+    PURA por construccion: sin `subprocess`, sin ficheros y sin leer
+    `.commitlintrc.json` en caliente. Por eso se prueba entera sin escribir
+    nada. Que NO lea la config es deliberado: leerla en caliente haria que en un
+    repo sin `.commitlintrc.json` la puerta se quedaria muda y verde, que es
+    la misma clase de fallo que la puerta de ancla sufrio con un
+    `tasks.json` ilegible. Para que los numeros no se separen de la config,
+    `run_tests.py` -> `test_la_puerta_de_cabecera_usa_las_cuentas_de_la_config`
+    compara estas constantes con `.commitlintrc.json`: si alguien cambia el
+    limite ahi, este test se pone rojo en el acto.
+
+    `codigo_regla` es el nombre EXACTO de la regla de `.commitlintrc.json` que
+    incumple, y va en el mensaje del rechazo, porque es lo que hay que
+    arreglar. Se devuelve el PRIMER fallo en el ORDEN del fichero de config,
+    no en el orden en que las mira CI: el orden de la config es el unico
+    criterio estable y escribible, y el motivo de rechazo no depende de el.
+    """
+    texto = mensaje or ""
+    cabecera = texto.split("\n", 1)[0]
+
+    tipo = _scope = _subject = None
+    encontrada = _RE_CABECERA.match(cabecera)
+    if encontrada:
+        tipo, _scope, _subject = encontrada.group(1), encontrada.group(2), encontrada.group(3)
+
+    # 1. type-empty
+    if not tipo:
+        return False, "type-empty", MOTIVO_CABECERA_REGLA["type-empty"]
+    # 2. type-enum
+    if tipo not in TIPOS_ADMITIDOS:
+        return False, "type-enum", MOTIVO_CABECERA_REGLA["type-enum"]
+    # 3. type-case (lower-case)
+    if not _ensure_case(tipo, "lower-case"):
+        return False, "type-case", MOTIVO_CABECERA_REGLA["type-case"]
+    # 4. subject-empty
+    if not _subject:
+        return False, "subject-empty", MOTIVO_CABECERA_REGLA["subject-empty"]
+    # 5. subject-case: [2, never, [upper-case, pascal-case]]
+    if _empieza_con_letra_con_caso(_subject):
+        for caso in ("upper-case", "pascal-case"):
+            if _ensure_case(_subject, caso):
+                return False, "subject-case", MOTIVO_CABECERA_REGLA["subject-case"]
+    # 6. header-max-length: mide la PRIMERA LINEA, no el mensaje entero.
+    if len(cabecera) > LIMITE_CABECERA:
+        return False, "header-max-length", MOTIVO_CABECERA_LARGA
+    return True, "", ""
+
+
+def rama_actual(env):
+    """`(ok, rama)`: la rama en la que se va a escribir.
+
+    MEDIDO: `git_safe_commit.py` no tenia ni una coincidencia de `branch`, asi
+    que la pregunta "en que rama estoy escribiendo" no tenia respuesta en la
+    salida. `INFO rama:` la hace respondible y es la precondicion legible del
+    AVISO de TASK-066. Se lee UNA vez, y si no resuelve se dice `desconocida`
+    en vez de inventar un valor: un `INFO` que dice una rama que no es la suya
+    es peor que un `INFO` que no sale.
+    """
+    rc, out, err, exc = run_git(["rev-parse", "--abbrev-ref", "HEAD"], env)
+    if exc is not None or rc != 0 or not out:
+        return False, "desconocida"
+    return True, out.splitlines()[0].strip()
+
+
 def imprimir_uso():
     print('Uso: python .taskmaster/git_safe_commit.py "tipo(scope): descripcion (TASK-NNN)"')
     print("     python .taskmaster/git_safe_commit.py --verify")
@@ -389,6 +614,23 @@ def imprimir_uso():
     print("  'CYCLE-NNN'                                       (p. ej. 'CYCLE-059')")
     print("  'ciclo N'                                         (p. ej. 'ciclo 59')")
     print("Sin identificador el commit no tiene tercer testigo y se rechaza con 2.")
+    print()
+    print("El mensaje TAMBIEN tiene que ser un conventional commit valido, y lo exige")
+    print("el mismo criterio que el job 'commits' de .github/workflows/release.yml")
+    print("(TASK-066). Se rechaza con 2, y las reglas son las de .commitlintrc.json:")
+    print("  header-max-length  la cabecera (primera linea) no pasa de 120 caracteres")
+    print("  type-enum          el tipo es uno de: " + ", ".join(TIPOS_ADMITIDOS))
+    print("  type-case          el tipo va en minusculas")
+    print("  type-empty         hay tipo")
+    print("  subject-empty      hay subject")
+    print("  subject-case       el subject NO va en mayusculas ni en PascalCase")
+    print("El tipo va pegado al subject con ': ', y el scope opcional entre parentesis:")
+    print('  "fix(tooling): cerrar la puerta de versionado (TASK-061)"')
+    print("Un tipo con barra NO parsea -- 'feat/fix: ...' no es conventional commit y")
+    print("se rechaza, porque el '/' no es un caracter de tipo para el parser de CI.")
+    print()
+    print("La RAMA no se rechaza: estar en 'main' imprime un AVISO y se sigue con 0.")
+    print("El bucle trabaja en 'beta'; 'main' solo recibe 'beta' por fast-forward.")
 
 
 def main():
@@ -436,6 +678,34 @@ def main():
 
     print(f"INFO git_dir en uso: {git_dir}")
 
+    # La rama, leida UNA vez y temprano, para que `INFO rama:` sea la
+    # precondicion legible del AVISO de TASK-066. MEDIDO: hasta TASK-066 el
+    # wrapper era ciego a la rama (cero coincidencias de `branch`), y el bucle
+    # llevaba 52 ciclos comiteando en `main` sin que ninguna salida lo dijera.
+    # Se imprime ANTES del NOOP y de las puertas para que tambien salga cuando
+    # el commit se rechaza: un rechazo con la rama a la vista es diagnosticable,
+    # y uno sin ella obliga a abrir otra terminal para averiguar donde estas.
+    ok_rama, rama = rama_actual(env)
+    print(f"INFO rama: {detalle(rama)}")
+    if rama in RAMAS_DE_PUBLICACION:
+        # AVISO, y se sigue con 0. Ver el docstring del contrato de codigos.
+        print(f"AVISO rama: '{detalle(rama)}' es una rama de PUBLICACION y aqui "
+              f"se va a escribir un commit del bucle.")
+        print("AVISO la regla de TASK-066 dice que el bucle comitea y empuja a "
+              "'beta', y que 'main' es la rama de publicacion y solo recibe "
+              "'beta' por fast-forward.")
+        print("AVISO POR QUE esto NO se rechaza: un rechazo aqui solo guardaria "
+              "el wrapper y bloquearia el commit legitimo del dueno en la rama "
+              "de release, que es justo el caso para el que 'main' existe. El "
+              "que se rechaza es el mensaje, no la rama. La regla esta escrita "
+              "en .agents/skills/id-pipeline/SKILL.md (0-bis), .agents/agents/"
+              "openspec-dev/agent.md, AGENTS.md y docs/ai/release-pipeline.md "
+              "(2.1).")
+        if not ok_rama:
+            print("AVISO no se pudo resolver la rama con git, asi que este "
+                  "AVISO sale del nombre que el wrapper cree, no de una "
+                  "medida: creelo con la prudencia de un aviso.")
+
     # 1. status --porcelain como fast path. Un status FALLIDO es un error, no
     #    "hay cambios": la version anterior hacia justo eso y segua hacia add.
     rc, out, err, exc = run_git(["status", "--porcelain"], env)
@@ -466,6 +736,39 @@ def main():
         # un `WOPT_FAIL ancla-mensaje` seria indistinguible de un fallo de git
         # para el unico consumidor real del codigo, que ramifica por el codigo.
         print(f"WOPT_USAGE ancla-mensaje {detalle(motivo_ancla)}")
+        sys.exit(CODE_USAGE)
+
+    # 2bis. PUERTA DE LA CABECERA (TASK-066). Mismo sitio y mismo codigo que la
+    #      de ancla, y por el mismo motivo: DESPUES de `validar_repo` y del
+    #      NOOP, y ANTES de `add -A`. Aqui es de SOLO LECTURA y cae antes de la
+    #      primera escritura, luego un rechazo no muta el arbol. Ponerla
+    #      despues de `add -A` rechazaria con el indice ya modificado, que es el
+    #      error que ya se cometio una vez con la puerta de ancla y que por eso
+    #      el sitio esta dicho con su porque.
+    #
+    #      `--verify` NO pasa por aqui: es un diagnostico del repo y no lleva
+    #      mensaje, asi que no hay cabecera que clasificar.
+    ok_cabecera, regla_cabecera, motivo_cabecera = clasificar_cabecera(mensaje)
+    if not ok_cabecera:
+        # Codigo 2 y NO 1, por el mismo motivo que la puerta de ancla: la puerta
+        # no ejecuta ninguna operacion de git, y un `WOPT_FAIL` seria
+        # indistinguible de un fallo de git para el unico consumidor que ramifica
+        # por el codigo.
+        #
+        # El `sys.exit` va DENTRO de cada rama y no despues del `if/else`: el
+        # contrato dice que una linea `WOPT_*` cierra una salida EN SU BLOQUE, y
+        # `run_tests.py` -> `test_toda_linea_wopt_de_main_esta_en_la_tabla_y_cierra_
+        # una_salida` lo verifica con `ast` sobre el arbol de `main()`. Un
+        # `sys.exit` compartido por las dos ramas deja las dos lineas `WOPT_*`
+        # huerfanas, que es el mutante M10. La linea `WOPT_*` va SIEMPRE la
+        # ULTIMA (regla 4 del contrato).
+        if regla_cabecera == "header-max-length":
+            largo = len((mensaje or "").split("\n", 1)[0])
+            print(f"WOPT_USAGE cabecera-larga se espera 120 caracteres o menos, "
+                  f"y la cabecera mide {largo}: {detalle(motivo_cabecera)}")
+            sys.exit(CODE_USAGE)
+        print(f"WOPT_USAGE cabecera-regla {regla_cabecera} "
+              f"{detalle(motivo_cabecera)}")
         sys.exit(CODE_USAGE)
 
     # 3. add -A. Si falla, ABORTAR: comitear despues seria staging parcial

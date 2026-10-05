@@ -56,7 +56,7 @@ ciclo se da por versionado sin haberlo estado.
 | `0` | Nada que comitear (benigno) | `git diff --cached --quiet` == 0 tras `add -A` | `WOPT_NOOP <motivo>` (**sin hash**) |
 | `0` | Repo sano (solo diagnóstico) | `--verify` y el par `GIT_DIR`/`GIT_WORK_TREE` es utilizable | `WOPT_REPO_OK <git_dir>` |
 | `1` | Fallo de una operación de git | `git status`, `git add -A` o `git commit` con rc != 0, o excepción al lanzarlos | `WOPT_FAIL <operacion> <detalle>` |
-| `2` | Uso incorrecto | sin mensaje, mensaje vacío, más de un posicional, flag desconocido, **mensaje sin identificador de ciclo ni de tarea**, **o llega una sola de las dos variables `GIT_DIR`/`GIT_WORK_TREE`** | `WOPT_USAGE <detalle>` / `WOPT_USAGE ancla-mensaje <detalle>` / `WOPT_USAGE paridad-git <detalle>` |
+| `2` | Uso incorrecto | sin mensaje, mensaje vacío, más de un posicional, flag desconocido, **mensaje sin identificador de ciclo ni de tarea**, **o llega una sola de las dos variables `GIT_DIR`/`GIT_WORK_TREE`**, **o la cabecera pasa de 120 caracteres**, **o la cabecera incumple `type-empty`/`type-enum`/`type-case`/`subject-empty`/`subject-case`** | `WOPT_USAGE <detalle>` / `WOPT_USAGE ancla-mensaje <detalle>` / `WOPT_USAGE paridad-git <detalle>` / `WOPT_USAGE cabecera-larga <que se espera> <medicion>` / `WOPT_USAGE cabecera-regla <regla> <detalle>` |
 | `3` | Repositorio no verificable | `GIT_DIR` inexistente, no es un git dir, `GIT_WORK_TREE` que no es un directorio, `HEAD` no resuelve, `is-inside-work-tree` != `true`, o `git` no ejecutable | `WOPT_REPO_INVALIDO <detalle>` |
 
 Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
@@ -121,6 +121,60 @@ Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
    cp1252). Los comentarios y docstrings sí llevan acentos. La puerta del mensaje (sección
    siguiente) vive bajo esta misma regla: su motivo de rechazo es el texto que más urge y el que
    menos puede fallar al imprimirse.
+9. **LA PUERTA DE LA CABECERA, y el criterio está COPIADO, no inventado (TASK-066).** El
+   mensaje tiene que parsear como conventional commit y su cabecera no pasar de 120. El criterio
+   sale de **leer el código de commitlint**, no de suponerlo, y las cuatro fuentes quedan citadas
+   en el docstring de `clasificar_cabecera` para que un cambio sea rastreable:
+   `@commitlint/parse` (headerPattern `/^(\w*)(?:\((.*)\))?!?: (.*)$/` del preset angular),
+   `@commitlint/ensure/src/case.ts`, `.../to-case.ts` y
+   `@commitlint/rules/src/subject-case.ts`.
+
+   *Por qué está en el wrapper y no en el `.yml`.* El wrapper es la **única puerta de
+   versionado** del bucle. Un commit de 135 caracteres no debe poder existir: el día que pueda
+   volver a existir, vuelve el rojo.
+
+   *El criterio no se relaja para que pase lo que escribió el guard* (la opción (b) del plan,
+   subir `header-max-length` a 220, queda **descartada**): relajar el guard para que pase lo que
+   escribió el guard es como un guard deja de guardar. Lo que se.extiende es el **perímetro**,
+   con el resolutor de rango que ya está escrito en el `.yml`, y se deja el guard con todo su
+   poder sobre lo futuro.
+
+   *`clasificar_cabecera` es PURA y NO lee `.commitlintrc.json` en caliente*, a propósito: leerla
+   haría que en un repo sin config la puerta se quedara muda y **verde**, que es la misma clase de
+   fallo que la puerta del mensaje suffrió con un `tasks.json` ilegible. El precio son dos copias
+   de los números, y lo paga `test_la_puerta_de_cabecera_usa_las_cuentas_de_la_config`, que
+   compara `LIMITE_CABECERA`, `TIPOS_ADMITIDOS` y los `subject-case` con la config real.
+
+   *MEDIDO, y corrige la tabla D-4 de `GITHUB-SETUP-CHECKLIST.md`:* `subject-case` **no** es «no
+   empezar por mayúscula». Rechaza el subject **entero** en mayúsculas y el PascalCase; uno que
+   solo empieza por mayúscula y lleva espacios (`T-9 afirma el invariante`) **pasa**. Con el
+   criterio real, el rango histórico `41b8061..4d86908` tiene **siete** commits rojos, **no
+   ocho**: el octavo, `92368ad`, no incumple ninguna regla.
+
+   *MEDIDO, y fue un conflicto real:* dos plantillas del bucle eran `feat/fix: ...` y
+   `feat/fix([COMPONENTE]): ...`, que **no parsean** (`/` no es carácter de tipo para el
+   headerPattern), luego el job `commits` las rechazaba con `type-empty` y `type-enum`. La puerta
+   fiel a CI y las plantillas tal como estaban eran **incompatibles**. Se corrigieron las
+   plantillas y **no** se relajó la puerta: una puerta más laxa que CI deja pasar justo lo que CI
+   va a tumbar, que es el fallo que esta puerta existe para cerrar. La plantilla nunca se usó
+   literal en 228 commits, así que el cambio no altera ninguna práctica existente.
+10. **LA RAMA ES AVISO, NO RECHAZO (TASK-066).** Estar en `main` imprime un bloque `AVISO` que
+    nombra la regla del bucle y **se sigue con código 0**. `INFO rama: <branch>` sale en la salida
+    canónica, leído una vez, porque hasta TASK-066 el wrapper era **ciego a la rama** (cero
+    coincidencias de `branch`) y el bucle llevaba 52 ciclos comiteando en `main` sin que ninguna
+    salida lo dijera.
+
+    *Por qué no se rechaza, con la asimetría deliberada.* La puerta del **mensaje** es un rechazo
+    duro porque una cabecera de 135 caracteres no tiene caso legítimo: no hay «pero es que este
+    mensaje sí es largo», y quien lo escribe puede arreglarlo en el mismo turno. La **rama** es
+    otra cosa: un rechazo duro sobre `main` solo guardaría el camino guardado —el wrapper— y
+    **bloquearía el commit legítimo del dueño en la rama de release**, que es justo el caso para
+    el que `main` existe (`STATUS.md:95(b)`: una puerta que solo existe en el wrapper no puede
+    cerrar un `commit` escrito a mano). El defecto que se cierra aquí es «el bucle no sabe que
+    debería estar en `beta`», y un defecto de instrucción se cierra con instrucción **y con un
+    test que lee la instrucción**, no con un `sys.exit` que dejaría al bucle sin salida
+    documentada. El coste —un `git commit` a mano en `main` no lo caza nadie— queda **declarado**,
+    no escondido.
 
 ### Flag `--verify`
 
@@ -141,6 +195,28 @@ se salta la puerta en `--verify` sobrevivía a las 139 pruebas, y ahora muere en
 `test_la_puerta_de_paridad_tambien_cubre_el_modo_verify`.
 
 ### Cobertura
+
+> **MEDIDO el 2026-10-05, y es la MISMA clase de fallo que la contaminacion de
+> `STATUS.md:23`, con un mecanismos distinto: una sonda de mutacion que se
+> corrompio a si misma.** Al medir los mutantes de `TASK-066` (T-4) por subproceso, el
+> script que los muta tomo su copia de seguridad **despues** de haber aplicado la primera
+> mutacion de la tanda. Al matarlo durante la corrida —que dura nueve minutos— su `finally`
+> no se ejecuto, porque **un proceso muerto no ejecuta su `finally`**, y el siguiente
+> mutante se midio sobre un wrapper al que le faltaba un bloque entero. El sintoma
+> aparecio como si fuera de un test: `subject-case` dejo de rechazarse y el fallo se leo
+> como una regresion de `TASK-066`, no como contaminacion de la sonda.
+>
+> Las tres reglas que salen de ahi, y que se aplican a **toda** sonda que mute el repo:
+>
+> 1. **La copia va ANTES de mutar, y fuera del repo** (`%TEMP%`). Una copia tomada
+>    durante el proceso es una copia del estado ya cambiado.
+> 2. **El digest se comprueba antes y despues, y el script ABORTA si no cuadra.** Un
+>    digest que se imprime y no se comprueba no vigila nada; y hay que **mirar el
+>    resultado**: aqui la primera impresion de "restaurado: NO" se tomo por un falso
+>    negativo del script y casi se vuelve a medir encima. Era corrupcion real.
+> 3. **Un `finally` no es una garantia de restauracion ante la muerte del proceso.** Si
+>    la sonda puede durar minutos y se puede cancelar, la fuente de verdad tiene que
+>    estar en disco antes de empezar.
 
 `run_tests.py` -> `test_git_safe_commit_fail_safe()` invoca el wrapper como subproceso con
 `GIT_DIR` apuntado a rutas temporales inválidas y exige los códigos exactos del contrato
@@ -270,7 +346,9 @@ parse_args  ->  validar_repo (repo + arbol)  ->  [repo invalido: 3]
              ->  PUERTA DE PARIDAD (WOPT_USAGE paridad-git + 2)
              ->  [--verify]  ->  status --porcelain
              ->  NOOP (WOPT_NOOP + 0, EXENTO)
+             ->  INFO rama: <rama>  +  [AVISO si es rama de publicacion, NO rechaza]
              ->  PUERTA DEL MENSAJE  <- aqui
+             ->  PUERTA DE LA CABECERA  <- aqui (TASK-066)
              ->  add -A  ->  diff --cached  ->  commit  ->  WOPT_COMMIT_OK
 ```
 

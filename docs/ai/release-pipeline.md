@@ -44,6 +44,39 @@ git push origin main                       # -> Release v1.1.0
 
 > `--ff-only` a proposito: un merge commit con el mensaje `Merge branch 'beta'` **no** es un conventional commit y lo mata el job `commits`.
 
+### 2.1 Quien hace este ciclo: el bucle NO (TASK-066)
+
+**El bucle de agentes trabaja en `beta` y empuja a `beta`. El paso de grado a
+`main` no lo puede hacer el bucle sobre `main`.** La secuencia es:
+
+```bash
+git switch beta            # el bucle trabaja aqui
+# ... ciclos ...
+git switch main
+git merge --ff-only beta   # el arbol tiene que estar LIMPIO antes
+git push origin main
+git switch beta
+```
+
+**Por que en una frase:** `main` es la rama cuya proteccion bloquea el
+force-push, y publicar estable sin pasar por `beta` es lo que produjo el tramo
+de 33 commits que tumbaba el job `commits` con el rango entero.
+
+Dos consecuencias medibles, ambas del mismo origen:
+
+- El rango que mira el job `commits` en cada push pasa a ser de **2 a 5 commits**
+  en vez de 33, y un mensaje malo se caza con un rango de uno, que se arregla
+  con un `amend` y no con una reescritura de 29.
+- Un mensaje de cabecera larga **no llega a existir**: el wrapper lo rechaza con
+  `WOPT_USAGE cabecera-larga` y codigo **2** antes de tocar el arbol (ver
+  `sandbox-rules.md`).
+
+> ⚠️ **El paso de grado exige el arbol limpio.** `git merge --ff-only` con
+> cambios sin versionar los deja colgando, y `add -A` se lleva lo que haya
+> suelto: en un turno arrastro un `run_tests_out.txt` de 354 lineas a un commit
+> ajeno. **Antes de cada `git push`, `git status --porcelain` tiene que salir
+> vacio.**
+
 ## 3. Los cuatro jobs
 
 `commits` (ubuntu) -> `verify` (windows) -> `release` (ubuntu) -> `build` (windows)

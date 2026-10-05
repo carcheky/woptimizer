@@ -56,6 +56,7 @@ src/woptimizer/
 ## 📚 Reglas de Documentación Continua y Persistencia
 1. **Documentación Viva Obligatoria:** Toda modificación arquitectónica, de modelos de datos, servicios o componentes de UI debe documentarse inmediatamente en el archivo correspondiente de `docs/ai/` (`architecture.md`, `data-models.md`, `ui-design-system.md`). No se cierra un ciclo de desarrollo sin actualizar la documentación.
 2. **Cierre Limpio (Cero Cambios Pendientes):** Al terminar cualquier bloque o solicitud del usuario, debes comitear todos los cambios pendientes de forma lógica y estructurada (`feat`, `fix`, `docs`, `refactor`), dejando el árbol de Git con 0 cambios pendientes.
+   > **REGLA DURA, no una recomendación (TASK-066): el bucle comitea y empuja a `beta`, nunca a `main`.** `beta` es la rama de trabajo. `main` es la rama de publicacion y **solo recibe `beta` por fast-forward**, nunca un commit del bucle. **Por que en una frase:** `main` es la rama cuya proteccion bloquea el force-push, y publicar estable sin pasar por `beta` es lo que produjo el tramo de 33 commits que tumbaba el job `commits` con el rango entero. La topologia, en este orden, para que `main` no se quede atras sin querer: `git switch beta` (el bucle trabaja aqui), los ciclos, `git switch main`, `git merge --ff-only beta` (el arbol tiene que estar limpio), `git push origin main`, `git switch beta`. **Antes de cada `git push`, `git status --porcelain` tiene que salir vacio:** `add -A` se lleva lo que haya suelto, y en un turno arrastro un `run_tests_out.txt` de 354 lineas a un commit ajeno. Y la contraprueba de la regla, que es la mitad que de verdad discrimina: **ninguna plantilla literal de commit de este documento nombra `main` como destino.** Sin esa mitad, escribir la regla seria un comentario nuevo que no cambia nada, y el test pasaria sin medir.
 3. **Aislamiento de Git en Entornos Cloud (Nextcloud / OneDrive):** Si el repositorio está ubicado en una carpeta de sincronización con Virtual Files (VFS), el filtro del sistema puede bloquear la creación de objetos en `.git` (`unable to create temporary file: Invalid argument`). Para resolverlo, redirige temporalmente el almacenamiento de git a una ruta local desacoplada:
    ```powershell
    $env:GIT_DIR = "$env:LOCALAPPDATA\woptimizer_git\.git"
@@ -66,7 +67,7 @@ src/woptimizer/
 ## Comandos Rápidos
 ```bash
 python run.py                   # Lanzar en modo desarrollo
-python run_tests.py             # 144 tests headless (no abre ventanas)
+python run_tests.py             # 153 tests headless (no abre ventanas)
 python verify_ui_syntax.py      # Verificar sintaxis estática de la UI
 python validate_docs.py         # Validar documentación y changelogs
 python .taskmaster/git_safe_commit.py "msg (TASK-NNN)"   # ÚNICA vía de versionado

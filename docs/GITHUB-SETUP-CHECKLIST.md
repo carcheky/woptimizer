@@ -299,6 +299,35 @@ reproduciendo las seis reglas activas en Python (`.commitlintrc.json:4-27`):
   > `--force`, y el bucle trabajando en `beta` (que ya es la rama de integracion declarada)
   > en vez de en una rama nueva. Ver O-5.
 
+  > [!NOTE]
+  > **ESTADO MEDIDO EL 2026-10-05, y corrige DOS cosas de esta seccion.** T-1 quedo hecho
+  > (las dos cabeceras reescritas a 74 y 72 chars, autor y fecha conservados, sonda en
+  > **0 incumplen**, y `git branch -r --contains` sin ninguna rama remota para los dos shas
+  > nuevos) y T-2 empujó `main:beta` con fast-forward limpio, **sin `--force`**. La corrida
+  > [37244051847](https://github.com/carcheky/woptimizer/actions/runs/37244051847) tiene
+  > **`Commits convencionales` en VERDE** —T-1 funciono— y **`Verificar en Windows` en ROJO**.
+  > Luego **la casilla de arriba sigue abierta**: no hay release y no hay `.exe`.
+  >
+  > **1. La cuenta de "8 commits" era 7, y el octavo no incumple nada.** La tabla de D-4
+  > atribuye a `92368ad` y `c3ced1a` un incumplimiento de `subject-case`, y eso es **FALSO**.
+  > Leyendo el codigo de commitlint (`@commitlint/rules/src/subject-case.ts` y
+  > `@commitlint/ensure/src/case.ts`): `subject-case: [2, never, ["upper-case","pascal-case"]]`
+  > rechaza el subject **entero** en mayusculas y el PascalCase, **no** el que solo empieza por
+  > mayuscula. `chore(architect): T-9 afirma el invariante ...` **pasa**. Reproduciendo las seis
+  > reglas sobre `41b8061..4d86908` salen **7 de 29**, no 8 de 29. `c3ced1a` es rojo, pero solo
+  > por longitud (134). Se conserva la tabla tal cual porque es el registro de lo que se midio
+  > entonces, y esta correccion es la de ahora.
+  >
+  > **2. El rojo que venia tapado detras del de commitlint era otro.** El job `verify` no falla
+  > por la cabecera: `_head_del_repo_real()` (sonda de hermeticidad de `TASK-061`) leia la ruta
+  > **fija** `%LOCALAPPDATA%\woptimizer_git\.git`, que **no existe en el runner** porque el
+  > desacople es una medida del VFS de la maquina del dueno, no una propiedad del proyecto.
+  > MEDIDO: `fatal: not a git repository: 'C:\Users\runneradmin\AppData\Local\woptimizer_git\.git'`.
+  > Es **el mismo bug que TASK-028 ya habia corregido** en `_entorno_git_del_repo()`, con el
+  > runner como motivo escrito, y que no se aplico a `_head_del_repo_real()`, escrita despues.
+  > Corregido con el mismo descubrimiento de tres pasos y **sin `skip`**: un skip seria una
+  > guarda que se apaga sola en el unico sitio donde nadie la ve.
+
 ### D-5. Deriva menor
 
 - [x] **README badges corregidos.** Decian `ciclos-20` y `tests-57 verdes`; ahora

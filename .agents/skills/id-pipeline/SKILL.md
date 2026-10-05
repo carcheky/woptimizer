@@ -47,6 +47,35 @@ flowchart LR
 > las deja sin identificador, la suite se pone roja antes de que el bucle se
 > atasque en su primer commit.
 
+> **REGLA DURA, no una recomendación (TASK-066): el bucle comitea y empuja a
+> `beta`, nunca a `main`.** `beta` es la rama de trabajo. `main` es la rama de
+> publicacion y **solo recibe `beta` por fast-forward**, nunca un commit del
+> bucle.
+>
+> **Por que en una frase:** `main` es la rama cuya proteccion bloquea el
+> force-push, y publicar estable sin pasar por `beta` es lo que produjo el tramo
+> de 33 commits que tumbaba el job `commits` con el rango entero.
+>
+> La topologia, en este orden, para que `main` no se quede atras sin querer:
+>
+> ```bash
+> git switch beta            # el bucle trabaja aqui
+> # ... ciclos ...
+> git switch main
+> git merge --ff-only beta   # el arbol tiene que estar limpio
+> git push origin main
+> git switch beta
+> ```
+>
+> **Antes de cada `git push`, `git status --porcelain` tiene que salir vacio:**
+> `add -A` se lleva lo que haya suelto, y en un turno arrastro un
+> `run_tests_out.txt` de 354 lineas a un commit ajeno.
+>
+> Y la contraprueba de la regla, que es la mitad que de verdad discrimina: **ninguna
+> plantilla literal de commit de este documento nombra `main` como destino.**
+> Sin esa mitad, escribir la regla seria un comentario nuevo que no cambia
+> nada, y el test pasaria sin medir.
+
 ---
 
 ## 0. ⚙️ Antes de nada: cómo delegar en subagentes EN ESTE RUNTIME
@@ -196,7 +225,7 @@ Tu objetivo es implementar el código, verificarlo rigurosamente, actualizar la 
    - Marca la tarea completada: pon `"status": "completed"` en su entrada de `.taskmaster/tasks.json` (NO `tm.py done`, que no es ejecutable aquí).
    - Realiza commit seguro:
      ```bash
-     python .taskmaster/git_safe_commit.py "feat/fix: <tarea> (TASK-NNN)"
+     python .taskmaster/git_safe_commit.py "feat: <tarea> (TASK-NNN)"
      ```
 3. **Actualización de Tableros y continuación al Paso 4:**
    - Actualiza `.taskmaster/rd_journal.json` con la nueva entrada del ciclo.
@@ -316,7 +345,7 @@ TU OBJETIVO:
 5. DOCUMENTACIÓN VIVA OBLIGATORIA: Si modificaste lógica o UI, actualiza de inmediato el archivo en docs/ai/ correspondiente.
 6. Ejecuta verificaciones: python verify_ui_syntax.py y python run_tests.py.
 7. Marca completada: pon "status": "completed" en la tarea dentro de .taskmaster/tasks.json (NO uses tm.py done).
-8. Haz commit: python .taskmaster/git_safe_commit.py "feat/fix([COMPONENTE]): [TÍTULO_TAREA] (TASK-NNN)".
+8. Haz commit: python .taskmaster/git_safe_commit.py "feat([COMPONENTE]): [TITULO_TAREA] (TASK-NNN)".
 9. Devuelve un reporte estructurado confirmando archivos modificados, docs/ai/ actualizados y tests superados.
 ```
 

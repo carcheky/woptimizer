@@ -16762,24 +16762,40 @@ PREFIXO_DE_LA_SONDA = "_t061_"
 
 
 def _head_del_repo_real():
-    """El `HEAD` del repo REAL, leido del `GIT_DIR` desacoplado. -> `str`.
+    """El `HEAD` del repo REAL, leido del repo que ESTE arbol usa. -> `str`.
 
-    El `.git` del arbol de trabajo esta corrupto (VFS de Nextcloud), luego sin
-    `GIT_DIR` explicito este `git` leeria un repo roto. Las dos rutas se leen DEL
-    PRODUCTO (`gsc.LOCAL_GIT_DIR` / `gsc.REPO_ROOT`) y no se escriben aqui: una
-    copia de la ruta seria la misma mentira que una copia del contrato. Los TRES
-    intentos son por el `spawn EPERM` intermitente de este host, igual que en
-    `_git_de_fixture`: un unico fallo de git no se distingue de un falso verde.
+    El `.git` del arbol de trabajo esta corrupto en el host del dueno (VFS de
+    Nextcloud), luego sin `GIT_DIR` explicito este `git` leeria un repo roto. La
+    ruta se lee DEL PRODUCTO y no se escribe aqui: una copia seria la misma
+    mentira que una copia del contrato. Los TRES intentos son por el
+    `spawn EPERM` intermitente de este host, igual que en `_git_de_fixture`: un
+    unico fallo de git no se distingue de un falso verde.
+
+    MEDIDO el 2026-10-05, y es el MISMO bug que TASK-028 ya habia corregido en
+    `_entorno_git_del_repo()`: esta funcion usaba la ruta FIJA
+    `gsc.LOCAL_GIT_DIR`, y esa ruta **no existe en el runner de GitHub** porque
+    el desacople es una medida del VFS de la maquina del dueno, no una propiedad
+    del proyecto. La corrida 37244051847 --la que destraba el job `commits`-- se
+    paro aqui con `fatal: not a git repository:
+    'C:\\Users\\runneradmin\\AppData\\Local\\woptimizer_git\\.git'`, tumbando el job
+    `verify` entero y con el la publicacion del `.exe`. El test era correcto y la
+    premisa del entorno era falsa: es literalmente el motivo que dejo escrito
+    `_entorno_git_del_repo()`.
+
+    El arreglo NO es un `skip` y NO relaja la sonda: DESCUBRE el repo con el
+    mismo helper y en el mismo orden de tres pasos, y sigue fallando fuerte si no
+    hay ninguno. Un skip aqui seria una guarda que se apaga sola en el unico
+    sitio donde nadie la ve, que es la clase de punto ciego que
+    `STATUS.md:95(b)` prohibe. Y sigue mirandose ESTE repo, porque
+    `_entorno_git_del_repo()` verifica que el `GIT_DIR` candidato sea de verdad
+    este arbol: cambiar de ruta no cambia lo que la sonda mide.
     """
     import subprocess
 
-    gsc = _cargar_el_wrapper()
-    env = os.environ.copy()
-    env["GIT_DIR"] = gsc.LOCAL_GIT_DIR
-    env["GIT_WORK_TREE"] = gsc.REPO_ROOT
+    _repo_root, env = _entorno_git_del_repo()
     ultimo = "(nunca llego a ejecutarse)"
     for _intento in (1, 2, 3):
-        r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=gsc.REPO_ROOT, env=env,
+        r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=_repo_root, env=env,
                            capture_output=True, text=True, encoding="utf-8",
                            errors="replace", timeout=120)
         if r.returncode == 0 and (r.stdout or "").strip():
@@ -16864,6 +16880,57 @@ def _rutas_stageadas(d_repo):
     """Los nombres de fichero que el indice de la sonda tiene stageados."""
     salida = _git_de_fixture(["diff", "--cached", "--name-only"], d_repo)
     return [l.strip() for l in salida.splitlines() if l.strip()]
+
+
+def _rc_de_git_en_fixture(args, cwd, intentos=6):
+    """El CODIGO DE SALIDA de `git` en la fixture, con los reintentos del host.
+
+    Hace falta aparte de `_git_de_fixture`, que devuelve stdout: varios de los
+    criterios de TASK-066 son sobre el **rc** y no sobre el texto, y un stdout
+    vacio no distingue "rc 0" de "rc 1 con nada que decir" ni de "git no llego a
+    ejecutarse". Colapsar los tres casos seria un falso verde.
+    """
+    import subprocess
+    ultimo = None
+    for _i in range(intentos):
+        try:
+            r = subprocess.run(["git"] + args, cwd=cwd, capture_output=True,
+                               text=True, encoding="utf-8", errors="replace",
+                               timeout=120)
+            return r.returncode
+        except Exception as exc:                      # spawn EPERM intermitente
+            ultimo = exc
+    raise AssertionError(
+        f"git no llego a ejecutarse en {intentos} intentos: {ultimo!r}")
+
+
+def _status_porcelain_de_la_sonda(git_dir, arbol, intentos=6):
+    """`status --porcelain` de la sonda, con el par `GIT_DIR` + `GIT_WORK_TREE`.
+
+    Hace falta su helper porque `_repo_y_arbol_temporales_de_la_sonda` deja el
+    REPO y el ARBOL en directorios DISTINTOS a proposito, y `status` corriendo en
+    el repo, sin `GIT_WORK_TREE`, mira el arbol por defecto -- el suyo -- y no ve
+    el fichero de la sonda. MEDIDO al escribir TASK-066 T-4 c2: sin el par, el
+    pre-vuelo ve un arbol limpio y el test se leeria en verde sin medir nada.
+    """
+    import subprocess
+    env = os.environ.copy()
+    env["GIT_DIR"] = git_dir
+    env["GIT_WORK_TREE"] = arbol
+    ultimo = None
+    for _i in range(intentos):
+        try:
+            r = subprocess.run(["git", "status", "--porcelain"], cwd=arbol,
+                               env=env, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=120)
+            if r.returncode == 0:
+                return r.stdout or ""
+            ultimo = ((r.stderr or "") + (r.stdout or "")).strip()
+        except Exception as exc:                      # spawn EPERM intermitente
+            ultimo = exc
+    raise AssertionError(
+        f"`git status --porcelain` no salio con 0 en {intentos} intentos: "
+        f"{ultimo!r}")
 
 
 def _ficheros_del_commit(d_repo, rev="HEAD"):
@@ -16971,7 +17038,17 @@ def test_el_contrato_de_codigos_esta_atado_a_cada_linea_wopt():
         ("WOPT_REPO_OK", "CODE_OK"): 1,
         ("WOPT_NOOP", "CODE_OK"): 2,
         ("WOPT_FAIL", "CODE_FAIL"): 6,
-        ("WOPT_USAGE", "CODE_USAGE"): 3,
+        # TASK-066 subio esto de 3 a 5, y el motivo va aqui porque esta tabla ES el
+        # contrato: la puerta de la cabecera abre DOS rechazos mas de uso
+        # incorrecto, `WOPT_USAGE cabecera-larga` (la cabecera pasa de 120) y
+        # `WOPT_USAGE cabecera-regla` (no parsea, o su type/subject incumplen una
+        # regla). Los dos con `CODE_USAGE` y NO `CODE_FAIL` por el mismo motivo que
+        # los otros tres: la puerta no ejecuta ninguna operacion de git, luego un
+        # `WOPT_FAIL` seria indistinguible de un fallo de git para el unico
+        # consumidor que ramifica por el codigo. Son dos y no uno porque la linea
+        # `WOPT_*` tiene que cerrar su `sys.exit` EN SU RAMA (fila 144), y el
+        # `sys.exit` compartido por un `if/else` dejaba las dos huerfanas.
+        ("WOPT_USAGE", "CODE_USAGE"): 5,
         ("WOPT_REPO_INVALIDO", "CODE_REPO"): 2,
     })
     RE_MARCADOR = _re.compile(r"WOPT_[A-Z_]+")
@@ -17193,6 +17270,733 @@ def test_un_fallo_de_git_no_sale_con_cero():
         shutil.rmtree(tmp, ignore_errors=True)
     print("Codigo 1 OK: el fallo de commit sale con 1, dice WOPT_FAIL commit como "
           "ULTIMA linea, no reporta commit creado y no toca el arbol del dueno.")
+
+
+# ---------------------------------------------------------------------------
+# TASK-066 T-4: la puerta de cabecera de `git_safe_commit.py`.
+#
+# MEDIDO, y es el motivo de que esta mitad exista: el job `commits` de
+# `release.yml` corre commitlint de verdad (`npx @commitlint/cli`), asi que la
+# puerta del wrapper tiene que aplicar **el mismo criterio** que el runner. Sin
+# ella, un header de 135 caracteres si puede existir; y el dia que puede volver a
+# existir vuelve el rojo: `commits` tumba la corrida y `verify`, `release` y
+# `build` no llegan a correr, asi que tampoco sale el `.exe`.
+#
+# El criterio NO se ha inventado: esta copiado del codigo de commitlint
+# (`@commitlint/parse`, `@commitlint/ensure/src/case.ts`, `.../to-case.ts` y
+# `@commitlint/rules/src/subject-case.ts`) y `test_el_corpus_congelado_de_
+# cabeceras_reales` lo ata al corpus que el CI medico de verdad.
+# ---------------------------------------------------------------------------
+
+# Las SIETE cabeceras largas REALES del rango `41b8061..4d86908`, con el SHA y
+# la longitud MEDIDOS, mas las dos de TASK-061 y la que incumple `subject-case`.
+# CONGELADAS a proposito: el corpus se deriva de un rango ya publicado y de dos
+# commits ya reescritos, no de `git log`, porque la historia se mueve y el test
+# tiene que seguir signifcando lo mismo dentro de tres ciclos.
+#
+# MEDIDO y CORRIGE la tabla D-4: son SIETE las que incumple commitlint, no ocho.
+# La octava, `92368ad`, esta anotada alli como "subject en mayuscula" y NO
+# incumple ninguna regla: `subject-case: [2, never, [upper-case, pascal-case]]`
+# rechaza el subject ENTERO en mayusculas y el PascalCase, no el que solo empieza
+# por mayuscula. Por eso esta lista tiene siete.
+_CABECERAS_LARGAS_REALES = [
+    ("e1e9a28", 125, "docs(ciclo 52): cerrar TASK-059 con la puerta de ancla "
+                     "verificada, el FAIL de la ronda 1 y sus diez supervivientes "
+                     "(TASK-059)"),
+    ("d1c382a", 138, "fix(validador): cerrar los diez supervivientes de la ronda 1 "
+                     "de mutacion, con la puerta fail-CLOSED y la fixture sin "
+                     "tautologia (TASK-059)"),
+    ("6420eb4", 127, "fix(validador): el check 9 ya no acusa dos veces un journal o "
+                     "un repo ilegibles, y su test lo fija en el camino real "
+                     "(TASK-059)"),
+    ("cbf4c3f", 188, "fix(docs): agregar al agregado llms-full.txt la seccion "
+                     "GITHUB-SETUP-CHECKLIST que 20daaed anadio sin regenerarlo; lo "
+                     "repara este pase porque sin el el validador no puede cerrar "
+                     "(TASK-059)"),
+    ("41b2f88", 142, "docs(ciclo 51): registrar la seleccion por categoria en todos "
+                     "los packs, las nueve rondas de auditoria y el invarianteDigest "
+                     "de forma a efecto"),
+    ("9433985", 212, "feat(tests): invariante del acordeon afirmado por efecto (T-9): "
+                     "test 3-E sobre la vista real, premisa falsa del #3 "
+                     "corregida, regla anti-rodadura en las dos capas y las cuatro "
+                     "cifras sincronizadas a 124 = 95 + 29"),
+    ("c3ced1a", 134, "fix(tests): A3 cierra ASSERT_GATE (una sentencia no puede ser "
+                     "antecesor) y el techo (e) declara sus tres exponentes "
+                     "(TASK-063 ronda 8)"),
+    # Las dos de TASK-061, que son las que T-1 reescribio.
+    ("ef67bf8", 128, "fix(tooling): cerrar los seis huecos sin guardian de la puerta "
+                     "de versionado y corregir dos afirmaciones documentales "
+                     "(TASK-061)"),
+    ("82f52c2", 135, "chore(tooling): dejar de versionar el log de la corrida de la "
+                     "suite, que es un artefacto de la sonda y no un fuente del repo "
+                     "(TASK-061)"),
+]
+
+# Cabeceras limpias REALES del mismo rango, con su SHA. Se aceptan.
+_CABECERAS_LIMPIAS_REALES = [
+    ("5546cf9", "fix(tooling): cerrar los seis huecos de la puerta de versionado "
+                "(TASK-061)"),
+    ("b3d4865", "chore(tooling): no versionar el log de la corrida de la suite "
+                "(TASK-061)"),
+    ("a8b2a89", "feat(tray): los packs favoritos salen en el menu de la bandeja, con "
+                "item de confirmar para los de apagado (TASK-065)"),
+    ("70b8449", "docs(github): registrar el ROJO del pipeline y las decisiones "
+                "tomadas (TASK-064)"),
+]
+
+
+def test_la_puerta_de_cabecera_rechaza_una_cabecera_de_135_caracteres():
+    """TASK-066 T-4 c1: el header de 135 chars NO llega a existir.
+
+    MEDIDO antes del fix: `git_safe_commit.py` **no tenia ninguna comprobacion
+    de longitud**. Aceptaba el mensaje, commiteaba, imprimia `WOPT_COMMIT_OK` y
+    salia con **0**. Las tres cosas que este test exige son falsas a la vez a
+    la vez, y por eso las exige las tres:
+
+    1. codigo **2** y no 1 (una puerta no ejecuta git, luego `WOPT_FAIL` seria
+       indistinguible de un fallo de git para el unico consumidor que ramifica
+       por el codigo),
+    2. `WOPT_USAGE cabecera-larga` en stdout y como linea ULTIMA,
+    3. **cero commits creados** en el repo de la sonda.
+
+    El mensaje es el texto REAL de `82f52c2`, el commit que tumbaba la corrida.
+    Un mutante que baje el limite a 200 pasa el grep de "comprobar longitud" y
+    muere en la asercion 1, que es donde se nota.
+    """
+    print("Probando que la puerta de cabecera rechaza la cabecera de 135 chars...")
+    import shutil
+    import tempfile
+
+    gsc = _cargar_el_wrapper()
+    wrapper = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+    largo_real = dict((s, (n, t)) for s, n, t in _CABECERAS_LARGAS_REALES)
+    texto = largo_real["82f52c2"][1]
+    assert len(texto) == 135, (
+        f"la cabecera real de 82f52c2 tiene que medir 135 caracteres y mide "
+        f"{len(texto)}. Si el texto de la fixture cambia, el test mide otra cosa "
+        f"y el numero tiene que moverse con el, no con la puerta")
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t066_cabecera_")
+    d_repo, git_dir, arbol = _repo_y_arbol_temporales_de_la_sonda(
+        tmp, "chore(release): fixture de la puerta de cabecera")
+    nombre = PREFIXO_DE_LA_SONDA + "cabecera.txt"
+    head_antes = _head_del_repo_real()
+    try:
+        with open(os.path.join(arbol, nombre), "w", encoding="utf-8") as fh:
+            fh.write("el arbol tiene que estar sucio para que la puerta corra\n")
+
+        r = _invocar_el_wrapper(wrapper, gsc.REPO_ROOT, git_dir, arbol, texto)
+
+        assert r.returncode == 2, (
+            f"una cabecera de 135 caracteres tiene que salir con 2 y salio con "
+            f"{r.returncode}. Sin el fix sale con 0 y commitea. Si saliera con 1 el "
+            f"motivo seria un fallo de git, no la puerta. stdout={r.stdout!r} "
+            f"stderr={r.stderr!r}")
+        salida = r.stdout or ""
+        assert "WOPT_USAGE cabecera-larga" in salida, (
+            f"el rechazo tiene que NOMBRAR la puerta, para que quien lo lea sepa "
+            f"que arreglar: {salida!r}")
+        lineas = [l for l in salida.splitlines() if l.strip()]
+        assert lineas and lineas[-1].startswith("WOPT_USAGE cabecera-larga"), (
+            "la linea `WOPT_*` tiene que ser la ULTIMA de stdout (regla 4 del "
+            f"contrato) y la ultima fue {lineas[-1]!r}. Todas: {lineas!r}")
+        assert "120" in lineas[-1] and "135" in lineas[-1], (
+            "el motivo tiene que decir QUE se espera y QUE se ha medido, o no hay "
+            f"forma de corregir el mensaje sin abrir el codigo: {lineas[-1]!r}")
+        assert "WOPT_COMMIT_OK" not in salida, (
+            f"un rechazo NUNCA puede reportar commit creado: {salida!r}")
+        assert lineas[-1].encode("ascii", "strict").decode("ascii") == lineas[-1], (
+            "la linea del rechazo tiene que ser ASCII puro (regla 8, trampa #16, "
+            f"la consola es cp1252): {lineas[-1]!r}")
+
+        # CERO commits. El repo de la sonda tenia exactamente uno (el de la
+        # fixture), asi que despues del rechazo tiene que seguir teniendo
+        # exactamente uno: si la puerta aceptase el mensaje, habria dos.
+        commits = _git_de_fixture(["rev-list", "--count", "HEAD"], d_repo)
+        assert commits.strip() == "1", (
+            f"la puerta tiene que haber CREADO CERO commits y el repo de la sonda "
+            f"tiene {commits.strip()!r}. Sin el fix el mensaje se commitea y este "
+            f"numero es 2: eso es el rojo, escrito como un numero")
+        _sin_contaminacion(d_repo, head_antes)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Puerta de cabecera OK: 135 chars salen con 2, WOPT_USAGE cabecera-larga "
+          "como ULTIMA linea, y cero commits creados.")
+
+
+def test_la_puerta_de_cabecera_rechaza_antes_de_stagear():
+    """TASK-066 T-4 c2: un rechazo no deja el indice modificado.
+
+    El criterio es posicional y esta dicho con su sitio porque **ya se cometio
+    una vez**: la puerta de ancla de TASK-059 arrastro su `add -A` y rechazaba
+    con el arbol ya stageado, es decir, mutaba el arbol para luego decir que no.
+    Here la puerta va antes de `add -A` y este test lo comprueba por EFECTO, no
+    leyendo el codigo: tras el rechazo el indice tiene que seguir VACIO y el
+    `status --porcelain` tiene que seguir viendo el fichero sin stagear.
+
+    Mata a `PUERTA_TRAS_ADD`, que es un mutante de primera clase: la puerta
+    sigue rechazando (el codigo 2 y el mensaje salen igual) y la suite sigue
+    verde si nadie mira el indice.
+    """
+    print("Probando que la puerta de cabecera rechaza ANTES de stagear...")
+    import shutil
+    import tempfile
+
+    gsc = _cargar_el_wrapper()
+    wrapper = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+    largo_real = dict((s, t) for s, _n, t in _CABECERAS_LARGAS_REALES)
+    texto = largo_real["ef67bf8"]
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t066_nostage_")
+    d_repo, git_dir, arbol = _repo_y_arbol_temporales_de_la_sonda(
+        tmp, "chore(release): fixture de la puerta sin stagear")
+    nombre = PREFIXO_DE_LA_SONDA + "nostage.txt"
+    head_antes = _head_del_repo_real()
+    try:
+        ruta = os.path.join(arbol, nombre)
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write("suciedad sin stagear\n")
+
+        status_antes = _status_porcelain_de_la_sonda(git_dir, arbol)
+        assert nombre in status_antes, (
+            f"antes de invocar, `status --porcelain` tiene que ver {nombre} y ve "
+            f"{status_antes!r}. Sin este pre-vuelo, un arbol ya limpio haria que "
+            f"este test pasara sin medir nada. Ojo: el `status` tiene que correr "
+            f"con GIT_WORK_TREE=arbol, porque la sonda deja el repo y el arbol en "
+            f"directorios DISTINTOS y `status` en el repo no ve el arbol")
+        assert _rutas_stageadas(d_repo) == [], (
+            "el indice de la sonda tiene que empezar VACIO: si no, el test mediria "
+            f"un rechazo sobre un indice sucio: {_rutas_stageadas(d_repo)!r}")
+
+        r = _invocar_el_wrapper(wrapper, gsc.REPO_ROOT, git_dir, arbol, texto)
+        assert r.returncode == 2, (
+            f"esta invocacion tiene que salir con 2 y salio con {r.returncode}. "
+            f"stdout={r.stdout!r} stderr={r.stderr!r}")
+
+        stageadas_despues = _rutas_stageadas(d_repo)
+        assert stageadas_despues == [], (
+            "un rechazo NO puede dejar el indice modificado, y quedan "
+            f"{stageadas_despues!r}. La puerta esta DESPUES de `add -A`, que es el "
+            "error que ya se cometio con la puerta de ancla: mutar el arbol para "
+            "luego decir que no")
+        status_despues = _status_porcelain_de_la_sonda(git_dir, arbol)
+        assert status_despues == status_antes, (
+            "`status --porcelain` tiene que salir IGUAL antes y despues del "
+            f"rechazo. Antes={status_antes!r} despues={status_despues!r}")
+        rc_diff = _rc_de_git_en_fixture(["diff", "--cached", "--quiet"], d_repo)
+        assert rc_diff == 0, (
+            f"`git diff --cached --quiet` tiene que seguir en 0 (nada staged) y "
+            f"salio con {rc_diff}. Un rc 1 significa que el indice quedo modificado "
+            f"por un rechazo que no deberia haber stageado nada, que es "
+            f"exactamente el error que ya se cometio con la puerta de ancla")
+        assert _git_de_fixture(["rev-list", "--count", "HEAD"],
+                               d_repo).strip() == "1", (
+            "y ningun commit: el rechazo no crea ninguno")
+        _sin_contaminacion(d_repo, head_antes)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Sin stageo OK: tras el rechazo el indice sigue vacio, el status es "
+          "identico y no hay commits nuevos.")
+
+
+def _plantillas_de_commit_del_bucle():
+    """Las plantillas literales de `git_safe_commit.py "..."` de `.agents/**`.
+
+    Mismo criterio, misma regex y casi mismo filtro que usa
+    `test_las_plantillas_del_bucle_pasan_la_puerta_del_producto` (TASK-059
+    AC-C1): si la extraccion cambiara, los dos tests medirian cosas distintas y
+    el mas nuevo estaria probando la regex. `(fichero, linea, texto)`.
+
+    UNA diferencia, y esta medida: el filtro de TASK-059 descarta el mensaje que
+    es **solo** un marcador (`...`, `<tarea>`, `[ID_TAREA]`), y se quedaba corto
+    con `<mensaje> (TASK-NNN)`, que es un marcador seguido del ancla. Ese texto
+    esta en `architect-review/agent.md` y es la documentacion del ARGUMENTO del
+    comando, no un mensaje que el bucle copie y pegue; CI lo rechazaria con
+    `type-empty` y medirlo como plantilla haria que la contraprueba de T-4
+    midiese la prosa de otro agente. El filtro se amplia a "placeholder, con el
+    ancla opcional detras", y se sigue decidiendo **por forma**, nunca por el
+    veredicto de la puerta: si se decidiera por el veredicto, la contraprueba
+    seria tautologica y no mediria nada.
+    """
+    import glob
+    import re as _re
+
+    patron = _re.compile(r'git_safe_commit\.py\s+"([^"]*)"')
+    marcador = r"(\.{2,}|<[^>]*>|\[[^\]]*\]|\{[^\}]*\})"
+    # marcador entero, o marcador + el ancla que la puerta de TASK-059 exige.
+    solo_marcador = _re.compile(r"^" + marcador + r"(\s*\(TASK-N+\))?$")
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    salida = []
+    for ruta in sorted(glob.glob(os.path.join(raiz, ".agents", "**", "*.md"),
+                                  recursive=True)):
+        with open(ruta, encoding="utf-8") as fh:
+            for numero, linea in enumerate(fh, 1):
+                for texto in patron.findall(linea):
+                    limpio = texto.strip()
+                    if limpio and not solo_marcador.match(limpio):
+                        salida.append((os.path.relpath(ruta, raiz), numero, texto))
+    return salida
+
+
+def test_las_plantillas_del_bucle_pasan_la_puerta_de_cabecera():
+    """TASK-066 T-4 c3, la CONTRAPRUEBA: mata al fix demasiado fuerte.
+
+    Una puerta que rechaza el vocabulario del bucle lo atasca en su primer
+    commit, y eso **no se ve en ningun test que solo mire la regla**: las reglas
+    se leen igual de bien en un wrapper que acepta todo y en uno que no acepta
+    nada. Hace falta el corpus de plantillas.
+
+    Y esta contraprueba esta escrita porque MEDIO un fallo real al instalarla:
+    dos de las seis plantillas eran `feat/fix: ...` y `feat/fix([COMPONENTE]): ...`,
+    que **no parsean** -- el `/` no es un caracter de tipo para el `headerPattern`
+    de commitlint, `/^(\\w*)(?:\\((.*)\\))?!?: (.*)$/` -- luego el job `commits`
+    las rechazaba con `type-empty` y `type-enum`. O sea: la puerta fiel a CI y las
+    plantillas tal como estaban eran **incompatibles**, y no por un problema de la
+    puerta sino porque la plantilla estaba mal escrita. MEDIDO: la plantilla
+    nunca se uso literal en 228 commits, asi que corregirla no cambia ninguna
+    practica existente. La puerta NO se relajo para que las plantillas fueran
+    validas: una puerta mas laxa que CI deja pasar justo lo que CI va a tumbar,
+    que es el fallo que T-4 existe para cerrar.
+    """
+    print("Probando que las plantillas del bucle pasan la puerta de CABECERA...")
+    gsc = _cargar_el_wrapper()
+    plantillas = _plantillas_de_commit_del_bucle()
+    assert plantillas, (
+        "no se ha extraido NINGUNA plantilla de `git_safe_commit.py \"...\"` de "
+        ".agents/. Si la regex deja de encontrar las, este test pasa en verde sin "
+        "medir nada: es el falso verde con la forma de una asercion")
+    assert len(plantillas) == 5, (
+        f"han aparecido {len(plantillas)} plantillas literales copiables y son 5: "
+        f"{plantillas!r}. Con el filtro de TASK-059 serian 6, porque contaria "
+        f"`<mensaje> (TASK-NNN)`, que es la documentacion del ARGUMENTO del "
+        f"comando y no un mensaje que se copie y pegue. O se perdio una, o se "
+        f"anadio otra y el suelo tiene que moverse a mano con su razon")
+
+    rechazadas = []
+    for fichero, numero, texto in plantillas:
+        mensaje = texto.replace("TASK-NNN", "TASK-059")
+        ok, regla, motivo = gsc.clasificar_cabecera(mensaje)
+        if not ok:
+            rechazadas.append((fichero, numero, texto, regla, len(mensaje)))
+    assert not rechazadas, (
+        "hay plantillas del bucle que la puerta de CABECERA rechaza, y eso mata "
+        "el bucle en su primer commit. Con el ancla puesta y en minusculas, no "
+        f"con el marcador literal: {rechazadas!r}")
+
+    # La prueba de que el test mide algo y no solo cuenta: una variante REAL de
+    # la primera plantilla que SI incumple tiene que morir. Sin esta mitad, un
+    # mutante que dejase `clasificar_cabecera` devolviendo siempre `(True, "", "")`
+    # pasaria el test entero.
+    mutante = "feat/fix: la misma plantilla pero con barra en el tipo (TASK-059)"
+    ok, regla, _m = gsc.clasificar_cabecera(mutante)
+    assert ok is False and regla == "type-empty", (
+        "la contraprueba tiene que morir con la variante que NO parsea, que es "
+        f"justo la que estaba escrita en las plantillas: devolvio "
+        f"ok={ok!r} regla={regla!r}")
+    print("Contraprueba de cabecera OK: las 6 plantillas del bucle pasan y la "
+          "variante con barra en el tipo muere con type-empty.")
+
+
+def test_la_puerta_de_cabecera_rechaza_subject_case():
+    """TASK-066 T-4 c4: mata al mutante `SOLO_LONGITUD`.
+
+    El mutante mas natural que escribe un implementador razonable es "compruebo
+    la longitud y ya". Este test lo mata con una cabecera de longitud **valida**
+    que commitlint rechaza: el subject ENTERO en mayusculas.
+
+    Y hay que decir por que NO es "la que empieza en mayuscula", porque esa era
+    la premisa del plan y **era FALSA**. MEDIDO leyendo el codigo de commitlint:
+    `subject-case: [2, never, [upper-case, pascal-case]]` rechaza el subject
+    entero en mayusculas y el PascalCase; uno que solo empieza por mayuscula y
+    lleva espacios ("T-9 afirma el invariante") **pasa**. Con el criterio real,
+    el rango historico tiene SIETE commits rojos, no ocho, y el octavo
+    (`92368ad`, "subject en mayuscula" en la tabla D-4) no incumple nada.
+
+    La asercion mira la REGLA en el mensaje, no solo el rechazo: `SOLO_LONGITUD`
+    con el limite bien puesto pasaria un test que solo mirase el codigo de
+    salida.
+    """
+    print("Probando que la puerta de cabecera rechaza subject-case...")
+    gsc = _cargar_el_wrapper()
+    mayusculas = "chore(architect): AFIRMAR EL INVARIANTE DEL CODIGO (TASK-066)"
+    ok, regla, motivo = gsc.clasificar_cabecera(mayusculas)
+    assert len(mayusculas) <= 120, (
+        f"el sujeto de este test tiene que ser de longitud VALIDA para que lo que "
+        f"muera sea el mutante `SOLO_LONGITUD` y no la longitud, y mide "
+        f"{len(mayusculas)}")
+    assert ok is False and regla == "subject-case", (
+        f"un subject entero en mayusculas tiene que rechazarse con la regla "
+        f"`subject-case` y salio ok={ok!r} regla={regla!r}. Si sale `ok=True`, el "
+        f"mutante SOLO_LONGITUD sobrevive: comprueba la longitud y nada mas")
+    assert "subject-case" in motivo, (
+        f"el motivo tiene que NOMBRAR la regla que incumple: {motivo!r}")
+
+    # Y el criterio REAL, no uno mas estricto ni mas laxo: la mayuscula inicial
+    # con espacios PASA, porque asi lo hace commitlint. Una puerta que aqui
+    # rechazara seria mas estricta que CI, que es lo que el plan prohibe
+    # explicitamente, y dejaria al bucle sin salida para escribir "T-9 ...".
+    con_mayuscula_inicial = "chore(architect): T-9 afirma el invariante (TASK-066)"
+    ok2, regla2, _m2 = gsc.clasificar_cabecera(con_mayuscula_inicial)
+    assert ok2 is True, (
+        "un subject que solo EMPIEZA por mayuscula y lleva espacios tiene que "
+        "PASAR, porque es lo que hace commitlint, y el bucle lo usa en sus "
+        f"plantillas. Devolvio ok={ok2!r} regla={regla2!r}: una puerta mas "
+        f"estricta que CI no es la misma regla que CI")
+
+    # Y la tercera sutileza de commitlint, que es la que mas caro sale si se
+    # "simplifica": su `startsWithLetterRegex` es `/^[\p{Ll}\p{Lu}\p{Lt}]/`, y un
+    # DIGITO no es `\p{Ll}` ni `\p{Lu}` ni `\p{Lt}`. Luego un subject que empieza
+    # por cifra se salta la regla ENTERO y pasa aunque este en mayusculas. Es
+    # contraintuitivo —la excepcion de `case.ts` que dice "si empieza por digito,
+    # devuelve True" actua sobre el subject, no sobre el tipo— y por eso queda
+    # aqui con su caso, no solo dicho en el docstring.
+    empieza_por_cifra = "chore(architect): 9 AFIRMA EL INVARIANTE (TASK-066)"
+    ok3, regla3, _m3 = gsc.clasificar_cabecera(empieza_por_cifra)
+    assert ok3 is True, (
+        "un subject que empieza por DIGITO tiene que PASAR, porque commitlint se "
+        "salta la regla cuando el primer caracter no es una letra CON CASO "
+        f"(`\\p{{Ll}}\\p{{Lu}}\\p{{Lt}}`), y un digito no lo es. Devolvio "
+        f"ok={ok3!r} regla={regla3!r}")
+    print("subject-case OK: el subject en mayusculas se rechaza nombrando la regla, "
+          "el que solo empieza por mayuscula pasa como en CI, y el que empieza por "
+          "cifra pasa porque commitlint lo excluye de la regla.")
+
+
+def test_el_corpus_congelado_de_cabeceras_reales():
+    """TASK-066 T-4 c5: LA MISMA REGLA QUE EN CI, sobre el corpus real.
+
+    Este es el que ata el host al runner. Sin el fix **el clasificador no
+    existe**; y con un limite escrito a mano en el wrapper, el test pasaria
+    mientras `.github/workflows/release.yml` sigue diciendo otra cosa. El
+    clasificador se contrasta contra once cabeceras **reales**, con su SHA:
+
+    * las SIETE largas del rango `41b8061..4d86908` mas las dos de TASK-061 se
+      rechazan por `header-max-length`, y se comprueba que la longitud que
+      MIDIO el clasificador es la que dice la fixture,
+    * cuatro limpias del mismo rango se aceptan,
+    * las dos plantillas `feat/fix:` se rechazan por `type-empty`.
+
+    Y el mutante `LIMITE_SUBIDO_A_220` (la opcion (b) que el plan descarta) muere
+    aqui por contenido: con el limite en 220 las nueve cabeceras largas pasarian
+    y las nueve tienen que rechazarse.
+    """
+    print("Probando el clasificador contra el corpus congelado de cabeceras reales...")
+    gsc = _cargar_el_wrapper()
+
+    for sha, longitud, texto in _CABECERAS_LARGAS_REALES:
+        assert len(texto) == longitud, (
+            f"la fixture de {sha} dice medir {longitud} y mide {len(texto)}: el "
+            f"corpus esta CONGELADO y si se mueve el numero tiene que moverse con "
+            f"el, a mano y con su razon")
+        assert longitud > gsc.LIMITE_CABECERA, (
+            f"la cabecera de {sha} tiene que pasar de {gsc.LIMITE_CABECERA} para "
+            f"que este corpus mida lo que dice medir ({longitud})")
+        ok, regla, _m = gsc.clasificar_cabecera(texto)
+        assert ok is False and regla == "header-max-length", (
+            f"la cabecera real de {sha} ({longitud} chars) tiene que rechazarse con "
+            f"`header-max-length` y salio ok={ok!r} regla={regla!r}. ESTA es la "
+            f"asercion que mata a `LIMITE_SUBIDO_A_220`: con el limite en 220 las "
+            f"nueve pasan y el rojo vuelve")
+
+    for sha, texto in _CABECERAS_LIMPIAS_REALES:
+        assert len(texto) <= gsc.LIMITE_CABECERA, (
+            f"la fixture limpia de {sha} mide {len(texto)} y no cabe en el limite: "
+            f"una cabecera 'limpia' que el CI rechazaria no es limpia")
+        ok, regla, motivo = gsc.clasificar_cabecera(texto)
+        assert ok is True, (
+            f"la cabecera limpia real de {sha} tiene que ACEPTARSE y se rechaza con "
+            f"`{regla}`: {motivo!r}. Una puerta mas estricta que CI no es la misma "
+            f"regla que CI, y es la que atasca al bucle")
+
+    for texto in ("feat/fix: la barra rompe el tipo (TASK-061)",
+                  "feat/fix(tooling): la barra rompe el tipo (TASK-061)"):
+        ok, regla, _m = gsc.clasificar_cabecera(texto)
+        assert ok is False and regla == "type-empty", (
+            f"un tipo con barra no parsea y tiene que rechazarse con `type-empty`, "
+            f"que es lo que le dice el job `commits`: salio ok={ok!r} "
+            f"regla={regla!r} para {texto!r}")
+    print("Corpus OK: 9 largas reales rechazadas con su longitud, 4 limpias reales "
+          "aceptadas y 2 tipos con barra rechazadas por type-empty.")
+
+
+def test_la_salida_canonica_declara_la_rama():
+    """TASK-066 T-4 c6: la rama es una pregunta que hoy no tiene respuesta.
+
+    MEDIDO antes del fix: `git_safe_commit.py` **no tenia ni una coincidencia**
+    de `branch`, `rama` ni `rev-parse --abbrev-ref`. La pregunta "en que rama
+    estoy escribiendo" no se podia ni hacerse, y por eso el bucle llevo 52 ciclos
+    comiteando en `main` sin que ninguna salida lo dijera.
+
+    Este test comprueba las DOS mitades del contrato de TASK-066 sobre la rama:
+
+    1. `INFO rama: <rama>` sale con el **valor real** de la rama del repo de la
+       sonda, y no con una cadena fija. Afirma sobre CONTENIDO: si la linea
+       dijera `INFO rama: desconocido` con el repo perfectamente legible, este
+       test muere. Mata a `SIN_INFO_RAMA` (borrar la linea) y tambien a
+       `RAMA_DE_HARDCODE` (imprimir un literal).
+    2. la rama es **AVISO y no rechazo**: en una rama de publicacion se sigue con
+       codigo 0. ESTA mitad es la que distingue el diseno de `proposal.md`
+       3.2 de un `sys.exit`: un rechazo duro sobre `main` solo guardaria el
+       wrapper y bloquearia el commit legitimo del dueno en la rama de release.
+    """
+    print("Probando que la salida canonica declara la rama y avisa sin rechazar...")
+    import shutil
+    import tempfile
+
+    gsc = _cargar_el_wrapper()
+    wrapper = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+    mensaje = "fix(tooling): declarar la rama en la salida (ciclo 999)"
+
+    # --- (1) INFO rama con el valor real, en una rama que NO es de publicacion
+    tmp = tempfile.mkdtemp(prefix="wopt_t066_rama_")
+    d_repo, git_dir, arbol = _repo_y_arbol_temporales_de_la_sonda(
+        tmp, "chore(release): fixture de la rama")
+    nombre = PREFIXO_DE_LA_SONDA + "rama.txt"
+    head_antes = _head_del_repo_real()
+    try:
+        rama_real = _git_de_fixture(["rev-parse", "--abbrev-ref", "HEAD"], d_repo)
+        rama_real = rama_real.strip()
+        assert rama_real and rama_real != "HEAD", (
+            f"la rama real de la sonda tiene que resolver a un NOMBRE y sale "
+            f"{rama_real!r}; sin este pre-vuelo, un `INFO rama: desconocido` "
+            f"pasaria sin medir nada")
+        with open(os.path.join(arbol, nombre), "w", encoding="utf-8") as fh:
+            fh.write("el arbol tiene que estar sucio para que la puerta corra\n")
+
+        r = _invocar_el_wrapper(wrapper, gsc.REPO_ROOT, git_dir, arbol, mensaje)
+        salida = r.stdout or ""
+        assert f"INFO rama: {rama_real}" in salida, (
+            f"la salida canonica tiene que declarar la rama REAL de la sonda "
+            f"({rama_real!r}) y no un literal ni un 'desconocida': {salida!r}. "
+            f"Mata a `SIN_INFO_RAMA` (borrar la linea) y a `RAMA_DE_HARDCODE` "
+            f"(imprimir un texto fijo)")
+        _sin_contaminacion(d_repo, head_antes)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # --- (2) en una rama de PUBLICACION avisa y SIGUE con 0 -------------------
+    tmp2 = tempfile.mkdtemp(prefix="wopt_t066_rama_pub_")
+    d_repo2, git_dir2, arbol2 = _repo_y_arbol_temporales_de_la_sonda(
+        tmp2, "chore(release): fixture de la rama de publicacion")
+    nombre2 = PREFIXO_DE_LA_SONDA + "rama_pub.txt"
+    try:
+        _git_de_fixture(["checkout", "-q", "-b", "main"], d_repo2)
+        rama_pub = _git_de_fixture(["rev-parse", "--abbrev-ref", "HEAD"],
+                                   d_repo2).strip()
+        assert rama_pub == "main", (
+            f"esta mitad del test necesita una rama de PUBLICACION y la sonda esta "
+            f"en {rama_pub!r}: sin ella, el AVISO no se esta probando")
+        with open(os.path.join(arbol2, nombre2), "w", encoding="utf-8") as fh:
+            fh.write("el arbol tiene que estar sucio para que la puerta corra\n")
+
+        r2 = _invocar_el_wrapper(wrapper, gsc.REPO_ROOT, git_dir2, arbol2, mensaje)
+        salida2 = r2.stdout or ""
+        assert r2.returncode == 0, (
+            "estar en la rama de publicacion es un AVISO y NO un rechazo: un "
+            f"`sys.exit` aqui solo guardaria el wrapper y bloquearia el commit "
+            f"legitimo del dueno en la rama de release (proposal.md 3.2). Salio "
+            f"con {r2.returncode}. stdout={salida2!r} stderr={r2.stderr!r}")
+        assert "WOPT_COMMIT_OK" in salida2, (
+            f"un AVISO de rama tiene que dejar pasar el commit: {salida2!r}")
+        assert "AVISO rama:" in salida2, (
+            f"estar en una rama de publicacion tiene que AVISAR y decir cual es y "
+            f"por que la regla existe: {salida2!r}")
+        assert "beta" in salida2, (
+            f"el AVISO tiene que NOMBRAR la regla de TASK-066, que es lo que "
+            f"convierte un aviso en algo accionable: {salida2!r}")
+    finally:
+        shutil.rmtree(tmp2, ignore_errors=True)
+    print("Rama OK: INFO rama dice la real, y en 'main' avisa sin rechazar y sigue "
+          "con 0.")
+
+
+def test_la_puerta_de_cabecera_usa_las_cuentas_de_la_config():
+    """TASK-066: la puerta es PURA, y por eso sus numeros pueden separarse.
+
+    `clasificar_cabecera` no lee `.commitlintrc.json` a proposito, y el motivo
+    esta escrito en su docstring: leerla en caliente haria que en un repo sin
+    config la puerta se quedara muda y VERDE, que es la clase de fallo que la
+    puerta de ancla sufrio con un `tasks.json` ilegible.
+
+    El precio de esa decision es que los numeros viven en dos sitios, y este test
+    es el que los ata. Sin el, `LIMITE_CABECERA = 120` y
+    `header-max-length: [2, always, 120]` pueden divergir en silencio y la puerta
+    dejaria de ser la misma regla que CI justo cuando alguien toque la config.
+
+    Afirma sobre CONTENIDO: lee el `.commitlintrc.json` real del repo y compara
+    el limite y la lista de tipos. No es decorativo: subir el limite en el
+    wrapper lo pone rojo.
+    """
+    print("Probando que la puerta usa las mismas cuentas que .commitlintrc.json...")
+    gsc = _cargar_el_wrapper()
+    import json
+
+    ruta = os.path.join(gsc.REPO_ROOT, ".commitlintrc.json")
+    assert os.path.exists(ruta), (
+        f"no se encuentra la config que la puerta tiene que calcar: {ruta}")
+    with open(ruta, encoding="utf-8") as fh:
+        reglas = json.load(fh)["rules"]
+
+    limite_config = reglas["header-max-length"]
+    assert limite_config[1] == "always", (
+        f"la puerta supone `header-max-length` en modo 'always' y la config dice "
+        f"{limite_config!r}: si alguien la pasa a 'never', esta puerta dejaria de "
+        f"ser la misma regla que CI")
+    assert limite_config[2] == gsc.LIMITE_CABECERA, (
+        f"el limite de la puerta ({gsc.LIMITE_CABECERA}) y el de la config "
+        f"({limite_config[2]}) han divergido: el clasificador ya no es la misma "
+        f"regla que el job `commits`. O se sube el limite en los dos sitios, o se "
+        f"baja en los dos, pero NO en uno solo")
+
+    tipos_config = list(reglas["type-enum"][2])
+    assert list(gsc.TIPOS_ADMITIDOS) == tipos_config, (
+        f"la lista de tipos de la puerta ({list(gsc.TIPOS_ADMITIDOS)!r}) y la de "
+        f"la config ({tipos_config!r}) han divergido: `type-enum` rechazaria en CI "
+        f"lo que la puerta acepta, o al reves")
+
+    for nombre in ("type-empty", "subject-empty", "type-case", "subject-case"):
+        assert reglas.get(nombre, [None])[0] == 2, (
+            f"la puerta implementa `{nombre}` como regla de NIVEL 2 (error) y la "
+            f"config la tiene en nivel {reglas.get(nombre)!r}: si baja a aviso (1), "
+            f"la puerta es mas estricta que CI")
+    casos = reglas["subject-case"][2]
+    assert casos == ["upper-case", "pascal-case"], (
+        f"la puerta implementa `subject-case` contra {list(casos)!r}. Si la config "
+        f"cambia, hay que cambiar `_ensure_case` con ella: los dos son el MISMO "
+        f"criterio medido, no dos reglas parecidas")
+    print("Cuentas OK: limite, tipos, niveles y casos coinciden con "
+          ".commitlintrc.json.")
+
+
+# ---------------------------------------------------------------------------
+# TASK-066 T-5: la regla de rama esta escrita donde el bucle la lee.
+#
+# MEDIDO antes del fix: los tres ficheros tinham **cero** ocurrencias de `beta`,
+# `rama`, `branch` o `push`. No habia ninguna instruccion que corregir: habia una
+# instruccion que falta. El bucle no eligio `main`; nunca se salio de la rama en
+# la que estaba el worktree, y la puerta de versionado era ciega a la rama.
+# ---------------------------------------------------------------------------
+
+# La regla, por las dos mitades que tienen que estar en los tres ficheros. No se
+# busca "la palabra beta": se busca la NORMA, que es lo que distingue una regla
+# de un comentario.
+_FRASE_DESTINO = "comitea y empuja a `beta`"
+_FRASE_PROHIBICION = "solo recibe `beta` por fast-forward"
+# Los tres ficheros donde el bucle (y el dueno, via AGENTS.md) la leen.
+_FICH_DE_LA_REGLA = (
+    os.path.join(".agents", "skills", "id-pipeline", "SKILL.md"),
+    os.path.join(".agents", "agents", "openspec-dev", "agent.md"),
+    "AGENTS.md",
+)
+
+
+def test_la_regla_de_rama_esta_escrita_donde_el_bucle_la_lee():
+    """TASK-066 T-5, MITAD POSITIVA: la regla esta en los tres ficheros.
+
+    Se exige la NORMA por sus dos mitades y no "la palabra beta":
+
+    * `_FRASE_DESTINO` -- el bucle comitea y empuja a `beta`,
+    * `_FRASE_PROHIBICION` -- `main` solo recibe `beta` por fast-forward.
+
+    Exigir las dos, y no una, es lo que mata al mutante `REGLA_EN_UN_COMENTARIO`
+    en su mitad positiva: "trabaja en beta" esta en el fichero y no es una regla,
+    porque no dice que hacer con `main`. Y exigir los TRES ficheros, y no uno,
+    es lo que mata a "escribi la regla donde nadie la lee": el bug medido de
+    este ciclo era que no decia nada, y escribirlo en un solo sitio deja dos
+    agentes sin contrato.
+    """
+    print("Probando que la regla de rama esta escrita en los tres ficheros...")
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    faltan = []
+    for relativo in _FICH_DE_LA_REGLA:
+        ruta = os.path.join(raiz, relativo)
+        assert os.path.exists(ruta), (
+            f"el fichero que tiene que llevar la regla no existe: {ruta}")
+        with open(ruta, encoding="utf-8") as fh:
+            texto = fh.read()
+        # Normalizacion minima: el fichero puede partir la frase en dos lineas y
+        # puede marcarla como cita de bloque, y el `>` de markdown es MARCA, no
+        # contenido: sin quitarlo, la frase del plan quedaria partida por un `>` en
+        # medio y el test mediria como ausente una regla que esta escrita entera.
+        plano = " ".join(
+            l.lstrip(">").lstrip() for l in texto.splitlines()
+        )
+        plano = " ".join(plano.split())
+        if _FRASE_DESTINO not in plano:
+            faltan.append((relativo, "destino", _FRASE_DESTINO))
+        if _FRASE_PROHIBICION not in plano:
+            faltan.append((relativo, "prohibicion", _FRASE_PROHIBICION))
+    assert not faltan, (
+        f"la regla de rama de TASK-066 tiene que estar en los TRES ficheros, con "
+        f"las dos mitades, y falta: {faltan!r}. Sin la prohibicion que nombra "
+        f"`main`, la regla no dice que hacer con la rama de publicacion, y sin "
+        f"escribirse en los tres, dos de los cuatro agentes que versionan siguen "
+        f"sin contrato")
+    print("Mitad positiva OK: destino y prohibicion estan en los tres ficheros.")
+
+
+def test_ninguna_plantilla_de_commit_nombra_main():
+    """TASK-066 T-5, MITAD NEGATIVA: la que de verdad discrimina.
+
+    Sin esta mitad, el test pasa con un comentario nuevo que no cambia nada: es
+    el mismo modo de fallo que el muro 131/135, y por eso el plan lo pide
+    explicitamente.
+
+    Ninguna plantilla literal de commit de los tres ficheros puede nombrar `main`
+    como destino. La razon de que sea una NEGATIVA y no una afirmacion: la regla
+    puede estar escrita con toda la buena fe del mundo mientras una plantilla de
+    ejemplo al lado empuja al agente a `git push origin main`, y entonces el
+    contrato y el ejemplo se contradicen y gana el ejemplo, que es lo que se
+    copia.
+
+    Mata a `REGLA_EN_UN_COMENTARIO` por la via de la meio negada, y a
+    `PLANTILLA_CON_MAIN`, que es el mutante que de verdad devolveria el rojo:
+    anadir `... "push a main ..."` o cambiar el destino de una plantilla.
+    """
+    print("Probando que NINGUNA plantilla de commit nombra main...")
+    import re as _re
+
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    # Se mira TODO `.agents/**` mas `AGENTS.md`, no solo los tres ficheros de la
+    # regla: la mitad negativa vale para todas las plantillas, y una plantilla
+    # en un cuarto fichero seria tan operativa como una en los tres.
+    import glob
+    rutas = sorted(glob.glob(os.path.join(raiz, ".agents", "**", "*.md"),
+                              recursive=True))
+    rutas.append(os.path.join(raiz, "AGENTS.md"))
+
+    # CUALQUIER comando de versionado con mensaje entrecomillado, no solo el
+    # wrapper: la prohibicion es sobre el DESTINO, y un `git push` con `main` en
+    # el mismo comando es la misma regla rota.
+    patrones = (
+        _re.compile(r'git_safe_commit\.py\s+"([^"]*)"'),
+        _re.compile(r'git\s+commit[^|"\n]*-m\s+"([^"]*)"'),
+        _re.compile(r'git\s+push[^|"\n]*(?:"([^"]*)")?'),
+    )
+    infracciones = []
+    total = 0
+    for ruta in rutas:
+        with open(ruta, encoding="utf-8") as fh:
+            for numero, linea in enumerate(fh, 1):
+                for patron in patrones:
+                    for texto in patron.findall(linea):
+                        if not texto.strip():
+                            continue
+                        total += 1
+                        if _re.search(r"\bmain\b", texto):
+                            infracciones.append(
+                                (os.path.relpath(ruta, raiz), numero, texto.strip()))
+    assert total >= 6, (
+        f"se esperaban al menos 6 plantillas o comandos de versionado extraidos y "
+        f"han salido {total}. Si el criterio de extraccion deja de encontrar los, "
+        f"este test pasa en verde SIN MIRAR NADA, que es el falso verde con la "
+        f"forma de una asercion")
+    assert not infracciones, (
+        "ninguna plantilla literal de commit puede nombrar `main` como destino: "
+        f"la regla de TASK-066 dice que el bucle empuja a `beta` y que `main` solo "
+        f"recibe `beta` por fast-forward, y un ejemplo que diga lo contrario gana "
+        f"al contrato porque es lo que se copia. Infracciones: {infracciones!r}")
+    print("Mitad negativa OK: NINGUNA plantilla de commit nombra main como destino.")
 
 
 def test_el_cero_esta_sobrecargado_por_dos_desenlaces_y_solo_por_esos_dos():
@@ -19029,4 +19833,23 @@ if __name__ == "__main__":
     test_el_contrato_de_codigos_esta_atado_a_cada_linea_wopt()             # T-2
     test_un_fallo_de_git_no_sale_con_cero()                                # T-3
     test_el_cero_esta_sobrecargado_por_dos_desenlaces_y_solo_por_esos_dos()  # T-4
+    # TASK-066: la puerta de CABECERA y la regla de RAMA. Suite: 144 -> 153.
+    # Las nueve van DETRAS del marcador headless (tooling puro, ninguna abre
+    # ventana) y todas escriben en `%TEMP%`, nunca en la raiz del repo.
+    #
+    # El orden es el de la especificacion: primero la puerta (T-4, que es la que
+    # impide que el rojo vuelva) y despues la regla de rama (T-5, que es la
+    # instruccion que la puerta avisa). La contraprueba va con la puerta y no al
+    # final a proposito: es la que dice que la puerta no puede ser mas estricta
+    # que CI, y si la puerta seMidiera antes de que nadie la contraprobe, el
+    # fallo sale tarde y como una incidencia del bucle.
+    test_la_puerta_de_cabecera_rechaza_una_cabecera_de_135_caracteres()   # c1
+    test_la_puerta_de_cabecera_rechaza_antes_de_stagear()                 # c2
+    test_las_plantillas_del_bucle_pasan_la_puerta_de_cabecera()           # c3 CONTRAPRUEBA
+    test_la_puerta_de_cabecera_rechaza_subject_case()                     # c4
+    test_el_corpus_congelado_de_cabeceras_reales()                        # c5
+    test_la_salida_canonica_declara_la_rama()                             # c6
+    test_la_puerta_de_cabecera_usa_las_cuentas_de_la_config()             # atar a la config
+    test_la_regla_de_rama_esta_escrita_donde_el_bucle_la_lee()            # T-5 mitad +
+    test_ninguna_plantilla_de_commit_nombra_main()                        # T-5 mitad -
     print("\nALL TESTS PASSED.")
