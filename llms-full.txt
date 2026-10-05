@@ -625,9 +625,29 @@ Este checklist lo arregla: la regla queda escrita aqui y hay que propagarla.
       ganancia: `git branch -f beta main` hace lo mismo sin reescribir un solo SHA.
 - [x] **`beta` pusheada primero**, como se decidio, para que el tramo pendiente salga
       como pre-release y la estable se gradu sola al mergear.
-- [ ] **`main` mergeada desde `beta`.** **BLOQUEADA, y no por la configuracion de este
-      trabajo:** el pipeline de `beta` salio en ROJO en el job `commits`, y por el orden
-      `commits -> verify -> release -> build` **nada despues llego a correr**. Ver D-4.
+- [ ] **`main` mergeada desde `beta`.** **MEDIDO el 2026-10-05: el MERGE se hizo y el
+      PUSH salio limpio, pero la estable NO se publico, y el bloqueo ya NO es el de
+      `beta`.** Lo que hay: `beta` salio **VERDE** en los cuatro jobs (corrida
+      [37255338989](https://github.com/carcheky/woptimizer/actions/runs/37255338989), con
+      la pre-release **v1.1.0-beta.1** y su `woptimizer.exe` adjunto), `main` recibio
+      `beta` por fast-forward puro (`ad9159f..d568804`, 35 commits, cero merges, sin
+      `--force`) y **`origin/main` y `origin/beta` estan en el mismo commit**. Lo que no
+      hay: la **release estable**. La corrida
+      [37256074012](https://github.com/carcheky/woptimizer/actions/runs/37256074012) de
+      `main` salio ROJO en `Commits convencionales` y, por el orden `commits -> verify ->
+      release -> build`, **nada despues llego a correr**: ni `v1.1.0` ni `.exe`.
+      **Por que, y es la mitad de D-4 que faltaba:** el rango del push es
+      `github.event.before` (`release.yml:49-67`), y en `main` ese `before` es `ad9159f`,
+      que es **anterior a los 7 commits largos**, luego vuelven a entrar. MEDIDO con el
+      mismo criterio que la puerta, sobre los rangos reales: `4d86908..d568804` (lo que
+      vio `beta`) son **11 commits y 0 incumplen**; `ad9159f..d568804` (lo que vio
+      `main`) son **37 commits y 7 incumplen**, los siete de D-4 y todos por
+      `header-max-length`. O sea: **los 7 solo estan fuera del rango de `beta`; en
+      `main` no hay absolutamiento forma de sacarlos sin reescribir historia ya
+      publicada en `beta` (30 de esos 37 commits lo estan) o tocar
+      `.github/workflows/**`**, y las dos cosas las prohiben los AC de `TASK-064` y de
+      `TASK-066`. **Esta casilla no se cierra con un `git push`: hace falta una
+      decision del arquitecto sobre cual de las dos prohibiciones se levanta.**
 
 ## 3. FICHEROS QUE FALTAN EN `.github/`
 
@@ -822,6 +842,8 @@ explicar por que el numero bajo de 8 a 7.
   > [37244051847](https://github.com/carcheky/woptimizer/actions/runs/37244051847) tiene
   > **`Commits convencionales` en VERDE** —T-1 funciono— y **`Verificar en Windows` en ROJO**.
   > Luego **la casilla de arriba sigue abierta**: no hay release y no hay `.exe`.
+  > *(Estado MEDIDO el 2026-10-05: esto ya no es lo que la bloquea. Ver la casilla de
+  > arriba, que ahora trae la medicion de `beta` VERDE y de `main` ROJO.)*
   >
   > **1. La cuenta de "8 commits" era 7, y el octavo no incumple nada.** La tabla de D-4
   > atribuye a `92368ad` y `c3ced1a` un incumplimiento de `subject-case`, y eso es **FALSO**.
@@ -861,12 +883,15 @@ explicar por que el numero bajo de 8 a 7.
 ### D-5. Deriva menor
 
 - [x] **README badges corregidos.** Decian `ciclos-20` y `tests-57 verdes`; ahora
-      `ciclos-52` y `tests-132 verdes`, que es lo que el repo declara en los otros tres
-      ficheros. **Por que se habia quedado en 57 sin que nada avise:**
+      `ciclos-52` y `tests-156 verdes`, que es lo que el repo declara en los otros tres
+      ficheros. *(El badge se puso en `132` el 2026-10-04 y seguia en `132` cuando ya
+      eran 153: este parrafo era tambien un registro que moria, y por el mismo motivo
+      que el segundo.)* **Por que se habia quedado en 57 sin que nada avise:**
       `validate_docs.py:118` vigila `README.md` con el patron
       `run_tests\.py\s*#\s*(\d+)\s+tests` — o sea, la linea del **comando**, no la del
       **badge**. La linea 6 era la unica del repo que miente en voz alta y ningun
-      guard la alcanzaba. Corregido en `4d86908`.
+      guard la alcanzaba. Corregido en `4d86908`, y **la casilla de abajo sigue
+      abierta**, que es la unica forma de que no vuelva a caducar.
 - [ ] **Anadir el badge al check 7 de `validate_docs.py`**, para que no vuelva a caducar
       solo. Es el mismo agujero que ya cambio una vez por el mismo motivo.
 
