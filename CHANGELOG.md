@@ -39,11 +39,16 @@ misma clase de fallo: **una comprobacion que no puede fallar no es una comprobac
   acabada en `": "` se queda sin ese espacio al limpiar el mensaje, y el filtro responde
   "no hay tipo" antes de mirar el subject. Un test escrito con `"fix: "` habria pasado en
   verde sin medir nada, y habria parecido una cobertura.
-- **Un guardian puede ser fuerte en un sitio y a medias en otro, y eso hay que decirlo.**
-  MEDIDO: el guardian H2 quita el repositorio del disco duro apuntando una variable de
-  entorno a un temporal, asi que en este host solo mata la mitad de los mutantes de la ruta
-  fija: el que lleva la ruta escrita de antemano sobrevive. Queda escrito en su docstring en
-  vez de dado por cerrado.
+- **Un guardian se puede dar por cerrado de mentira, y se descubre tarde.** Durante este
+  ciclo se escribio que el guardian H2 (el que esconde el repositorio del disco duro
+  apuntando una variable de entorno a un temporal) "en este host solo mata la mitad de los
+  mutantes". **Era falso, y la premisa que lo sostenia no se cumplia:** el guardian recarga
+  el programa del versionado en cada llamada, sin guardar nada en memoria, asi que la ruta
+  fija **si** cambia con el entorno y el mutante **si** muere aqui. Medido ademas que el
+  mutante no muere por un error del programa, sino **por la comprobacion del propio test**,
+  que es lo unico que lo hace util. El unico caso que escapaba era una ruta escrita a mano
+  que solo existe en la maquina del dueno, y **el servidor de GitHub la mata** porque alli
+  no existe. Corregido el texto; **el guardian no se relaja**.
 - **Un `finally` no es una restauracion si el proceso muere antes.** Al mutar para medir, un
   arnes dejo el fichero entero pasado a LF y el hash de "restaurado" no cuadraba. A partir de
   ahi la restauracion se comprueba con el hash, y la conversion de finales de linea se
@@ -59,6 +64,42 @@ misma clase de fallo: **una comprobacion que no puede fallar no es una comprobac
 - **Y la release estable existe, con su ejecutable.** `v1.1.0`, sin marcar como prerelease,
   con `woptimizer.exe` adjunto. La corrida de `main` dio los cuatro trabajos en verde. Puedes
   descargarla desde la pagina de releases.
+
+### Cierre de los cuatro tickets que dejo la auditoria (P1-P4)
+
+Ninguno toca la aplicacion, la puerta de versionado ni tus datos: son **cuatro cosas de
+documentacion y de guardas**, y las cuatro equivalen a decir cosas que no eran
+ciertas. En dos de ellas el dicho era una promesa de proteccion que el codigo no cumplia.
+
+- 📄 **Un control de prueba decia que hacia algo que no hacia.** Afirmaba que impedia un
+  cambio en el filtro de la regla de rama. Medido: no lo impidia; con ese cambio los tests
+  siguen en verde, porque no hay ninguna linea a la que ese control pueda agarrarse. Ahora el
+  texto dice lo que el control hace de verdad, con la medicion al lado, y el filtro **no** se
+  ha tocado: cambiarlo habria abierto otro agujero.
+- 🛡️ **Un hueco de verdad en el guard de la rama de trabajo, y ya no esta.** Solo miraba los
+  comandos de versionado con el mensaje entre comillado, asi que un `git push origin main`
+  escrito como se escribe de verdad —sin comillas— pasaba por debajo. Medido antes y despues:
+  antes en verde, ahora cae por la comprobacion que lo declara. Y el arreglo esta **acotado a
+  las plantillas de commit**, porque el comando `git push origin main` del propio dueno es
+  legitimo y aparece en la documentacion: un guard que acusara al dueno por su propia
+  publicacion seria peor que el hueco que tapa, y hay una comprobacion que lo prohibe.
+- 📄 **Una nota de amarillo hacia creer que quedaba media puerta cerrada.** Corregida con la
+  medicion, sin relajar nada.
+- 📄 **Una cifra de la documentacion seguia siendo la vieja en el fichero agregado, con todo
+  en verde.** El validador comprueba que el nombre del documento este en el agregado, no lo
+  que dice dentro, asi que la copia vieja no la veia nadie. Corregida en los dos ficheros y
+  escrito por que el agregado no se vigila a si mismo. De paso se midio que el agregado
+  **esta caducado en 4 de sus 9 secciones**: regenerarlo es un trabajo propio y queda
+  declarado, no cerrado.
+
+Ademas, tres cosas sueltas: el badge del proyecto decia 52 ciclos y va por el **54**; cuatro
+citas de esta misma lista apuntaban a un fichero que no existe en la raiz por su nombre
+corto (es `docs/GITHUB-SETUP-CHECKLIST.md`, y una de ellas iba una linea corrida); y la tabla
+de pruebas tenia una fila (#120) suelta despues de la #124, ya en su sitio con la
+numeracion 1..159 sin huecos.
+
+**Tests: 159 -> 159** (no entra ninguno nuevo: dos tickets son texto y el tercero endurece
+una comprobacion que ya existia), y **el codigo de la puerta de cabecera intacto**.
 
 ## CYCLE-053 - 2026-10-04
 ## CYCLE-053 - 2026-10-04

@@ -56,43 +56,115 @@ Y por eso el mensaje de este ciclo es **`fix(...)` y no `docs(...)`**: con `docs
 | **S7** regla en un comentario | filtro sin `<!--...-->` | killed | *"una regla escrita SOLO dentro de un comentario HTML no es una instruccion que el bucle lea, y el filtro la da por presente"* |
 | **S7b** busqueda en crudo | mitad positiva sin el filtro | killed | *"la regla de rama ... tiene que estar en los TRES ficheros ... y falta: [('...SKILL.md', 'prohibicion', ...)]"* |
 | **S8** verificacion decorativa | referencia = `repo_root` (`--show-toplevel` con el arbol forzado) | killed | *"el repo AJENO se ha DEVUELTO como si fuera el de este arbol"* / *"ningun GIT_DIR candidato es el repo de este arbol"* |
-| H2 (medido de nuevo) | ruta fija como **literal** | **🟡 survived en este host** | ver abajo |
+| H2 (medido de nuevo) | ruta FIJA desde el modulo | **killed, por su asercion** | ver abajo |
 
-**HALLAZGO SOBRE H2, y corrige una afirmacion previa de este mismo ciclo.** El guardian
-H2 quita el desacople del VFS apportionando `os.environ["LOCALAPPDATA"]` a un temporal,
-luego en este host **solo mata la mitad** de los mutantes de la ruta fija: MEDIDO, con
-`os.path.expandvars(...)` **al llamar** el mutante muere (por `NotADirectoryError` de
-`subprocess`, no por la asercion del test), y con la ruta como **LITERAL** **sobrevive en
-verde**, porque un temporal no cambia una ruta ya escrita — y esa es la forma real del
-bug original, que era la constante de modulo ya expandida en el import. El guardian es de
-FUERZA en el runner de GitHub, que es donde tumbaba el job `verify`, y de fuerza parcial
-aqui. **No se corrige en este ciclo** porque no es ninguno de los tres que le tocaban;
-queda MEDIDO y escrito en el docstring de H2, que es lo que evita que alguien lo declare
-cerrado sin medirlo. El test nuevo de S8 **si** es host-independiente: no simula el
-entorno, monta un repo ajeno de verdad.
+**HALLAZGO SOBRE H2, y RETIRA una afirmacion previa de este mismo ciclo.** Este
+bloque decia que H2 era "de FUERZA en el runner y de fuerza parcial aqui", y por eso
+anadia un 🟡. **Las dos mitades eran FALSAS, y la que sostenia el 🟡 era una premisa
+que no se cumple.** MEDIDO el 2026-10-05:
+
+* **"`gsc.LOCAL_GIT_DIR` es la constante de modulo ya expandida en el import" es
+  FALSA** como premisa del guardian: `_cargar_el_wrapper()` (`run_tests.py:16175`)
+  **re-ejecuta el modulo en cada llamada, sin cache**. MEDIDO: con `LOCALAPPDATA`
+  apuntando a un temporal la constante sale apuntando ahi, luego el temporal del
+  guardian **SI mueve la ruta fija** y el mutante alcanzable muere **tambien en este
+  host**. El codigo mutable es el `expandvars` de `git_safe_commit.py:93`, no una
+  ruta escrita a mano.
+* **"con `expandvars` al llamar el mutante muere por `NotADirectoryError` de
+  `subprocess`" es FALSA**: MEDIDO, ese mutante muere por la **asercion del test**,
+  con el motivo literal *"MEDIDO en el runner de GitHub (corrida 37244051847): ...
+  no se pudo leer el HEAD del repo real ni a la tercera: fatal: not a git
+  repository: '<temporal>\woptimizer_git\.git'"*. Un rc de git distinto de 0 no
+  es una excepcion de Python: lo que lo convierte en muerte util es el `raise
+  AssertionError` del propio test.
+
+O sea que **H2 es un guard de FUERZA en los DOS entornos**. El unico superviviente que
+llego a medirse era una ruta escrita a mano que solo existe en la maquina del dueno, y
+**CI la mata** porque alli no existe: es un **mutante INERTE** (no alcanzable desde el
+producto), no un hueco. **El guard NO se relaja en este ciclo**; lo que se corrige es
+el texto del 🟡 y el del docstring, que es lo unico que estaba mal. El docstring de H2
+lleva ahora las dos mediciones, para que nadie lo relea como media puerta cerrada. La S8
+de este ciclo (`test_el_git_dir_ajeno_no_pasa_la_verificacion_del_arbol`) cierra el caso
+hermano y SI es host-independiente, porque no simula el entorno: monta un repo ajeno de
+verdad.
 
 ### Los nueve mutantes declarados, repetidos
 Los **nueve** mueren, cada uno por su asercion: `LIMITE_SUBIDO_A_220` (por c1 y por el
 corpus), `SOLO_LONGITUD`, `TIPO_FUERA_DE_LISTA` (H1), `SIN_INFO_RAMA` y
 `RAMA_DE_HARDCODE` (c6), `REGLA_EN_UN_COMENTARIO` y `BUSQUEDA_EN_CRUDO` (T-5 positiva),
 `PLANTILLA_CON_MAIN` (T-5 negativa) y `ANCLA_T_MENOR` (H3). `RUTA_FIJA_EN_LA_SONDA` (H2)
-muede por otra causa, y se cuenta aparte mas arriba.
+**tambien muere por su asercion**, MEDIDO en los dos entornos, y su caso se cuenta
+arriba.
+
+### Los cuatro tickets de este cierre (P1-P4) y las tres correcciones sueltas
+Los cuatro son de **documentacion y de guardas**: ninguno toca S3, S7, S8 ni la puerta
+de cabecera, y ninguno es de seguridad ni de datos. Todos MEDIDOS con su mutante, con
+snapshot antes de mutar y **restauracion verificada por `sha256`** (un proceso muerto no
+ejecuta su `finally`, luego la restauracion va en el proceso padre).
+
+1. **P1, el CONTROL 3 promete lo que no hace.** El docstring decia que el tercer control
+   "es el que impide el arreglo de *excluir tambien `#`*". **MEDIDO: no lo impide.** Con
+   el recorte tirando tambien de las lineas que empiezan por `#` la suite sigue en
+   VERDE (rc=0), porque en los tres ficheros hay **CERO** lineas que a la vez empiecen
+   por `#` y lleven la regla: el control no tiene donde morder. La mitad del `>` **si**
+   tiene dientes: MEDIDO, tirando de las lineas `>` mueren los dos tests con el motivo
+   literal *"la cita de bloque con `>` es PROSA que el bucle lee, y el filtro no puede
+   descartarla: limpio=''"*. **El arreglo es el TEXTO, no el filtro**: excluir `#`
+   abriria otro agujero del mismo tipo, porque el `##` de un encabezado se comeria texto
+   de regla. El docstring y el comentario del control dicen ahora, con las dos
+   mediciones, lo que el control hace y lo que no hacia.
+2. **P2, punto ciego en el guard de la regla de rama.** El docstring afirmaba que "un
+   `git push` con `main` en el mismo comando es la misma regla rota", y **solo se
+   vigilaba la forma entrecomillada**: `git\s+push[^|"\n]*(?:"([^"]*)")?` captura
+   **cadena vacia** en `git push origin main` y el `if not texto.strip()` la salta.
+   MEDIDO: con esa forma dentro de una plantilla la mitad negativa sale en VERDE.
+   **Arreglo: cuarta forma de extraccion, ACOTADA a las lineas de una PLANTILLA de
+   commit** (valla que lleva dentro un mensaje entrecomillado), porque el destino sin
+   comillas es **tambien** el del comando LEGITIMO de T-3 (`AGENTS.md:85`) y el guard no
+   puede acusar al dueno por su propio release. MEDIDO sobre los ficheros reales: 6
+   vallas con mensaje (las plantillas) y 1 con `git push ... main` sin comillas, que es
+   justamente la que no lo lleva. El test trae las dos mitades —la que mata al mutante
+   y la que prohibe abrir el ambito, que muere archivos reales de por si— y una tercera
+   que exige que el comando legitimo **siga en el fichero**, para que la excepcion no se
+   pueda acortar en silencio.
+3. **P3, el 🟡 de H2 hacia creer que queda media puerta cerrada.** Corregido arriba: el
+   guard es fuerte en los dos entornos y lo unico roto era el texto. **Sin relajar el
+   guard.**
+4. **P4, D10 a medias y el verde que no lo ve.** `validate_docs.py:2153` solo comprueba
+   `if d not in full`, o sea el **nombre** del fichero y no su contenido, luego
+   `llms-full.txt` seguia con su propia copia del "8" con el validador en verde.
+   Corregida la linea en el agregado **y** en la fuente, con escrito por que el
+   agregado no se autovigila. MEDIDO ademas: el agregado esta **CADUCADO en 4 de sus 9
+   secciones** (`api.md` con 102 de sus 109 lineas de contenido fuera, `known-issues.md`
+   con 185 de 381, la del checklist con 86 de 530 y `testing.md` con 10 de 128), luego
+   **no es un espejo de sus fuentes** y regenerarlo es un trabajo propio, no un retoque
+   de una linea. **Queda declarado, no cerrado.**
+5. **Las tres sueltas.** El badge de `README.md:6` decia `ciclos-52` y el ciclo va por el
+   **54**. Las cuatro citas de D5/D7/D8/D10 apuntaban a `CHECKLIST.md:240/:303/:419/
+   :441`, **un nombre de fichero que no existe en la raiz**: son
+   `docs/GITHUB-SETUP-CHECKLIST.md`, y la `:240` citada es la **`:239`**. Y la tabla de
+   `docs/ai/testing-guide.md` tenia la fila **#120 despues de la #124** (una fila pegada
+   al final de otra tabla): movida a su sitio, y la numeracion queda **1..159 sin huecos
+   ni repetidos**, MEDIDO sobre el fichero. **Suite: 159 -> 159** (no entra ningun test
+   nuevo: P1 y P3 son texto y P2 endurece un guard que ya existia).
 
 ### Las ocho afirmaciones documentales (D5-D11)
-1. **D5** `CHECKLIST.md:240` citaba `release-pipeline.md:54` para el `softprops@v2`; esta
-   en la **`:87`** (la `:54` es la del `git push origin main`). Corregida. **La casilla
-   sigue ABIERTA** porque `release-pipeline.md:87` sigue diciendo `v2` de verdad.
+1. **D5** `docs/GITHUB-SETUP-CHECKLIST.md:239` citaba `release-pipeline.md:54` para el
+   `softprops@v2`; esta en la **`:87`** (la `:54` es la del `git push origin main`).
+   Corregida. **La casilla sigue ABIERTA** porque `release-pipeline.md:87` sigue
+   diciendo `v2` de verdad.
 2. **D6** la casilla de `.taskmaster/tmp_measure_t059.py` gritaba "peligroso" por el
    `add -A`: **el fichero no existe**, `git log --all` sale vacio, y el `add -A` esta en la
    **`:776`**, no en la `:206` (que es el docstring). Casilla cerrada con la medicion.
-3. **D7** `CHECKLIST.md:419-422` decia que `git_safe_commit.py` sale con 0 ante un fallo de
-   git. **FALSO**: `CODE_FAIL = 1` (`:97`) y sale `WOPT_FAIL commit` + 1. TASK-061 lo cerro
-   en `4879d19` y **la fila ya no esta** en la Deuda de `STATUS.md`.
-4. **D8** `CHECKLIST.md:441` citaba `mkdocs.yml:88`; el fichero tiene **83 lineas** y la
-   licencia esta en **81-82**.
+3. **D7** `docs/GITHUB-SETUP-CHECKLIST.md:419-422` decia que `git_safe_commit.py` sale con 0
+   ante un fallo de git. **FALSO**: `CODE_FAIL = 1` (`:97`) y sale `WOPT_FAIL commit` + 1.
+   TASK-061 lo cerro en `4879d19` y **la fila ya no esta** en la Deuda de `STATUS.md`.
+4. **D8** `docs/GITHUB-SETUP-CHECKLIST.md:441` citaba `mkdocs.yml:88`; el fichero tiene **83
+   lineas** y la licencia esta en **81-82**.
 5. **D9** el docstring de `run_tests.py` que afirmaba *"La VERIFICACION no es decorativa"*
    es FALSO (medido) y esta reescrito con la correccion y su porque.
-6. **D10** `CHECKLIST.md:303` decia "peor que **8** cabeceras largas"; son **7**.
+6. **D10** `docs/GITHUB-SETUP-CHECKLIST.md:303` decia "peor que **8** cabeceras largas"; son
+   **7**. Corregida en la fuente **y** en el agregado, que llevaba su propia copia.
 7. **D11** `AGENTS.md` exige entrada en **dos** changelogs y este ciclo no tenia entrada en
    ninguno (la ultima era CYCLE-053). Escrita en los dos. **`validate_docs.py` da 126 OK /
    0 FAIL, o sea que NADA lo vigila**: es la brecha de D11.

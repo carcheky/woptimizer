@@ -18009,10 +18009,23 @@ def test_la_regla_de_rama_no_vive_en_un_comentario_ni_en_una_valla():
 
     * el filtro tiene que **descartar** un comentario HTML con las dos frases,
     * y **descartar** una valla ``` con las dos frases,
-    * y **CONSERVAR** la prosa real: la cita de bloque con `>` y el encabezado con
-      `#`, porque en markdown los dos son contenido y no marca. Este control es
-      el que impide el arreglo de "excluir tambien `#`", que abriria un agujero
-      del mismo tipo.
+    * y **CONSERVAR** la prosa real: la cita de bloque con `>` y lo que hay
+      **bajo** un encabezado con `#`, porque en markdown los dos son contenido y
+      no marca.
+
+    MEDIDO el 2026-10-05 (este ciclo) y CORRIGE la redaccion anterior de este
+    docstring, que decia que este tercer control "es el que impide el arreglo de
+    excluir tambien `#`". **NO lo impide.** MEDIDO, con el recorte tirando
+    tambien de las lineas que empiezan por `#` la suite sigue en VERDE, porque en
+    los tres ficheros hay **CERO** lineas que a la vez empiecen por `#` y lleven la
+    regla: el control no tiene donde morder. La mitad del `>` si que tiene
+    dientes —MEDIDO: tirando de las lineas que empiezan por `>` mueren los dos
+    tests, con el motivo literal *"la cita de bloque con `>` es PROSA que el bucle
+    lee, y el filtro no puede descartarla"*—, y lo que el control afirma de `#` es
+    una CONSTATACION del recorte (que un encabezado no es una capa), no una guarda
+    contra ese cambio. Se deja escrito para que nadie lo lea como mas de lo que
+    es: el arreglo correcto era este texto, y NO excluir `#` del filtro, que
+    abriria otro agujero del mismo tipo.
 
     El tercer control mide ademas algo que el filtro no puede romper: que el
     recorte NO destruye la forma en que la regla esta escrita hoy en los tres
@@ -18051,8 +18064,10 @@ def test_la_regla_de_rama_no_vive_en_un_comentario_ni_en_una_valla():
 
     # --- CONTROL 3: la prosa real se conserva ---------------------------------
     # El `>` de markdown y el `#` de encabezado son MARCA, no contenido: los dos
-    # son prosa que el bucle lee. Excluirlos seria el mismo fallo que se acaba de
-    # cerrar, y por eso se afirma que NO se tocan.
+    # son prosa que el bucle lee. MEDIDO: la mitad del `>` tiene dientes (tirar de
+    # las lineas que empiezan por `>` mata los dos tests) y la del `#` fija que un
+    # encabezado NO es una capa, sin pretender tapar el cambio de tirar tambien de
+    # las lineas que empiezan por `#`: eso no lo caza nadie y el docstring lo dice.
     en_cita = ("> **REGLA DURA:** el bucle " + _FRASE_DESTINO +
                ", y `main` " + _FRASE_PROHIBICION + ".\n")
     limpio3 = _sin_la_capa_que_el_bucle_no_lee(en_cita)
@@ -18143,6 +18158,95 @@ def test_la_regla_de_rama_esta_escrita_donde_el_bucle_la_lee():
     print("Mitad positiva OK: destino y prohibicion estan en los tres ficheros.")
 
 
+def _lineas_de_una_plantilla_de_commit(lineas):
+    """`(numero, linea)` de cada linea que esta dentro de una valla PLANTILLA.
+
+    Una valla es PLANTILLA si lleva DENTRO un mensaje de commit entrecomillado
+    (`git_safe_commit.py "..."` o `git commit ... -m "..."`), que es lo unico que
+    el bucle copia literalmente. No se mira la valla entera porque el comando
+    documentado de T-3 (`AGENTS.md:85`) es un `git push origin main` SIN comillas
+    en una valla que **no** lleva ningun mensaje: abrir el ambito a "cualquier
+    valla" lo acusaria y habria que apagar el guard para no bloquear al dueno en
+    su propio release.
+
+    MEDIDO el 2026-10-05 sobre los ficheros reales: hay **6** vallas con mensaje
+    (las plantillas) y **1** con un `git push ... main` sin comillas, que es
+    justamente la que no lleva mensaje. Las cuatro lineas sueltas con esa forma
+    (`AGENTS.md:59`, `AGENTS.md:85`, `SKILL.md:66` y la del `openspec-dev`) son o
+    prosa de la regla o el comando de T-3, y ninguna esta en una plantilla.
+    """
+    import re as _re
+    patron = _re.compile(
+        r'git_safe_commit\.py\s+"[^"]*"|git\s+commit[^|"\n]*-m\s+"[^"]*"')
+    dentro, inicio, vallas = [], None, []
+    for numero, linea in enumerate(lineas, 1):
+        if linea.lstrip().startswith("```"):
+            if inicio is None:
+                inicio, dentro = numero, []
+            else:
+                vallas.append(dentro)
+                inicio, dentro = None, []
+            continue
+        if inicio is not None:
+            dentro.append((numero, linea))
+    if inicio is not None:            # valla sin cerrar: su cuerpo tambien es prosa
+        vallas.append(dentro)
+    for cuerpo in vallas:
+        if any(patron.search(texto) for _numero, texto in cuerpo):
+            for par in cuerpo:
+                yield par
+
+
+def _destinos_de_versionado_de_un_fichero(texto):
+    """`(total, ((numero, texto), ...))` de los mensajes de versionado que este
+    guard vigila en un fichero.
+
+    **Cuatro** formas, y la cuarta es la que se midio que faltaba:
+
+    1. `git_safe_commit.py "<mensaje>"`,
+    2. `git commit ... -m "<mensaje>"`,
+    3. `git push ... "<destino>"`, que es la del `push` con el destino entrecomillado,
+    4. `git push ... main` **SIN** comillas, y SOLO dentro de una valla que sea
+       PLANTILLA de commit (`_lineas_de_una_plantilla_de_commit`).
+
+    Las tres primeras miraban la forma ENTRECOMILLADA, y MEDIDO el 2026-10-05: con
+    solo esas, un `git push origin main` sin comillas dentro de una plantilla pasa
+    por debajo del guard en VERDE. El motivo es el `(?:"([^"]*)")?` de la tercera,
+    que captura **cadena vacia** cuando no hay comillas y el `if not texto.strip()`
+    de la llamada se la salta. La cuarta forma se acota a la plantilla porque el
+    destino sin comillas tambien es el del comando LEGITIMO de T-3, y un guard que
+    accuse al dueno por su propio release es peor que el mutante que tapa.
+
+    `total` cuenta **todo** lo extraido, no solo lo malo, porque es lo que hace que
+    un criterio de extraccion que deja de encontrar plantillas no pueda pasar en
+    verde sin mirar nada.
+    """
+    import re as _re
+    con_comillas = (
+        _re.compile(r'git_safe_commit\.py\s+"([^"]*)"'),
+        _re.compile(r'git\s+commit[^|"\n]*-m\s+"([^"]*)"'),
+        _re.compile(r'git\s+push[^|"\n]*(?:"([^"]*)")?'),
+    )
+    sin_comillas = _re.compile(r'\bgit\s+push\b[^|"\n]*\bmain\b')
+    lineas = texto.splitlines()
+    de_plantilla = {numero
+                    for numero, _texto in _lineas_de_una_plantilla_de_commit(lineas)}
+    total, hallazgos = 0, []
+    for numero, linea in enumerate(lineas, 1):
+        for patron in con_comillas:
+            for trozo in patron.findall(linea):
+                if not trozo.strip():
+                    continue
+                total += 1
+                if _re.search(r"\bmain\b", trozo):
+                    hallazgos.append((numero, trozo.strip()))
+        if numero in de_plantilla:
+            for trozo in sin_comillas.findall(linea):
+                total += 1
+                hallazgos.append((numero, trozo.strip()))
+    return total, hallazgos
+
+
 def test_ninguna_plantilla_de_commit_nombra_main():
     """TASK-066 T-5, MITAD NEGATIVA: la que de verdad discrimina.
 
@@ -18160,6 +18264,20 @@ def test_ninguna_plantilla_de_commit_nombra_main():
     Mata a `REGLA_EN_UN_COMENTARIO` por la via de la meio negada, y a
     `PLANTILLA_CON_MAIN`, que es el mutante que de verdad devolveria el rojo:
     anadir `... "push a main ..."` o cambiar el destino de una plantilla.
+
+    MEDIDO y CORREGIDO el 2026-10-05 (este ciclo), y cierra un punto ciego que la
+    redaccion anterior **prometia** cerrar sin cerrarlo: decia que "un `git push`
+    con `main` en el mismo comando es la misma regla rota", y lo unico que se
+    vigilaba era la forma **entrecomillada**. La forma sin comillas —que es como
+    se escribe de verdad el push de un ejemplo— pasaba por debajo: MEDIDO, con
+    `git push origin main` sin comillas dentro de una plantilla la mitad negativa
+    sale en VERDE.
+
+    Y el ambito del arreglo es la parte delicate, porque el destino sin comillas es
+    tambien el del comando LEGITIMO de T-3 (`AGENTS.md:85`). Por eso la cuarta
+    forma se acota a las lineas de una PLANTILLA y por eso el test trae las dos
+    mitades: la que mata al mutante y la que prohibe tapar al dueno. Abrir el
+    ambito a todo el fichero no es un fix mas fuerte, es el guard apagado.
     """
     print("Probando que NINGUNA plantilla de commit nombra main...")
     import re as _re
@@ -18173,27 +18291,15 @@ def test_ninguna_plantilla_de_commit_nombra_main():
                               recursive=True))
     rutas.append(os.path.join(raiz, "AGENTS.md"))
 
-    # CUALQUIER comando de versionado con mensaje entrecomillado, no solo el
-    # wrapper: la prohibicion es sobre el DESTINO, y un `git push` con `main` en
-    # el mismo comando es la misma regla rota.
-    patrones = (
-        _re.compile(r'git_safe_commit\.py\s+"([^"]*)"'),
-        _re.compile(r'git\s+commit[^|"\n]*-m\s+"([^"]*)"'),
-        _re.compile(r'git\s+push[^|"\n]*(?:"([^"]*)")?'),
-    )
     infracciones = []
     total = 0
     for ruta in rutas:
         with open(ruta, encoding="utf-8") as fh:
-            for numero, linea in enumerate(fh, 1):
-                for patron in patrones:
-                    for texto in patron.findall(linea):
-                        if not texto.strip():
-                            continue
-                        total += 1
-                        if _re.search(r"\bmain\b", texto):
-                            infracciones.append(
-                                (os.path.relpath(ruta, raiz), numero, texto.strip()))
+            texto = fh.read()
+        cuantos, hallazgos = _destinos_de_versionado_de_un_fichero(texto)
+        total += cuantos
+        for numero, trozo in hallazgos:
+            infracciones.append((os.path.relpath(ruta, raiz), numero, trozo))
     assert total >= 6, (
         f"se esperaban al menos 6 plantillas o comandos de versionado extraidos y "
         f"han salido {total}. Si el criterio de extraccion deja de encontrar los, "
@@ -18204,7 +18310,57 @@ def test_ninguna_plantilla_de_commit_nombra_main():
         f"la regla de TASK-066 dice que el bucle empuja a `beta` y que `main` solo "
         f"recibe `beta` por fast-forward, y un ejemplo que diga lo contrario gana "
         f"al contrato porque es lo que se copia. Infracciones: {infracciones!r}")
-    print("Mitad negativa OK: NINGUNA plantilla de commit nombra main como destino.")
+
+    # --- MITAD 1: la forma SIN COMILLAS dentro de una plantilla, que es la que
+    #     se midio que pasaba por debajo del guard. Va antes de leer nada del
+    #     repo porque es la que demuestra que la cuarta forma EXISTE.
+    con_push = ('```bash\n'
+                'python .taskmaster/git_safe_commit.py "fix(tests): cerrar los '
+                'vivos (TASK-066)"\n'
+                'git push origin main\n'
+                '```\n')
+    _cuantos, hallazgos = _destinos_de_versionado_de_un_fichero(con_push)
+    assert [h for h in hallazgos if "push" in h[1]], (
+        f"un `git push ... main` SIN comillas dentro de una valla PLANTILLA tiene "
+        f"que salir como infraccion, y sale {hallazgos!r}. Los tres patrones de "
+        f"antes solo miraban la forma entrecomillada, asi que un ejemplo de push "
+        f"escrito como se escribe de verdad se cuela por debajo del guard: es el "
+        f"punto ciego que este arreglo cierra")
+
+    # --- MITAD 2: la CONTRAPRUEBA, y va en el mismo test y no al final por
+    #     accidento. El bloque de publicacion de `AGENTS.md` es legitimo y su
+    #     `git push origin main` va SIN comillas: sin esta fila, el arreglo
+    #     anterior (abrir el ambito a todo el fichero) mataria al dueno en su
+    #     propio release, que es un rojo mas caro que el mutante que tapa.
+    publicacion = ('```bash\n'
+                   'git push origin beta     # -> Release v1.1.0-beta.N\n'
+                   'git switch main && git merge --ff-only beta && '
+                   'git push origin main   # -> Release v1.1.0\n'
+                   '```\n')
+    _cuantos2, hallazgos2 = _destinos_de_versionado_de_un_fichero(publicacion)
+    assert not [h for h in hallazgos2 if "push" in h[1]], (
+        f"el bloque de PUBLICACION es legitimo y no puede salir como infraccion, y "
+        f"sale {hallazgos2!r}. Es el comando documentado de T-3 de `AGENTS.md`, el "
+        f"que acaba de publicar la v1.1.0; un guard que lo acuse por tener el "
+        f"destino sin comillas no guarda la regla de rama, bloquea al dueno")
+
+    # --- Y el ambito tiene que ser REAL, no una excepcion vacia. Si el comando
+    #     legitimo desapareciera del fichero, esta fila se caeria: sin ella, la
+    #     exaccion de la mitad 2 dejaria de estar probada y alguien podria
+    #     acortar el ambito creyendo que no se pierde nada.
+    with open(os.path.join(raiz, "AGENTS.md"), encoding="utf-8") as fh:
+        lineas_de_agentes = fh.read().splitlines()
+    legitimo = [l.strip() for l in lineas_de_agentes
+                if _re.search(r"\bgit\s+push\b[^|\"\n]*\bmain\b", l)
+                and l.lstrip().startswith("git ")]
+    assert legitimo, (
+        "en `AGENTS.md` no queda ningun comando `git push ... main` legitimo. La "
+        "cuarta forma se acota a las plantillas PORQUE ese comando existe, y si "
+        "desaparece el ambito se puede cerrar entero sin que nadie lo note: esta "
+        "fila es la que impide dar por buena una excepcion que ya no exime a nadie")
+    print("Mitad negativa OK: NINGUNA plantilla de commit nombra main como destino, "
+          "con y sin comillas, y el comando de T-3 sigue pasando.")
+
 
 
 # ---------------------------------------------------------------------------
@@ -18338,26 +18494,37 @@ def test_la_sonda_del_head_no_depende_del_desacople_del_vfs():
     este host el mutante deja la suite EN VERDE, porque el desacople del VFS si
     existe aqui. O sea: la regresion puede volver y nadie se entera.
 
-    MEDIDO OTRA VEZ en el ciclo 999, y corrige una afirmacion mia anterior: este
-    guardian es real en CI, pero **en este host solo mata la mitad de los
-    mutantes de la ruta fija**, y conviene saber cual. El truco de este test es
-    apuntar `os.environ["LOCALAPPDATA"]` a un temporal, luego solo cae un mutante
-    que resuelva `%LOCALAPPDATA%` **en el momento de la llamada**. MEDIDO:
+    MEDIDO OTRA VEZ el 2026-10-05 (este ciclo), y **retira** una afirmacion mia
+    anterior que decia que este guardian era "de FUERZA en el runner y de fuerza
+    parcial aqui". Las dos mitades de esa afirmacion eran FALSAS, y la que
+    sostenia el 🟡 del changelog era una premisa sobre el codigo que no se
+    cumple:
 
-    * con `os.path.expandvars(r"%LOCALAPPDATA%\\woptimizer_git")` al llamar, el
-      mutante MUERE —pero por `NotADirectoryError` de `subprocess`, no por la
-      asercion de este test—, porque la ruta ya no existe;
-    * con la ruta como **literal** (`r"C:\\Users\\carch\\AppData\\Local\\..."`),
-      el mutante **SOBREVIVE en verde**, porque un temporal no cambia una ruta
-      ya escrita. Y esa variante es la forma REAL del bug original, que era la
-      constante de modulo `gsc.LOCAL_GIT_DIR`, ya expandida en el import.
+    * "la constante de modulo `gsc.LOCAL_GIT_DIR`, ya expandida en el import" es
+      FALSA como premisa de este guardian, porque `_cargar_el_wrapper()` (la linea
+      de arriba) **re-ejecuta el modulo en cada llamada, sin cache**: MEDIDO, con
+      `LOCALAPPDATA` apuntando a un temporal la constante sale apuntando ahi,
+      luego el temporal del guardian **SI mueve la ruta fija** y el mutante
+      alcanzable muere tambien en este host. El codigo mutable es el `expandvars`
+      de `git_safe_commit.py:93`, no una ruta escrita a mano.
+    * "con `expandvars` al llamar el mutante muere por `NotADirectoryError` de
+      `subprocess`" es FALSA: MEDIDO, ese mutante muere por la **asercion de este
+      test**, con el motivo literal *"MEDIDO en el runner de GitHub (corrida
+      37244051847): ... su motivo literal es: no se pudo leer el HEAD del repo real
+      ni a la tercera: fatal: not a git repository: '<temporal>\\woptimizer_git\\
+      .git'"*. Un rc de git distinto de 0 no es una excepcion de Python: lo que
+      convierte el fallo en muerte util es la linea `raise AssertionError` de mas
+      abajo.
 
-    O sea que este guardian es de FUERZA en el runner —que es donde tumbaba el
-    job `verify`— y de fuerza parcial aqui. No se corrige en este ciclo porque no
-    es ninguno de los tres supervivientes que le tocaban a esta tarea, y
-    porque la honestidad de esto es mas cara que el arreglo: queda MEDIDO y
-    escrito, que es lo que evita que alguien lo declare cerrado sin medirlo. La
-    S8 de este ciclo (`test_el_git_dir_ajeno_no_pasa_la_verificacion_del_arbol`)
+    O sea que **este guardian es de FUERZA en los dos entornos**, y el 🟡 que
+    decia "sobrevive en este host" hacia creer que queda media puerta cerrada
+    estaba apoyado en un mutante INERTE: una ruta escrita a mano que solo existe
+    en la maquina del dueno, y que **CI mata** porque alli no existe. Inerte no es
+    "fuerte": es que no es alcanzable desde el producto, asi que ningun cambio real
+    lo produce. El guard **NO se relaja** en este ciclo; lo que se corrige es el
+    texto, que es lo unico que estaba mal.
+
+    La S8 de este ciclo (`test_el_git_dir_ajeno_no_pasa_la_verificacion_del_arbol`)
     cierra el caso hermano y SI es host-independiente, porque no simula el
     entorno: monta un repo ajeno de verdad y exige que se descarte.
 

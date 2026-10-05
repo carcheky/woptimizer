@@ -319,9 +319,20 @@ explicar por que el numero bajo de 8 a 7.
 > ya no guardar». Subirla a 220 dejaria pasar los 7 y **anularia la unica regla que hoy
 > detecta un mensaje mal formado antes de que semantic-release lo ignore en silencio**.
 > El fallo silencioso que ese job existe para evitar es peor que 7 cabeceras largas.
-> **CORREGIDO el 2026-10-05: decia 8, y son 7** (el "`8 de 29`" de mas abajo ya
-> estaba corregido en su propia nota; este era el unico "8" contradictorio que
-> quedaba).
+> **CORREGIDO el 2026-10-05: decia 8, y son 7**, MEDIDO con `git log` en el rango
+> `41b8061..4d86908`: 29 commits, exactamente 7 con cabecera >120 (el "`8 de 29`" de
+> mas abajo ya estaba corregido en su propia nota).
+> **Y la nota anterior de este bloque decia que este era "el unico 8 contradictorio
+> que quedaba", y era FALSO**, corregido el mismo dia: el agregado `llms-full.txt`
+> lleva su PROPIA copia de esta linea y seguia diciendo 8, porque
+> **`validate_docs.py:2153` solo comprueba `if d not in full`, o sea el NOMBRE del
+> fichero, no su contenido**. Un agregado que no se autovigila deja la cifra vieja
+> viva en el sitio que un agente lee primero, y el verde del validador no lo ve: por
+> eso la linea esta corregida en los DOS ficheros y no solo aqui. MEDIDO el mismo
+> dia, el agregado esta ademas CADUCADO en 4 de sus 9 secciones (`api.md` con 102 de
+> sus 109 lineas de contenido fuera, `known-issues.md` con 185 de 381, este con 86 de
+> 530 y `testing.md` con 10 de 128), luego no es un espejo de sus fuentes y
+> regenerarlo es un trabajo propio, no un retoque de una linea.
 
 - [ ] **Decidir como se resuelve. Opciones:**
   - **(a) Rebasear los 29 commits con cabeceras cortas** y pushear `beta` con `--force**.
@@ -411,10 +422,11 @@ explicar por que el numero bajo de 8 a 7.
 ### D-5. Deriva menor
 
 - [x] **README badges corregidos.** Decian `ciclos-20` y `tests-57 verdes`; ahora
-      `ciclos-52` y `tests-156 verdes`, que es lo que el repo declara en los otros tres
+      `ciclos-54` y `tests-159 verdes`, que es lo que el repo declara en los otros tres
       ficheros. *(El badge se puso en `132` el 2026-10-04 y seguia en `132` cuando ya
-      eran 153: este parrafo era tambien un registro que moria, y por el mismo motivo
-      que el segundo.)* **Por que se habia quedado en 57 sin que nada avise:**
+      eran 153, y en `52` cuando ya iban 54: este parrafo era tambien un registro que
+      moria, y por el mismo motivo que el segundo.)* **Por que se habia quedado en 57 sin
+      que nada avise:**
       `validate_docs.py:118` vigila `README.md` con el patron
       `run_tests\.py\s*#\s*(\d+)\s+tests` — o sea, la linea del **comando**, no la del
       **badge**. La linea 6 era la unica del repo que miente en voz alta y ningun
