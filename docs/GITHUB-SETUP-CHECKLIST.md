@@ -190,17 +190,24 @@ Ninguno existe hoy. Solo hay `workflows/commitlint.yml` y `workflows/release.yml
       push: hay `feat` -> minor, aunque tambien haya `fix`). Es decir, el trabajo sale
       como estable **sin haber pasado por beta ni un solo dia**.
 - [ ] **Decision del dueno sobre como cerrar el desajuste.** Ver seccion 7, O-1.
-- [ ] **NADIE DICE EN QUE RAMA SE TRABAJA, y por ahi estaba el fallo de origen.** La tabla de
-      arriba de esta misma seccion lo declara desde el principio y el hueco es real. **Medido el
-      2026-10-05:** `grep -i 'beta|branch|rama|push'` da **0 coincidencias** en
-      `.agents/skills/id-pipeline/SKILL.md` y en `.agents/agents/openspec-dev/agent.md` (lo unico
-      que sale es `mainAgent: false` y `main_window.py`), y `.taskmaster/git_safe_commit.py` no
-      tiene **ni una** coincidencia de `branch` ni de `rev-parse --abbrev-ref`.
-      **O sea: el bucle no eligio `main`.** El worktree estaba en `main` y ahi fueron 52 ciclos,
-      porque nadie salio de la rama y la unica puerta de versionado **es ciega a la rama**. Por eso
-      la casilla de arriba —"la practica no lo cumple"— no se arregla moviendo ramas: se arregla
-      escribiendo la regla que falta y haciendo que el wrapper diga en que rama escribe.
-      Corregirlo es `TASK-066` (T-4 y T-5 del change de O-5), no esta tarea.
+- [x] ~~**NADIE DICE EN QUE RAMA SE TRABAJA, y por ahi estaba el fallo de origen.**~~ **CERRADA
+      el 2026-10-05 con T-5 de `TASK-066`, y el hueco era real.** MEDIDO entonces:
+      `grep -i 'beta|branch|rama|push'` daba **0 coincidencias** en
+      `.agents/skills/id-pipeline/SKILL.md` y en `.agents/agents/openspec-dev/agent.md`, y
+      `.taskmaster/git_safe_commit.py` no tenia **ni una** coincidencia de `branch` ni de
+      `rev-parse --abbrev-ref`. **O sea: el bucle no eligio `main`.** El worktree estaba en
+      `main` y ahi fueron 52 ciclos, porque nadie salio de la rama y la unica puerta de
+      versionado **es ciega a la rama**. Por eso la casilla de arriba —"la practica no lo
+      cumple"— no se arregla moviendo ramas: se arregla escribiendo la regla que falta y
+      haciendo que el wrapper diga en que rama escribe.
+      **MEDIDO de nuevo el 2026-10-05, con la regla escrita (PowerShell,
+      `Select-String -Pattern 'beta|branch|rama|push'`, una cuenta por LINEA coincidente):**
+      **9** lineas en `SKILL.md` (bloque 0-bis, con la topologia de ramas y la
+      contraprueba), **1** en `openspec-dev/agent.md` y **30** en `git_safe_commit.py`
+      (`INFO rama:`, `AVISO rama:` y `RAMAS_DE_PUBLICACION`). Las tres mitades las vigila
+      `run_tests.py`: `test_la_regla_de_rama_esta_escrita_donde_el_bucle_la_lee` (mitad
+      positiva, en los tres ficheros) y `test_ninguna_plantilla_de_commit_nombra_main`
+      (mitad negativa: **ninguna** plantilla literal de commit nombra `main` como destino).
 
 ## 5. DERIVA Y FICHEROS SUCOS
 
@@ -230,14 +237,23 @@ Ninguno existe hoy. Solo hay `workflows/commitlint.yml` y `workflows/release.yml
 - [ ] **`basura/` (8 ficheros).** Fuera del indice a proposito, por decision del dueno.
       **No tocar** — se borra a mano cuando toque. Dejar como esta.
 
-### D-4. El pipeline de `beta` esta ROJO por 8 mensajes de commit
+### D-4. El pipeline de `beta` esta ROJO por 7 mensajes de commit (y el rojo real eran 2 locales)
 
 **Medido el 2026-10-04, primer push de este trabajo.** La corrida
 [37228601320](https://github.com/carcheky/woptimizer/actions/runs/37228601320) fallo en
 `Commits convencionales`; los otros tres jobs quedaron `skipped`. **No se publico
 ninguna release y no se compilo ningun `.exe`.**
 
-Causa: **8 de los 29 commits del rango incumplen `.commitlintrc.json`**, medidos
+> [!IMPORTANT]
+> **La cifra del titulo y de la linea de abajo era 8, y es 7.** La cuenta correcta,
+> reproduciendo las seis reglas activas sobre `41b8061..4d86908`, es **7 de 29**: el
+> octavo, `92368ad`, **no incumple ninguna regla** (ver la tabla). Y ademas esos 7 **ya
+> estan publicados** en `origin/beta` (`4d86908`), con lo que `release.yml:49-61` los deja
+> **fuera del rango** de todo push posterior --son abuelos, no miembros-- luego **no
+> bloquean nada**, y el rojo real eran **2 commits locales** (`ef67bf8` y `82f52c2`, de
+> `TASK-061`). Ver la nota de mas abajo, que es la que trae la medicion.
+
+Causa: **7 de los 29 commits del rango incumplen `.commitlintrc.json`**, medidos
 reproduciendo las seis reglas activas en Python (`.commitlintrc.json:4-27`):
 
 | # | Commit | Incumplimiento |
@@ -248,15 +264,18 @@ reproduciendo las seis reglas activas en Python (`.commitlintrc.json:4-27`):
 | 7 | `fix(docs): agregar al agregado llms-full.txt ...` | 188 |
 | 14 | `docs(ciclo 51): registrar la seleccion ...` | 142 |
 | 15 | `feat(tests): invariante del acordeon afirmado por efecto ...` | 212 |
-| 16 | `chore(architect): T-9 afirma el invariante ...` | subject en mayuscula |
-| 17 | `fix(tests): A3 cierra ASSERT_GATE ...` | 134 + mayuscula |
+| 16 | `chore(architect): T-9 afirma el invariante ...` (`92368ad`) | **NINGUNO. MEDIDO el 2026-10-05: 119 chars, y el subject NO esta entero en mayusculas ni en PascalCase** |
+| 17 | `fix(tests): A3 cierra ASSERT_GATE ...` (`c3ced1a`) | 134. La columna ponia ademas "mayuscula" y eso es **FALSO**: es rojo solo por longitud |
 
-**Ninguno de los 8 es de este trabajo.** Son de los ciclos 51 y 52 del bucle
-`id-pipeline`, que escriben subjects descriptivos y se pasan de 120.
+**Ninguno de los 7 es de este trabajo.** Son de los ciclos 51 y 52 del bucle
+`id-pipeline`, que escriben subjects descriptivos y se pasan de 120. La fila 16 se queda
+en la tabla **con su hecho medido escrito** en vez de borrarse: es el registro de lo que se
+midio entonces, y una tabla a la que se le quita la fila que resulto inocente deja de
+explicar por que el numero bajo de 8 a 7.
 
 > **Por que no se relaja la regla.** `header-max-length: 120` esta a proposito, y asi lo
 > dice `release-pipeline.md:70`: «un guard que se relaja para que pase el que lo escribio
-> ya no guardar». Subirla a 220 dejaria pasar los 8 y **anularia la unica regla que hoy
+> ya no guardar». Subirla a 220 dejaria pasar los 7 y **anularia la unica regla que hoy
 > detecta un mensaje mal formado antes de que semantic-release lo ignore en silencio**.
 > El fallo silencioso que ese job existe para evitar es peor que 8 cabeceras largas.
 
@@ -268,7 +287,7 @@ reproduciendo las seis reglas activas en Python (`.commitlintrc.json:4-27`):
   - **(b) Subir `header-max-length` a 220** y arreglar solo el `subject-case` — que no es uno
         sino **dos** commits, el #16 y el #17. Sin reescritura, pero desactiva el guard.
   - **(c) Anadir `ci(github):` con commits de correccion** — **NO FUNCIONA**: commitlint
-        mira el **rango del push**, y los 8 commits siguen dentro del rango hasta que
+        mira el **rango del push**, y los 7 commits siguen dentro del rango hasta que
         `beta`receba un tag y el rango se recorra desde ahi. No se puede "borrar" un
         commit del rango sin reescribir.
   - **(d) Mover la rama de trabajo a una rama nueva** (p. ej. `develop`), pushear ahi y
@@ -386,14 +405,14 @@ Resueltas el 2026-10-04; queda una abierta.
       incumplen y que **no estan en ninguna rama remota** (`ef67bf8`, 128 chars, y `82f52c2`,
       135 chars), empujar `beta` con **fast-forward y sin `--force`**, y que el bucle trabaje en
       `beta` en vez de en una rama nueva.
-      **Por que, en tres frases medidas:** (1) los 8 commits del diagnostico original **ya no
+      **Por que, en tres frases medidas:** (1) los 7 commits del diagnostico original **ya no
       bloquean nada**, porque estan publicados en `origin/beta` y el rango del push los excluye;
       (2) los 2 que si bloquean son **locales**, luego el arreglo no cuesta un `--force` ni tocar
       la proteccion de `main`; (3) `beta` **ya es** la rama de integracion que declara la
       documentacion, asi que (d') consigue lo que (d) buscaba sin apagarse el CI.
       **Lo que NO se toca:** `.commitlintrc.json`, `.releaserc.json`, `.github/workflows/` y la
       proteccion de `main`. Es paso 3, y es cambio de producto.
-      **Lo que se acepta como precio, escrito para no leerlo como resuelto:** los 8 commits
+      **Lo que se acepta como precio, escrito para no leerlo como resuelto:** los 7 commits
       largos se quedan en la historia de `beta` y saldran enteros en las notas de la release
       (semantic-release los parsea bien: el limite de 120 es de commitlint, no del parser), y
       `beta` sigue sin proteccion.
@@ -415,10 +434,16 @@ Resueltas el 2026-10-04; queda una abierta.
 6. **Ramas:** `beta` FF a HEAD de `main` y pusheada primero, como se decidio.
 7. **README badges corregidos** a los valores reales (132 tests, 52 ciclos).
 8. **Puertas ejecutadas antes de publicar, todas en verde:** `run_tests.py` ->
-   `ALL TESTS PASSED` (132); `verify_ui_syntax.py` -> exito; `validate_docs.py` ->
-   **122 OK, 0 FAIL**.
-9. **Diagnostico del pipeline rojo:** 8 de los 29 commits incumplen `.commitlintrc.json`,
-   medido reproduciendo las seis reglas activas. Ninguno es de este trabajo.
+   `ALL TESTS PASSED` (**132 en aquel dia**; el recuento vigente es **156** y lo deriva
+   `validate_docs.py` con `ast` desde `run_tests.py`, comparandolo con `STATUS.md`,
+   `AGENTS.md`, `README.md` y con la tabla de `docs/ai/testing-guide.md`, asi que esta
+   cifra no se caduca sola); `verify_ui_syntax.py` -> exito; `validate_docs.py` ->
+   **122 OK, 0 FAIL** (de aquel dia).
+9. **Diagnostico del pipeline rojo:** **7 de los 29** commits incumplen
+   `.commitlintrc.json`, medido reproduciendo las seis reglas activas. Ninguno es de este
+   trabajo. *Era 8 en la primera redaccion de este punto; la octava, `92368ad`, no
+   incumple ninguna regla (ver D-4), asi que la cifra correcta es 7 y la tabla lo deja
+   escrito.*
 10. **Tarea TASK-064 creada** en `.taskmaster/tasks.json` con las tres decisiones y su
     justificacion, para que el commit tenga tercer testigo.
 11. **Este documento.**

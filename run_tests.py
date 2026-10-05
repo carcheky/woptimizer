@@ -6339,7 +6339,16 @@ def _entorno_git_del_repo():
         candidatas.append((os.environ["GIT_DIR"], "GIT_DIR del entorno"))
     if os.path.isdir(desacoplado):
         candidatas.append((desacoplado, "repo desacoplado del VFS"))
-    if os.path.isdir(del_arbol):
+    # MEDIDO el 2026-10-05, y es lo que hace que el guardian del fix de
+    # `_head_del_repo_real()` se pueda ejecutar en este host: el `.git` del arbol
+    # de trabajo **no es un directorio, es un FICHERO puntero** de Nextcloud
+    # (`gitdir: C:/Users/carch/AppData/Local/woptimizer_git/.git`, 57 bytes), luego
+    # `os.path.isdir` lo descarta y con el desacople ausente -- que es la forma del
+    # runner -- no queda ninguna candidata. Con `exists` entra, y git la resuelve
+    # porque `GIT_DIR` puede apuntar a un puntero `gitdir:`. La VERIFICACION de
+    # abajo no se toca: sigue having que ser `rev-parse --show-toplevel` este arbol,
+    # luego admitir mas candidatos NO admite ningun repo ajeno.
+    if os.path.exists(del_arbol):
         candidatas.append((del_arbol, ".git del arbol de trabajo"))
     if not candidatas:
         raise AssertionError(
@@ -17999,6 +18008,273 @@ def test_ninguna_plantilla_de_commit_nombra_main():
     print("Mitad negativa OK: NINGUNA plantilla de commit nombra main como destino.")
 
 
+# ---------------------------------------------------------------------------
+# Los TRES guardianes de los supervivientes del mutation-auditor (TASK-066 T-4).
+#
+# Los tres nacen de la misma pregunta --"que mutante mataria esto?"-- contestada
+# con un SI. Un SI no es un guardian: es una afirmacion sobre el codigo de hoy.
+# Y cada uno de los tres es una forma de fallo que este repo ya ha pagado una vez:
+#
+#   H1  la puerta MAS LAXA que CI. Un tipo fuera de lista pasa, el commit existe y
+#       el job `commits` lo tumba DESPUES, con `verify`, `release` y `build` detras
+#       por su `needs`: no sale el `.exe` y el rojo se ve en el sitio de menos
+#       contexto.
+#   H2  un fix de CI sin quien lo vigile. Sin el desacople del VFS --que no existe
+#       en el runner-- `_head_del_repo_real()` no puede ni leer el HEAD, que es lo
+#       que tumbaba el job `verify` en la corrida 37244051847.
+#   H3  una forma de ancla que el bucle NO usa y que aun asi pasa el filtro, con un
+#       testigo aparente que `rd_journal.json` no puede resolver.
+#
+# Los tres mueren **por su asercion**: la regla nombrada en el motivo, el mensaje
+# literal de "no se pudo leer el HEAD" y la NEGATIVA de la forma `T-NNN`. Ninguno por
+# `ImportError`, por sintaxis rota ni por el ruido declarado del host
+# (`RuntimeError: main thread is not in main loop` no cuenta como muerte util).
+# ---------------------------------------------------------------------------
+
+
+def test_la_puerta_de_cabecera_rechaza_un_tipo_fuera_de_la_lista():
+    """H1: la puerta USA `TIPOS_ADMITIDOS`, y no solo la declara.
+
+    MEDIDO (mutation-auditor, ciclo 999): con el `if tipo not in TIPOS_ADMITIDOS`
+    eliminado, `clasificar_cabecera("wip: ... (TASK-066)")` devuelve `(True, '')` y
+    **la suite sigue en VERDE**. El unico test que Tocaba la lista
+    (`test_la_puerta_de_cabecera_usa_las_cuentas_de_la_config`) la COMPARA contra
+    `.commitlintrc.json`: eso ata los NUMEROS, y no obliga a que nadie mire la
+    lista. Dos constantes iguales que nadie lee son dos afirmaciones, no una regla.
+
+    El dano no es teorico: un `wip: ...` pasa la puerta del wrapper, el commit
+    existe, y el job `commits` de `release.yml` lo tumba con `type-enum`. Por el
+    `needs` de ese workflow se caen tambien `verify`, `release` y `build`, luego no
+    sale el `.exe`. Es exactamente el rojo que T-4 existe para cerrar.
+
+    Y el caso tiene que morir **por su asercion** --afirmando la REGLA en el motivo--,
+    no por el recuento de lineas `WOPT_USAGE` de otra sonda: ese recuento mediria
+    el contrato de `main()`, que es otra cosa, y dejaria vivo a este mutante.
+    """
+    print("Probando que un tipo fuera de la lista se rechaza nombrando type-enum...")
+    import shutil
+    import tempfile
+
+    gsc = _cargar_el_wrapper()
+    tipos = tuple(gsc.TIPOS_ADMITIDOS)
+    assert "feat" in tipos and "chore" in tipos and len(tipos) >= 10, (
+        f"el pre-vuelo necesita una lista de tipos REAL (>= 10, con 'feat' y 'chore') "
+        f"y sale {list(tipos)!r}: sin el, este test mediria una lista vacia y pasaria "
+        f"sin mirar nada")
+
+    # Tres tipos fuera de lista, los tres de la FORMA que el parser de CI acepta
+    # como tipo (`\w+`): asi lo que falla es `type-enum` y no `type-empty`, que es
+    # el caso de la barra que ya cubre el corpus.
+    for tipo in ("wip", "actualiza", "merge"):
+        assert tipo not in tipos, (
+            f"el caso {tipo!r} tiene que estar FUERA de la lista de la puerta y ha "
+            f"entrado en ella: este test pasaria sin medir nada. Los tipos admitidos "
+            f"son los de `.commitlintrc.json`, y ese no lo incluye")
+        mensaje = f"{tipo}: cerrar el rojo del pipeline (ciclo 999)"
+        assert len(mensaje) <= gsc.LIMITE_CABECERA, (
+            f"el caso {tipo!r} tiene que medir {len(mensaje)} chars, dentro del "
+            f"limite de {gsc.LIMITE_CABECERA}, para que lo que muera sea el TIPO y "
+            f"no la longitud")
+        ok, regla, motivo = gsc.clasificar_cabecera(mensaje)
+        assert ok is False and regla == "type-enum", (
+            f"un tipo fuera de la lista tiene que rechazarse con `type-enum` y sale "
+            f"ok={ok!r} regla={regla!r} para {mensaje!r}. ESTA es la asercion que "
+            f"mata a `TIPO_SIN_COMPROBAR`: con el `if tipo not in TIPOS_ADMITIDOS` "
+            f"eliminado la puerta acepta el mensaje, el commit existe y el job "
+            f"`commits` lo tumba despues, con `verify`, `release` y `build` detras")
+        assert "type-enum" in motivo, (
+            f"el motivo tiene que NOMBRAR la regla que incumple, porque el nombre de "
+            f"la regla es lo que hay que arreglar: {motivo!r}")
+        assert "feat" in motivo, (
+            f"el motivo tiene que decir que tipos se admiten, para que corregir el "
+            f"mensaje no obligue a abrir la config: {motivo!r}")
+
+    # Y la puerta de VERDAD, no solo el clasificador: el wrapper REAL como
+    # subproceso sobre repo y arbol TEMPORALES. Sin esta mitad el test mide una
+    # funcion pura y el dano de H1 --el commit `wip:` que SALE del wrapper-- queda
+    # sin afirmar. El mensaje lleva `ciclo 999` porque la puerta del mensaje corre
+    # ANTES que la de cabecera: sin ancla se mediria la otra puerta.
+    wrapper = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+    tmp = tempfile.mkdtemp(prefix="wopt_t066_tipo_")
+    d_repo, git_dir, arbol = _repo_y_arbol_temporales_de_la_sonda(
+        tmp, "chore(release): fixture del tipo fuera de lista")
+    nombre = PREFIXO_DE_LA_SONDA + "tipo.txt"
+    head_antes = _head_del_repo_real()
+    try:
+        with open(os.path.join(arbol, nombre), "w", encoding="utf-8") as fh:
+            fh.write("el arbol tiene que estar sucio para que la puerta corra\n")
+        assert _status_porcelain_de_la_sonda(git_dir, arbol), (
+            "el pre-vuelo tiene que ver un arbol SUCIO: con el arbol limpio el "
+            "wrapper sale por el NOOP, la puerta ni corre y este test mediria el "
+            "no-op")
+        r = _invocar_el_wrapper(
+            wrapper, gsc.REPO_ROOT, git_dir, arbol,
+            "wip: cerrar el rojo del pipeline (ciclo 999)")
+        salida = r.stdout or ""
+        assert r.returncode == 2, (
+            f"un `wip:` tiene que salir con 2 (uso incorrecto) y sale con "
+            f"{r.returncode}: stdout={salida!r} stderr={r.stderr!r}. Con "
+            f"`TIPO_SIN_COMPROBAR` sale con 0 y con el commit hecho")
+        assert "WOPT_USAGE cabecera-regla type-enum" in salida, (
+            f"el rechazo tiene que nombrar la regla que incumple: {salida!r}")
+        assert "WOPT_COMMIT_OK" not in salida, (
+            f"un `wip:` NO puede commitearse: {salida!r}")
+        lineas = [l for l in salida.splitlines() if l.strip()]
+        assert lineas and lineas[-1].startswith("WOPT_USAGE"), (
+            f"la linea `WOPT_*` tiene que ser la ULTIMA (regla 4 del contrato) y la "
+            f"ultima no vacia es {lineas[-1]!r} de {lineas!r}")
+        _sin_contaminacion(d_repo, head_antes)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Tipo OK: tres tipos fuera de lista rechazados con `type-enum` nombrado, y "
+          "el wrapper REAL sale con 2 sin crear el commit.")
+
+
+def test_la_sonda_del_head_no_depende_del_desacople_del_vfs():
+    """H2: el fix de `_head_del_repo_real()` tiene guardian, o no lo tiene.
+
+    MEDIDO (mutation-auditor, ciclo 999): el fix es CORRECTO --reproducido con el
+    entorno del runner simulado, con fix lee el HEAD y mutado falla con el mensaje
+    EXACTO de la corrida 37244051847-- y el problema es que **nadie lo vigila**: en
+    este host el mutante deja la suite EN VERDE, porque el desacople del VFS si
+    existe aqui. O sea: la regresion puede volver y nadie se entera.
+
+    El truco es el MISMO que ya usa
+    `test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal`: cambiar el
+    entorno para que el entorno real no pueda servir de coartada. Aqui se
+    simula el **runner de GitHub**, donde `%LOCALAPPDATA%\\woptimizer_git\\.git` no
+    existe porque el desacople es una medida del VFS de la maquina del dueno y no
+    una propiedad del proyecto: se apunta `LOCALAPPDATA` a un temporal y se quita el
+    `GIT_DIR` del entorno (la via por la que la sonda lo honraria).
+
+    Con el fix, `_head_del_repo_real()` DESCUBRE el repo con
+    `_entorno_git_del_repo()` y cae al `.git` del arbol de trabajo, que es donde
+    vive el repo en cualquier clon normal. Mutado, vuelve a la ruta FIJA y falla
+    con "no se pudo leer el HEAD del repo real ni a la tercera": esa asercion es la
+    muerte, y dice el motivo literal para que se pueda diagnosticar sin abrir el
+    codigo.
+
+    Y no es un `skip`: los dos pre-vuelos (el HEAD legible, el desacople presente)
+    aseguran que el test mide lo que dice medir, y el `finally` restaura el
+    entorno entero. Un entorno envenenado haria fallar la sonda DOS pasos despues,
+    en el test equivocado.
+    """
+    print("Probando que la sonda del HEAD no depende del desacople del VFS...")
+    import shutil
+    import tempfile
+
+    # Pre-vuelo 1: con el entorno de verdad la sonda lee un HASH. Sin esta lectura
+    # el test pasaria por la rama de "no hay repo" y no mediria nada.
+    head_real = _head_del_repo_real()
+    assert head_real and all(c in "0123456789abcdef" for c in head_real), (
+        f"el pre-vuelo tiene que leer un HASH del repo real y sale {head_real!r}; "
+        f"sin el, un HEAD imposible haria pasar el resto del test")
+
+    # Pre-vuelo 2: el desacople EXISTE en este host, y por eso el mutante se
+    # camufla aqui. Sin esta comprobacion, "el test pasa" no significaria nada.
+    desacoplado_real = os.path.expandvars(r"%LOCALAPPDATA%\woptimizer_git\.git")
+    assert os.path.isdir(desacoplado_real), (
+        f"este test se apoya en que el desacople del VFS EXISTE en este host "
+        f"({desacoplado_real}). Si ha desaparecido, la pre-suposicion cambio: "
+        f"vuelve a medirlo y actualiza el guardian, no lo relajes")
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t066_runner_")
+    claves = ("LOCALAPPDATA", "GIT_DIR")
+    guardado = {clave: os.environ.get(clave) for clave in claves}
+    try:
+        os.environ["LOCALAPPDATA"] = tmp
+        os.environ.pop("GIT_DIR", None)
+        desacoplado_ausente = os.path.expandvars(r"%LOCALAPPDATA%\woptimizer_git\.git")
+        assert not os.path.isdir(desacoplado_ausente), (
+            f"el pre-vuelo del runner tiene que ver el desacople AUSENTE, y existe "
+            f"{desacoplado_ausente}: con el desacople de verdad ahi, el mutante "
+            f"pasa por la via de la ruta fija y este test no mediria nada")
+        try:
+            head_sin_desacople = _head_del_repo_real()
+        except AssertionError as exc:
+            raise AssertionError(
+                "MEDIDO en el runner de GitHub (corrida 37244051847): con el "
+                "desacople del VFS ausente la sonda no pudo ni leer el HEAD. Es el "
+                "fallo EXACTO que tumbaba el job `verify` y con el la publicacion "
+                f"del `.exe`, y su motivo literal es: {exc}. Sin el fix, "
+                "`_head_del_repo_real()` lee la ruta FIJA "
+                "`%LOCALAPPDATA%\\woptimizer_git\\.git`, que es una medida del VFS "
+                "de la maquina del dueno y no una propiedad del proyecto; el fix "
+                "DESCUBRE el repo con `_entorno_git_del_repo()`, y mutado esta sonda "
+                "vuelve a la ruta fija y muere aqui") from None
+        assert head_sin_desacople == head_real, (
+            f"la sonda tiene que seguir mirando ESTE repo con el desacople ausente: "
+            f"con el entorno real lee {head_real!r} y sin el desacople lee "
+            f"{head_sin_desacople!r}. Un HEAD distinto significa que la sonda cambio "
+            f"de repo, y entonces su 'no toco el historial' no mide nada")
+    finally:
+        for clave, valor in guardado.items():
+            if valor is None:
+                os.environ.pop(clave, None)
+            else:
+                os.environ[clave] = valor
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Sonda del HEAD OK: sin el desacople del VFS sigue leyendo el HEAD de "
+          "este repo, y el entorno queda restaurado.")
+
+
+def test_la_forma_t_menor_no_pasa_aunque_exista_su_task():
+    """H3: `T-NNN` NO es un ancla, aunque `TASK-NNN` exista en el fichero.
+
+    MEDIDO (mutation-auditor, ciclo 999): relajar `_RE_TASK_ANCLA` a
+    `\\bT(?:ASK)?-(\\d{1,4})\\b` hace que `chore: T-061 (algo)` pase la puerta, y
+    **los seis tests de la puerta del mensaje no lo detectan**: todos prueban
+    `TASK-`, `CYCLE-` o `ciclo N`, y los casos de forma corta que ya existian
+    (`T-1`, `T-9`, `T-12`) apuntaban a ids que NO estaban en el conjunto
+    inyectado, luego relajar el regex no cambiava ninguno de esos veredictos.
+
+    Por eso el caso que discrimina es al reves: una forma corta que apunta a un id
+    que SI existe. Un commit anclado en `T-061` llega al historial con un testigo
+    aparente --`rd_journal.json` no puede resolver `T-061`-- y ese es justo el punto
+    ciego que TASK-059 cierra.
+
+    La contraprueba va con el caso y no al final por accidento: un fix demasiado
+    fuerte (rechazar `T-` y con el `TASK-`) pasaria en verde y dejaria al bucle sin
+    poder comitear su propio trabajo, que es un rojo mas caro que este.
+    """
+    print("Probando que la forma T-NNN no pasa aunque exista su TASK-NNN...")
+    gsc = _cargar_el_wrapper()
+    ids = {"TASK-059", "TASK-061"}
+
+    # Pre-vuelo: el id tiene que RESOLVER en este conjunto. Sin el, la negativa de
+    # abajo no mide nada, porque el mutante solo difiere cuando el id EXISTE.
+    assert gsc.ancla_del_mensaje("chore: TASK-061", ids)[0] is True, (
+        f"el pre-vuelo tiene que resolver `TASK-061` en {sorted(ids)!r}: sin el, "
+        f"`T-061` no seria el caso que discrimina")
+
+    for mensaje in ("chore: T-061 (algo)",
+                    "fix(tooling): T-059 otra vez",
+                    "T-061",
+                    "chore: T-061",
+                    "chore: T-59 con T-061 dentro"):
+        ok, motivo = gsc.ancla_del_mensaje(mensaje, ids)
+        assert ok is False, (
+            f"{mensaje!r} tiene que RECHAZARSE: `T-NNN` es OTRO espacio de ids, los "
+            f"de `openspec/changes/*/tasks.md`, y no es la convencion que escribe el "
+            f"bucle. Con {sorted(ids)!r} esta forma resuelve a un id que EXISTE, y "
+            f"por eso es el caso que el mutante no ve: con "
+            f"`_RE_TASK_ANCLA` relajado a `\\bT(?:ASK)?-(\\d{{1,4}})\\b` el mensaje "
+            f"pasa y el commit llega al historial con un testigo aparente que "
+            f"`rd_journal.json` no puede resolver. Salio ok={ok!r} motivo={motivo!r}")
+        assert motivo == gsc.MOTIVO_SIN_ANCLA, (
+            f"el rechazo de la forma corta tiene que ser el de SIN ANCLA del "
+            f"producto, no otro texto: {motivo!r}")
+
+    for mensaje in ("chore: TASK-061", "fix(tooling): TASK-059 y su cierre"):
+        ok, _motivo = gsc.ancla_del_mensaje(mensaje, ids)
+        assert ok is True, (
+            f"{mensaje!r} tiene que PASAR: es la forma que el bucle escribe y su id "
+            f"existe en el conjunto. Sin esta contraprueba, 'rechazar T-' entero "
+            f"seria un fix que nadie nota y el bucle se queda sin salida")
+    print("Forma T-NNN OK: cinco mensajes con la forma corta rechazados y las dos "
+          "formas largas de esos mismos ids aceptadas.")
+
+
 def test_el_cero_esta_sobrecargado_por_dos_desenlaces_y_solo_por_esos_dos():
     """TASK-061 AC-3: el `0` esta sobrecargado, y solo por DOS desenlaces.
 
@@ -19833,7 +20109,8 @@ if __name__ == "__main__":
     test_el_contrato_de_codigos_esta_atado_a_cada_linea_wopt()             # T-2
     test_un_fallo_de_git_no_sale_con_cero()                                # T-3
     test_el_cero_esta_sobrecargado_por_dos_desenlaces_y_solo_por_esos_dos()  # T-4
-    # TASK-066: la puerta de CABECERA y la regla de RAMA. Suite: 144 -> 153.
+    # TASK-066: la puerta de CABECERA y la regla de RAMA. Suite: 144 -> 153 (+3 de
+    # los tres guardianes de los supervivientes, que se registran al final).
     # Las nueve van DETRAS del marcador headless (tooling puro, ninguna abre
     # ventana) y todas escriben en `%TEMP%`, nunca en la raiz del repo.
     #
@@ -19852,4 +20129,11 @@ if __name__ == "__main__":
     test_la_puerta_de_cabecera_usa_las_cuentas_de_la_config()             # atar a la config
     test_la_regla_de_rama_esta_escrita_donde_el_bucle_la_lee()            # T-5 mitad +
     test_ninguna_plantilla_de_commit_nombra_main()                        # T-5 mitad -
+    # TASK-066 T-4, los TRES guardianes de los supervivientes del
+    # mutation-auditor. Suite: 153 -> 156. Los tres mueren por su asercion y cada
+    # uno tapa una forma de fallo distinta: la puerta mas laxa que CI (H1), un fix
+    # de CI sin quien lo vigile (H2) y una forma de ancla que el bucle no usa (H3).
+    test_la_puerta_de_cabecera_rechaza_un_tipo_fuera_de_la_lista()         # H1
+    test_la_sonda_del_head_no_depende_del_desacople_del_vfs()              # H2
+    test_la_forma_t_menor_no_pasa_aunque_exista_su_task()                 # H3
     print("\nALL TESTS PASSED.")

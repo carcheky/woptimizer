@@ -22,7 +22,7 @@ python -m woptimizer
 # Ejecutable compilado para distribución
 dist\woptimizer.exe
 
-# Ejecutar suite de pruebas headless (153 tests)
+# Ejecutar suite de pruebas headless (156 tests)
 python run_tests.py
 
 # Verificar sintaxis estática y validaciones documentales
