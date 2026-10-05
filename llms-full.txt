@@ -644,9 +644,12 @@ Este checklist lo arregla: la regla queda escrita aqui y hay que propagarla.
       `main`) son **37 commits y 7 incumplen**, los siete de D-4 y todos por
       `header-max-length`. O sea: **los 7 solo estan fuera del rango de `beta`; en
       `main` no hay absolutamiento forma de sacarlos sin reescribir historia ya
-      publicada en `beta` (30 de esos 37 commits lo estan) o tocar
-      `.github/workflows/**`**, y las dos cosas las prohiben los AC de `TASK-064` y de
-      `TASK-066`. **Esta casilla no se cierra con un `git push`: hace falta una
+      publicada o tocar `.github/workflows/**`**, y las dos cosas las prohiben los AC
+      de `TASK-064` y de `TASK-066`. Lo de ya publicada esta MEDIDO, no supuesto:
+      `git branch -r --contains` devuelve **`origin/beta` Y `origin/main`** para los
+      siete, y los **37** commits del rango estan todos en `origin/beta` --los siete
+      incluidos--, luego reescribirlos seria un force-push a una rama ya publicada,
+      que es justo lo que `AC-2` y la proteccion de `main` prohiben. **Esta casilla no se cierra con un `git push`: hace falta una
       decision del arquitecto sobre cual de las dos prohibiciones se levanta.**
 
 ## 3. FICHEROS QUE FALTAN EN `.github/`
