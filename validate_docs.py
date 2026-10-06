@@ -1027,10 +1027,11 @@ def _reparto_de_tests(root):
     # NO se busca el marcador fuera del bucle, y hay un motivo MEDIDO: aparece
     # DOS veces en `run_tests.py`, y la segunda (en `_run_tests_sintetico()`,
     # `run_tests.py:13553`) esta POR ENCIMA de `cuerpo_main`. Un
-    # `visto = MARCADOR_HEADLESS in fuente` daria `(0, 189, 189, None)`, o sea
-    # TODA la suite por delante del marcador, y el total seguiria cuadrando: el
-    # bug seria invisible para cualquier check que mire la suma. Lo vigila
-    # `test_el_split_derivado_no_cambia_con_el_arreglo` de `run_tests.py`.
+    # `visto = MARCADOR_HEADLESS in fuente` daria `antes = 0` y `desde = <el
+    # total entero>`, o sea TODA la suite por delante del marcador, y el total
+    # seguiria cuadrando: el bug seria invisible para cualquier check que mire
+    # la suma. Lo vigila `test_el_split_derivado_no_cambia_con_el_arreglo` de
+    # `run_tests.py`.
     lineas = fuente.splitlines()
     for stmt in cuerpo_main:
         llamadas = sum(

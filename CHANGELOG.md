@@ -1,3 +1,44 @@
+## CYCLE-059 - 2026-10-06
+
+**Tooling** - `TASK-070` (El revisor tardaba el doble de lo necesario)
+
+**Estado**: **arreglo hecho y medido.** Tests: **191** (142 + 49). Documentación: **137 comprobaciones sin fallos**. **Ningún cambio en el programa**: `src/woptimizer/**` intacto.
+
+### 🔴 Lo que pasaba
+
+El revisor de la documentación (`validate_docs.py`, el script que comprueba que el panel, los changelogs y las tareas del bucle no se contradicen) **tardaba 12,3 segundos en cada pasada**. Y lo peor no era el tiempo: tardaba lo mismo **aunque no hubiera nada que revisar**, porque la forma en que contaba los tests **volvía a recorrer el fichero entero una vez por cada línea de la lista de tests**.
+
+Concretamente: `run_tests.py` pesa **1,2 MB** y su lista de tests tiene **196 líneas**. El revisor lo partía en trozos **196 veces**, o sea 196 vueltas completas por un fichero de 1,2 MB, para poder decidir en qué línea estaba la frase que separa los tests normales de los que abren ventanas. Eso no es "un poco lento": es hacer el trabajo 196 veces porque faltaba un paso previo.
+
+**Medido antes y después, en esta máquina, sobre el mismo árbol:** **12,27 s → 7,14 s**. El recorte del reparto, que era la parte lenta, pasa de **7,21 s a 1,99 s**; lo que queda es el trabajo de leer el fichero, que es inevitable.
+
+### ✅ Lo que se corrigió
+
+- **El fichero se parte una vez y cada test recorta su trozo**, en vez de recorrer el fichero entero por cada test. Dos líneas de arreglo.
+- **Dos pruebas nuevas lo vigilan**, y ninguna abre ventana: **191 tests** (antes 189).
+
+### ⚠️ La mitad del arreglo era una trampa, y por eso hay dos pruebas y no una
+
+El marcador que separa los tests normales de los que abren ventanas aparece **dos veces** en el fichero: una en la lista de tests y **otra más arriba**, dentro de la piececita que fabrica un fichero de pruebas de mentira para los tests que miden al revisor.
+
+Eso significa que el arreglo "obvio" —buscar esa frase **una sola vez** al principio, en vez de una por test— **está mal**, y produce un resultado que **parece bueno**: el total de tests sigue cuadrando exactamente igual, porque dividir 191 en 196 y en 196 suma lo mismo. Lo único que cambia es que **los 196 tests cuentan como si fueran todos del tipo que abre ventanas**.
+
+**Una prueba nueva cuenta cuántas veces se recorre el fichero y exige cero** (hoy daría 196: una por test). **La otra compara el reparto completo contra una copia de referencia del método anterior**, sobre el fichero real, y por eso es la que ve ese fallo: el reparto dice `(0, 191, 191, …)` donde debería decir `(142, 49, 191, …)`, y el total 191 no se entera de nada.
+
+### 🧾 Y una premisa que era falsa, escrita para que no vuelva a molestar
+
+La tarea decía que el revisor tardaba **"8-10 minutos"** y que el fichero tenía **"unas 330 líneas"** en la lista de tests. **Ninguna de las dos se reprodujo**: eran **12,3 segundos** y **196 líneas**. El problema era real y la causa también, pero eran doce segundos.
+
+Eso no es un detalle: un arreglo que devuelve la lentitud a su sitio **parecería haber funcionado**. Y con la cifra falsa escrita en el encargo, cualquiera que vuelva a mirar esta tarea puede ponerse a optimizar el sitio equivocado: el que tarda doce segundos ya no se toca nunca, porque "arreglar" algo que tarda doce segundos no parece una prioridad.
+
+### Verificado
+
+- **191 tests en verde**, `ALL TESTS PASSED`, salida 0.
+- **`validate_docs.py`: 137 comprobaciones, 0 fallos**, salida 0.
+- **`verify_ui_syntax.py`: EXITO**, 9 de 9 módulos.
+- **Cinco formas de arreglarlo mal, probadas una a una** (búsqueda fuera del bucle, corte de línea desplazado una posición, vuelta al método viejo, parada anticipada, corte una línea más ancho): **cuatro se cazan** y **una sobrevive y queda escrita como superviviente**, porque con este fichero es indistinguible de la correcta.
+- `src/woptimizer/**` con **cero** cambios.
+
 ## CYCLE-058 - 2026-10-05
 
 **Portada & Packs** - `TASK-068` (Un rechazo ya no se te anuncia como un éxito)

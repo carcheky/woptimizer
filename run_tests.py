@@ -23615,9 +23615,10 @@ def test_la_clausula_de_arranque_lista_todas_las_categorias_y_va_en_singular():
 # aparece DOS veces en el fichero. La segunda esta en `_run_tests_sintetico()`
 # (linea 13553), que esta POR ENCIMA de `cuerpo_main` (que empieza en la 23606).
 # El mutante "optimizado" `visto = MARCADOR_HEADLESS in fuente` declara por eso
-# `(0, 189, 189, None)` -- toda la suite headless -- y EL TOTAL SIGUE DANDO IGUAL,
-# asi que el bug seria invisible para cualquier check que solo mire la suma. Por
-# eso estos dos tests van ANTES del marcador: el reparto lo deriva el check 7 con
+# `antes = 0` y `desde = <el total entero>` MEDIDO, o sea toda la suite por
+# delante del marcador, y EL TOTAL SIGUE DANDO IGUAL, asi que el bug seria
+# invisible para cualquier check que solo mire la suma. Por eso estos dos tests
+# van ANTES del marcador: el reparto lo deriva el check 7 con
 # `ast`, y si el arreglo moviera la frontera, la moverian estos.
 # ---------------------------------------------------------------------------
 
@@ -23747,7 +23748,7 @@ def test_el_split_derivado_no_cambia_con_el_arreglo():
 
     Este es el que mata al ARREGLO EQUIVOCADO, no al fallo original: T1 exige que
     el coste desaparezca y T2 exige que el NUMERO sea el de siempre. Sin T2, un
-    `visto = MARCADOR_HEADLESS in fuente` pasa el total (189) con todo el reparto
+    `visto = MARCADOR_HEADLESS in fuente` pasa el total (191) con todo el reparto
     partido, y el bug sale de la app semanas despues.
 
     Se comparan las CUATRO componentes, no el total: `(antes, desde, total,
@@ -23755,6 +23756,9 @@ def test_el_split_derivado_no_cambia_con_el_arreglo():
     mismo en dos botes distintos --, asi que comparar el total es comparar la
     unica cifra que el bug NO rompe. Y el total solo por si mismo tampoco sirve:
     "el nuevo devuelve 189" lo cumple una funcion rota que devuelve ceros.
+    (Las cifras de aqui son las del reparto de ENTRADA, 189; con las dos sondas
+    de este ciclo delante del marcador, 191. Lo que T2 exige es que las dos
+    derivaciones coincidan, no un literal.)
 
     La comparacion es de las DOS DERIVACIONES de la MISMA funcion sobre el MISMO
     fichero en la MISMA corrida, que es lo unico que prueba que el arreglo no
@@ -24066,8 +24070,8 @@ if __name__ == "__main__":
     # T1 cuenta invocaciones y exige 0; T2 compara el 4-tuple contra la
     # implementacion de referencia (`get_source_segment`) y es el que mata al
     # arreglo equivocado: buscar el marcador una vez fuera del bucle declara
-    # `(0, 189, 189, None)` y el TOTAL sigue dando igual, asi que solo el reparto
-    # lo ve.
+    # `antes = 0` y `desde = <el total entero>`, con el TOTAL INTACTO, asi que
+    # solo el reparto lo ve.
     test_el_reparto_de_tests_no_re_tokeniza_por_sentencia()                # T1
     test_el_split_derivado_no_cambia_con_el_arreglo()                      # T2
     print("\n--- Running Headless UI Tests ---")

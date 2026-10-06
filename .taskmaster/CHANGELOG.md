@@ -1,3 +1,59 @@
+## [CYCLE-059] 2026-10-06 - validate-docs-una-vez-por-fichero
+
+**Area**: Tooling. **Change**: `openspec/changes/2026-10-06-validate-docs-tokens/`
+**Estado**: **COMPLETED** (T-1 a T-5). `TASK-070` cerrada.
+**Commits**: `c924fe9` (implementacion). Sin push.
+**Tests**: 189 -> **191 = 142 + 49**. Documentacion: **137 OK / 0 FAIL**. Commit `WOPT_COMMIT_OK c924fe9` EXIT=0, `beta`, `--porcelain` vacio, 6 ficheros.
+**Models**:
+- Paso 1 (Buscar): no lo ejecuto este agente (lo ejecuta el orquestador).
+- Paso 2 (Planear): `architect-review`; el plan esta en `openspec/changes/2026-10-06-validate-docs-tokens/` y es la fuente de las cifras de abajo.
+- Paso 3 (Ejecutar): `minimax-M3.1-Flash-Preview` (`openspec-dev`).
+- Paso 4 (Auditar tests): **NO EJECUTADO todavia**. VERDICT: **PENDIENTE**. La tabla de abajo la midio el DEV en este pase, no el `mutation-auditor`: son datos para la auditoria, no su veredicto.
+
+### Lo que se cambio
+
+Dos lineas en `validate_docs.py::_reparto_de_tests`: `lineas = fuente.splitlines()` **una vez** antes del bucle, y dentro `MARCADOR_HEADLESS in "\n".join(lineas[stmt.lineno - 1:stmt.end_lineno])`. Nada mas cambia en la funcion. En `run_tests.py`: la implementacion de referencia `_reparto_de_tests_via_source_segment` (**test-only**, nunca importada por `validate_docs.py`), los dos tests y sus dos llamadas en `__main__`, **DELANTE** del marcador headless.
+
+### Las tres premisas del encargo, medidas
+
+| Premisa del encargo | Medido el 2026-10-06 | Veredicto |
+|---|---|---|
+| "La corrida tarda 8-10 min" | **`validate_docs.py` = 12,27 s** con el fichero de HEAD y **7,14 s** con el arreglado, dos corridas seguidas sobre el mismo arbol | **FALSA** (eran 12 s) |
+| "~330 sentencias en `__main__`" | **194** al abrir el ciclo, **196** al cerrarlo (este ciclo registro dos sondas mas delante del marcador) | **FALSA** |
+| "`get_source_segment` RE-TOKENIZA el fichero de 1,1 MB" | **196** llamadas a `ast.get_source_segment` y **0** a `tokenize.generate_tokens`; en 3.13 el fuente de `get_source_segment` usa `_splitlines_no_ff`, **no** `tokenize` | **FALSA la causa, CIERTO el O(n^2)** |
+| El defecto es real y domina la corrida | la derivacion del reparto eran **7,21 s** de los ~12,3 s del validador entero (**67 %**) | **CIERTA** |
+
+El O(n^2) sobrevive a la premisa falsa porque no depende de *como* se parte el fichero: partir 196 veces un fichero de 1,2 MB son 196 pases completos, sea por `_splitlines_no_ff` o por `tokenize`. Lo que cambia al corregir la premisa es el **nombre del culpable**, y por eso el arreglo es un `splitlines()` y no un cambio de tokenizador.
+
+### Mutaciones auditadas (Paso 4) — MEDIDAS POR EL DEV, VEREDICTO DEL AUDITOR PENDIENTE
+
+Metodo: el mutante se aplica **al texto** de `validate_docs.py` y se ejecuta con `exec` en un namespace propio, sin editar el repo, y se le aplica **la misma comparacion que hacen T1 y T2**. T1 se replica contando invocaciones de `ast.get_source_segment` con monkeypatch (restaurado en `finally`); T2 se replica comparando el 4-tuple contra la referencia.
+
+| # | Mutacion | Veredicto | Salida medida | Motivo del fallo |
+|---|---|---|---|---|
+| M1 | `visto = MARCADOR_HEADLESS in fuente` (busqueda **fuera** del bucle) | **MUERE por T2** | `antes = 0`, `desde = 191` (todo el total por delante), total 191 intacto | El **total 191 no se mueve**: por eso el check 7 no lo veria. La segunda ocurrencia del marcador (`run_tests.py:13553`, en `_run_tests_sintetico()`) esta **por encima** de `cuerpo_main` |
+| M2 | slice con off-by-one: `lineas[stmt.lineno:stmt.end_lineno]` | **MUERE por T2** | `None` | La sentencia del marcador es de **una sola linea**, asi que el slice devuelve la lista vacia y el reparto deja de derivarse |
+| M3 | volver a `ast.get_source_segment` (o sea, el estado previo al arreglo) | **MUERE por T1** | **196 invocaciones** != 0 | Y **T2 no lo ve**: devuelve el 4-tuple correcto, solo que lento. Por eso los dos tests **no se sustituyen** |
+| M4 | `break` despues de `visto` (el "micro-optimizer" que la propuesta rechazo) | **MUERE por T2** | `(142, 0, 142, ...)` | `desde` se trunca a 0. Este si lo veria incluso el check 7, porque el total cambia |
+| M5 | ensanchar el slice a `lineas[stmt.lineno - 1:stmt.end_lineno + 1]` | **SOBREVIVE** | IGUAL al correcto | Con **0 solapamientos entre sentencias y 0 punto y coma** en `__main__`, un slice mas ancho devuelve lo mismo. Es una propiedad del **fichero**, no del algoritmo, y **nadie lo vigila**. Se declara, no se tapa |
+
+Que M3 muera solo por T1 y M1/M2/M4 mueran solo por T2 es la justificacion de que los dos tests existan: cada uno mata una familia que el otro no ve, y la pareja cubre el espacio completo salvo M5.
+
+### Lo que NO se toco, y por que (que es lo mas caro de reconstruir despues)
+
+- El `ast.walk` de `validate_docs.py:1020`. Ya es **O(n)**: las sentencias particionan el cuerpo, luego la suma de `walk(stmt)` visita cada nodo una vez. El bucle entero con el `walk` incluido baja a **0,0006 s**. No hay nada cuadratico que quitar y un `break` ahi cambiaria una propiedad real de correccion (las cuentas posteriores al marcador hacen falta) por microsegundos.
+- El guard `_comprobar_reparto_de_tests` (`validate_docs.py:1036`). Sigue siendo la alarma, y **no se duplica**: solo corre despues de que el codigo esta escrito, luego no puede impedir el movimiento, solo avisar.
+- `src/woptimizer/**`: **cero** cambios. Esto es tooling.
+
+### Deuda y residuos, declarados y NO resueltos
+
+- **`validate_docs.py` sigue sin poder correr en CI** (`STATUS.md:121`): su ancla de commits deriva el repo de `%LOCALAPPDATA%\woptimizer_git\.git`, una ruta que solo existe en el host del dueno. **No se toca aqui**, y es la razon por la que los dos tests viven en `run_tests.py` y no en el validador: un test en un fichero que no corre en CI es un test que corre donde duele.
+- **M5 sobrevive**, declarado arriba.
+- **`splitlines()` != lineas de Python en general.** `str.splitlines()` parte ademas de `\n` por `\v \f \x1c \x1d \x1e \x85 \u2028 \u2029`, y Python solo numera por `\n`. **MEDIDO en el `run_tests.py` real: 0 apariciones** de cada uno, luego el recorte es exacto hoy y dejaria de serlo si aparecieran.
+- **Ficheros tocados fuera de la lista de la tarea**, porque el check 7 deriva el recuento con `ast` y los cuatro declarantes se caducan al registrar dos tests: `AGENTS.md` y `README.md` (`189` -> `191`, una cifra cada uno) y `docs/ai/testing-guide.md` (cabecera y dos filas de tabla). `STATUS.md` recibe la cifra del reparto y la nota de la fila de salud.
+- **Corrupcion PREEXISTENTE, no de este ciclo y no tocada**: `run_tests.py:13711` tiene un caracter de reemplazo U+FFFD en un docstring (la palabra "midio", con el caracter de sustitucion en medio). Comprobado contra `HEAD` antes de tocar nada. Anotada como deuda.
+- **La numeracion de la tabla de `testing-guide.md` NO es el orden de registro del `__main__`, y el documento lo afirmaba.** MEDIDO con `ast`: la fila 141 es `test_la_puerta_de_paridad_va_despues_de_validar_repo`, que se registra en la posicion 144. Corregido en el documento, porque es una afirmacion falsa de un documento que este ciclo tocaba.
+
 ## [CYCLE-058] 2026-10-05 - arranque-por-categorias-en-el-gestor
 
 **Area**: Portada & Packs. **Change**: `openspec/changes/2026-10-05-arranque-por-categorias-en-el-gestor/`
