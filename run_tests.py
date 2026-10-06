@@ -23598,6 +23598,203 @@ def test_la_clausula_de_arranque_lista_todas_las_categorias_y_va_en_singular():
     print("La clausula lista, cuenta y habla en singular OK (TASK-068).")
 
 
+# ---------------------------------------------------------------------------
+# TASK-070: `_reparto_de_tests` de `validate_docs.py` no puede re-tokenizar (ni
+# re-partir lineas) el `run_tests.py` entero POR CADA SENTENCIA de `__main__`.
+#
+# MEDIDO el 2026-10-06, no supuesto: `run_tests.py` pesa 1 235 023 B y su
+# `__main__` tiene 194 sentencias. `ast.get_source_segment(fuente, stmt)` parte
+# las lineas del fichero ENTERO en cada llamada (en 3.13 por `_splitlines_no_ff`;
+# OJO: la premisa de la tarea de que "tokeniza" era falsa, pero la conclusion de
+# que es O(n^2) en el tamano del fichero era CIERTA, porque partir 194 veces un
+# fichero de 1,2 MB son 194 pases completos). Medido aqui: 194 llamadas y
+# 7,25 s de los ~13 s del validador entero. El arreglo acordado es partir las
+# lineas UNA vez fuera del bucle y recortar por `lineno`/`end_lineno`.
+#
+# Y hay un segundo hecho, MEDIDO, que decide donde NO optimizar: el marcador
+# aparece DOS veces en el fichero. La segunda esta en `_run_tests_sintetico()`
+# (linea 13553), que esta POR ENCIMA de `cuerpo_main` (que empieza en la 23606).
+# El mutante "optimizado" `visto = MARCADOR_HEADLESS in fuente` declara por eso
+# `(0, 189, 189, None)` -- toda la suite headless -- y EL TOTAL SIGUE DANDO IGUAL,
+# asi que el bug seria invisible para cualquier check que solo mire la suma. Por
+# eso estos dos tests van ANTES del marcador: el reparto lo deriva el check 7 con
+# `ast`, y si el arreglo moviera la frontera, la moverian estos.
+# ---------------------------------------------------------------------------
+
+
+def _reparto_de_tests_via_source_segment(root):
+    """IMPLEMENTACION DE REFERENCIA, SOLO DE TEST: el bucle ANTIGUO.
+
+    Copia literal de `_reparto_de_tests` con la UNICA diferencia de la linea que
+    TASK-070 cambia: donde el codigo de produccion recorta `lineas[lineno-1:
+    end_lineno]`, aqui se llama a `ast.get_source_segment(fuente, stmt)`. Vive
+    aqui y no en `validate_docs.py` a proposito: una implementacion de referencia
+    que este en el modulo que corrige no corrige nada, se autodeclara buena.
+
+    Devuelve el MISMO 4-tuple `(antes, desde, total, linea_marcador)`. No lleva
+    `print()`: la comparesion de tuplas es su unico contrato.
+    """
+    import validate_docs as vd
+
+    ruta = os.path.join(root, "run_tests.py")
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            fuente = f.read()
+    except OSError:
+        return None
+    try:
+        arbol = ast.parse(fuente, filename=ruta)
+    except SyntaxError:
+        return None
+    cuerpo_main = None
+    for nodo in arbol.body:
+        if (isinstance(nodo, ast.If) and isinstance(nodo.test, ast.Compare)
+                and isinstance(nodo.test.left, ast.Name)
+                and nodo.test.left.id == "__name__"):
+            cuerpo_main = nodo.body
+            break
+    if cuerpo_main is None:
+        return None
+    antes = desde = 0
+    visto = False
+    linea_marcador = None
+    for stmt in cuerpo_main:
+        llamadas = sum(
+            1 for nodo in ast.walk(stmt)
+            if isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Name)
+            and nodo.func.id.startswith("test_"))
+        if visto:
+            desde += llamadas
+        else:
+            antes += llamadas
+        if vd.MARCADOR_HEADLESS in (ast.get_source_segment(fuente, stmt) or ""):
+            visto = True
+            linea_marcador = stmt.lineno
+    if not visto:
+        return None
+    return (antes, desde, antes + desde, linea_marcador)
+
+
+def test_el_reparto_de_tests_no_re_tokeniza_por_sentencia():
+    """TASK-070 T1: el reparto se deriva SIN re-partir el fichero por sentencia.
+
+    CUENTA INVOCACIONES REALES, no segundos. Un temporizador se rompe en una CI
+    mas lenta y mide el host, no el contrato; un conteo de llamadas es exacto y
+    no depende de la maquina. Se cuentan las dos puertas por las que se puede
+    volver a colar el coste: `ast.get_source_segment` (la de hoy) y
+    `tokenize.generate_tokens` (la que la premisa de la tarea daba por buena y
+    que en 3.13 no se llama, y tambien por eso cuenta 0 HOY y el assert sigue
+    teniendo que exigir 0).
+
+    MEDIDO antes del arreglo: **194** llamadas a `get_source_segment` (una por
+    sentencia de `cuerpo_main`), que es el numero que hace fallar este assert.
+    MEDIDO despues: **0**. Los dos valores se tomaron sobre el `run_tests.py`
+    REAL, porque un fixture sintetico no tiene `_run_tests_sintetico` y por tanto
+    solo tiene una ocurrencia del marcador (que es justo lo que hace peligroso al
+    mutante que lo busca una vez fuera del bucle; lo mide el otro test).
+
+    Las funciones reales se restauran en un `finally`: un test que deja
+    monkeypatched el modulo `ast` poisons el resto de la suite, y en esta suite
+    el resto de la suite es justo lo que mide.
+    """
+    import tokenize
+    import validate_docs as vd
+
+    root = os.path.dirname(os.path.abspath(__file__))
+    conteo = {"get_source_segment": 0, "generate_tokens": 0}
+    reales = (ast.get_source_segment, tokenize.generate_tokens)
+
+    def get_source_segment_contado(*args, **kwargs):
+        conteo["get_source_segment"] += 1
+        return reales[0](*args, **kwargs)
+
+    def generate_tokens_contado(*args, **kwargs):
+        conteo["generate_tokens"] += 1
+        return reales[1](*args, **kwargs)
+
+    ast.get_source_segment = get_source_segment_contado
+    tokenize.generate_tokens = generate_tokens_contado
+    try:
+        reparto = vd._reparto_de_tests(root)
+    finally:
+        ast.get_source_segment = reales[0]
+        tokenize.generate_tokens = reales[1]
+
+    assert reparto is not None, (
+        "el reparto tiene que derivarse del `run_tests.py` REAL; si sale None el "
+        "aserto de conteo de este test no probaria nada, porque un conteo de "
+        "llamadas sobre una derivacion que no llega al bucle es 0 sin haber "
+        "corregido nada"
+    )
+    assert conteo["get_source_segment"] == 0, (
+        "TASK-070: `_reparto_de_tests` llamo a `ast.get_source_segment` "
+        f"{conteo['get_source_segment']} veces (una por sentencia de `__main__`), "
+        "y cada llamada parte las lineas del `run_tests.py` entero: eso es "
+        "O(n^2) en el tamano del fichero. Las lineas se parten UNA vez, fuera del "
+        "bucle, y cada sentencia recorta su tramo con `lineno`/`end_lineno`"
+    )
+    assert conteo["generate_tokens"] == 0, (
+        "TASK-070: `_reparto_de_tests` tokenizo "
+        f"{conteo['generate_tokens']} veces. La premisa de la tarea decia que "
+        "`get_source_segment` tokeniza el fichero entero; en 3.13 no lo hace "
+        "(parte lineas), pero si un dia vuelve a hacerlo por la puerta de "
+        "`tokenize`, este conteo lo canta"
+    )
+
+
+def test_el_split_derivado_no_cambia_con_el_arreglo():
+    """TASK-070 T2: el reparto derivado NO se mueve con el arreglo.
+
+    Este es el que mata al ARREGLO EQUIVOCADO, no al fallo original: T1 exige que
+    el coste desaparezca y T2 exige que el NUMERO sea el de siempre. Sin T2, un
+    `visto = MARCADOR_HEADLESS in fuente` pasa el total (189) con todo el reparto
+    partido, y el bug sale de la app semanas despues.
+
+    Se comparan las CUATRO componentes, no el total: `(antes, desde, total,
+    linea)`. Un reparto movido conserva la suma por construccion -- es sumar lo
+    mismo en dos botes distintos --, asi que comparar el total es comparar la
+    unica cifra que el bug NO rompe. Y el total solo por si mismo tampoco sirve:
+    "el nuevo devuelve 189" lo cumple una funcion rota que devuelve ceros.
+
+    La comparacion es de las DOS DERIVACIONES de la MISMA funcion sobre el MISMO
+    fichero en la MISMA corrida, que es lo unico que prueba que el arreglo no
+    movio nada. La tercera asercion es la que sostiene la potencia del test: exige
+    que el fichero REAL siga teniendo **dos** ocurrencias del marcador. Si alguna
+    vez se queda con una, el mutante M1 pasaria TODOS los fixtures sinteticos y
+    este test dejaria de discriminar sin que nadie lo notase, porque compara dos
+    implementaciones que seguirian dando el mismo numero.
+    """
+    import validate_docs as vd
+
+    root = os.path.dirname(os.path.abspath(__file__))
+    nuevo = vd._reparto_de_tests(root)
+    viejo = _reparto_de_tests_via_source_segment(root)
+
+    assert viejo is not None, (
+        "la implementacion de referencia tiene que derivar el reparto del "
+        f"`run_tests.py` REAL: devolvio {viejo!r}. Si esto falla, la comparacion de "
+        "abajo no probaria nada porque estaria comparando contra un `None`"
+    )
+    assert nuevo == viejo, (
+        "TASK-070: el reparto derivado cambio con el arreglo. "
+        f"Nuevo (lineas) = {nuevo!r}; referencia (`get_source_segment`) = "
+        f"{viejo!r}. Las cuatro componentes se comparan porque un reparto movido "
+        "deja la suma igual: si el total cuadra y las tres primeras no, el numero "
+        "que declara STATUS.md esta contando otra cosa"
+    )
+    with open(os.path.join(root, "run_tests.py"), encoding="utf-8") as fh:
+        fuente = fh.read()
+    assert fuente.count(vd.MARCADOR_HEADLESS) >= 2, (
+        "TASK-070: el `run_tests.py` REAL tiene que seguir teniendo DOS o mas "
+        f"ocurrencias de `{vd.MARCADOR_HEADLESS}` (ahora tiene "
+        f"{fuente.count(vd.MARCADOR_HEADLESS)}). La segunda esta en "
+        "`_run_tests_sintetico()`, POR ENCIMA de `__main__`, y es la que hace "
+        "peligroso buscar el marcador una vez fuera del bucle: con una sola "
+        "ocurrencia, el mutante M1 daria el mismo numero y este test, con las dos "
+        "implementaciones de acuerdo, pasaria sin discriminar nada"
+    )
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -23860,6 +24057,19 @@ if __name__ == "__main__":
     test_el_gaming_repuesto_se_declara_tambien_si_el_origen_esta_corrupto()  # 2
     test_el_diagnostico_pasa_por_el_punto_unico_de_decision()            # 3
     test_el_destino_que_gana_tiene_que_decir_que_hay_packs_que_no_vienen()  # 4 y 5
+    # TASK-070: el reparto de `validate_docs.py` deja de re-partir el fichero por
+    # sentencia. Las DOS van ANTES del marcador headless y a proposito: es justo
+    # donde el reparto se deriva, asi que el numero que el check 7 declara lo
+    # regenera la funcion que este ciclo arregla, en vez de una copia mia. Ninguna
+    # abre ventana (son tooling puro), lo que las hace puntuables como backend.
+    # Suite: 189 -> 191, y el reparto pasa a 142 backend + 49 headless.
+    # T1 cuenta invocaciones y exige 0; T2 compara el 4-tuple contra la
+    # implementacion de referencia (`get_source_segment`) y es el que mata al
+    # arreglo equivocado: buscar el marcador una vez fuera del bucle declara
+    # `(0, 189, 189, None)` y el TOTAL sigue dando igual, asi que solo el reparto
+    # lo ve.
+    test_el_reparto_de_tests_no_re_tokeniza_por_sentencia()                # T1
+    test_el_split_derivado_no_cambia_con_el_arreglo()                      # T2
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.

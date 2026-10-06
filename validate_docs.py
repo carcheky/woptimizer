@@ -1016,6 +1016,22 @@ def _reparto_de_tests(root):
     antes = desde = 0
     visto = False
     linea_marcador = None
+    # TASK-070: `ast.get_source_segment` parte las lineas del fichero ENTERO en
+    # cada llamada (en 3.13 por `_splitlines_no_ff`, NO por `tokenize`: la premisa
+    # de la tarea decia "re-tokeniza" y era falsa), y aqui se llamaba UNA vez por
+    # sentencia: 194 pases de un fichero de 1,2 MB al abrir el ciclo (196 con las
+    # dos sondas que este ciclo registro delante del marcador), O(n^2) en el
+    # tamano del fichero. MEDIDO el 2026-10-06: 7,25 s de los ~12,3 s del
+    # validador entero. Se parten UNA vez y cada sentencia recorta su tramo.
+    #
+    # NO se busca el marcador fuera del bucle, y hay un motivo MEDIDO: aparece
+    # DOS veces en `run_tests.py`, y la segunda (en `_run_tests_sintetico()`,
+    # `run_tests.py:13553`) esta POR ENCIMA de `cuerpo_main`. Un
+    # `visto = MARCADOR_HEADLESS in fuente` daria `(0, 189, 189, None)`, o sea
+    # TODA la suite por delante del marcador, y el total seguiria cuadrando: el
+    # bug seria invisible para cualquier check que mire la suma. Lo vigila
+    # `test_el_split_derivado_no_cambia_con_el_arreglo` de `run_tests.py`.
+    lineas = fuente.splitlines()
     for stmt in cuerpo_main:
         llamadas = sum(
             1 for nodo in ast.walk(stmt)
@@ -1025,7 +1041,7 @@ def _reparto_de_tests(root):
             desde += llamadas
         else:
             antes += llamadas
-        if MARCADOR_HEADLESS in (ast.get_source_segment(fuente, stmt) or ""):
+        if MARCADOR_HEADLESS in "\n".join(lineas[stmt.lineno - 1:stmt.end_lineno]):
             visto = True
             linea_marcador = stmt.lineno
     if not visto:
