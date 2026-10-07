@@ -1,55 +1,43 @@
 # 🎯 Taskmaster Board — woptimizer v3
 
 > Sistema de orquestación de tareas atómicas para agentes IA y desarrolladores.
-> Archivo de sincronización estructurado: `.taskmaster/tasks.json`
-> ⚠️ **La CLI no es ejecutable en este entorno** (lanza `subprocess` y falla con `spawn EPERM`). Consulta `.taskmaster/tasks.json` directamente: campo `active_task_id` o la primera entrada con `"status": "pending"`.
+> **Única fuente de verdad estructurada:** [tasks.json](file:///c:/Users/carch/Nextcloud/Scripts/woptimizer/.taskmaster/tasks.json)
+> ⚠️ **La CLI `tm.py` NO es ejecutable en este entorno** (`spawn EPERM`). Consulta `.taskmaster/tasks.json` directamente (`active_task_id` o primer `"status": "pending"`).
 
 ---
 
-## 📌 Tareas Activas
+## 📌 Tareas Activas y Prioritarias (Backlog Inmediato)
 
-| ID | Tarea | Complejidad (1-10) | Prioridad | Estado | Dependencias | Documentación Asociada |
-|---|---|:---:|:---:|:---:|---|---|
-| **TASK-001** | Rediseño de Modelos y Datos para Packs Unificados | 4/10 | High | `PENDING` | - | `docs/ai/data-models.md` |
-| **TASK-002** | Implementar Ventana de Gestor de Procesos | 5/10 | High | `PENDING` | TASK-001 | `docs/ai/ui-design-system.md` |
-| **TASK-003** | Implementar Ventana de Gestor de Packs (CRUD + Acciones) | 7/10 | Critical | `PENDING` | TASK-001 | `docs/ai/ui-design-system.md` |
-| **TASK-004** | Implementar Ventana Principal (Portada con Favoritos) | 4/10 | Critical | `PENDING` | TASK-002, TASK-003 | `docs/ai/ui-design-system.md` |
-| **TASK-007** | Categorización Automática de Procesos y Filtro de Seguridad | 6/10 | High | PENDING | TASK-002, TASK-004 | docs/ai/architecture.md |
-| **TASK-005** | Pruebas de Integración y Validación de la Suite UI | 3/10 | Medium | `PENDING` | TASK-004 | `docs/ai/testing-guide.md` |
-| **TASK-006** | Compilación y Empaquetado de woptimizer.exe v3.0.0 | 4/10 | High | `PENDING` | TASK-005 | `docs/ai/sandbox-rules.md` |
-| **TASK-008** | Migración de DB a JSON y Endpoint de GitLab | 3/10 | High | `PENDING` | - | `openspec/changes/2026-09-29-v3-ux-polish/tasks.md` |
-| **TASK-009** | Evolución Dinámica del Pack Gaming | 6/10 | Critical | `PENDING` | TASK-008 | `openspec/changes/2026-09-29-v3-ux-polish/tasks.md` |
-| **TASK-010** | Feedback Visual en el Gestor de Procesos | 4/10 | Medium | `PENDING` | TASK-008 | `openspec/changes/2026-09-29-v3-ux-polish/tasks.md` |
+| ID | Tarea | Complejidad | Prioridad | Estado | Módulo / Spec |
+|---|---|:---:|:---:|:---:|---|
+| **TASK-072** | Fix hang en run_tests.py: _git_de_fixture sin stdin=DEVNULL | 2/10 | 🔴 Critical | ⏳ **PENDING** (Active) | `run_tests.py` |
+| **TASK-071** | Aplicaciones protegidas: pack no ejecutable e indestructible | 8/10 | 🟠 High | ⏳ PENDING | `openspec/changes/2026-10-07-task-071-protected-apps/` |
+| **TASK-073** | Prevenir RuntimeError en ProcessManagerView._load tras destrucción | 3/10 | 🟠 High | ⏳ PENDING | `src/woptimizer/ui/views/process_manager_view.py` |
+| **TASK-074** | Blindar paridad de git tooling: código 2 en par asimétrico | 2/10 | 🟡 Medium | ⏳ PENDING | `run_tests.py` / `sandbox-rules.md` |
+| **TASK-075** | Desacoplar validate_docs.py de %LOCALAPPDATA% para CI | 4/10 | 🟡 Medium | ⏳ PENDING | `validate_docs.py` |
+| **TASK-076** | Desduplicar flags de PyInstaller entre force_build y release.yml | 3/10 | 🟡 Medium | ⏳ PENDING | `force_build.py` / `.github/workflows/` |
+| **TASK-077** | Normalizar finales de línea CRLF en scripts Windows (.bat/.ps1) | 1/10 | 🟢 Low | ⏳ PENDING | `build.bat` / `benchmark.py` |
+| **TASK-068** | Arranque por categorías en el Gestor (T-4 pendiente decisión dueño) | 6/10 | 🟠 High | 🔄 IN_PROGRESS | `openspec/changes/2026-10-05-arranque-por-categorias-en-el-gestor/` |
 
 ---
 
 ## 🧭 Flujo de Trabajo para IAs
-1. Consultar la siguiente tarea pendiente leyendo `.taskmaster/tasks.json` (`active_task_id`, o la primera con `"status": "pending"`). **No uses `tm.py`**: no es ejecutable aquí.
-2. Cargar **únicamente** la documentación indicada en la columna `Documentación Asociada` para no gastar tokens.
-3. Completar la tarea respetando las invariantes.
+1. Consultar la tarea activa leyendo `.taskmaster/tasks.json` (`active_task_id`, o la primera con `"status": "pending"`). **No uses `tm.py`**: no es ejecutable aquí.
+2. Cargar **únicamente** la documentación indicada en la columna `Documentación Asociada` / `Spec` para no gastar tokens.
+3. Completar la tarea respetando las invariantes arquitectónicas.
 4. Marcar la tarea como completada poniendo `"status": "completed"` en `.taskmaster/tasks.json`.
+5. Ejecutar la batería de verificación: `python run_tests.py`, `python verify_ui_syntax.py`, `python validate_docs.py`.
+6. Comitear usando `python .taskmaster/git_safe_commit.py "<tipo>(<alcance>): <descripción> (TASK-NNN)"`.
 
 ---
 
-## 🆕 Tareas del Motor de I+D (Ciclos 4+)
-
-> Estas tareas son las que el motor autónomo `id-pipeline` va cerrando en bucle infinito.
-> Cada entrada se corresponde con una fila en `.taskmaster/tasks.json` y un commit dedicado.
-
-| ID | Tarea | Complejidad | Prioridad | Estado | Spec |
-|---|---|:---:|:---:|:---:|---|
-| **TASK-015** | Actualización Base de Datos de Procesos Gaming | 3/10 | Medium | ✅ DONE | `process-db-update` |
-| **TASK-016** | Ampliación Tests Headless + Tipado Pydantic | 4/10 | Medium | ✅ DONE | `testing-quality` |
-| **TASK-017** | Robustez System Tray + Logging start_pack_apps | 3/10 | High | ✅ DONE | `resilience-tray-logging` |
-| **TASK-018** | Cache TTL + Hashmap O(1) en ProcessService | 6/10 | High | ✅ DONE | `perf-cache-hashmap` |
-| **TASK-019** | Notificaciones Nativas Windows (Toast Balloon) | 4/10 | Medium | ✅ DONE | ✅ `2026-09-29-native-toast-notifications` |
-| **TASK-020** | Ampliar DB + fix emojis de categoría vs config.py | 3/10 | Medium | ✅ DONE | `assets/process_db.json` + `config.py` |
-| **TASK-021** | Cobertura de invariantes: GamingService, PackService, Cache TTL, Kill Recursivo | 5/10 | High | ✅ DONE | `docs/ai/testing-guide.md` |
-| **TASK-022** | Resiliencia del Tooling Git: git_safe_commit.py fail-safe | 3/10 | High | ✅ DONE | `git-tooling-resilience` |
-| **TASK-023** | Restaurar doble pulsación en las 5 acciones destructivas | 5/10 | High | ✅ DONE | `double-tap-confirmation` |
-| **TASK-024** | Bloatware real del sistema con blindaje anti-brick | 4/10 | High | ✅ DONE | `real-bloatware-scan` |
-| **TASK-025** | Conectar GamingService al runtime de Gaming Mode (FIX-002 + FIX-008) | 6/10 | Critical | ⏳ PENDING | `2026-09-29-bugfix-audit-v3` |
-| **TASK-026** | Integridad de datos, copia profunda y resiliencia de servicios (FIX-001, 005, 007, 009) | 4/10 | High | ⏳ PENDING | `2026-09-29-bugfix-audit-v3` |
-| **TASK-027** | Robustez de UI, inicio seguro de apps y orden de categorías (FIX-003, 004, 006) | 5/10 | High | ⏳ PENDING | `2026-09-29-bugfix-audit-v3` |
-| **TASK-028** | Saneamiento de deuda técnica, migración de procesos y tests (FIX-010 a 020) | 5/10 | Medium | ⏳ PENDING | `2026-09-29-bugfix-audit-v3` |
-
+## 📋 Resumen Histórico de Tareas Cerradas Recientes
+- **TASK-070** (Ciclo #59): validate_docs.py optimizado de O(n^2) a O(n) tokenización (`splitlines`).
+- **TASK-069** (Ciclo #56): Migración y protección de profiles.json a `%APPDATA%\woptimizer` sin pérdida de datos.
+- **TASK-067** (Ciclo #55): Re-anclaje de trazabilidad documental y checklists de release.
+- **TASK-066** (Ciclo #54): Puerta de cabecera commitlint (<=120 caracteres) y regla de ramas.
+- **TASK-065** (Ciclo #51): Menú de favoritos en bandeja del sistema con confirmación.
+- **TASK-063** (Ciclo #50): Selección y arranque por categorías unificada para todos los packs.
+- **TASK-061** (Ciclo #53): Código 1 y paridad estricta de entorno en `git_safe_commit.py`.
+- **TASK-060** (Ciclo #49): Check 8 de anclas sobre Deuda Técnica Conocida en `validate_docs.py`.
+- **TASK-059** (Ciclo #52): Ancla obligatoria en mensajes de commit y check 9 de hashes en journal.

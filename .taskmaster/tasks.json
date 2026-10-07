@@ -1,8 +1,8 @@
 {
   "project": "woptimizer",
   "version": "3.0.1.dev0",
-  "updated_at": "2026-10-05",
-  "active_task_id": "TASK-068",
+  "updated_at": "2026-10-07",
+  "active_task_id": "TASK-072",
   "tasks": [
     {
       "id": "TASK-001",
@@ -1536,14 +1536,118 @@
     {
       "id": "TASK-071",
       "title": "Aplicaciones protegidas: un pack que no se ejecuta y cuyas apps no se matan nunca",
-      "description": "FEATURE pedida por el dueno el 2026-10-05, textual: 'aplicaciones protegidas. sera un pack especial, su funcionamiento sera que las aplicaciones que esten ahi, no seran matadas nunca por la ejecucion de otro pack. este pack no se puede matar ni iniciar ni nada, las aplicaciones que esten en este pack, no apareceran en ningun otro lugar, ni en la ventana de todos los procesos ni en los demas packs'. LO QUE ESTA YA MEDIDO, porque el pack de keepers EXISTE y se puede reutilizar en vez de inventar el mecanismo: (1) `models.py:40 keepers` es la lista de PROCESOS PROTEGIDOS y `Pack.keepers` es un `list[str]` de PATRONES; (2) el motor de `gaming_service.py` y `process_service.py` ya sabe filtrar por `keepers` y ya lo hace en la ruta de apagado, o sea que el 'no se matan nunca' es CORTA DE CODIGO y no una invencion; (3) el Traffic Light ya tiene rojo = 'nunca se toca' y `SYSTEM_PROTECTED_PROCESSES` cubre los procesos de sistema, asi que la UI tiene vocabulario para esto. LO QUE ES NUEVO Y HAY QUE DISEÑAR, y son las cuatro preguntas que hacen que esto sea mas que un filtro: (a) LA INVISIBILIDAD es la parte fuerte del encargo y tiene consecuencias que hay que escribir antes de codificar: si un proceso no aparece en la ventana de todos los procesos, el usuario no lo ve, no lo puede quitar del pack a mano, y si se cuelga **no hay ninguna forma de matarlo desde la app**. Eso hay que decidirlo explicitamente, porque 'invisible' y 'recuperable' se parecen pero no son lo mismo. (b) LA MUTUAL EXCLUSION con los otros packs: un proceso protegido no puede estar a la vez en un pack que se mata, y el filtro tiene que ganar SIEMPRE, no segun el orden de ejecucion, o el resultado dependeria de que pack se ejecutara antes. (c) EL PACK MISMO 'no se puede matar ni iniciar ni nada': eso es un `default_action` imposible y la UI tiene que dejar de ofrecer esos botones para el, no basta con que el boton no haga nada. (d) LA PERSISTENCIA: `keepers` hoy son PATRONES y este pack guardaria APLICACIONES, asi que hay que decidir si se guarda como patron o como ejecutable resuelto, que es la diferencia entre 'protegido Discord' y 'protegido todo lo que se llame discord'. DEPENDENCIA CRITICA que hay que escribir: esto se apoya en `keepers`, y `keepers` es exactamente lo que se pierde cuando la app no encuentra sus packs y repone el Gaming de fabrica (TASK-069, hallazgo de seguridad de CYCLE-056, medido: el Gaming de fabrica repone `keepers [steam.exe, discord.exe]` y 5 categorias SIN avisar). O sea: este pack solo vale si la reposicion del Gaming de fabrica **deja de reponer keepers en silencio**. Construir el pack sin cerrar eso es edificar sobre arena.",
+      "description": "FEATURE pedida por el dueno el 2026-10-05: un pack especial donde las aplicaciones añadidas nunca se matan por la ejecucion de ningun otro pack, no pueden ser iniciadas ni matadas desde el propio pack, y son invisibles en el Gestor de Procesos y en los demas packs. Requiere is_protected=True estricto en Pack, exclusión mutua indestructible en process_service y gaming_service, filtro de invisibilidad en ProcessManagerView, y tarjeta de pack no ejecutable en PackManagerView.",
       "complexity": "high",
-      "priority": "medium",
+      "priority": "high",
       "status": "pending",
       "dependencies": [
-        "TASK-069"
+        "TASK-069",
+        "TASK-072"
       ],
-      "module": "models/services/ui"
+      "module": "models/services/ui",
+      "spec": "openspec/changes/2026-10-07-task-071-protected-apps/",
+      "acceptance_criteria": [
+        "T-1: is_protected: bool = Field(default=False, strict=True) en Pack; delete_pack prohíbe eliminar el pack protegido; get_protected_pack() y get_protected_apps() implementados en PackService.",
+        "T-2: En process_service y gaming_service, toda ruta de kill (kill_processes, execute_pack, execute_gaming_pack) une get_protected_apps() a los keepers efectivos; una app protegida jamás es enviada a terminate() aunque esté en apps o en categorías de kill de otro pack.",
+        "T-3: ProcessManagerView filtra en _render_list cualquier proceso que coincida con get_protected_apps(); el proceso protegido no aparece en la tabla ni es seleccionable para otros packs.",
+        "T-4: PackManagerView renderiza la tarjeta protegida sin botones de Iniciar ni Cerrar, con badge de 'Protegidas' y botón para desproteger o añadir apps. DashboardView excluye el pack protegido de los favoritos ejecutables.",
+        "T-5: Tests headless cubren validación estricta, prohibición de borrado, exclusión de kill en ejecución de packs y filtrado en vistas UI."
+      ],
+      "notes": "Especificación arquitectónica completa en openspec/changes/2026-10-07-task-071-protected-apps/ (proposal.md y tasks.md T-1..T-5). Se apoya en la protección contra reposición silenciosa de TASK-069."
+    },
+    {
+      "id": "TASK-072",
+      "title": "Fix hang en run_tests.py: _git_de_fixture sin stdin=subprocess.DEVNULL bloquea git cat-file",
+      "description": "BUG CRÍTICO DE ARNES DE TEST (descubierto en auditoría de arquitectura): en run_tests.py:12754, _git_de_fixture invoca subprocess.run(['git'] + args, capture_output=True, timeout=120) sin redirigir stdin. En run_tests.py:20186, se invoca _git_de_fixture(['cat-file', '--batch-check'], d_hist). Al no cerrarse stdin, git cat-file se queda bloqueado esperando entrada por consola indefinidamente en entornos desatendidos/agente. Al expirar el timeout de 120s en Windows, el árbol de procesos hijo retiene los descriptores de tubería abiertos, causando que el arnés se cuelgue sin reportar el final de la suite. El arreglo es pasar stdin=subprocess.DEVNULL en _git_de_fixture.",
+      "complexity": "low",
+      "priority": "critical",
+      "status": "pending",
+      "dependencies": [],
+      "module": "run_tests.py",
+      "acceptance_criteria": [
+        "run_tests.py:12754 _git_de_fixture pasa stdin=subprocess.DEVNULL a subprocess.run.",
+        "test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico ejecuta el pre-vuelo de cat-file --batch-check en menos de 50 ms sin consumir timeouts.",
+        "python run_tests.py completa la suite entera de 191 tests hasta 'ALL TESTS PASSED' de manera desatendida sin congelarse en Check 9."
+      ],
+      "notes": "Medido en auditoría del 2026-10-07: con stdin=subprocess.DEVNULL, git cat-file --batch-check responde exit 0 de inmediato. Sin él, espera stdin en pipe heredada."
+    },
+    {
+      "id": "TASK-073",
+      "title": "Prevenir RuntimeError en ProcessManagerView._load tras destrucción de ventana",
+      "description": "DEUDA DE STATUS.md (fila 122): python run_tests.py imprime intermitentemente RuntimeError: main thread is not in main loop desde el hilo worker de src/woptimizer/ui/views/process_manager_view.py en _load, al llamar a self.after(0, ...) cuando la ventana ya ha sido destruida en tests headless o al cerrar la ventana en producción mientras el escaneo continúa.",
+      "complexity": "low",
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [],
+      "module": "ui/views/process_manager_view.py",
+      "acceptance_criteria": [
+        "En ProcessManagerView._load (y callbacks de worker threads), se comprueba try: if self.winfo_exists(): self.after(...) except Exception: pass antes de programar actualizaciones en el bucle principal de Tkinter.",
+        "La suite run_tests.py no emite trazas de 'RuntimeError: main thread is not in main loop' al limpiar fixtures de ProcessManagerView."
+      ],
+      "notes": "Documentado en STATUS.md:122. Protege la ventana de excepciones destructivas cuando el worker termina con la ventana cerrada."
+    },
+    {
+      "id": "TASK-074",
+      "title": "Blindar paridad de git tooling: código 2 en par asimétrico con repo no verificable",
+      "description": "DEUDA DE STATUS.md (fila 125): sandbox-rules.md:83-85 promete código 2 del par asimétrico sin condicionar al repo sano, pero con el mutante R4-k el código 2 no sale en el camino de commit con repo no verificable (degrada a 3 WOPT_REPO_INVALIDO). Falta una fila en la sonda de posición test_la_puerta_de_paridad_va_despues_de_validar_repo que exija código 2 en el camino de commit con repo no verificable.",
+      "complexity": "low",
+      "priority": "medium",
+      "status": "pending",
+      "dependencies": [],
+      "module": "run_tests.py",
+      "acceptance_criteria": [
+        "Añadir aserción en test_la_puerta_de_paridad_va_despues_de_validar_repo en run_tests.py que exija código 2 (WOPT_USAGE paridad-git) con repo no verificable y paridad rota.",
+        "El mutante R4-k (if paridad_rota and ok:) muere por dicha aserción."
+      ],
+      "notes": "Documentado en STATUS.md:125. Cumple la promesa contractual de sandbox-rules.md:83-85."
+    },
+    {
+      "id": "TASK-075",
+      "title": "Desacoplar validate_docs.py de ruta local %LOCALAPPDATA% para soporte en CI",
+      "description": "DEUDA DE STATUS.md (fila 121): validate_docs.py deriva el repositorio desacoplado únicamente desde %LOCALAPPDATA%\\woptimizer_git\\.git (validate_docs.py:300-302), impidiendo su ejecución en GitHub Actions CI. Debe aceptar una variable de entorno WOPTIMIZER_GIT_DIR o argumento CLI --git-dir para permitir verificación en CI.",
+      "complexity": "medium",
+      "priority": "medium",
+      "status": "pending",
+      "dependencies": [],
+      "module": "validate_docs.py",
+      "acceptance_criteria": [
+        "validate_docs.py honra WOPTIMIZER_GIT_DIR del entorno y --git-dir si se suministra, cayendo a la detección actual como fallback.",
+        "En un entorno con repo Git estándar (como runner de GitHub), validate_docs.py ejecuta sin fallar por ausencia de %LOCALAPPDATA%\\woptimizer_git\\.git.",
+        "Suite de tests en run_tests.py valida el soporte de ruta configurable sin alterar los checks existentes."
+      ],
+      "notes": "Documentado en STATUS.md:121. Permite incorporar validate_docs.py al workflow de GitHub Actions."
+    },
+    {
+      "id": "TASK-076",
+      "title": "Desduplicar flags de PyInstaller entre force_build.py y release.yml con test de paridad",
+      "description": "DEUDA DE STATUS.md (fila 120): los flags de compilación de PyInstaller (--onefile --noconsole --uac-admin --name woptimizer --clean --add-data 'assets;assets') están duplicados entre force_build.py y .github/workflows/release.yml. Si divergen, el binario de release difiere del compilado localmente sin que ningún test lo detecte.",
+      "complexity": "low",
+      "priority": "medium",
+      "status": "pending",
+      "dependencies": [],
+      "module": "force_build.py",
+      "acceptance_criteria": [
+        "Centralizar la lista de flags en un único fichero o especificación woptimizer.spec compartida.",
+        "Añadir un test en run_tests.py que verifique que force_build.py y release.yml usan exactamente los mismos flags.",
+        "verify_exe.py y smoke tests pasan sin discrepancias de empaquetado."
+      ],
+      "notes": "Documentado en STATUS.md:120."
+    },
+    {
+      "id": "TASK-077",
+      "title": "Normalizar finales de línea CRLF en scripts Windows del repositorio",
+      "description": "DEUDA DE STATUS.md (fila 161): build.bat tiene 39 LF y 0 CRLF, y benchmark.py tiene 42 LF, a pesar de que .gitattributes declara '*.bat eol=crlf'. En Windows, scripts por lotes .bat en LF pueden presentar fallos de parsing.",
+      "complexity": "low",
+      "priority": "low",
+      "status": "pending",
+      "dependencies": [],
+      "module": "build.bat",
+      "acceptance_criteria": [
+        "Normalizar build.bat y benchmark.py a CRLF en disco.",
+        "Verificar con git ls-files --eol que los ficheros .bat y .ps1 se reportan con w/crlf.",
+        "build.bat ejecuta correctamente en PowerShell/CMD de Windows."
+      ],
+      "notes": "Documentado en STATUS.md:161."
     }
   ]
 }
