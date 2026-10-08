@@ -1,3 +1,43 @@
+## CYCLE-060 - 2026-10-08
+
+**Tooling** - `TASK-072` (El arnés pedía entrada por consola y dos comprobaciones no comprobaban nada)
+
+**Estado**: **arreglo hecho, medido y con los cinco mutantes cazados a mano.** Tests: **194** (142 + 52). **Ningún cambio en el programa**: `src/woptimizer/**` intacto.
+
+### 🔴 Lo que pasaba
+
+El arnés de tests (`run_tests.py`) tiene 37 llamadas a `git` que salen todas por el mismo envoltorio, y ese envoltorio **heredaba la entrada por consola del proceso**. Con una TTY no pasa nada, pero cuando el arnés lo lanza alguien desatendido y su entrada es una tubería abierta, un comando de git que lee de ahí **se queda esperando para siempre**.
+
+Lo grave estaba justo debajo: **dos de las comprobaciones del test 9 no comprobaban nada**. Preguntaban "¿existe este hash?" con un comando de git que **lee los nombres por la entrada estándar**, y no le pasaban ninguna entrada. Git respondía "todo correcto" con la salida **vacía**, luego la pregunta quedaba siempre contestada que sí, exista el hash o no. **No podían fallar.** Y el texto de sus mensajes decía lo contrario de lo que la comprobación demostraba: anunciaban que el hash "existe de verdad" mientras la operación afirmaba que **no** aparece.
+
+### ✅ Lo que se corrigió
+
+- **El envoltorio pasa la entrada a `/dev/null`** en sus tres intentos. Con eso, cualquier entrada heredada —sea consola, sea tubería, sea fichero— se convierte en "no hay nada más" inmediato y la variable desaparece.
+- **Una comprobación nueva que decide por argumento**: pregunta por un hash con un comando que **no lee la entrada**, y distingue las dos respuestas de git. Se escribió aparte, y no como una variante del envoltorio, por un motivo concreto: el comando responde con el código **128** cuando el objeto no existe, que es justo la respuesta que la comprobación quiere leer, y el envoltorio viejo convertía cualquier código distinto de cero en un fallo. Habría tratado un "no existe" como si git se hubiera roto.
+- **Las dos comprobaciones tautológicas** pasan a la nueva, **con el mensaje corregido** al signo real ("no existe"), y **con el caso positivo al lado**: sin él, una comprobación que respondiera "siempre que no" seguiría verde.
+
+### 🧾 Tres cosas del encargo que resultaron falsas, escritas para que no vuelvan a molestar
+
+1. **«Se cuelga hoy»**: en este equipo **no se cuelga hoy**, porque el arnés corre con consola. Medido: 140 ms con consola heredada y 141 ms con la corrección. Lo que sí existe, y es real, es el caso del proceso desatendido, que se queda esperando sin límite.
+2. **«Los procesos hijos retienen los descriptores y congelan todo al expirar el tiempo límite»**: **no se ha reproducido y no se afirma.** Lo que se midió es otra cosa distinta: **el límite de tiempo no acota este cuelgue en este equipo** (con 6 segundos de límite, la llamada no había vuelto a los 90). Por eso el arnés tiene que cerrar el proceso hijo a mano.
+3. **«40 llamadas»**: son **37**, contadas.
+
+### 🧪 Las cinco formas de arreglarlo mal, probadas una a una
+
+- **Quitar la corrección del envoltorio**: el proceso hijo se queda colgado y el test lo detecta. Medido, y el detalle que lo demuestra: el hijo sí termina el comando que **no** lee de la entrada y muere en el que **sí** la lee.
+- **Volver al comando que lee de la entrada**: la comprobación dice que existe un hash que no existe, y el assert lo caza.
+- **Una comprobación que responde "siempre que no"**: la mitad del caso positivo la caza.
+- **Reintroducir la llamada sin entrada, dentro de la comprobación nueva**: el guard estructural la caza.
+- **Reintroducirla dentro del envoltorio, que es donde estaba el defecto**: también la caza. **La segunda es la que importa**: la primera versión del guard comparaba la lista de argumentos por igualdad exacta y **aceptaba la forma más probable de las dos que se pueden escribir**.
+
+### Verificado
+
+- **194 tests en verde**, `ALL TESTS PASSED`, salida 0.
+- **`verify_ui_syntax.py`: EXITO**, 9 de 9 módulos.
+- **`validate_docs.py`: 0 fallos**, salida 0.
+- **Cinco mutantes cazados**, cada uno en su `assert` y no por una excepción.
+- `src/woptimizer/**` con **cero** cambios.
+
 ## CYCLE-059 - 2026-10-06
 
 **Tooling** - `TASK-070` (El revisor tardaba el doble de lo necesario)

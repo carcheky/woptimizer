@@ -1,3 +1,76 @@
+## [CYCLE-060] 2026-10-08 - arnes-hang-stdin-git
+
+**Area**: Tooling. **Change**: `openspec/changes/2026-10-08-arnes-hang-stdin-git/`
+**Estado**: **COMPLETED** (T-1 a T-5). `TASK-072` cerrada.
+**Tests**: 191 -> **194 = 142 + 52**. Documentacion: **0 FAIL**. Cero cambios en `src/woptimizer/**` (AC-6).
+**Models**:
+- Paso 1 (Buscar): no lo ejecuto este agente (lo ejecuta el orquestador).
+- Paso 2 (Planear): `architect-review`; el plan esta en `openspec/changes/2026-10-08-arnes-hang-stdin-git/` y es la fuente de las cifras de abajo.
+- Paso 3 (Ejecutar): `minimax-M3.1-Flash-Preview` (`openspec-dev`).
+- Paso 4 (Auditar tests): **ejecutado por el DEV en este pase** (no por `mutation-auditor`), porque las tres sondas nuevas no podian entregarse sin demonstrating que mueren. La tabla de abajo es la medicion.
+
+### Lo implementado (T1 a T5)
+
+| T | Que | Donde |
+|---|---|---|
+| T1 | `stdin=subprocess.DEVNULL` en los **3** intentos de `_git_de_fixture` | `run_tests.py:12745` |
+| T2 | helper nuevo `_objeto_existe_en_fixture(hash_, cwd)` con `git cat-file -e`: rc 0 -> True, rc 128 -> False, otro rc -> 3 intentos y `AssertionError` con el `stderr` literal | junto a `_git_de_fixture` |
+| T3 | los dos call sites pasan al helper, con el mensaje corregido al signo real y el **caso positivo** al lado | los dos pre-vuelo del check 9 |
+| T4 | tres tests nuevos, filas 192-194 de `docs/ai/testing-guide.md` | DETRAS del marcador headless |
+| T5 | `STATUS.md` (salud + fila TASK-072 cerrada), `AGENTS.md`, `README.md`, `docs/ai/testing-guide.md` | los cuatro declarantes, a la vez |
+
+### MEDICIONES que corrigen el plan (no son suposiciones, son hechos)
+
+| Afirmacion | Medido el 2026-10-08 |
+|---|---|
+| `cat-file -e <existe>` | rc **0**, 177 ms |
+| `cat-file -e <muerto>` | rc **128**, 145 ms, `fatal: Not a valid object name` |
+| `cat-file --batch-check` SIN `input=` | rc 0, stdout **vacio**, 140-141 ms -> los dos `pre-vuelo` eran TAUTOLOGICOS |
+| el mismo con `input=` | 148 ms, salida real (`deadbee missing`) |
+| descriptor heredado = TTY | 140 ms -> **no se cuelga hoy** en este host |
+| descriptor heredado = pipe abierto sin EOF | **no vuelve** |
+| `subprocess.run(timeout=6)` con el pipe abierto | **no habia revuelto a los 90 s**: el `timeout` NO acota este cuelgue |
+| hijo del test por el camino bueno | 8 896 / 6 850 / 1 704 ms, de las que solo 330-451 ms son git: lo que domina es el `import run_tests` (7 468 / 5 768 / 661 ms) |
+
+### Corrections al plan, con su motivo
+
+1. **`timeout=10` -> `timeout=60`** en el padre del test desatendido. Con 10 s el test daria un rojo **por lentitud** en la primera pasada (el hijo llega a 8,9 s y lo domina el `import`, no el git). Un timeout tiene que separar "colgado" de "lento".
+2. **El padre mata al hijo a mano** en el `except`, en vez de fiarse del `timeout` del envoltorio para limpiar, porque medido ese `timeout` no acota el cuelgue y un hijo vivo arrastraria al resto de la suite.
+3. **M4 reformulado.** El plan decia "borrar el guard estructural", que **no puede matar nada**: borrar una asercion es el mutante mas trivial que hay. El mutante que AC-4 vigila es **reintroducir la llamada** sin `input=`. Asi se midio.
+4. **El guard mira cuatro formas, no una.** Comparar la lista por igualdad exacta contra `['cat-file', '--batch-check']` dejaba pasar la forma **mas probable de las dos escribibles**, `['git', 'cat-file', '--batch-check']`. MEDIDO: M4 y M5 sobrevivieron a la primera version. Ahora exige que la lista **contenga** `cat-file` y `--batch-check`.
+
+### Mutantes cazados (MEDIDO, cada uno en su `assert` y no por una excepcion)
+
+| # | Mutante | Como muere | Medido |
+|---|---|---|---|
+| **M1** | quitar `stdin=DEVNULL` del envoltorio | el hijo se cuelga; el padre lo mata a los 60 s | `AssertionError` con `stdout='OK-1 a814475\n'` y **sin `OK-2`**: el comando que NO lee stdin vuelve y el que SI lo lee no. rc=1 en 67,3 s |
+| **M2** | `cat-file -e` -> `--batch-check` con `input=` | `assert _objeto_existe_en_fixture(hash_muerto, d_hist) is False` | rc=1 en 6,1 s |
+| **M3** | el helper devuelve `False` siempre | `assert _objeto_existe_en_fixture(hash_real, d_hist) is True` | rc=1 en 4,6 s |
+| **M4** | llamada sin `input=` dentro del helper | `assert not SIN_INPUT` | rc=1 en 8,8 s |
+| **M5** | llamada sin `input=` dentro del `_git_de_fixture` | `assert not SIN_INPUT` | rc=1 en 9,9 s |
+
+**5 de 5. `git.exe` huerfanos tras M1: 0.**
+
+### Falsos rojos que me provoke provocaron (escritos porque es la clase de fallo que mas caro sale)
+
+- **M1 y M3 "murieron" las dos de `ModuleNotFoundError`** (la primera por `woptimizer`, la segunda por `validate_docs`): la copia mutada vive en `%TEMP%` y no tenia el arbol que el hijo importa. Un rojo del **arnes de la sonda** no es un mutante cazado.
+- **M2 y M4 "murieron" de excepcion de Python** (`ValueError: stdin and input may not both be used`, `SyntaxError: positional argument follows keyword argument`): un mutador que no compila o que viola `subprocess` no demuestra que el test distinga el codigo bueno del malo.
+- **El detector de veredicto leia la linea del `File "...", line N`** en vez de la linea de codigo de ese frame, y|-|- dio "murio pero no en el assert" con el test muertisimo de verdad.
+- La regla que sale de las cuatro: **un rojo hay que atribuirlo antes de contarlo**. Los cuatro fueron mios, ninguno del codigo.
+
+### Lo que NO se toco, con su motivo
+
+- `validate_docs.py:523` — su `cat-file --batch-check` **lee stdin legitimamente** (`input=` con ~100 hashes del journal en una llamada). Un `cat-file -t` por hash serian ~100 subprocesos.
+- `timeout=120` del envoltorio — no causa el cuelgue, lo acota; bajarlo solo anade falsos negativos.
+- `run_tests.py:20189` (`git log --format=%h`) — ya comprobaba algo real y no lee stdin.
+- `src/woptimizer/**` — **cero ediciones** (AC-6).
+
+### Deuda que este ciclo deja escrita
+
+- El **limite de tiempo no acota** el cuelgue en este host. El arnés lo resuelve matando a mano, pero es un hecho del entorno, no del codigo, y conviene tenerlo a mano antes de fiarse de un `timeout` para limpiar.
+- Convertir dos decorativos en comprobaciones hace que el check 9 **dependa de que la fixture tenga el commit**. La dependencia ya existia (`run_tests.py:20189` la exigia); lo nuevo es que ahora hay **dos** comprobaciones donde habia un decorativo.
+- `TASK-075` y `TASK-074` siguen **vivas y sin tocar**.
+
 ## [CYCLE-059] 2026-10-06 - validate-docs-una-vez-por-fichero
 
 **Area**: Tooling. **Change**: `openspec/changes/2026-10-06-validate-docs-tokens/`

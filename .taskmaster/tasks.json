@@ -1561,7 +1561,7 @@
       "description": "BUG CRÍTICO DE ARNES DE TEST (descubierto en auditoría de arquitectura): en run_tests.py:12754, _git_de_fixture invoca subprocess.run(['git'] + args, capture_output=True, timeout=120) sin redirigir stdin. En run_tests.py:20186, se invoca _git_de_fixture(['cat-file', '--batch-check'], d_hist). Al no cerrarse stdin, git cat-file se queda bloqueado esperando entrada por consola indefinidamente en entornos desatendidos/agente. Al expirar el timeout de 120s en Windows, el árbol de procesos hijo retiene los descriptores de tubería abiertos, causando que el arnés se cuelgue sin reportar el final de la suite. El arreglo es pasar stdin=subprocess.DEVNULL en _git_de_fixture.",
       "complexity": "low",
       "priority": "critical",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "run_tests.py",
       "acceptance_criteria": [

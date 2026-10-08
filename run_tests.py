@@ -12743,7 +12743,18 @@ def test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal():
 
 
 def _git_de_fixture(args, cwd):
-    """`git` de una fixture temporal, sin heredar el `GIT_DIR` de otra sonda."""
+    """`git` de una fixture temporal, sin heredar el `GIT_DIR` de otra sonda.
+
+    MEDIDO el 2026-10-08 (TASK-072) sobre una fixture propia, tres variantes del
+    descriptor 0 heredado con `git cat-file --batch-check`: TTY heredada 127 ms,
+    `DEVNULL` 127 ms y **pipe abierto que nadie escribe ni cierra: TIMEOUT**. Sin
+    `stdin=` el descriptor DECIDE el comportamiento, y en este host hoy el
+    arnes corre con TTY, luego hoy no se cuelga: por eso esto no es un
+    arreglo de un cuelgue medido hoy sino de un modo de fallo real (agente
+    desatendido, `stdin` heredado como pipe) que con esta linea desaparece.
+    `stdin=DEVNULL` va DENTRO del bucle de intentos: son tres llamadas y las
+    tres heredaban.
+    """
     import subprocess
 
     env = os.environ.copy()
@@ -12754,6 +12765,7 @@ def _git_de_fixture(args, cwd):
         r = subprocess.run(
             ["git"] + args, cwd=cwd, env=env, capture_output=True, text=True,
             encoding="utf-8", errors="replace", timeout=120,
+            stdin=subprocess.DEVNULL,
         )
         if r.returncode == 0:
             return r.stdout or ""
@@ -12761,6 +12773,53 @@ def _git_de_fixture(args, cwd):
     raise AssertionError(
         f"git {' '.join(args)} fallo tres veces en la fixture: {ultimo}. Sin este "
         "envoltorio el fallo de git se pierde como falso verde"
+    )
+
+
+def _objeto_existe_en_fixture(hash_, cwd):
+    """`True` si el objeto `hash_` esta en la fixture de `cwd`. **No lee stdin.**
+
+    MEDIDO el 2026-10-08 (TASK-072): `git cat-file -e <existe>` sale con rc 0 y
+    `<muerto>` con **rc 128** y `fatal: Not a valid object name <hash>` en
+    stderr. El rc ES la respuesta.
+
+    Por que NO usa `_git_de_fixture`: aquel envoltorio levanta `AssertionError`
+    ante cualquier rc distinto de 0, y 128 es justo la respuesta legitima que un
+    pre-vuelo de un hash MUERTO quiere leer. Pasaria por aqui como si git
+    hubiera fallado, que es el falso verde que este arnes existe para matar. Por
+    eso se reimplementan los TRES intentos aqui: cualquier rc que no sea 0 ni
+    128 es un fallo de git o el `spawn EPERM` intermitente de este host, y tras
+    tres intentos tiene que reventar con el `stderr` LITERAL, en la misma clave
+    que el envoltorio.
+
+    Y por que `cat-file -e` y no `cat-file --batch-check`: este ultimo lee los
+    nombres por **stdin**, luego sin `input=` responde rc 0 con stdout VACIO
+    (medido) y `HASH not in ''` es `True` para cualquier hash. Los dos
+    `pre-vuelo` de `run_tests.py` que lo usaban eran decorativos; este helper
+    decide por ARGUMENTO y por eso no depende de que nada llegue por stdin.
+    """
+    import subprocess
+
+    env = os.environ.copy()
+    env.pop("GIT_DIR", None)
+    env.pop("GIT_WORK_TREE", None)
+    ultimo = "(nunca llego a ejecutarse)"
+    for _intento in (1, 2, 3):
+        r = subprocess.run(
+            ["git", "cat-file", "-e", hash_], cwd=cwd, env=env,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=120, stdin=subprocess.DEVNULL,
+        )
+        if r.returncode == 0:
+            return True
+        if r.returncode == 128:
+            return False
+        ultimo = ((r.stderr or "") + (r.stdout or "")).strip()
+    raise AssertionError(
+        f"git cat-file -e {hash_} fallo tres veces en la fixture con un rc que "
+        f"NO es 0 (existe) ni 128 (no existe): {ultimo}. Un rc que no sea "
+        "ninguno de los dos no es una respuesta sobre el objeto, es un fallo de "
+        "git, y sin este envoltorio se pierde como falso verde"
     )
 
 
@@ -20183,8 +20242,22 @@ def test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico():
     # que acusar. "deadbee" son 7 hex, luego `fullmatch` lo acepta y git no lo
     # resuelve: el caso que un `search` en vez de `fullmatch` no distinguiria.
     HASH_MUERTO = "deadbee"
-    assert HASH_MUERTO not in _git_de_fixture(
-        ["cat-file", "--batch-check"], d_hist), "pre-vuelo: HASH_MUERTO existe"
+    # TASK-072: este pre-vuelo era un DECORATIVO. Usaba `cat-file --batch-check`,
+    # que lee los nombres por stdin, y el envoltorio no le pasaba `input=`: git
+    # respondia rc 0 con stdout VACIO y `HASH_MUERTO not in ''` era `True`
+    # para CUALQUIER hash. No podia fallar. Ahora decide por ARGUMENTO
+    # (`cat-file -e`), y el caso POSITIVO de al lado es lo que mata al helper
+    # que devuelve `False` siempre: sin el, "siempre False" y "siempre True"
+    # darian el mismo veredicto aqui.
+    assert _objeto_existe_en_fixture(HASH_MUERTO, d_hist) is False, (
+        f"pre-vuelo: el hash muerto de la fixture {HASH_MUERTO} tiene que NO "
+        "existir en ella. Si existe, la fixture no distingue el hash muerto del "
+        "real y todo lo que viene debajo mide sobre un repo que no es el que "
+        "dice medir")
+    assert _objeto_existe_en_fixture(HASH_REAL, d_hist) is True, (
+        f"pre-vuelo: el hash real de la fixture {HASH_REAL} tiene que EXISTIR en "
+        "ella. Sin este caso positivo el de al lado pasa igual con un helper que "
+        "devuelve False siempre, que es el tautologico que este replace")
     log = _git_de_fixture(["log", "--format=%s"], d_hist)
     assert HASH_REAL in _git_de_fixture(["log", "--format=%h"], d_hist), (
         f"la fixture de git tiene que tener el commit {HASH_REAL} de verdad: "
@@ -20300,8 +20373,11 @@ def test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico():
         assert vd.RE_HASH_CORTO.fullmatch(h), (
             f"{h!r} tiene que ser un hash CONFORME (7-40 hex) para que la fila mida "
             "el techo y no la forma: la R1 lo rechazaria antes de llegar al R5")
-        assert h not in _git_de_fixture(["cat-file", "--batch-check"], d_hist), (
-            f"pre-vuelo: el hash muerto de la fixture {h} existe de verdad")
+        assert _objeto_existe_en_fixture(h, d_hist) is False, (
+            f"pre-vuelo: el hash muerto de la fixture {h} tiene que NO existir en "
+            "ella. Con `cat-file --batch-check` sin `input=` esto era decorativo "
+            "(stdout vacio y `not in ''` siempre True); con `cat-file -e` decide "
+            "por argumento")
 
     escribir(journal(muertos=MUERTOS[:TECHO_HASHES + 1],
                      perdidos=[{"hash": h, "causa": "VFS_CORRUPTO",
@@ -20833,6 +20909,322 @@ def test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real()
         shutil.rmtree(tmp, ignore_errors=True)
     print("Journal ilegible OK: un solo [FAIL] en las dos formas, la verificacion no "
           "hecha queda escrita, y el mutante lo devuelve a dos.")
+
+
+# ---------------------------------------------------------------------------
+# TASK-072: el ENVOLTORIO de git y el pre-vuelo de existencia.
+#
+# Son DOS defectos distintos en las mismas dos lineas y por eso van separados:
+#
+#   1. `_git_de_fixture` corria `subprocess.run` SIN `stdin=`, luego sus 37
+#      llamadas heredaban el descriptor 0 del arnes. MEDIDO el 2026-10-08 con
+#      una fixture propia: descriptor heredado de TTY 127 ms, `DEVNULL` 140 ms,
+#      y **pipe abierto que nadie escribe ni cierra: NO VUELVE**. Con TTY hoy
+#      no se cuelga, luego el defecto no es "un cuelgue hoy" sino un modo de
+#      fallo real (agente desatendido) que `stdin=DEVNULL` hace desaparecer.
+#   2. Los DOS `pre-vuelo` de existencia eran TAUTOLOGICOS: usaban
+#      `cat-file --batch-check`, que lee los nombres por stdin, sin pasarle
+#      `input=`. MEDIDO: rc 0 con stdout VACIO, luego `HASH not in ''` es True
+#      para cualquier hash. No podian fallar. Y el texto de sus aserciones
+#      ("existe de verdad") afirmaba lo contrario de lo que la operacion
+#      (`not in`) demostraba.
+#
+# Los tres tests de abajo apuntan a los tres mutantes de la propuesta (M1, M2,
+# M3) y el cuarto es el guard estructural que impide que la forma exacta
+# reaparezca por yoste (M4).
+# ---------------------------------------------------------------------------
+
+
+def test_el_envoltorio_git_no_hereda_stdin_y_no_cuelga_en_desatendido():
+    """AC-2' / M1: el envoltorio REAL de `run_tests.py`, con un padre desatendido.
+
+    Por que esto y no una replica: si el test copiara la llamada, mutar
+    `_git_de_fixture` no lo tocaria y seria otro decorativo -- que es
+    exactamente el fallo que este ciclo vino a matar. El hijo importa el
+    modulo REAL y llama a su envoltorio REAL.
+
+    Por que un `os.pipe()` que el padre NO escribe ni NO cierra: es el modo de
+    fallo MEDIDO, no una aproximacion. Con un `stdin` heredado que es una TTY
+    (que es lo que este host le regala hoy) el bug no se manifiesta, y un test
+    que dependa de esa casualidad no discrimina nada. El padre construye el
+    escenario que el bug NO soporta.
+
+    El hijo ejecuta DOS comandos: `rev-parse --short HEAD`, que NO lee stdin, y
+    `cat-file --batch-check`, que SI lo lee. El assert exige que **ambos**
+    volten. Sin el segundo, un arreglo que pase `stdin` solo en un camino
+    seguiria verde; con el primero, un `git` que se cuelgue siempre seria leido
+    como un bug del comando y no del envoltorio.
+
+    MEDIDO el 2026-10-08, TRES corridas del hijo por el camino bueno: 8 896 ms,
+    6 850 ms y 1 704 ms, de las que solo 330-451 ms son las dos llamadas de git.
+    Lo que domina es el `import run_tests` (7 468 / 5 768 / 661 ms segun la
+    corrida): el hijo carga CustomTkinter y pydantic. Por eso el timeout del
+    padre es de **60 s y no los 10 s** que decia la propuesta: con 10 s, este
+    mismo test daria un rojo POR LENTITUD en la primera pasada en una maquina
+    como esta, que es el falso rojo que el arnes de este repo ya ha pagado
+    (TASK-069). Un timeout tiene que separar "colgado" de "lento", y medido
+    aqui el lento llega a 8,9 s.
+
+    Y el otro lado del reloj, MEDIDO tambien: `subprocess.run(timeout=...)` NO
+    acota el cuelgue en este host. Con un pipe abierto y `timeout=6`, la llamada
+    no habia revuelto ni a los 90 s. Por eso el padre mata al hijo a mano en
+    el `except` y no se fia del `timeout` del envoltorio para limpiar.
+    """
+    import shutil
+    import subprocess
+    import sys
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t072_desatendido_")
+    try:
+        d_hist = os.path.join(tmp, "historial")
+        _repo_temporal_de_un_commit(d_hist, "chore: fixture del envoltorio")
+
+        # El hijo IMPORTA el envoltorio real. `run_tests.py` es importable (no
+        # ejecuta su `__main__` al importarse) y `_git_de_fixture` vive en el.
+        # El flag lo recibe por `argv` y no por codigo incrustado: el codigo del
+        # hijo lo genera el padre, y si el padre lo escribiera aqui dentro el
+        # guard estructural de AC-4 lo veria como una llamada legitima.
+        ruta_hijo = os.path.join(tmp, "hijo.py")
+        with open(ruta_hijo, "w", encoding="utf-8") as fh:
+            fh.write(
+                "import os, sys\n"
+                "raiz = sys.argv[1]\n"
+                "d = sys.argv[2]\n"
+                # `src` explicito y NO por `abspath("src")`: el hijo tiene que
+                # encontrar el paquete aunque alguien lance el arnes desde otro
+                # `cwd`. Un rojo por `ModuleNotFoundError` seria un fallo del
+                # arnés del test, no del envoltorio que este test mide.
+                "sys.path.insert(0, os.path.join(raiz, 'src'))\n"
+                "sys.path.insert(0, raiz)\n"
+                "import run_tests\n"
+                # Comando 1: NO lee stdin. Debe volver siempre.
+                "r = run_tests._git_de_fixture(['rev-parse', '--short', 'HEAD'], d)\n"
+                "assert r.strip(), 'rev-parse devolvio vacio'\n"
+                "print('OK-1', r.strip(), flush=True)\n"
+                # Comando 2: SI lee stdin. Este es el que se queda esperando
+                # un EOF que el padre no va a mandar si el envoltorio hereda.
+                "r2 = run_tests._git_de_fixture(['cat-file', '--batch-check'], d)\n"
+                "print('OK-2', repr(r2), flush=True)\n"
+                "print('AMBOS-VUELTEN', flush=True)\n"
+            )
+
+        env = os.environ.copy()
+        env.pop("GIT_DIR", None)
+        env.pop("GIT_WORK_TREE", None)
+        env["PYTHONIOENCODING"] = "utf-8"
+
+        # --- EL PADRE DESATENDIDO -------------------------------------------
+        # El extremo de LECTURA del pipe es el `stdin` del hijo. El padre cierra
+        # su copia de `r` y se queda con `w` abierto sin escribir ni cerrar, de
+        # modo que el EOF no llega JAMAS. Con el envoltorio bien, `DEVNULL`
+        # convierte ese descriptor en EOF inmediato y el hijo termina.
+        raiz_repo = os.path.dirname(os.path.abspath(__file__))
+        r_fd, w_fd = os.pipe()
+        proceso = subprocess.Popen(
+            [sys.executable, ruta_hijo, raiz_repo, d_hist],
+            stdin=r_fd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8", errors="replace", env=env,
+            # El `cwd` es la RAIZ del repo, no `tmp`: `run_tests.py` hace
+            # `sys.path.insert(0, os.path.abspath("src"))` al importarse y su
+            # importacion de `woptimizer` lo necesita. La fixture de git se le
+            # pasa por `argv` en ruta absoluta, luego no depende del cwd.
+            cwd=raiz_repo,
+        )
+        os.close(r_fd)
+        try:
+            out, err = proceso.communicate(timeout=60)
+        except subprocess.TimeoutExpired:
+            # `timeout` no acota el cuelgue en este host
+            # (con `timeout=6` no habia revuelto a los 90 s), asi que el padre
+            # mata a mano y SOLO entonces recoge la salida. Sin este `kill`, el
+            # hijo se queda vivo con el pipe abierto y el resto de la suite
+            # carga con el.
+            proceso.kill()
+            try:
+                out, err = proceso.communicate(timeout=15)
+            except subprocess.TimeoutExpired:
+                # Un nieto que no muere no puede impedir que este test relate.
+                out, err = ("", "(el hijo no respondio ni tras kill)")
+            os.close(w_fd)
+            raise AssertionError(
+                "el envoltorio REAL de git se ha quedado colgado mas de 60 s con "
+                "un `stdin` heredado que es un pipe abierto sin EOF. Eso es el "
+                "defecto de TASK-072: sin `stdin=subprocess.DEVNULL` el comando "
+                "`git cat-file --batch-check` hereda el descriptor y espera una "
+                "entrada que no va a llegar. La salida parcial del hijo:\n"
+                f"stdout={out!r}\nstderr={err!r}") from None
+        os.close(w_fd)
+
+        assert "AMBOS-VUELTEN" in out, (
+            "el hijo tiene que terminar los DOS comandos y anunciarlo. Si no "
+            f"anuncio 'AMBOS-VUELTEN', no termino. rc={proceso.returncode}\n"
+            f"stdout={out!r}\nstderr={err!r}")
+        assert "OK-1" in out, (
+            f"el comando que NO lee stdin (`rev-parse`) tiene que volver. "
+            f"stdout={out!r}\nstderr={err!r}")
+        assert "OK-2" in out, (
+            f"el comando que SI lee stdin (`cat-file --batch-check`) tiene que "
+            f"volver TAMBIEN: es el que se hereda el descriptor, y sin "
+            f"`stdin=DEVNULL` en el envoltorio se queda esperando. "
+            f"stdout={out!r}\nstderr={err!r}")
+        assert proceso.returncode == 0, (
+            f"el hijo tiene que salir con 0; salio con {proceso.returncode}. "
+            f"stderr={err!r}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Envoltorio de git sin stdin heredado: los dos comandos vuelven en un "
+          "padre desatendido con el pipe abierto.")
+
+
+def test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe():
+    """AC-3 / M2 y M3: el pre-vuelo decide, y decide las DOS cosas.
+
+    MEDIDO el 2026-10-08: `git cat-file --batch-check` SIN `input=` responde
+    **rc 0 con stdout vacio**, luego la forma que usaban los dos `pre-vuelo`
+    (`HASH not in <vacio>`) era True para CUALQUIER hash. Este test es la
+    contraprueba que hoy no existia: exige que el hash REAL se resuelva y que
+    el MUERTO no, sobre la misma fixture.
+
+    **Por que el caso positivo es lo que discrimina:** sin el, un helper que
+    devolviera `False` siempre pasaria el caso negativo, y uno que devolviera
+    `True` siempre pasaria el positivo; con los dos, solo pasa el que responde
+    a git de verdad.
+    """
+    import shutil
+
+    import validate_docs as vd
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t072_pre_vuelo_")
+    try:
+        d_hist = os.path.join(tmp, "historial")
+        _repo_temporal_de_un_commit(d_hist, "chore: fixture del pre-vuelo")
+        hash_real = _git_de_fixture(
+            ["rev-parse", "--short", "HEAD"], d_hist).strip()
+        hash_muerto = "deadbee"
+        assert vd.RE_HASH_CORTO.fullmatch(hash_muerto), (
+            "el hash muerto de la fixture tiene que ser CONFORME (7-40 hex): si no "
+            "fuera conforme, el pre-vuelo mediria la forma y no la existencia")
+
+        assert _objeto_existe_en_fixture(hash_real, d_hist) is True, (
+            f"el hash real {hash_real} tiene que EXISTIR en su propia fixture. Si "
+            "no, o la fixture no tiene el commit o el helper no lee el codigo de "
+            "git: uno de los dos. Un helper que devolviera False siempre pasaria "
+            "el caso negativo de al lado, y por eso esta asercion es la que lo "
+            "mata")
+
+        assert _objeto_existe_en_fixture(hash_muerto, d_hist) is False, (
+            f"el hash muerto {hash_muerto} tiene que NO existir en esa fixture. Si "
+            "existe, la fixture no distingue el caso muerto del real y todo lo que "
+            "mide el check 9 con ella queda sin objeto")
+
+        # Y el que MATA al M2 (volver a `cat-file --batch-check` sin `input=`):
+        # con el codigo viejo la salida es `''` y el caso positivo de arriba
+        # revienta. Se deja escrito en el mensaje para que quien lea el rojo sepa
+        # que medico.
+        assert _objeto_existe_en_fixture(hash_real + "0", d_hist) is False, (
+            "un hash REAL mas un caracter tiene que NO existir: `cat-file -e` "
+            "responde 128 con `fatal: Not a valid object name` y eso se traduce a "
+            "False, no a un AssertionError. Si esto revienta, el helper esta "
+            "tratando el 128 como fallo de git, que es el falso verde que "
+            "_git_de_fixture tendria")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Pre-vuelo de existencia: el hash real se resuelve y el muerto no, y el "
+          "128 de git no se pierde como AssertionError.")
+
+
+def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
+    """AC-4 / M4: guard estructural sobre el `run_tests.py` REAL.
+
+    Mata la reaparicion por yoste de la forma exacta. Se comprueba con `ast` y
+    NO contando coincidencias de texto: lo que se exige es que una llamada que
+    PASE una lista con `cat-file` y `--batch-check` lleve el keyword `input=`. Un
+    `in` sobre el fuente daria el mismo veredicto con la lista partida en dos
+    lineas, que es justo como volveria.
+
+    MEDIDO el 2026-10-08, y por eso el guard mira las CUATRO formas y no una: la
+    primera version comparaba la lista por igualdad EXACTA contra
+    `['cat-file', '--batch-check']` y los mutantes M4 y M5 la revivieron, porque
+    la forma natural de escribirla es `['git', 'cat-file', '--batch-check']`, con
+    el ejecutable delante. Un guard que acepta una forma de cuatro no vigila la
+    reaparicion que de verdad iba a ocurrir, y la que lleva el `git` delante es
+    la mas probable de las dos que se pueden escribir.
+
+    Y documente por que el `--batch-check` legitimo de `validate_docs.py` (~100
+    hashes del journal real en una sola llamada, con `input=`) NO esta aqui: es
+    una primitive distinta y correcta para "existen estos N objetos", y con un
+    `cat-file -t` por hash serian ~100 subprocesos. Este guard solo vigila
+    `run_tests.py`, que es donde el defecto estaba.
+    """
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(raiz, "run_tests.py"), encoding="utf-8") as fh:
+        fuente = fh.read()
+    arbol = ast.parse(fuente)
+
+    SIN_INPUT = []
+    CON_INPUT = []
+    for nodo in ast.walk(arbol):
+        if not isinstance(nodo, ast.Call):
+            continue
+        # MEDIDO el 2026-10-08: la primera version de este guard comparaba la
+        # lista por IGUALDAD EXACTA contra `['cat-file', '--batch-check']`, y el
+        # mutante M4 la revivio por el motivo mas tonto posible: la forma
+        # natural de escribirla es `['git', 'cat-file', '--batch-check']`, con
+        # el ejecutable delante. El guard pedia una forma y no la otra, luego
+        # aceptaba la mas probable de las dos. Ahora exige que la lista
+        # CONTENGA `--batch-check` (y `cat-file`), en cualquier posicion y con
+        # el ejecutable delante o detras, que es donde puede estar de verdad.
+        pasa_el_batch = False
+        for argumento in list(nodo.args) + [kw.value for kw in nodo.keywords]:
+            if not isinstance(argumento, ast.List):
+                continue
+            valores = [e.value for e in argumento.elts
+                       if isinstance(e, ast.Constant)]
+            if "--batch-check" in valores and "cat-file" in valores:
+                pasa_el_batch = True
+                break
+        if not pasa_el_batch:
+            continue
+        (CON_INPUT if any(kw.arg == "input" for kw in nodo.keywords)
+         else SIN_INPUT).append(nodo.lineno)
+
+    assert not SIN_INPUT, (
+        "hay llamadas a `git cat-file --batch-check` SIN `input=` en las lineas "
+        f"{SIN_INPUT}. `cat-file --batch-check` lee los nombres por STDIN: sin "
+        "`input=` responde rc 0 con stdout VACIO (medido el 2026-10-08), luego "
+        "cualquier `HASH not in <salida>` es True para cualquier hash y el "
+        "pre-vuelo es decorativo. Con `input=` es una llamada legitima: por eso "
+        "la UNICA que hay en este repo esta en `validate_docs.py`, que pregunta "
+        "por ~100 hashes del journal en una sola llamada"
+    )
+
+    # Contraprueba del guard, y son TRES formas porque la primera version de
+    # este test solo comprobaba una y por eso M4 paso: el guard tiene que ver
+    # la forma MAS PROBABLE (`['git', ...]`), la forma de los `pre_vuelo`
+    # viejos (sin `git`) y el hecho de que con `input=` es legitima. Un guard
+    # que no encuentra lo que valida no es un validador, y uno que solo
+    # encuentra una forma de cuatro tampoco.
+    def _tiene_input(fragmento):
+        return any(kw.arg == "input" for c in ast.walk(ast.parse(fragmento))
+                   if isinstance(c, ast.Call) for kw in c.keywords)
+
+    CON_INPUT_ = "_f(['cat-file', '--batch-check'], input='x\\n')"
+    SIN_INPUT_ = "_f(['cat-file', '--batch-check'])"
+    CON_GIT = "subprocess.run(['git', 'cat-file', '--batch-check'], input='x\\n')"
+    SIN_GIT = "subprocess.run(['git', 'cat-file', '--batch-check'])"
+    par = [
+        ("con input= y sin git", _tiene_input(CON_INPUT_), True),
+        ("sin input= y sin git", _tiene_input(SIN_INPUT_), False),
+        ("con input= y con git", _tiene_input(CON_GIT), True),
+        ("sin input= y con git", _tiene_input(SIN_GIT), False),
+    ]
+    fallos = [nombre for nombre, medido, esperado in par if medido != esperado]
+    assert not fallos, (
+        f"el parser de este guard no distingue las cuatro formas que importan: "
+        f"{fallos}. Un guard que no puede ver la diferencia que exige pasa por "
+        "todo lo que hay en el fichero")
+    print(f"Guard estructural de cat-file: 0 llamadas sin input= "
+          f"({len(CON_INPUT)} con input= en run_tests.py, todas legitimas).")
 
 
 # ---------------------------------------------------------------------------
@@ -24204,4 +24596,19 @@ if __name__ == "__main__":
     # con `start_categories` de dos elementos— y por eso las tres filas de aqui
     # son 2, 1 y 0 categorias omitidas con el MISMO par de categories.
     test_la_clausula_de_arranque_lista_todas_las_categorias_y_va_en_singular()
+    # TASK-072: el ENVOLTORIO de git y el pre-vuelo de existencia. Suite:
+    # 191 -> 194. Las TRES van DETRAS del marcador y AL FINAL, por lo mismo que
+    # la 189: no renumera las 189 filas de la tabla de `docs/ai/testing-guide.md`.
+    # Ninguna abre ventana: son git en `%TEMP%` y `ast` sobre el propio
+    # fichero, luego el reparto se queda en 142 backend + 52 headless = 194.
+    #
+    # La primera es la que discrimina el DEFECTO (herencia de stdin en las 37
+    # llamadas): construye el padre desatendido de verdad, un pipe que el padre
+    # no escribe ni cierra, y el hijo invoca el ENVOLTORIO REAL importando este
+    # modulo. La segunda mata al pre-vuelo tautologico (exige las DOS
+    # respuestas) y la tercera es el guard estructural que impide que
+    # `cat-file --batch-check` sin `input=` vuelva a aparecer aqui.
+    test_el_envoltorio_git_no_hereda_stdin_y_no_cuelga_en_desatendido()      # AC-2'
+    test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe()       # AC-3
+    test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input()        # AC-4
     print("\nALL TESTS PASSED.")
