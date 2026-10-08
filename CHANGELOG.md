@@ -2,11 +2,11 @@
 
 **Tooling** - `TASK-072` (El arnés pedía entrada por consola y dos comprobaciones no comprobaban nada)
 
-**Estado**: **arreglo hecho, medido y con los cinco mutantes cazados a mano.** Tests: **194** (142 + 52). **Ningún cambio en el programa**: `src/woptimizer/**` intacto.
+**Estado**: **arreglo hecho y medido, con los cinco mutantes cazados a mano y los once supervivientes que encontró la auditoría cerrados en la segunda ronda.** Tests: **197** (142 + 55). **Ningún cambio en el programa**: `src/woptimizer/**` intacto.
 
 ### 🔴 Lo que pasaba
 
-El arnés de tests (`run_tests.py`) tiene 37 llamadas a `git` que salen todas por el mismo envoltorio, y ese envoltorio **heredaba la entrada por consola del proceso**. Con una TTY no pasa nada, pero cuando el arnés lo lanza alguien desatendido y su entrada es una tubería abierta, un comando de git que lee de ahí **se queda esperando para siempre**.
+El arnés de tests (`run_tests.py`) hace **46 llamadas a `git` medidas hoy con el analizador de código: 37 salen por el mismo envoltorio y 9 por el comprobador de existencia**, que lleva el suyo propio porque para él el código 128 es una respuesta legítima y no un fallo. Ese envoltorio común **heredaba la entrada por consola del proceso**. Con una TTY no pasa nada, pero cuando el arnés lo lanza alguien desatendido y su entrada es una tubería abierta, un comando de git que lee de ahí **se queda esperando para siempre**.
 
 Lo grave estaba justo debajo: **dos de las comprobaciones del test 9 no comprobaban nada**. Preguntaban "¿existe este hash?" con un comando de git que **lee los nombres por la entrada estándar**, y no le pasaban ninguna entrada. Git respondía "todo correcto" con la salida **vacía**, luego la pregunta quedaba siempre contestada que sí, exista el hash o no. **No podían fallar.** Y el texto de sus mensajes decía lo contrario de lo que la comprobación demostraba: anunciaban que el hash "existe de verdad" mientras la operación afirmaba que **no** aparece.
 
@@ -20,7 +20,7 @@ Lo grave estaba justo debajo: **dos de las comprobaciones del test 9 no comproba
 
 1. **«Se cuelga hoy»**: en este equipo **no se cuelga hoy**, porque el arnés corre con consola. Medido: 140 ms con consola heredada y 141 ms con la corrección. Lo que sí existe, y es real, es el caso del proceso desatendido, que se queda esperando sin límite.
 2. **«Los procesos hijos retienen los descriptores y congelan todo al expirar el tiempo límite»**: **no se ha reproducido y no se afirma.** Lo que se midió es otra cosa distinta: **el límite de tiempo no acota este cuelgue en este equipo** (con 6 segundos de límite, la llamada no había vuelto a los 90). Por eso el arnés tiene que cerrar el proceso hijo a mano.
-3. **«40 llamadas»**: son **37**, contadas.
+3. **«40 llamadas»**: no son 40, y el número cambia con cada ciclo. **MEDIDO el 2026-10-08 sobre el árbol de hoy: 46** —37 por el envoltorio común y 9 por el comprobador de existencia—, de las cuales **9 no salen por el mismo sitio**. El «37» que se declaraba antes venía de un conteo que incluía la definición de la función y que hoy ya no describe el fichero; un número de llamadas que hay que volver a contar cada vez que se toca el arnés no es un dato, es una deuda.
 
 ### 🧪 Las cinco formas de arreglarlo mal, probadas una a una
 
@@ -30,12 +30,21 @@ Lo grave estaba justo debajo: **dos de las comprobaciones del test 9 no comproba
 - **Reintroducir la llamada sin entrada, dentro de la comprobación nueva**: el guard estructural la caza.
 - **Reintroducirla dentro del envoltorio, que es donde estaba el defecto**: también la caza. **La segunda es la que importa**: la primera versión del guard comparaba la lista de argumentos por igualdad exacta y **aceptaba la forma más probable de las dos que se pueden escribir**.
 
+### 🔁 Segunda ronda: la auditoría de mutación volvió a medir y encontró once huecos
+
+El `mutation-auditor` reprodujo de forma independiente los cinco mutantes de la primera ronda y los confirmó, y luego **midió once más que nadie había mirado**: **diez los mató, once sobrevivieron**, y veredicto **FAIL**. Eran justo la clase de defecto que este ciclo vino a matar —**comprobaciones que no pueden fallar**—, así que **se arreglan, no se documentan**. Tres sondas nuevas y un guard reescrito:
+
+- **La rama del fallo de git era fail-open y nadie la ejecutaba.** El comprobador de existencia distingue tres respuestas de git: 0 (existe), 128 (no existe) y cualquier otra cosa, que no es una respuesta sobre el objeto sino **git roto**. Con un `return False` en esa rama, un git roto se traducía a "el objeto no existe": el falso verde exacto, en la única rama sin test. Y el agravante está medido en este repo: un directorio vacío que no es repositorio **también devuelve 128**, luego esa disyuntiva solo es correcta si git está vivo. Ahora un código de salida fuera de {0, 128} **revienta con el texto literal del error de git**, y ese texto es lo que distingue "repositorio vacío" de "git roto".
+- **Los tres reintentos no los comprobaba nadie**, en ninguno de los dos envoltorios, y el motivo declarado del reintento es el fallo intermitente de este equipo al lanzar procesos. Con un solo intento, ese fallo transitorio se convierte en una respuesta falsa. Ahora el arnés **inyecta dos fallos seguidos y uno bueno** y exige que la llamada devuelva la correcta —no que revinte—, además de contar las llamadas de verdad: **tres, ni dos ni una**.
+- **El guard que impedía volver a escribir la llamada prohibida veía 2 de las 7 formas de escribirla** (aceptaba listas y poco más), y su propia contraprueba no lo ejercitaba: comprobaba un predicado auxiliar, así que **desactivar el guard entero dejaba la suite en verde**. Ahora el guard **resuelve el argumento a su texto** antes de decidir —tupla, variable intermedia, concatenación de constantes, lista más lista y la forma con `shell=True`—, y **la contraprueba llama a la detección real sobre diez formas**, exigiendo las dos mitades de cada una: que la vea, y qué veredicto le da el `input=`.
+- Y de paso, tres cosas que **solo se creían leyendo el código**: que la entrada a `/dev/null` del comprobador nuevo estuviera en sus tres intentos, que la existencia la decidiera el comando que no lee la entrada y no su equivalente, y que el pre-vuelo del test 9 **seguiera ahí**. Este último se podía **borrar entero** sin que la suite se enterara: ahora se vigila que se ejecute **antes** de que el test valide nada, con sus dos mitades.
+
 ### Verificado
 
-- **194 tests en verde**, `ALL TESTS PASSED`, salida 0.
+- **197 tests en verde**, `ALL TESTS PASSED`, salida 0.
 - **`verify_ui_syntax.py`: EXITO**, 9 de 9 módulos.
 - **`validate_docs.py`: 0 fallos**, salida 0.
-- **Cinco mutantes cazados**, cada uno en su `assert` y no por una excepción.
+- **Los once mutantes del auditor, cazados uno a uno**, cada uno en su `assert` y no por una excepción, medidos de nuevo sobre una copia del árbol con la mutación aplicada.
 - `src/woptimizer/**` con **cero** cambios.
 
 ## CYCLE-059 - 2026-10-06

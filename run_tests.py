@@ -21133,24 +21133,190 @@ def test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe():
           "128 de git no se pierde como AssertionError.")
 
 
+def _argv_de_un_argumento(nodo, variables, uso, profundidad=0):
+    """`(es_secuencia, tokens)` de lo que un argumento de llamada lleva dentro.
+
+    MEDIDO el 2026-10-08 (CYCLE-060, ronda 2, `mutation-auditor` D3r-D7r): la
+    primera version del guard exigia `isinstance(argumento, ast.List)` y con eso
+    veia DOS de las siete formas de escribir `git cat-file --batch-check`. La
+    causa era una linea, y la leccion tambien: ampliar ENUMERANDO formas (de una
+    a dos) no cierra la lista, porque el limite no es "cuantas formas conozco"
+    sino "reconozco el ARGUMENTO". Aqui se resuelve el argumento a sus tokens,
+    que es lo que la llamada REALMENTE pasa a git.
+
+    `es_secuencia` distingue las dos formas en que la primitive puede aparecer y
+    que NO son la misma cosa: una secuencia de argv (`["git", "cat-file",
+    "--batch-check"]`) y una cadena de comando con `shell=True` (`"git cat-file
+    --batch-check"`). Sin distinguirlas, o se aceptaria la forma de shell como
+    si fuera un argv, o se exigiria `input=` a una llamada que no existe.
+
+    Devuelve `None` cuando NO SE SABE, y `None` no es "no lleva la primitive":
+    quien decide lo trata como "no se ha podido mirar", nunca como verde. La
+    profundidad acota la recursion porque un par de asignaciones cruzadas
+    (`a = b; b = a`) es un bucle, y un bucle en un guard es un cuelgue.
+
+    `uso` es la linea de la llamada que se esta mirando, y es lo que decide que
+    enlace vale. Si no hay ninguno ANTERIOR se cae al primero que exista, que es
+    deliberadamente conservador: una constante de modulo definida mas abajo del
+    uso se resuelve, y un guard que se pasa de ruidoso se arregla en un commit,
+    mientras que uno que se pasa de ciego se lleva un ciclo entero de holes.
+    """
+    if nodo is None or profundidad > 8:
+        return None
+    if isinstance(nodo, ast.Starred):
+        return _argv_de_un_argumento(nodo.value, variables, uso, profundidad + 1)
+    if isinstance(nodo, ast.Constant):
+        return (False, [nodo.value]) if isinstance(nodo.value, str) else None
+    if isinstance(nodo, (ast.List, ast.Tuple, ast.Set)):
+        tokens = []
+        for elemento in nodo.elts:
+            parte = _argv_de_un_argumento(elemento, variables, uso, profundidad + 1)
+            if parte is None:
+                return None
+            tokens.extend(parte[1])
+        return (True, tokens)
+    if isinstance(nodo, ast.BinOp) and isinstance(nodo.op, ast.Add):
+        izquierda = _argv_de_un_argumento(nodo.left, variables, uso,
+                                          profundidad + 1)
+        derecha = _argv_de_un_argumento(nodo.right, variables, uso,
+                                        profundidad + 1)
+        if izquierda is None or derecha is None or izquierda[0] != derecha[0]:
+            return None
+        if izquierda[0]:
+            # `["git"] + ["cat-file", "--batch-check"]`: dos argv pegados.
+            return (True, izquierda[1] + derecha[1])
+        return (False, [izquierda[1][0] + derecha[1][0]])
+    if isinstance(nodo, ast.Name):
+        # MEDIDO el 2026-10-08 (CYCLE-060 ronda 2): el mapa se resolvia por "la
+        # ultima asignacion gana" sobre un `ast.walk`, que es un recorrido en
+        # ANCHURA y no en orden de fuente, y el mutante D4r (la forma prohibida
+        # con variable intermedia) lo revivio: `_git_de_fixture(args, cwd)` se
+        # resolvia contra el `args = nodo.args` de la linea 7873 --un atributo,
+        # irresoluble-- en vez de contra la lista de al lado. Lo que decide es el
+        # ULTIMO ENLACE ANTERIOR AL USO, que es la regla de Python y la que
+        # hace falta.
+        enlaces = variables.get(nodo.id) or ()
+        candidatos = [valor for linea, valor in enlaces if linea <= uso]
+        elegido = candidatos[-1] if candidatos else (
+            enlaces[0][1] if enlaces else None)
+        return _argv_de_un_argumento(elegido, variables, uso, profundidad + 1)
+    if isinstance(nodo, ast.JoinedStr):
+        texto = "".join(parte.value for parte in nodo.values
+                        if isinstance(parte, ast.Constant)
+                        and isinstance(parte.value, str))
+        return (False, [texto]) if texto else None
+    return None
+
+
+def _variables_del_modulo(arbol):
+    """`{nombre: [(linea, nodo), ...]}` de las asignaciones de una sola pieza.
+
+    Sin esto, la forma `args = [...]` + `subprocess.run(args)` es invisible: un
+    `Name` no es una lista y un guard que solo mira literales la deja pasar. La
+    lista esta ORDENADA por linea porque un mismo nombre puede estar enlazado en
+    varios sitios (MEDIDO el 2026-10-08: `args` esta enlazado en la linea 7873
+    con `nodo.args` y en la del mutante con la lista), y lo que resuelve el uso
+    es el enlace ANTERIOR, no el que aparezca el ultimo al recorrer. Un `for` o
+    una desestructuracion no se resuelven y se tratan como "no se sabe", nunca
+    como "no lleva la primitive".
+    """
+    variables = {}
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.Assign) and len(nodo.targets) == 1 \
+                and isinstance(nodo.targets[0], ast.Name):
+            variables.setdefault(nodo.targets[0].id, []).append(
+                (nodo.lineno, nodo.value))
+        elif isinstance(nodo, ast.AnnAssign) and isinstance(nodo.target, ast.Name) \
+                and nodo.value is not None:
+            variables.setdefault(nodo.target.id, []).append(
+                (nodo.lineno, nodo.value))
+    for enlaces in variables.values():
+        enlaces.sort(key=lambda enlace: enlace[0])
+    return variables
+
+
+def _llamadas_cat_file_batch_check(fuente):
+    """`(sin_input, con_input)`: lineas que pasan `git cat-file --batch-check`.
+
+    MEDIDO el 2026-10-08 con el `ast` de este mismo fichero: 7 formas de
+    escribir la llamada prohibida, y las 7 se ven (tupla, variable
+    intermedia, concatenacion de constantes, `["git"] + [...]` y la cadena de
+    `shell=True` incluidas). El limite DECLARADO de este guard, para que un
+    limite no se lea como cobertura: ve la primitive CUANDO SE PASA COMO
+    ARGUMENTO de la llamada --secuencia, tupla, nombre o concatenacion-- o como
+    cadena de comando con `shell=True`. NO ve una cadena que contenga el texto
+    de la llamada sin ser un comando, que es el caso del fuente de un proceso
+    hijo escrito con `fh.write(...)`: eso es un PROGRAMA, no una invocacion, y
+    ahi la primitive la decide otro fichero.
+
+    Que la contraprueba de `test_ninguna_llamada_de_cat_file_batch_check_
+    se_queda_sin_input` llame a ESTA funcion y no a un predicado auxiliar es la
+    diferencia entre un guard que se autovigila y uno decorativo: con
+    `for argumento in []` debajo, un predicado auxiliar sigue dando el mismo
+    veredicto y el guard queda mirando cero llamadas sin que nadie lo note.
+    """
+    arbol = ast.parse(fuente) if isinstance(fuente, str) else fuente
+    variables = _variables_del_modulo(arbol)
+    sin_input, con_input = [], []
+    for nodo in ast.walk(arbol):
+        if not isinstance(nodo, ast.Call):
+            continue
+        pasado = False
+        es_shell = any(kw.arg == "shell" for kw in nodo.keywords)
+        for argumento in list(nodo.args) + [kw.value for kw in nodo.keywords]:
+            resuelto = _argv_de_un_argumento(argumento, variables, nodo.lineno)
+            if resuelto is None:
+                continue
+            es_secuencia, tokens = resuelto
+            if es_secuencia:
+                # Se exigen los DOS tokens y no una subcadena: `cat-file -e` es
+                # otra primitive, y un `--batch-check` suelto en otra parte del
+                # fichero no es esta llamada.
+                if "cat-file" in tokens and "--batch-check" in tokens:
+                    pasado = True
+                    break
+            if es_shell and any("--batch-check" in token for token in tokens):
+                pasado = True
+                break
+        if not pasado:
+            continue
+        if any(kw.arg == "input" for kw in nodo.keywords):
+            con_input.append(nodo.lineno)
+        else:
+            sin_input.append(nodo.lineno)
+    return sin_input, con_input
+
+
 def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
     """AC-4 / M4: guard estructural sobre el `run_tests.py` REAL.
 
     Mata la reaparicion por yoste de la forma exacta. Se comprueba con `ast` y
     NO contando coincidencias de texto: lo que se exige es que una llamada que
-    PASE una lista con `cat-file` y `--batch-check` lleve el keyword `input=`. Un
-    `in` sobre el fuente daria el mismo veredicto con la lista partida en dos
-    lineas, que es justo como volveria.
+    PASE `cat-file --batch-check` lleve el keyword `input=`. Un `in` sobre el
+    fuente daria el mismo veredicto con la lista partida en dos lineas, que es
+    justo como volveria.
 
-    MEDIDO el 2026-10-08, y por eso el guard mira las CUATRO formas y no una: la
-    primera version comparaba la lista por igualdad EXACTA contra
-    `['cat-file', '--batch-check']` y los mutantes M4 y M5 la revivieron, porque
-    la forma natural de escribirla es `['git', 'cat-file', '--batch-check']`, con
-    el ejecutable delante. Un guard que acepta una forma de cuatro no vigila la
-    reaparicion que de verdad iba a ocurrir, y la que lleva el `git` delante es
-    la mas probable de las dos que se pueden escribir.
+    MEDIDO el 2026-10-08 por el `mutation-auditor`, y es lo que obliga a la
+    forma en que esta escrito: exigir `isinstance(argumento, ast.List)` --la
+    primera version, y ya era la segunda ampliacion-- veia **2 de las 7 formas**
+    que el auditor midio: la lista, y la lista con `git` delante. Las otras
+    CINCO pasaban: la TUPLA, la VARIABLE INTERMEDIA, la CONCATENACION de
+    constantes, el `["git"] + [...]` y la cadena con `shell=True`. La leccion de
+    las dos ampliaciones es la que esta en `_argv_de_un_argumento`: enumerar
+    formas no cierra la lista, resolver el argumento si.
 
-    Y documente por que el `--batch-check` legitimo de `validate_docs.py` (~100
+    **La contraprueba llama a la DETECCION REAL, no a un predicado auxiliar.**
+    MEDIDO tambien por el auditor: la contraprueba anterior usaba
+    `_tiene_input(fragmento)`, que prueba que `ast` ve un keyword `input` y NO
+    que la deteccion de `--batch-check` funcione. Con `for argumento in []`
+    debajo, esa contraprueba seguia en verde y el guard se quedaba mirando
+    cero llamadas: un guard que se puede desactivar entero sin que nadie lo note.
+    Por eso aqui se exigen las DOS mitades sobre cada fragmento: que la
+    deteccion lo VE (una linea clasificada) y que el veredicto de `input=` es el
+    que corresponde. El control negativo va al lado, porque un guard que ve
+    todo no es un guard: es una alarma que siempre suena.
+
+    Y documenta por que el `--batch-check` legitimo de `validate_docs.py` (~100
     hashes del journal real en una sola llamada, con `input=`) NO esta aqui: es
     una primitive distinta y correcta para "existen estos N objetos", y con un
     `cat-file -t` por hash serian ~100 subprocesos. Este guard solo vigila
@@ -21159,35 +21325,8 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
     raiz = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(raiz, "run_tests.py"), encoding="utf-8") as fh:
         fuente = fh.read()
-    arbol = ast.parse(fuente)
 
-    SIN_INPUT = []
-    CON_INPUT = []
-    for nodo in ast.walk(arbol):
-        if not isinstance(nodo, ast.Call):
-            continue
-        # MEDIDO el 2026-10-08: la primera version de este guard comparaba la
-        # lista por IGUALDAD EXACTA contra `['cat-file', '--batch-check']`, y el
-        # mutante M4 la revivio por el motivo mas tonto posible: la forma
-        # natural de escribirla es `['git', 'cat-file', '--batch-check']`, con
-        # el ejecutable delante. El guard pedia una forma y no la otra, luego
-        # aceptaba la mas probable de las dos. Ahora exige que la lista
-        # CONTENGA `--batch-check` (y `cat-file`), en cualquier posicion y con
-        # el ejecutable delante o detras, que es donde puede estar de verdad.
-        pasa_el_batch = False
-        for argumento in list(nodo.args) + [kw.value for kw in nodo.keywords]:
-            if not isinstance(argumento, ast.List):
-                continue
-            valores = [e.value for e in argumento.elts
-                       if isinstance(e, ast.Constant)]
-            if "--batch-check" in valores and "cat-file" in valores:
-                pasa_el_batch = True
-                break
-        if not pasa_el_batch:
-            continue
-        (CON_INPUT if any(kw.arg == "input" for kw in nodo.keywords)
-         else SIN_INPUT).append(nodo.lineno)
-
+    SIN_INPUT, _CON_INPUT = _llamadas_cat_file_batch_check(fuente)
     assert not SIN_INPUT, (
         "hay llamadas a `git cat-file --batch-check` SIN `input=` en las lineas "
         f"{SIN_INPUT}. `cat-file --batch-check` lee los nombres por STDIN: sin "
@@ -21198,33 +21337,352 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
         "por ~100 hashes del journal en una sola llamada"
     )
 
-    # Contraprueba del guard, y son TRES formas porque la primera version de
-    # este test solo comprobaba una y por eso M4 paso: el guard tiene que ver
-    # la forma MAS PROBABLE (`['git', ...]`), la forma de los `pre_vuelo`
-    # viejos (sin `git`) y el hecho de que con `input=` es legitima. Un guard
-    # que no encuentra lo que valida no es un validador, y uno que solo
-    # encuentra una forma de cuatro tampoco.
-    def _tiene_input(fragmento):
-        return any(kw.arg == "input" for c in ast.walk(ast.parse(fragmento))
-                   if isinstance(c, ast.Call) for kw in c.keywords)
-
-    CON_INPUT_ = "_f(['cat-file', '--batch-check'], input='x\\n')"
-    SIN_INPUT_ = "_f(['cat-file', '--batch-check'])"
-    CON_GIT = "subprocess.run(['git', 'cat-file', '--batch-check'], input='x\\n')"
-    SIN_GIT = "subprocess.run(['git', 'cat-file', '--batch-check'])"
-    par = [
-        ("con input= y sin git", _tiene_input(CON_INPUT_), True),
-        ("sin input= y sin git", _tiene_input(SIN_INPUT_), False),
-        ("con input= y con git", _tiene_input(CON_GIT), True),
-        ("sin input= y con git", _tiene_input(SIN_GIT), False),
+    # Las SIETE formas que el `mutation-auditor` midio como invisibles mas la
+    # octava (la variable con `input=`, que ata las dos mitades). Cada una lleva
+    # el veredicto que se espera del `input=`, y `con_input=False` significa
+    # "tiene que acabar en SIN_INPUT", no "no se ha visto".
+    FRAGMENTOS = [
+        ("sin git y sin input=", "subprocess.run(['cat-file', '--batch-check'])",
+         False),
+        ("con git y sin input=",
+         "subprocess.run(['git', 'cat-file', '--batch-check'])", False),
+        ("con git y con input=",
+         "subprocess.run(['git', 'cat-file', '--batch-check'], input='x\\n')",
+         True),
+        ("TUPLA", "subprocess.run(('git', 'cat-file', '--batch-check'))", False),
+        ("VARIABLE INTERMEDIA",
+         "args = ['git', 'cat-file', '--batch-check']\nsubprocess.run(args)",
+         False),
+        ("CONCATENACION",
+         "subprocess.run(['git', 'cat-file', '--batch' + '-check'])", False),
+        ("LISTA MAS LISTA",
+         "subprocess.run(['git'] + ['cat-file', '--batch-check'])", False),
+        ("CADENA CON shell=True",
+         "subprocess.run('git cat-file --batch-check', shell=True)", False),
+        ("VARIABLE CON input=",
+         "argv = ['git', 'cat-file', '--batch-check']\ndatos = 'x\\n'\n"
+         "subprocess.run(argv, input=datos)", True),
+        # La que fija la REGLA del enlace, y no una forma mas: el nombre se
+        # vuelve a enlazar DESPUES del uso, luego el enlace que vale es el que
+        # precede a la llamada. Con un "la ultima asignacion gana" esta forma no
+        # se ve, que es exactamente como revivio D4r (MEDIDO el 2026-10-08: el
+        # `args` de la linea 7873, `args = nodo.args`, tapaba la lista de al
+        # lado de la llamada).
+        ("ENLACE ANTERIOR AL USO",
+         "args = ['git', 'cat-file', '--batch-check']\nsubprocess.run(args)\n"
+         "args = 'nada que ver'", False),
     ]
-    fallos = [nombre for nombre, medido, esperado in par if medido != esperado]
+    fallos = []
+    for nombre, fragmento, con_input in FRAGMENTOS:
+        sin, con = _llamadas_cat_file_batch_check(fragmento)
+        if len(sin) + len(con) != 1:
+            fallos.append(
+                f"{nombre}: la deteccion REAL tiene que ver UNA llamada y ha visto "
+                f"{len(sin) + len(con)} (sin={sin}, con={con}). Un guard que no "
+                "ve la forma que vigila no vigila")
+        elif bool(con) != con_input:
+            fallos.append(
+                f"{nombre}: la deteccion la ve y la clasifica como "
+                f"{'CON' if con else 'SIN'} `input=`, y se esperaba lo contrario")
     assert not fallos, (
-        f"el parser de este guard no distingue las cuatro formas que importan: "
-        f"{fallos}. Un guard que no puede ver la diferencia que exige pasa por "
-        "todo lo que hay en el fichero")
-    print(f"Guard estructural de cat-file: 0 llamadas sin input= "
-          f"({len(CON_INPUT)} con input= en run_tests.py, todas legitimas).")
+        "la contraprueba del guard tiene que ejercer la DETECCION REAL sobre las "
+        f"formas que importan y las dos mitades de cada una: {fallos}. Con una "
+        "contraprueba que solo mira un predicado auxiliar, desactivar el bucle "
+        "que decide deja la suite en verde con el guard mirando cero llamadas")
+
+    # Control NEGATIVO: `cat-file -e` es la primitive del helper nuevo y NO
+    # lleva `--batch-check`, luego no puede salir en SIN_INPUT. Sin esta linea,
+    # "detecta" podria significar "detecta cualquier llamada de git".
+    sin_control, con_control = _llamadas_cat_file_batch_check(
+        "subprocess.run(['git', 'cat-file', '-e', 'deadbee'])")
+    assert not (sin_control or con_control), (
+        f"la deteccion tiene que ser ESPECIFICA: `cat-file -e` no lleva "
+        f"`--batch-check` y no puede salir (sin={sin_control}, "
+        f"con={con_control})")
+    print("Guard estructural de cat-file: 0 llamadas sin input= en run_tests.py; "
+          f"la deteccion real ve las {len(FRAGMENTOS)} formas de la contraprueba, "
+          "clasifica el input= de cada una y no ve `cat-file -e`.")
+
+
+def test_el_helper_de_existencia_revienta_un_rc_indefinido_tras_tres_intentos():
+    """S1 / B5, B7, A3 y B6: la rama de git-roto, los tres intentos y la
+    primitive, MEDIDOS y no leidos.
+
+    MEDIDO el 2026-10-08 por el `mutation-auditor`: cambiar el
+    `raise AssertionError(...)` de la rama "rc que no es ni 0 ni 128" por un
+    `return False` dejaba la suite EN VERDE. Es el falso verde exacto que este
+    ciclo vino a matar, en la unica rama sin test: un `git` roto se traduce a
+    "el objeto no existe". Y hay un agravante medido en este repo:
+    `validate_docs.py:490-493` documenta que un directorio vacio (que no es repo)
+    tambien devuelve rc 128, luego la disyuntiva existe/no-existe solo es
+    correcta si `git` esta vivo. Un fallo de git no se pierde como respuesta.
+
+    **Como se fuerza:** se sustituye `subprocess.run` en el modulo mientras dura
+    la llamada, restaurandolo en `finally`. Es inyeccion y no una copia del
+    helper: si el test reimplementara la llamada, mutar el helper no lo tocaria y
+    seria otro decorativo.
+
+    Lo que mide, y por que cada asercion discrimina:
+      * un rc que no es 0 ni 128 tiene que REVENTAR (mata B5: con `return
+        False` no hay error y la rama fail-open se cuela);
+      * con el `stderr` LITERAL en el mensaje (un `AssertionError` generico sin
+        el stderr seria un reventon sin diagnostico);
+      * **exactamente TRES llamadas** (mata B7: con `for _intento in (1,)` la
+        lista `reales` tiene 1 y el rc indefinido se pierde al primer intento,
+        que es justo el `spawn EPERM` transitorio para el que existe el reintento);
+      * `stdin=subprocess.DEVNULL` en LAS TRES (mata A3);
+      * el argv `['git', 'cat-file', '-e', hash]` (mata B6: con `-t` la
+        primitive cambia y el docstring afirma una medicion que el test no
+        reproduce);
+      * dos rc no-cero y uno bueno DEVUELVEN la respuesta correcta en lugar de
+        reventar (el reintento que AC-1 promete).
+    """
+    import shutil
+    import subprocess as sp
+
+    MARCA = "fatal: fallo de git de prueba, no un rc de objeto"
+    tmp = tempfile.mkdtemp(prefix="wopt_t072_rc_indefinido_")
+    try:
+        d_hist = os.path.join(tmp, "historial")
+        _repo_temporal_de_un_commit(d_hist, "chore: fixture del rc indefinido")
+
+        reales = []
+        guion = {"cola": []}
+
+        def falso_run(argv, **kwargs):
+            reales.append((list(argv), dict(kwargs)))
+            siguiente = guion["cola"].pop(0)
+            return sp.CompletedProcess(argv, siguiente["rc"],
+                                       siguiente.get("stdout", ""),
+                                       siguiente.get("stderr", ""))
+
+        sp_real = sp.run
+        sp.run = falso_run
+        try:
+            # --- (1) B5: rc que NO es 0 ni 128, las tres veces ---------------
+            guion["cola"] = [{"rc": 126, "stderr": MARCA}] * 3
+            error = None
+            try:
+                _objeto_existe_en_fixture("deadbee", d_hist)
+            except AssertionError as exc:
+                error = exc
+            assert error is not None, (
+                "un rc que NO es 0 (existe) ni 128 (no existe) no es una respuesta "
+                "sobre el objeto: es un fallo de git. El helper tiene que "
+                "reventar con AssertionError, y si devuelve False convierte un "
+                "git roto en 'el objeto no existe', que es el falso verde que "
+                "este arnes existe para matar")
+            assert MARCA in str(error), (
+                "el AssertionError tiene que llevar el `stderr` LITERAL de git: "
+                f"sin diagnostico no se distingue un repo vacio de un git roto. "
+                f"El mensaje fue: {str(error)!r}")
+            assert len(reales) == 3, (
+                "el reintento son TRES llamadas y las tres han de caer en el "
+                f"subprocess (van {len(reales)}). Con un solo intento un "
+                "`spawn EPERM` transitorio de este host se convierte en una "
+                "respuesta, que es justo lo que el bucle existe para evitar")
+            assert all(kwargs.get("stdin") is sp.DEVNULL for _, kwargs in reales), (
+                f"las TRES llamadas tienen que pasar stdin=DEVNULL; llegaron "
+                f"{[kwargs.get('stdin') for _, kwargs in reales]}. Sin eso el "
+                "hijo hereda el descriptor del arnes y un comando que lo lea se "
+                "queda esperando")
+            assert [argv for argv, _ in reales] == [
+                ["git", "cat-file", "-e", "deadbee"]] * 3, (
+                "el helper decide por ARGUMENTO con `cat-file -e`, que no lee "
+                f"stdin; llego {[argv for argv, _ in reales]}")
+
+            # --- (2) S4: dos rc no-cero y uno bueno DEVUELVEN la correcta ----
+            reales.clear()
+            guion["cola"] = [{"rc": 126, "stderr": MARCA},
+                             {"rc": 1, "stderr": MARCA},
+                             {"rc": 0, "stdout": ""}]
+            assert _objeto_existe_en_fixture("deadbee", d_hist) is True, (
+                "con dos fallos transitorios y un tercero bueno el helper tiene "
+                "que DEVOLVER la respuesta de ese tercero, no reventar: el "
+                "reintento existe para el `spawn EPERM` intermitente de este "
+                "host, y un unico intento lo convierte en un fallo rojo")
+            assert len(reales) == 3, (
+                f"los dos rc no-cero y el bueno son TRES llamadas; van "
+                f"{len(reales)}")
+
+            # --- (3) y el 128 legitimo tras dos fallos NO es un fallo --------
+            reales.clear()
+            guion["cola"] = [{"rc": 126, "stderr": MARCA},
+                             {"rc": 1, "stderr": MARCA},
+                             {"rc": 128, "stderr": "fatal: Not a valid object"}]
+            assert _objeto_existe_en_fixture("deadbee", d_hist) is False, (
+                "el 128 es la respuesta LEGITIMA de 'no existe' y va en False, "
+                "tambien despues de dos fallos transitorios: tratarlo como fallo "
+                "de git seria el otro mitad de la misma confusion")
+            assert len(reales) == 3, (
+                f"han de ser TRES llamadas hasta leer el 128; van {len(reales)}")
+        finally:
+            sp.run = sp_real
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Helper de existencia: un rc que no es 0 ni 128 revienta con su stderr "
+          "literal tras tres intentos, y dos fallos transitorios mas uno bueno "
+          "devuelven la respuesta correcta.")
+
+
+def test_el_envoltorio_de_git_reintenta_tres_veces_un_fallo_transitorio():
+    """S4 / A2: los TRES intentos del envoltorio, MEDIDOS.
+
+    MEDIDO el 2026-10-08 por el `mutation-auditor`: cambiar
+    `for _intento in (1, 2, 3)` por `for _intento in (1,)` dejaba la suite en
+    verde, en los DOS envoltorios. Y el motivo DECLARADO del reintento es el
+    `spawn EPERM` intermitente de este host, o sea justo el fallo para el que
+    existe: sin el, un EPERM transitorio se traduce en una respuesta falsa, y
+    con el helper de existencia en una excepcion roja que parece un bug de git.
+
+    Inyecta dos rc no-cero y uno bueno, y exige que la llamada DEVUELVA la
+    correcta --no que reviente--: un reintento que solo se demuestra con el
+    fallo no demuestra que reintenta. Se cuenta tambien el numero de llamadas
+    reales, que es lo que el mutante decia, y el `stdin` de cada una, que es lo
+    que AC-1 promete por lectura de codigo y aqui queda MEDIDO.
+    """
+    import shutil
+    import subprocess as sp
+
+    MARCA = "error: could not spawn git (prueba)"
+    tmp = tempfile.mkdtemp(prefix="wopt_t072_reintentos_")
+    try:
+        d_hist = os.path.join(tmp, "historial")
+        _repo_temporal_de_un_commit(d_hist, "chore: fixture de los reintentos")
+
+        reales = []
+        guion = {"cola": []}
+
+        def falso_run(argv, **kwargs):
+            reales.append((list(argv), dict(kwargs)))
+            siguiente = guion["cola"].pop(0)
+            return sp.CompletedProcess(argv, siguiente["rc"],
+                                       siguiente.get("stdout", ""),
+                                       siguiente.get("stderr", ""))
+
+        sp_real = sp.run
+        sp.run = falso_run
+        try:
+            # --- (1) dos fallos transitorios y uno bueno -> la CORRECTA ------
+            guion["cola"] = [{"rc": 1, "stderr": MARCA},
+                             {"rc": 1, "stderr": MARCA},
+                             {"rc": 0, "stdout": "cabeza del commit\n"}]
+            salida = _git_de_fixture(["log", "--format=%s"], d_hist)
+            assert salida == "cabeza del commit\n", (
+                "con dos fallos transitorios y un tercero bueno, el envoltorio "
+                f"tiene que DEVOLVER la salida del tercero; devolvio {salida!r}. "
+                "Un reintento que solo se demuestra con el fallo no demuestra "
+                "que reintenta")
+            assert len(reales) == 3, (
+                f"dos rc no-cero y uno bueno son TRES llamadas a subprocess; "
+                f"van {len(reales)}. Con `for _intento in (1,)` el `spawn EPERM` "
+                "de este host se come la respuesta")
+            assert [argv for argv, _ in reales] == [
+                ["git", "log", "--format=%s"]] * 3, (
+                f"las tres llamadas son el mismo comando; llegaron "
+                f"{[argv for argv, _ in reales]}")
+            assert all(kwargs.get("stdin") is sp.DEVNULL for _, kwargs in reales), (
+                "AC-1 lo pide por lectura del codigo y aqui se mide: las TRES "
+                "llamadas tienen que pasar stdin=DEVNULL; llegaron "
+                f"{[kwargs.get('stdin') for _, kwargs in reales]}")
+
+            # --- (2) y si NO se recupera, revienta con el stderr -------------
+            reales.clear()
+            guion["cola"] = [{"rc": 1, "stderr": MARCA}] * 3
+            error = None
+            try:
+                _git_de_fixture(["log", "--format=%s"], d_hist)
+            except AssertionError as exc:
+                error = exc
+            assert error is not None, (
+                "tres fallos seguidos tienen que REVENTAR: un envoltorio que "
+                "devuelve la salida vacia de un git que no arranco convierte el "
+                "fallo en un falso verde")
+            assert MARCA in str(error), (
+                f"el AssertionError tiene que llevar el stderr literal; fue "
+                f"{str(error)!r}")
+            assert len(reales) == 3, (
+                f"los tres intentos tienen que ocurrir; van {len(reales)}")
+        finally:
+            sp.run = sp_real
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Envoltorio de git: tres intentos, dos fallos transitorios y uno bueno "
+          "devuelven la correcta, y tres fallos seguidos reventan con el stderr.")
+
+
+def test_el_check_9_conserva_su_pre_vuelo_de_existencia():
+    """C2r: el pre-vuelo del check 9 sigue ahi, y se ejecuta ANTES.
+
+    MEDIDO el 2026-10-08 por el `mutation-auditor`: BORRAR el pre-vuelo del hash
+    muerto del check 9 entero (unas cuatro lineas) dejaba la suite en verde, con
+    el subconjunto lento en 268,5 s de las cuatro llamadas a `validar()`. Nadie
+    vigilaba que el pre-vuelo siguiera ahi. El caso positivo que se anadio al
+    lado delataria una fixture rota, pero la asercion del pre-vuelo EN SI no
+    estaba vigilada, y esa es la que dice "la fixture distingue el hash muerto
+    del real" antes de que el check mida nada.
+
+    Por que mira la POSICION y no el recuento: el caso negativo del pre-vuelo
+    (20376) esta dentro del bucle de `MUERTOS`, DESPUES, asi que contar
+    `is False` sobre el helper no lo distinguiria del pre-vuelo. Lo que le da
+    el nombre de pre-vuelo es ejecutarse ANTES del primer `asentar()`: si no,
+    el check 9 ya ha validado contra una fixture que nadie ha comprobado. Se
+    exigen las DOS mitades en esa zona (el `is False` del hash muerto y el
+    `is True` del real): con una sola, o un helper que devuelve `False` siempre
+    o uno que devuelve `True` siempre pasarian el otro caso.
+    """
+    NOMBRE = "test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico"
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(raiz, "run_tests.py"), encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read())
+
+    check_9 = next((nodo for nodo in ast.walk(arbol)
+                    if isinstance(nodo, ast.FunctionDef)
+                    and nodo.name == NOMBRE), None)
+    assert check_9 is not None, (
+        f"el check 9 tiene que seguir llamandose {NOMBRE!r} en `run_tests.py`: "
+        "este guard vigila SU pre-vuelo y sin la funcion no hay nada que vigilar")
+
+    primero = min((nodo.lineno for nodo in ast.walk(check_9)
+                   if isinstance(nodo, ast.Call)
+                   and isinstance(nodo.func, ast.Name)
+                   and nodo.func.id == "asentar"), default=None)
+    assert primero is not None, (
+        "el check 9 tiene que seguir teniendo su `asentar()` local: es el punto "
+        "que separa el pre-vuelo del resto, y sin el este guard no tiene contra "
+        "que medir la posicion")
+
+    def es_el_helper(comparacion, valor):
+        izquierda = comparacion.left
+        return (isinstance(izquierda, ast.Call)
+                and isinstance(izquierda.func, ast.Name)
+                and izquierda.func.id == "_objeto_existe_en_fixture"
+                and any(isinstance(op, ast.Is) for op in comparacion.ops)
+                and any(isinstance(otro, ast.Constant) and otro.value is valor
+                        for otro in comparacion.comparators))
+
+    negativo, positivo = [], []
+    for nodo in ast.walk(check_9):
+        if not isinstance(nodo, ast.Compare) or nodo.lineno > primero:
+            continue
+        if es_el_helper(nodo, False):
+            negativo.append(nodo.lineno)
+        if es_el_helper(nodo, True):
+            positivo.append(nodo.lineno)
+
+    assert negativo, (
+        f"el pre-vuelo del check 9 (antes de `asentar()` en la linea {primero}) "
+        "tiene que exigir que el hash MUERTO de la fixture NO existe, con "
+        "`_objeto_existe_en_fixture(...) is False`. Sin esa asercion el check 9 "
+        "mide contra una fixture que nadie ha comprobado, y borrarla no lo "
+        "hacia notar: es exactamente lo que se midio que pasaba")
+    assert positivo, (
+        f"el caso POSITIVO tiene que estar al lado, antes de `asentar()` "
+        f"(linea {primero}): `_objeto_existe_en_fixture(...) is True`. Sin el, "
+        "un helper que devuelve `False` siempre pasa el caso negativo de al lado "
+        "y el pre-vuelo vuelve a ser decorativo por el otro extremo")
+    print("Check 9: el pre-vuelo sigue ahi y se ejecuta antes de asentar(), con "
+          "las dos mitades: el hash muerto no existe y el real existe.")
 
 
 # ---------------------------------------------------------------------------
@@ -24603,7 +25061,8 @@ if __name__ == "__main__":
     # fichero, luego el reparto se queda en 142 backend + 52 headless = 194.
     #
     # La primera es la que discrimina el DEFECTO (herencia de stdin en las 37
-    # llamadas): construye el padre desatendido de verdad, un pipe que el padre
+    # llamadas que salen por el envoltorio): construye el padre desatendido de
+    # verdad, un pipe que el padre
     # no escribe ni cierra, y el hijo invoca el ENVOLTORIO REAL importando este
     # modulo. La segunda mata al pre-vuelo tautologico (exige las DOS
     # respuestas) y la tercera es el guard estructural que impide que
@@ -24611,4 +25070,15 @@ if __name__ == "__main__":
     test_el_envoltorio_git_no_hereda_stdin_y_no_cuelga_en_desatendido()      # AC-2'
     test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe()       # AC-3
     test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input()        # AC-4
+    # TASK-072 ronda 2 (CYCLE-060): las TRES que cierran los once supervivientes
+    # del Paso 4. Suite: 194 -> 197, las TRES DETRAS del marcador (inyeccion de
+    # `subprocess.run`, `ast` sobre este mismo fichero: ninguna abre ventana),
+    # luego 142 backend + 55 headless = 197. Las dos primeras INYECTAN `subprocess.run` para medir lo que
+    # el docstring promete -- la rama de git-roto, los tres intentos, el
+    # `stdin=DEVNULL` y la primitive -, que antes solo se CREIA leyendo el
+    # codigo; la tercera vigila que el pre-vuelo del check 9 siga ahi, que es
+    # algo que se puede BORRAR entero sin que la suite se entere.
+    test_el_helper_de_existencia_revienta_un_rc_indefinido_tras_tres_intentos()
+    test_el_envoltorio_de_git_reintenta_tres_veces_un_fallo_transitorio()
+    test_el_check_9_conserva_su_pre_vuelo_de_existencia()
     print("\nALL TESTS PASSED.")

@@ -493,6 +493,18 @@ una medición inventada en un comentario es peor que un comentario sin medición
 El caso del medio es el que obliga al pre-vuelo. Y exigir `HEAD` no recorta ningún caso legítimo:
 un journal con hashes viene de commits que existen.
 
+⚠️ **La fila de arriba obliga a una regla más, y se añadió en CYCLE-060 ronda 2 (TASK-072) al
+cerrar un superviviente de la auditoría de mutación: `directorio vacío (no es repo)` también
+devuelve 128.** luego **la disyuntiva «existe / no existe» solo es correcta si `git` está vivo**, y
+un código de salida **distinto de 0 y de 128 no es una respuesta sobre el objeto: es un fallo de
+git.** Interpretarlo como «no existe» convierte un repositorio roto o un `git` que no arranca en un
+verde, y es el sentido en el que un ancla miente sin que nadie lo note. La regla que queda escrita:
+**cualquier otro rc tiene que reventar con su `stderr` literal, nunca devolver un booleano.** Es la
+misma clave que el envoltorio de git del arnés (`_git_de_fixture`), y por eso el rc se mira y no se
+interpreta: `0` es una respuesta, `128` es una respuesta, lo demás es un fallo. La sonda que lo
+vigila es `run_tests.py::test_el_helper_de_existencia_revienta_un_rc_indefinido_tras_tres_intentos`,
+que inyecta el rc y cuenta los intentos.
+
 **Y la respuesta se acepta con su forma exacta**, `<sha-completo> <tipo> <tamano>` (40 o 64 hex,
 una palabra, un entero), no contando campos: un nombre con espacio se devuelve **tal cual**, luego
 `f"{hash} (architect)"` responde `e60d2a0 (architect) missing`, que tiene tres campos y

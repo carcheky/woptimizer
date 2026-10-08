@@ -71,6 +71,34 @@
 - Convertir dos decorativos en comprobaciones hace que el check 9 **dependa de que la fixture tenga el commit**. La dependencia ya existia (`run_tests.py:20189` la exigia); lo nuevo es que ahora hay **dos** comprobaciones donde habia un decorativo.
 - `TASK-075` y `TASK-074` siguen **vivas y sin tocar**.
 
+### RONDA 2 — `mutation-auditor` independiente: VERDICT **FAIL**, 10 killed / 11 survived de 21
+
+El auditor reprodujo de forma independiente los cinco mutantes de arriba y los **confirma**, y luego midio once que nadie habia mirado. **Ninguno estaba en los cinco que el dev se probo**, y tres eran de la clase exacta que el ciclo vino a matar: **una comprobacion que no puede fallar**. Tarea devuelta para cerrar. **Tests: 194 -> 197 = 142 + 55.** Los tres tests nuevos van DETRAS del marcador (inyeccion de `subprocess.run` y `ast` sobre el propio fichero: ninguna ventana).
+
+**Que se cerro y como muere ahora cada uno (MEDIDO, no supuesto: camara en `%TEMP%` con `src/` copiado, mutacion aplicada a `run_tests.py`, subconjunto RAPIDO de 5 tests, `RESTAURADO-FINAL: True`):**
+
+| ID del auditor | Que era | Que lo mata ahora | Veredicto MEDIDO |
+|---|---|---|---|
+| **B5** 🔴 | `raise AssertionError` -> `return False` en la rama rc ∉ {0,128} (**fail-open**: git roto = "el objeto no existe") | `assert error is not None` de la fila 195: con `return False` no hay error que capturar | killed, rc=1 en 6,5 s |
+| **B7** | `for _intento in (1,2,3)` -> `(1,)` en el helper | `assert len(reales) == 3`: cuenta las llamadas REALES del `subprocess.run` inyectado | killed, 6,6 s |
+| **A2** | lo mismo en el envoltorio | idem, fila 196: dos rc no-cero + uno bueno **devuelven la correcta** y son 3 llamadas | killed, 6,7 s |
+| **A3** | `stdin=DEVNULL` del helper sin verificar | `assert all(kwargs.get("stdin") is sp.DEVNULL ...)` en las TRES | killed, 6,1 s |
+| **B6** | `cat-file -e` -> `cat-file -t` | el argv se compara token a token: `['git','cat-file','-e',hash]` x3 | killed, 6,1 s |
+| **D6** 🔴 | desactivar el guard entero (`for argumento in []`) | la contraprueba **llama a la deteccion real** sobre 10 fragmentos y exige las dos mitades; con el bucle vacio ve 0 | killed, 5,7 s |
+| **D3r** | la forma prohibida como TUPLA | `_argv_de_un_argumento` resuelve el argumento a tokens (no exige `ast.List`) | killed, 5,8 s |
+| **D4r** | con VARIABLE INTERMEDIA | idem + **el enlace se resuelve por el ULTIMO ANTERIOR AL USO** | killed, 6,0 s |
+| **D5r** | con CONCATENACION de constantes | idem (`BinOp(Add)` de constantes) | killed, 6,2 s |
+| **D7r** | como `["git"] + [...]` | idem (dos secuencias pegadas) | killed, 6,7 s |
+| **C2r** | borrar el pre-vuelo del check 9 entero | fila 197: exige las dos mitades del helper **antes del primer `asentar()`** | killed, 11,1 s |
+
+**11 de 11. Control sin mutar: rc=0 en 10,3 s.**
+
+**Confesion sobre mi propia instrumentacion (por el mismo criterio que el §5 del informe del auditor):** en la PRIMERA campana **D4r sobrevivio**, y no era un fallo del test sino **un bug real de la deteccion que yo acababa de escribir**: el mapa de variables resolvia "la ultima asignacion gana" sobre un `ast.walk`, que es un recorrido en ANCHURA, y el `args = nodo.args` de `run_tests.py:7873` tapaba la lista de al lado de la llamada. Se corrigio a **ultimo enlace anterior al uso** y se anadio el fragmento `"ENLACE ANTERIOR AL USO"` a la contraprueba, que es la que lo caza sola si vuelve a pasar. Sin esa honestidad, el 11/11 habria sido un 10/11 con un hueco tapado.
+
+**DOC-1 / DOC-2 / DOC-3 corregidos con medicion propia:** (a) la cifra de "37 llamadas a git que salen todas por el mismo envoltorio" era FALSA en presente: **MEDIDO hoy con `ast` = 46 call-sites, 37 por `_git_de_fixture` y 9 por `_objeto_existe_en_fixture`, y 9 NO salen por el mismo envoltorio**; (b) las cifras de `STATUS.md` (12,27 s -> 7,14 s, y la derivacion "a la practica cero") **REMEDIDAS el 2026-10-08**: `validar` = **7,82 / 7,83 / 8,10 s** (FAIL=0) y `_reparto_de_tests` = **2,36 / 2,37 / 2,40 s**, luego **la derivacion NO es practica cero, son ~2,4 s** (y el auditor midio 10,28 s y 3,14 s el mismo dia: la cifra de este host es un orden de magnitud, no un numero fijo); (c) **AC-2 de `tasks.json` decia `communicate(timeout=10)` y el codigo lleva 60 s** — AC actualizado a lo implementado, con el porque medido.
+
+**Verificacion de este pase:** `run_tests.py` completo **490 s**, 486 lineas, `ALL TESTS PASSED`, salida **0**; `verify_ui_syntax.py` 9/9; `validate_docs.py` **141 OK / 0 FAIL**; `sync_agents.py --check` salida 0; `git_safe_commit.py --verify` = `WOPT_REPO_OK`. `src/woptimizer/**` con **cero** cambios de codigo (26 de 27 ficheros identicos byte a byte; el septimo es `woptimizer.log`, que esta en `.gitignore`).
+
 ## [CYCLE-059] 2026-10-06 - validate-docs-una-vez-por-fichero
 
 **Area**: Tooling. **Change**: `openspec/changes/2026-10-06-validate-docs-tokens/`
