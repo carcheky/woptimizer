@@ -108,9 +108,17 @@ class GamingService:
             if (get_safety_badge(c)["tier"] != "danger"
                 and c not in categorias_permitidas)
         )
+        # TASK-071: Las apps protegidas forman parte de los keepers efectivos
+        protected_set = (self.pack_service.get_protected_apps()
+                         if (self.pack_service and hasattr(self.pack_service, "get_protected_apps"))
+                         else set())
+        effective_keepers = sorted(
+            set(pack.keepers) | protected_set
+        )
         return pack.model_copy(update={
             "target_categories": categorias_permitidas,
             "start_categories": arranco_permitidas,
+            "keepers": effective_keepers,
         })
 
     def _seleccion(self, pack: Pack, snapshot: List[ProcessInfo]) -> Tuple[List[ProcessInfo], int]:
@@ -135,6 +143,9 @@ class GamingService:
           G6  politica de keepers > apps > categorias, sin reordenar reglas.
         """
         pack_evaluable = self._pack_evaluable(pack)
+        protected_apps = (self.pack_service.get_protected_apps()
+                          if (self.pack_service and hasattr(self.pack_service, "get_protected_apps"))
+                          else set())
 
         to_kill: List[ProcessInfo] = []
         protected = 0
@@ -144,6 +155,13 @@ class GamingService:
             # metodo publico y asi el filtro no depende del doble que se inyecte.
             if (ProcessService.is_system_protected(p.name)
                     or ProcessService.is_system_protected(p.full_name)):
+                protected += 1
+                continue
+            # G4b - TASK-071: blindaje de apps protegidas por usuario
+            clean_name = p.name.strip().lower()
+            clean_norm = clean_name[:-4] if clean_name.endswith('.exe') else clean_name
+            full_lower = (p.full_name or "").strip().lower()
+            if (clean_name in protected_apps or clean_norm in protected_apps or full_lower in protected_apps):
                 protected += 1
                 continue
             # G5 - segunda barrera, sobre la categoria que trae el snapshot.
@@ -188,6 +206,10 @@ class GamingService:
           G9  `skipped` suma los descartes del filtro a los de la via de kill,
               para que la UI vea lo protegido en vez de silenciarlo.
         """
+        if pack.is_protected:
+            # TASK-071: Invariante de No Ejecución
+            return 0, 0, 0, 0.0
+
         # G0 - snapshot forzado. Sin esto la cache TTL de 2 s puede dejar fuera
         # lo que el usuario acaba de lanzar (no es un problema de seguridad).
         snapshot = self.process_service.get_running_processes(force_refresh=True)

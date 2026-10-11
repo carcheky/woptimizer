@@ -19,8 +19,8 @@ def main():
     setup_logging()
     try:
         # Inicializar capa de servicios
-        process_service = ProcessService()
         pack_service = PackService()
+        process_service = ProcessService(pack_service)
         gaming_service = GamingService(process_service, pack_service)
 
         # Inicializar e inyectar UI

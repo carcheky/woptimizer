@@ -2,7 +2,7 @@ import os
 import psutil
 import struct
 import time
-from typing import List, Tuple, Optional, Dict, Sequence, Callable, Final
+from typing import List, Tuple, Optional, Dict, Sequence, Callable, Final, Any, Set
 from woptimizer.models import ProcessInfo
 from woptimizer.config import (
     PROCESS_CATEGORIES, CATEGORY_ORDER, get_safety_badge, logger, ordenar_categorias,
@@ -317,7 +317,8 @@ class ProcessService:
     - _proc_cache + TTL: cache temporal de get_running_processes (2s por defecto).
     """
 
-    def __init__(self):
+    def __init__(self, pack_service: Optional[Any] = None):
+        self.pack_service = pack_service
         # Hashmap O(1): pattern -> (category, priority, description)
         self._db_map: Dict[str, Tuple[str, str, str]] = {}
         # Memoize fuzzy matches: cleaned_name -> (category, priority, description)
@@ -526,7 +527,7 @@ class ProcessService:
 
         return result
 
-    def kill_processes(self, processes: List[ProcessInfo]) -> Tuple[int, int, int, float]:
+    def kill_processes(self, processes: List[ProcessInfo], protected_apps: Optional[Set[str]] = None) -> Tuple[int, int, int, float]:
         """
         Mata una lista de procesos (y sus hijos).
         Retorna (killed, failed, skipped, freed_mb).
@@ -536,12 +537,27 @@ class ProcessService:
         skipped = 0
         freed_bytes = 0
 
+        if protected_apps is None:
+            protected_apps = (self.pack_service.get_protected_apps()
+                              if (hasattr(self, 'pack_service') and self.pack_service and hasattr(self.pack_service, 'get_protected_apps'))
+                              else set())
+
         for pinfo in processes:
             try:
                 # TASK-024: ultima linea de defensa. La UI solo ofrece lo que ve
                 # en la lista, pero un pack guardado a mano podria traer un PID de
                 # sistema: aqui se cuenta como omitido y no se toca el proceso.
                 if self.is_system_protected(pinfo.name) or self.is_system_protected(pinfo.full_name):
+                    skipped += 1
+                    continue
+
+                # TASK-071: Exclusión de aplicaciones protegidas
+                clean_name = _normalizar_nombre(pinfo.name)
+                full_lower = (pinfo.full_name or "").strip().lower()
+                name_lower = pinfo.name.strip().lower()
+                if (name_lower in protected_apps
+                        or clean_name in protected_apps
+                        or full_lower in protected_apps):
                     skipped += 1
                     continue
 
@@ -591,12 +607,17 @@ class ProcessService:
         freed_mb = round(freed_bytes / (1024 * 1024), 2)
         return killed, failed, skipped, freed_mb
 
-    def kill_pack_apps(self, apps: List[str]) -> Tuple[int, int, int, float]:
+    def kill_pack_apps(self, apps: List[str], protected_apps: Optional[Set[str]] = None) -> Tuple[int, int, int, float]:
         """Mata todos los procesos cuyos nombres o rutas coincidan con la lista apps."""
         import os
 
         if not apps:
             return 0, 0, 0, 0.0
+
+        if protected_apps is None:
+            protected_apps = (self.pack_service.get_protected_apps()
+                              if (hasattr(self, 'pack_service') and self.pack_service and hasattr(self.pack_service, 'get_protected_apps'))
+                              else set())
 
         killed, failed, skipped = 0, 0, 0
         freed_bytes = 0
@@ -615,6 +636,17 @@ class ProcessService:
                     # no se toca el proceso.
                     if (self.is_system_protected(name)
                             or self.is_system_protected(os.path.basename(exe))):
+                        skipped += 1
+                        continue
+
+                    # TASK-071: Exclusión de aplicaciones protegidas
+                    exe_base = os.path.basename(exe)
+                    clean_name = _normalizar_nombre(name)
+                    if (name in protected_apps
+                            or clean_name in protected_apps
+                            or exe in protected_apps
+                            or exe_base in protected_apps
+                            or _normalizar_nombre(exe_base) in protected_apps):
                         skipped += 1
                         continue
 

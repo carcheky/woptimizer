@@ -22,6 +22,7 @@ class Pack(BaseModel):
                                           # o nombre pelado en los packs ya guardados (ver abajo)
     is_favorite: bool = Field(default=False, strict=True)   # Si se muestra en la portada
     is_gaming: bool = Field(default=False, strict=True)     # Si es el preset protegido del sistema
+    is_protected: bool = Field(default=False, strict=True)  # Si es el pack de apps protegidas (TASK-071)
     default_action: Literal["start", "kill"] = "start"  # Acción rápida por defecto
     keepers: List[str] = Field(default_factory=list) # Apps protegidas en gaming (ej: ['discord.exe'])
     target_categories: List[str] = Field(default_factory=list) # Categorías a cerrar dinámicamente
@@ -102,6 +103,16 @@ del `.bak` y el aviso nombra el campo. No rompe nada de lo que escribe la app: u
 > por `1` (idéntico, en `int`), que es la fila que mata `L-M4b`. Regla para las
 > sondas de coerción: **el valor de la fila tiene que ser un valor que el modo laxo
 > coaccione**, o la prueba no distingue nada.
+
+### 1.2 Aplicaciones Protegidas: `is_protected` y `DEFAULT_PROTECTED_PACK` (TASK-071)
+
+Representa un pack especial de salvaguarda ("Protegidas") que no es ejecutable ni destructivo, sino un guardián de procesos:
+- `is_protected: bool = Field(default=False, strict=True)`: Booleano estricto.
+- **Invariante de Unicidad:** Existe un único pack protegido en `AppData.packs` (`id="protected_apps"`).
+- **Invariante de Inmutabilidad:** `PackService.delete_pack` rechaza la eliminación con `ValueError("No se puede eliminar el pack de aplicaciones protegidas")`.
+- **Invariante de No Ejecución:** `GamingService.execute_pack` retorna inmediatamente `(0, 0, 0, 0.0)` si `pack.is_protected`.
+- **Exclusión Mutua:** Toda rutina de kill (`ProcessService.kill_processes`, `kill_pack_apps`, `GamingService.execute_gaming_pack`) excluye las apps protegidas (`pack_service.get_protected_apps()`).
+- **Invisibilidad en UI:** Los procesos protegidos no se muestran en `ProcessManagerView`, ni en el desplegable de packs, ni en la portada `DashboardView`.
 
 **`extra="allow"` (TASK-031).** Un campo que esta versión **no conoce** no es corrupción:
 sobrevive al ciclo carga → guarda en vez de borrarse en el primer `save()`. Es el único

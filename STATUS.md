@@ -9,7 +9,7 @@
 | Indicador | Estado | Detalle |
 |---|---|---|
 | Sintaxis UI | 🟢 | `verify_ui_syntax.py` — 9 módulos |
-| Tests headless | 🟢 | `run_tests.py`, **198 tests** (142 backend + 56 headless UI) |
+| Tests headless | 🟢 | `run_tests.py`, **203 tests** (142 backend + 61 headless UI) |
 | Benchmark base | 🟢 | 182 ms init · 4.97 ms escaneo · 0.003 ms cache · 30 MB RSS |
 | Process DB | 🟢 | 96 entradas · 8 categorías · 0 huérfanas · 🛡️ 34 protegidas |
 | Versionado | 🟢 | Rama `beta` · último commit `dbeed31` · `main` publicada `v1.1.0` |
@@ -92,7 +92,7 @@
 1. **Leer AGENTS.md** para invariantes (separación capas, kill recursivo, pack gaming protegido).
 2. **Nunca commitear a `main`** — trabajar en `beta`, luego ff-merge.
 3. **Commit solo vía** `python .taskmaster/git_safe_commit.py "mensaje (TASK-NNN)"`.
-4. **Tests:** `python run_tests.py` (198 tests) · `python verify_ui_syntax.py` · `python validate_docs.py`.
+4. **Tests:** `python run_tests.py` (203 tests) · `python verify_ui_syntax.py` · `python validate_docs.py`.
 5. **Docs vivas:** actualizar `docs/ai/` tras cada cambio arquitectónico.
 6. **Carga selectiva:** no leer toda la doc — consultar `llms.txt` como mapa y cargar solo el fichero de `docs/ai/` que necesites.
 7. **Pipeline de 4 pasos:** Buscar → Planear → Ejecutar → Auditar tests (mutation-auditor).

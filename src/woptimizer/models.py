@@ -80,6 +80,7 @@ class Pack(BaseModel):
     # verdes con y sin `strict` (mutacion-sobreviviente M4b).
     is_favorite: bool = Field(default=False, strict=True)
     is_gaming: bool = Field(default=False, strict=True)
+    is_protected: bool = Field(default=False, strict=True)
     default_action: Literal["start", "kill"] = "start"
 
 class AppData(BaseModel):

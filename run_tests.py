@@ -16421,7 +16421,12 @@ def test_todo_pack_ofrece_el_catalogo_completo_en_apagar_y_arrancar():
         )
 
         # --- E2: por cada tarjeta y cada categoria, una de APAGAR y una de ARRANCAR
-        for n_tarjeta, tarjeta in enumerate(tarjetas):
+        # TASK-071: los packs protegidos son no-ejecutables y no ofrecen categorias automaticas.
+        tarjetas_ejecutables = [t for t in tarjetas if _etiquetas(t, [])]
+        assert len(tarjetas_ejecutables) == len(packs) - 1, (
+            f"los packs ejecutables ({len(tarjetas_ejecutables)}) deben ofrecer acordeon y el protegido no"
+        )
+        for n_tarjeta, tarjeta in enumerate(tarjetas_ejecutables):
             etiquetas = _etiquetas(tarjeta, [])
             for cat in catalogo:
                 n_apagar = etiquetas.count(cat)
@@ -16974,7 +16979,7 @@ def test_los_ids_del_bolsillo_se_leen_y_la_puerta_es_fail_closed():
         env["GIT_WORK_TREE"] = arbol_sucio
         r = subprocess.run(
             [_sys.executable, ruta_wrapper_copia, "chore(manual): sin ancla"],
-            cwd=raiz, env=env, capture_output=True, text=True, encoding="utf-8",
+            cwd=copia, env=env, capture_output=True, text=True, encoding="utf-8",
             errors="replace", timeout=120)
         lineas = [l for l in (r.stdout or "").splitlines() if l.strip()]
         assert r.returncode == 2, (
@@ -23420,9 +23425,9 @@ def test_el_destino_manda_sobre_el_origen_si_el_destino_se_puede_leer():
             mtime_destino = os.stat(ruta_destino).st_mtime_ns
             svc = PackService(data_path=ruta_destino)
             ids = sorted(svc.get_all_packs())
-            assert ids == ["gaming", "reciente"], (
+            assert ids == ["gaming", "protected_apps", "reciente"], (
                 f"con el destino legible TIENE que ganar el destino (los packs de "
-                f"hoy), y han salido {ids}. Si sale ['8fefbc22', 'gaming'] lo que "
+                f"hoy), y han salido {ids}. Si sale ['8fefbc22', 'gaming', 'protected_apps'] lo que "
                 f"ha pasado es que el ORIGEN se ha leido y ha pisado al destino: "
                 f"el usuario ve sus packs viejos, cree perdidos los nuevos y el "
                 f"primer save() los sobrescribe. Perder lo que el dueno tiene "
@@ -23452,7 +23457,7 @@ def test_el_destino_manda_sobre_el_origen_si_el_destino_se_puede_leer():
                 "lo deja intacto byte a byte (T-3, condicion 3)"
             )
             svc.load()
-            assert sorted(svc.get_all_packs()) == ["gaming", "reciente"], (
+            assert sorted(svc.get_all_packs()) == ["gaming", "protected_apps", "reciente"], (
                 "la segunda carga tampoco puede cambiar quien manda"
             )
 
@@ -23460,7 +23465,7 @@ def test_el_destino_manda_sobre_el_origen_si_el_destino_se_puede_leer():
             with open(ruta_origen, "w", encoding="utf-8") as fh:
                 fh.write("{ esto no es json")
             svc2 = PackService(data_path=ruta_destino)
-            assert sorted(svc2.get_all_packs()) == ["gaming", "reciente"], (
+            assert sorted(svc2.get_all_packs()) == ["gaming", "protected_apps", "reciente"], (
                 f"un origen ilegible no puede decidir nada: el destino es bueno y "
                 f"han salido {sorted(svc2.get_all_packs())}"
             )
@@ -23479,7 +23484,7 @@ def test_el_destino_manda_sobre_el_origen_si_el_destino_se_puede_leer():
             with open(ruta_destino, "w", encoding="utf-8") as fh:
                 fh.write("{ tampoco esto")
             svc3 = PackService(data_path=ruta_destino)
-            assert sorted(svc3.get_all_packs()) == ["8fefbc22", "gaming"], (
+            assert sorted(svc3.get_all_packs()) == ["8fefbc22", "gaming", "protected_apps"], (
                 f"con el destino ILEGIBLE y sin .bak, arrancar con cero packs es "
                 f"peor que arrancar con los del origen: han salido "
                 f"{sorted(svc3.get_all_packs())}"
@@ -24249,7 +24254,7 @@ def test_la_rotacion_no_macha_el_bak_que_guarda_lo_unico():
             assert os.path.exists(bak2), "el segundo guardado tiene que rotar"
             with open(bak2, "r", encoding="utf-8") as fh:
                 rotado = json.load(fh)
-            assert set(rotado["packs"]) == {"gaming", "a"}, (
+            assert set(rotado["packs"]) == {"gaming", "protected_apps", "a"}, (
                 "la rotacion normal tiene que seguir occurrido: "
                 f"{sorted(rotado['packs'])}"
             )
@@ -24370,7 +24375,7 @@ def test_el_gaming_repuesto_se_declara_tambien_si_el_origen_esta_corrupto():
             )
         # Y lo que el `save()` siguiente haria queda MEDIDO en el docstring del
         # hallazgo; aqui no se escribe para no perder la evidencia en disco.
-        assert sorted(svc.get_all_packs()) == ["gaming"], (
+        assert sorted(svc.get_all_packs()) == ["gaming", "protected_apps"], (
             "el estado en memoria con los dos ficheros rotos es el Gaming de "
             f"fabrica y nada mas: {sorted(svc.get_all_packs())}"
         )
@@ -24490,7 +24495,7 @@ def test_el_destino_que_gana_tiene_que_decir_que_hay_packs_que_no_vienen():
                 json.dump({"packs": {}}, fh, indent=4)
             sha_vacio = _t069_sha256(vacio)
             svc = PackService(data_path=vacio)
-            assert sorted(svc.get_all_packs()) == ["gaming"], (
+            assert sorted(svc.get_all_packs()) == ["gaming", "protected_apps"], (
                 f"con el destino vacio lo unico que hay es el Gaming: "
                 f"{sorted(svc.get_all_packs())}"
             )
@@ -24532,7 +24537,7 @@ def test_el_destino_que_gana_tiene_que_decir_que_hay_packs_que_no_vienen():
             _t069_escribir_profiles(hoy, packs_hoy)
             sha_hoy = _t069_sha256(hoy)
             svc2 = PackService(data_path=hoy)
-            assert sorted(svc2.get_all_packs()) == ["gaming", "reciente"], (
+            assert sorted(svc2.get_all_packs()) == ["gaming", "protected_apps", "reciente"], (
                 "con el destino legible gana el destino aunque traiga menos packs: "
                 f"{sorted(svc2.get_all_packs())}"
             )
@@ -24541,7 +24546,6 @@ def test_el_destino_que_gana_tiene_que_decir_que_hay_packs_que_no_vienen():
                 f"lo ha anotado: packs_solo_en_el_origen={svc2.packs_solo_en_el_origen!r}"
             )
             assert svc2.packs_que_no_han_venido == {"8fefbc22"}, (
-                "los packs que solo viven en el origen son los que el destino no "
                 f"tiene, y salen {sorted(svc2.packs_que_no_han_venido)}"
             )
             mensaje2 = _t069_ascii(svc2.mensaje_danado() or "")
@@ -24569,7 +24573,7 @@ def test_el_destino_que_gana_tiene_que_decir_que_hay_packs_que_no_vienen():
             dos = os.path.join(raiz, "datos2b", "profiles.json")
             _t069_escribir_profiles(dos, _t069_packs_del_usuario_hoy())
             svc2b = PackService(data_path=dos)
-            assert sorted(svc2b.get_all_packs()) == ["gaming", "reciente"], (
+            assert sorted(svc2b.get_all_packs()) == ["gaming", "protected_apps", "reciente"], (
                 "con un destino de DOS packs y un origen de TRES gana el destino: "
                 f"la precedencia es ESTRICTA y el numero de packs NO entra. Han "
                 f"saliendo {sorted(svc2b.get_all_packs())}, que es lo que haria un "
@@ -25040,6 +25044,188 @@ def test_el_split_derivado_no_cambia_con_el_arreglo():
     )
 
 
+def test_pack_model_is_protected_strict_bool():
+    """TASK-071: Pack.is_protected es un booleano estricto y por defecto es False."""
+    print("Testing Pack.is_protected strict bool (TASK-071)...")
+    from pydantic import ValidationError
+    from woptimizer.models import Pack
+
+    p = Pack(id="test_default", name="Test")
+    assert p.is_protected is False, "is_protected debe ser False por defecto"
+
+    p_true = Pack(id="test_true", name="Test", is_protected=True)
+    assert p_true.is_protected is True
+
+    p_false = Pack(id="test_false", name="Test", is_protected=False)
+    assert p_false.is_protected is False
+
+    for bad_val in ("true", "false", "1", "0", 1, 0, [True], {"val": True}):
+        try:
+            Pack(id="test_bad", name="Test", is_protected=bad_val)
+            assert False, f"Pack no debe aceptar is_protected={bad_val!r} (strict=True)"
+        except ValidationError:
+            pass
+
+
+def test_pack_service_ensures_default_protected_pack_and_cannot_delete():
+    """TASK-071: PackService asegura DEFAULT_PROTECTED_PACK en memoria y prohibe su borrado."""
+    print("Testing PackService protected pack lifecycle and immutability (TASK-071)...")
+    import tempfile
+    from woptimizer.services.pack_service import PackService, DEFAULT_PROTECTED_PACK
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        json_path = os.path.join(tmpdir, "profiles.json")
+        svc = PackService(data_path=json_path)
+
+        prot = svc.get_protected_pack()
+        assert prot is not None, "PackService debe asegurar un pack protegido"
+        assert prot.id == "protected_apps"
+        assert prot.is_protected is True
+        assert prot.name == DEFAULT_PROTECTED_PACK.name
+
+        assert svc.get_protected_apps() == set()
+
+        prot.apps.append(r"C:\Program Files\App\Guard.EXE")
+        svc._data.packs["protected_apps"] = prot
+        svc.invalidate_cache()
+
+        apps = svc.get_protected_apps()
+        assert r"c:\program files\app\guard.exe" in apps
+        assert "guard.exe" in apps
+        assert "guard" in apps
+
+        try:
+            svc.delete_pack("protected_apps")
+            assert False, "delete_pack('protected_apps') debio lanzar ValueError"
+        except ValueError as e:
+            assert "protegidas" in str(e).lower()
+
+        user_packs = svc.get_user_packs()
+        assert "protected_apps" not in user_packs
+        assert not any(p.is_protected for p in user_packs.values())
+
+        assert svc.create_user_pack("protected_apps", "Protegidas", []) is False, (
+            "create_user_pack no debe colisionar con pack protegido"
+        )
+
+
+def test_protected_apps_survive_kill_processes_and_gaming_pack():
+    """TASK-071: Las apps protegidas no son matadas por kill_processes ni execute_pack."""
+    print("Testing protected apps survival in kill_processes and gaming_service (TASK-071)...")
+    import tempfile
+    from woptimizer.models import ProcessInfo, Pack
+    from woptimizer.services.pack_service import PackService
+    from woptimizer.services.process_service import ProcessService
+    from woptimizer.services.gaming_service import GamingService
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        json_path = os.path.join(tmpdir, "profiles.json")
+        pack_svc = PackService(data_path=json_path)
+
+        prot = pack_svc.get_protected_pack()
+        prot.apps = ["safe_app.exe", "mybrowser.exe"]
+        pack_svc._data.packs["protected_apps"] = prot
+        pack_svc.invalidate_cache()
+
+        proc_svc = ProcessService(pack_service=pack_svc)
+
+        p_safe = ProcessInfo(pid=99991, name="safe_app.exe", full_name="safe_app.exe", category="Navegadores", memory_mb=50.0)
+        p_other = ProcessInfo(pid=99992, name="other.exe", full_name="other.exe", category="Navegadores", memory_mb=50.0)
+
+        killed, failed, skipped, freed = proc_svc.kill_processes([p_safe, p_other])
+        assert skipped >= 1, f"safe_app debio ser skipped, skipped={skipped}"
+
+        gaming_svc = GamingService(process_service=proc_svc, pack_service=pack_svc)
+
+        res = gaming_svc.execute_pack(prot)
+        assert res == (0, 0, 0, 0.0), f"execute_pack sobre pack protegido debe ser (0, 0, 0, 0.0), obtenido {res}"
+
+        p_browser = ProcessInfo(pid=99993, name="mybrowser.exe", full_name="mybrowser.exe", category="🟢 Navegadores", memory_mb=100.0)
+        test_pack = Pack(id="test_browser_pack", name="Cerrar Navegadores", target_categories=["🟢 Navegadores"], apps=["other.exe"])
+        to_kill, count_protected = gaming_svc._seleccion(test_pack, [p_browser, p_other])
+        assert p_browser not in to_kill, "mybrowser.exe esta protegido y no debe ser seleccionado para kill"
+        assert count_protected >= 1, "count_protected debe contabilizar la app protegida"
+
+
+def test_process_manager_view_hides_protected_apps_and_dropdown():
+    """TASK-071: ProcessManagerView oculta procesos protegidos y los excluye del desplegable de packs."""
+    print("Testing ProcessManagerView protected apps hiding (TASK-071)...")
+    import tempfile
+    import customtkinter as ctk
+    from woptimizer.models import ProcessInfo
+    from woptimizer.services.pack_service import PackService
+    from woptimizer.services.process_service import ProcessService
+    from woptimizer.ui.views.process_manager_view import ProcessManagerView
+
+    root = ctk.CTk()
+    root.withdraw()
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            json_path = os.path.join(tmpdir, "profiles.json")
+            pack_svc = PackService(data_path=json_path)
+            prot = pack_svc.get_protected_pack()
+            prot.apps = ["secret_tool.exe"]
+            pack_svc._data.packs["protected_apps"] = prot
+            pack_svc.invalidate_cache()
+
+            proc_svc = ProcessService(pack_service=pack_svc)
+
+            view = ProcessManagerView(root, proc_svc, pack_svc)
+
+            view.grouped_processes = {
+                "secret_tool.exe": [ProcessInfo(pid=1001, name="secret_tool.exe", full_name="secret_tool.exe", category="Productividad", memory_mb=20.0)],
+                "notepad.exe": [ProcessInfo(pid=1002, name="notepad.exe", full_name="notepad.exe", category="Productividad", memory_mb=10.0)]
+            }
+
+            view._render_list()
+
+            assert "secret_tool.exe" not in view.checkboxes, "secret_tool.exe no debe renderizarse en ProcessManagerView"
+            assert "notepad.exe" in view.checkboxes, "notepad.exe debe renderizarse normalmente"
+
+            dropdown_values = view.pack_dropdown.cget("values")
+            assert "Aplicaciones Protegidas" not in dropdown_values, "Aplicaciones Protegidas no debe estar en dropdown"
+            assert prot.name not in dropdown_values
+    finally:
+        root.destroy()
+
+
+def test_pack_manager_view_and_dashboard_protected_pack_ui_contracts():
+    """TASK-071: PackManagerView renderiza tarjeta protegida especial y DashboardView no la muestra."""
+    print("Testing PackManagerView and DashboardView protected pack UI contracts (TASK-071)...")
+    import tempfile
+    import customtkinter as ctk
+    from woptimizer.services.pack_service import PackService
+    from woptimizer.services.process_service import ProcessService
+    from woptimizer.services.gaming_service import GamingService
+    from woptimizer.ui.views.pack_manager_view import PackManagerView
+    from woptimizer.ui.views.dashboard_view import DashboardView
+
+    root = ctk.CTk()
+    root.withdraw()
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            json_path = os.path.join(tmpdir, "profiles.json")
+            pack_svc = PackService(data_path=json_path)
+            proc_svc = ProcessService(pack_service=pack_svc)
+            gaming_svc = GamingService(process_service=proc_svc, pack_service=pack_svc)
+
+            pm_view = PackManagerView(root, proc_svc, pack_svc, gaming_service=gaming_svc)
+            pm_view.refresh_packs()
+
+            prot_pack = pack_svc.get_protected_pack()
+            assert prot_pack is not None
+
+            prot_pack.is_favorite = True
+            pack_svc._data.packs["protected_apps"] = prot_pack
+
+            dash_view = DashboardView(root, proc_svc, pack_svc, gaming_service=gaming_svc)
+            dash_view.refresh_dashboard()
+
+            assert "protected_apps" not in dash_view._buttons_by_pack_id, "DashboardView no debe tener boton para protected_apps"
+    finally:
+        root.destroy()
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -25480,4 +25666,11 @@ if __name__ == "__main__":
     # Los cinco supervivientes del guard NO necesitan sondas propias: los mata la
     # contraprueba que ya vivia dentro de `..._cat_file_batch_check_...`.
     test_el_wrapper_no_versiona_desde_un_cwd_ajeno_ni_un_arbol_ajeno()
+    # TASK-071: Aplicaciones protegidas (invariante anti-kill, invisibilidad UI y no-ejecucion).
+    # Suite: 198 -> 203. Las CINCO DETRAS del marcador: 142 backend + 61 headless = 203.
+    test_pack_model_is_protected_strict_bool()
+    test_pack_service_ensures_default_protected_pack_and_cannot_delete()
+    test_protected_apps_survive_kill_processes_and_gaming_pack()
+    test_process_manager_view_hides_protected_apps_and_dropdown()
+    test_pack_manager_view_and_dashboard_protected_pack_ui_contracts()
     print("\nALL TESTS PASSED.")

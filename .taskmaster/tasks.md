@@ -10,9 +10,7 @@
 
 | ID | Tarea | Complejidad | Prioridad | Estado | Módulo / Spec |
 |---|---|:---:|:---:|:---:|---|
-| **TASK-072** | Fix hang en run_tests.py: _git_de_fixture sin stdin=DEVNULL | 2/10 | 🔴 Critical | ⏳ **PENDING** (Active) | `run_tests.py` |
-| **TASK-071** | Aplicaciones protegidas: pack no ejecutable e indestructible | 8/10 | 🟠 High | ⏳ PENDING | `openspec/changes/2026-10-07-task-071-protected-apps/` |
-| **TASK-073** | Prevenir RuntimeError en ProcessManagerView._load tras destrucción | 3/10 | 🟠 High | ⏳ PENDING | `src/woptimizer/ui/views/process_manager_view.py` |
+| **TASK-073** | Prevenir RuntimeError en ProcessManagerView._load tras destrucción | 3/10 | 🟠 High | ⏳ **PENDING** (Active) | `src/woptimizer/ui/views/process_manager_view.py` |
 | **TASK-074** | Blindar paridad de git tooling: código 2 en par asimétrico | 2/10 | 🟡 Medium | ⏳ PENDING | `run_tests.py` / `sandbox-rules.md` |
 | **TASK-075** | Desacoplar validate_docs.py de %LOCALAPPDATA% para CI | 4/10 | 🟡 Medium | ⏳ PENDING | `validate_docs.py` |
 | **TASK-076** | Desduplicar flags de PyInstaller entre force_build y release.yml | 3/10 | 🟡 Medium | ⏳ PENDING | `force_build.py` / `.github/workflows/` |
@@ -32,6 +30,8 @@
 ---
 
 ## 📋 Resumen Histórico de Tareas Cerradas Recientes
+- **TASK-071** (Ciclo #61): Aplicaciones protegidas: pack no ejecutable e indestructible.
+- **TASK-072** (Ciclo #60): Fix hang en run_tests.py: _git_de_fixture sin stdin=DEVNULL.
 - **TASK-070** (Ciclo #59): validate_docs.py optimizado de O(n^2) a O(n) tokenización (`splitlines`).
 - **TASK-069** (Ciclo #56): Migración y protección de profiles.json a `%APPDATA%\woptimizer` sin pérdida de datos.
 - **TASK-067** (Ciclo #55): Re-anclaje de trazabilidad documental y checklists de release.

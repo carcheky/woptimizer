@@ -269,6 +269,14 @@ DEFAULT_GAMING_PACK = Pack(
     target_categories=["🟢 Sincronización", "🟢 Navegadores", "🟢 Productividad", "🟡 Chat y Comunicación", "🟡 Launchers Gaming"]
 )
 
+DEFAULT_PROTECTED_PACK = Pack(
+    id="protected_apps",
+    name="Aplicaciones Protegidas",
+    default_action="kill",
+    is_protected=True,
+    apps=[],
+)
+
 class PackService:
     def __init__(self, data_path: str = PROFILES_FILE):
         self.data_path = data_path
@@ -501,6 +509,7 @@ class PackService:
             self._diagnosticar_y_migrar()
 
         self._ensure_gaming_pack()
+        self._ensure_protected_pack()
         self.invalidate_cache()
 
     def _hay_packs_legibles(self, directorio: str) -> bool:
@@ -1164,6 +1173,15 @@ class PackService:
             self._data.packs["gaming"].is_gaming = True
             self._data.packs["gaming"].is_favorite = True
 
+    def _ensure_protected_pack(self) -> None:
+        """Asegura el pack `protected_apps` EN MEMORIA (no persiste nada)."""
+        has_protected = any(p.is_protected for p in self._data.packs.values())
+        if not has_protected:
+            if "protected_apps" not in self._data.packs:
+                self._data.packs["protected_apps"] = DEFAULT_PROTECTED_PACK.model_copy(deep=True)
+            else:
+                self._data.packs["protected_apps"].is_protected = True
+
     def get_all_packs(self) -> Dict[str, Pack]:
         """TASK-040: Retorna copia defensiva de packs usando caché inmutable de 2 capas (< 0.05 ms)."""
         if self._cached_all_packs is None:
@@ -1344,18 +1362,42 @@ class PackService:
         self._data.packs["gaming"] = DEFAULT_GAMING_PACK.model_copy(deep=True)
         self.save()
 
+    def get_protected_pack(self) -> Optional[Pack]:
+        """Retorna una copia defensiva del pack de aplicaciones protegidas o None."""
+        for p in self._data.packs.values():
+            if p.is_protected:
+                return p.model_copy(deep=True)
+        return None
+
+    def get_protected_apps(self) -> Set[str]:
+        """Retorna conjunto normalizado de apps protegidas (nombres y basenames en minúsculas)."""
+        pack = self.get_protected_pack()
+        if not pack or not pack.apps:
+            return set()
+        res = set()
+        for app in pack.apps:
+            raw = (app or "").strip().lower()
+            if not raw:
+                continue
+            res.add(raw)
+            base = os.path.basename(raw)
+            res.add(base)
+            if base.endswith(".exe"):
+                res.add(base[:-4])
+        return res
+
     def get_user_packs(self) -> Dict[str, Pack]:
-        return {k: v for k, v in self._data.packs.items() if not v.is_gaming}
+        return {k: v for k, v in self._data.packs.items() if not v.is_gaming and not v.is_protected}
 
     def get_favorite_packs(self) -> List[Pack]:
         """TASK-048: Retorna lista de copias defensivas de packs marcados como favoritos."""
-        return [p.model_copy(deep=True) for p in self._data.packs.values() if p.is_favorite]
+        return [p.model_copy(deep=True) for p in self._data.packs.values() if p.is_favorite and not p.is_protected]
 
     def create_user_pack(self, pack_id: str, name: str, apps: List[str]) -> bool:
-        if pack_id in self._data.packs or pack_id == "gaming":
+        if pack_id in self._data.packs or pack_id in ("gaming", "protected_apps"):
             return False
         
-        self._data.packs[pack_id] = Pack(id=pack_id, name=name, apps=apps, is_favorite=False, is_gaming=False)
+        self._data.packs[pack_id] = Pack(id=pack_id, name=name, apps=apps, is_favorite=False, is_gaming=False, is_protected=False)
         self.save()
         return True
 
@@ -1364,6 +1406,8 @@ class PackService:
             return False
         if self._data.packs[pack_id].is_gaming:
             raise ValueError("No se puede eliminar el pack de sistema (Gaming).")
+        if self._data.packs[pack_id].is_protected:
+            raise ValueError("No se puede eliminar el pack de aplicaciones protegidas")
         
         del self._data.packs[pack_id]
         self.save()

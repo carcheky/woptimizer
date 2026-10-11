@@ -224,7 +224,7 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
 
     def _update_pack_dropdown(self):
         packs = self.pack_service.get_all_packs()
-        values = [p.name for p in packs.values()]
+        values = [p.name for p in packs.values() if not p.is_protected]
         if not values:
             values = ["Sin packs disponibles"]
         self.pack_dropdown.configure(values=values)
@@ -243,9 +243,17 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
         self.checkboxes.clear()
         
         grouped = self.grouped_processes
+        protected_apps = self.pack_service.get_protected_apps() if hasattr(self.pack_service, "get_protected_apps") else set()
         
         categories = {}
+        visible_apps_count = 0
         for name_key, procs in grouped.items():
+            # TASK-071: Invisibilidad - omitir procesos protegidos
+            clean_name_key = name_key.lower()
+            if (clean_name_key in protected_apps
+                    or any(p.name.lower() in protected_apps or (p.full_name and p.full_name.lower() in protected_apps) for p in procs)):
+                continue
+
             if search_query and search_query not in name_key:
                 continue
                 
@@ -253,6 +261,7 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
             if cat not in categories:
                 categories[cat] = []
             categories[cat].append((name_key, procs))
+            visible_apps_count += 1
             
         for cat in ordenar_categorias(categories.keys()):
             items = sorted(categories[cat], key=lambda x: x[0])
@@ -262,10 +271,10 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
         # UI-011 / TASK-051: Estado de actualización honesto o estado vacío neutro
         if getattr(self, "_db_update_status", None):
             self.status_label.configure(text=self._db_update_status)
-        elif not grouped:
+        elif not categories:
             self.status_label.configure(text="Sin procesos activos detectados.")
         else:
-            self.status_label.configure(text=f"{len(grouped)} apps distintas en ejecución.")
+            self.status_label.configure(text=f"{visible_apps_count} apps distintas en ejecución.")
 
     def _create_category_section(self, cat: str, items: list, is_expanded: bool, previously_selected: set):
         cat_container = ctk.CTkFrame(self.scroll_frame, fg_color="transparent")

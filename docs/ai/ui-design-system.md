@@ -73,9 +73,20 @@ La jerarquía tipográfica está estrictamente acotada a una tupla de 6 valores 
     - Botón `🚀 Arrancar Apps`: Lanza **las dos listas** — los ejecutables de `apps` vía `ProcessService.start_pack_apps()` y las categorías de `start_categories` vía `ProcessService.start_pack_categories()`, **sumando los dos recuentos** (TASK-063). Elegir una y dejar la otra sería ignorar en silencio la mitad de lo que el usuario marcó. Ambas validan cada ruta antes de lanzarla (sin intérprete, sin UNC, contenida en las raíces permitidas y con extensión `.exe`/`.com`). La UI nunca llama a `subprocess` ni a `os.startfile`: ver `architecture.md` § 14 (TASK-027 / FIX-003).
     - Botón `🔄 Restaurar`: Restablece la configuración predeterminada del pack Gaming (`reset_gaming_pack`).
     - Botón `🗑️ Borrar`: Elimina el pack (deshabilitado si `is_gaming = True`).
+  - **Tarjeta de Pack Protegido (`is_protected = True`, TASK-071):**
+    - Borde destacado en color de acento (`theme.ACCENT`) y badge estático `🛡️ PROTEGIDAS`.
+    - No muestra botones de ejecución ("Iniciar", "Apagar") ni selector de acción por defecto.
+    - No muestra botón de eliminar pack (invariante de preservación).
+    - Botón `➕ Añadir App` para seleccionar y blindar ejecutables desde el explorador de archivos.
+    - Eliminar app protegida ("Desproteger") requiere confirmación doble tap (`_require_double_tap`).
+    - No muestra acordeón de categorías automáticas (no es ejecutable).
 
 ### 3. Gestor de Procesos en Vivo (`views/process_manager_view.py`)
 - **Propósito:** Explorar qué está consumiendo recursos y agregarlo a packs fácilmente.
+- **Invisibilidad de Procesos Protegidos (TASK-071):**
+  - Cualquier proceso cuyo nombre o ejecutable coincida con las apps del pack protegido es **filtrado de la vista**.
+  - No aparece en la tabla, no cuenta en los totales visibles y no puede ser seleccionado para otros packs.
+  - El desplegable `Añadir seleccionados a:` excluye el pack protegido de las opciones disponibles.
 - **Contenido:**
   - Botón superior `🔄 Actualizar Lista`.
   - Buscador de texto en tiempo real.

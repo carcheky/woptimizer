@@ -344,7 +344,7 @@ class DashboardView(Confirmable, ctk.CTkFrame):
     def refresh_dashboard(self):
         self._update_resting_bar()
         self._show_restore_banner()
-        favorites = self.pack_service.get_favorite_packs()
+        favorites = [p for p in self.pack_service.get_favorite_packs() if not p.is_protected]
 
         current_fav_ids = {p.id for p in favorites}
         cached_ids = set(self._buttons_by_pack_id.keys())

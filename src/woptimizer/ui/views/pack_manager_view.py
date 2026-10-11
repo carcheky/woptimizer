@@ -159,19 +159,22 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
         packs = self.pack_service.get_all_packs()
         if "gaming" in packs:
             self._render_pack_card(packs["gaming"])
+        if "protected_apps" in packs:
+            self._render_pack_card(packs["protected_apps"])
         
         for p_id, p in packs.items():
-            if p_id != "gaming":
+            if p_id not in ("gaming", "protected_apps"):
                 self._render_pack_card(p)
 
     def _render_pack_card(self, pack: Pack):
-        # UI-005: Pack gaming destacado con borde GAMING
+        # UI-005: Pack gaming destacado con borde GAMING; pack protegido con borde ACCENT
+        border_col = theme.GAMING if pack.is_gaming else (theme.ACCENT if pack.is_protected else theme.BORDER)
         card = ctk.CTkFrame(
             self.scroll_frame,
             fg_color=theme.SURFACE_ALT,
             corner_radius=theme.RADIUS_LARGE,
-            border_width=2 if pack.is_gaming else 1,
-            border_color=theme.GAMING if pack.is_gaming else theme.BORDER
+            border_width=2 if (pack.is_gaming or pack.is_protected) else 1,
+            border_color=border_col
         )
         card.pack(fill="x", pady=4, padx=4)
         
@@ -183,19 +186,20 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
         left_box = ctk.CTkFrame(header_frame, fg_color="transparent")
         left_box.pack(side="left", fill="x", expand=True)
         
-        fav_text = "⭐" if pack.is_favorite else "☆"
-        btn_fav = ctk.CTkButton(
-            left_box,
-            text=fav_text,
-            width=28,
-            height=28,
-            fg_color="transparent",
-            hover_color=theme.SURFACE_HOVER,
-            text_color=theme.TEXT_PRIMARY,
-            font=("Segoe UI", theme.FONT_SIZE_BODY),
-            command=lambda p=pack.id: self.toggle_favorite(p)
-        )
-        btn_fav.pack(side="left", padx=(0, 4))
+        if not pack.is_protected:
+            fav_text = "⭐" if pack.is_favorite else "☆"
+            btn_fav = ctk.CTkButton(
+                left_box,
+                text=fav_text,
+                width=28,
+                height=28,
+                fg_color="transparent",
+                hover_color=theme.SURFACE_HOVER,
+                text_color=theme.TEXT_PRIMARY,
+                font=("Segoe UI", theme.FONT_SIZE_BODY),
+                command=lambda p=pack.id: self.toggle_favorite(p)
+            )
+            btn_fav.pack(side="left", padx=(0, 4))
         
         title_text = f"{pack.name} ({len(pack.apps)} apps)"
         title_lbl = ctk.CTkLabel(
@@ -219,95 +223,122 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
                 height=20
             )
             badge_gaming.pack(side="left", padx=6)
+        elif pack.is_protected:
+            badge_prot = ctk.CTkLabel(
+                left_box,
+                text="🛡️ PROTEGIDAS",
+                fg_color=theme.ACCENT,
+                text_color=theme.TEXT_PRIMARY,
+                font=("Segoe UI", theme.FONT_SIZE_TINY, "bold"),
+                corner_radius=theme.RADIUS_SMALL,
+                width=95,
+                height=20
+            )
+            badge_prot.pack(side="left", padx=6)
         
         # Derecha: Toolbar de botones compactos (UI-007: min 28x28)
         right_box = ctk.CTkFrame(header_frame, fg_color="transparent")
         right_box.pack(side="right")
         
-        def change_default(choice, p_id=pack.id):
-            # BUG (TASK-062): `get_all_packs()` devuelve COPIAS defensivas
-            # (`model_copy(deep=True)`, cache de 2 capas en `pack_service.py:593`),
-            # y `save()` serializa `self._data`, que esa copia NUNCA toca. La
-            # mutacion se perdia entera: el desplegable cambiaba, se escribia el
-            # fichero con el valor viejo y al recargar volvia al anterior.
-            # Ademas `save()` NO invalida la cache, asi que la UI seguia
-            # enseñando el valor viejo aun con la mutacion bien hecha.
-            # `update_pack()` hace las tres cosas: copia a `_data`, guarda e
-            # invalida la cache. No volver a llamar a `save()` aqui.
-            p = self.pack_service.get_all_packs()[p_id]
-            p.default_action = choice
-            self.pack_service.update_pack(p)
-            
-        combo_action = ctk.CTkOptionMenu(
-            right_box,
-            values=["kill", "start"],
-            command=change_default,
-            width=70,
-            height=28,
-            font=("Segoe UI", theme.FONT_SIZE_SMALL)
-        )
-        combo_action.set(pack.default_action)
-        combo_action.pack(side="left", padx=3)
-        
-        btn_kill = ctk.CTkButton(
-            right_box,
-            text="⛔ Apagar",
-            fg_color=theme.DANGER,
-            hover_color=theme.DANGER_HOVER,
-            text_color=theme.TEXT_PRIMARY,
-            width=75,
-            height=28,
-            font=("Segoe UI", theme.FONT_SIZE_SMALL, "bold")
-        )
-        btn_kill.pack(side="left", padx=3)
-        btn_kill.configure(command=lambda p=pack.id: self.kill_pack(p, btn_kill))
-        
-        btn_start = ctk.CTkButton(
-            right_box,
-            text="🚀 Iniciar",
-            width=75,
-            height=28,
-            fg_color=theme.ACCENT,
-            hover_color=theme.ACCENT_HOVER,
-            text_color=theme.TEXT_PRIMARY,
-            font=("Segoe UI", theme.FONT_SIZE_SMALL, "bold"),
-            command=lambda p=pack: self.start_pack(p)
-        )
-        btn_start.pack(side="left", padx=3)
-        
-        if pack.is_gaming:
-            btn_restore = ctk.CTkButton(
+        if pack.is_protected:
+            btn_add = ctk.CTkButton(
                 right_box,
-                text="🔄",
-                width=28,
+                text="➕ Añadir App",
+                width=100,
                 height=28,
-                fg_color=theme.SURFACE_SUNKEN,
-                hover_color=theme.SURFACE_HOVER,
+                fg_color=theme.ACCENT,
+                hover_color=theme.ACCENT_HOVER,
                 text_color=theme.TEXT_PRIMARY,
-                command=self.restore_gaming
+                font=("Segoe UI", theme.FONT_SIZE_SMALL, "bold"),
+                command=lambda p=pack.id: self.add_app_to_protected(p)
             )
-            btn_restore.pack(side="left", padx=(3, 0))
+            btn_add.pack(side="left", padx=3)
         else:
-            btn_del = ctk.CTkButton(
+            def change_default(choice, p_id=pack.id):
+                # BUG (TASK-062): `get_all_packs()` devuelve COPIAS defensivas
+                # (`model_copy(deep=True)`, cache de 2 capas en `pack_service.py:593`),
+                # y `save()` serializa `self._data`, que esa copia NUNCA toca. La
+                # mutacion se perdia entera: el desplegable cambiaba, se escribia el
+                # fichero con el valor viejo y al recargar volvia al anterior.
+                # Ademas `save()` NO invalida la cache, asi que la UI seguia
+                # enseñando el valor viejo aun con la mutacion bien hecha.
+                # `update_pack()` hace las tres cosas: copia a `_data`, guarda e
+                # invalida la cache. No volver a llamar a `save()` aqui.
+                p = self.pack_service.get_all_packs()[p_id]
+                p.default_action = choice
+                self.pack_service.update_pack(p)
+                
+            combo_action = ctk.CTkOptionMenu(
                 right_box,
-                text="🗑️",
-                width=28,
+                values=["kill", "start"],
+                command=change_default,
+                width=70,
                 height=28,
-                fg_color=theme.SURFACE_SUNKEN,
-                hover_color=theme.DANGER_HOVER,
-                text_color=theme.TEXT_PRIMARY
+                font=("Segoe UI", theme.FONT_SIZE_SMALL)
             )
-            btn_del.pack(side="left", padx=(3, 0))
-            btn_del.configure(command=lambda p=pack.id: self.delete_pack(p, btn_del))
+            combo_action.set(pack.default_action)
+            combo_action.pack(side="left", padx=3)
+            
+            btn_kill = ctk.CTkButton(
+                right_box,
+                text="⛔ Apagar",
+                fg_color=theme.DANGER,
+                hover_color=theme.DANGER_HOVER,
+                text_color=theme.TEXT_PRIMARY,
+                width=75,
+                height=28,
+                font=("Segoe UI", theme.FONT_SIZE_SMALL, "bold")
+            )
+            btn_kill.pack(side="left", padx=3)
+            btn_kill.configure(command=lambda p=pack.id: self.kill_pack(p, btn_kill))
+            
+            btn_start = ctk.CTkButton(
+                right_box,
+                text="🚀 Iniciar",
+                width=75,
+                height=28,
+                fg_color=theme.ACCENT,
+                hover_color=theme.ACCENT_HOVER,
+                text_color=theme.TEXT_PRIMARY,
+                font=("Segoe UI", theme.FONT_SIZE_SMALL, "bold"),
+                command=lambda p=pack: self.start_pack(p)
+            )
+            btn_start.pack(side="left", padx=3)
+            
+            if pack.is_gaming:
+                btn_restore = ctk.CTkButton(
+                    right_box,
+                    text="🔄",
+                    width=28,
+                    height=28,
+                    fg_color=theme.SURFACE_SUNKEN,
+                    hover_color=theme.SURFACE_HOVER,
+                    text_color=theme.TEXT_PRIMARY,
+                    command=self.restore_gaming
+                )
+                btn_restore.pack(side="left", padx=(3, 0))
+            else:
+                btn_del = ctk.CTkButton(
+                    right_box,
+                    text="🗑️",
+                    width=28,
+                    height=28,
+                    fg_color=theme.SURFACE_SUNKEN,
+                    hover_color=theme.DANGER_HOVER,
+                    text_color=theme.TEXT_PRIMARY
+                )
+                btn_del.pack(side="left", padx=(3, 0))
+                btn_del.configure(command=lambda p=pack.id: self.delete_pack(p, btn_del))
 
         # --- SECCION APPS (COMPACTA) ---
         apps_frame = ctk.CTkFrame(card, fg_color=theme.SURFACE_SUNKEN, corner_radius=theme.RADIUS_MEDIUM)
         apps_frame.pack(fill="x", padx=8, pady=(2, 6))
         
         if not pack.apps:
+            msg = "Sin aplicaciones protegidas. Usa '➕ Añadir App' para blindar ejecutables." if pack.is_protected else "Sin aplicaciones manuales. Añádelas desde el Gestor de Procesos."
             ctk.CTkLabel(
                 apps_frame,
-                text="Sin aplicaciones manuales. Añádelas desde el Gestor de Procesos.",
+                text=msg,
                 text_color=theme.TEXT_MUTED,
                 font=("Segoe UI", theme.FONT_SIZE_SMALL)
             ).pack(anchor="w", padx=8, pady=4)
@@ -333,16 +364,11 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
                 btn_remove.pack(side="right")
                 btn_remove.configure(command=lambda p=pack.id, a=app: self.remove_app_from_pack(p, a, btn_remove))
                 
-        # --- SECCION ACORDEON CATEGORIAS (TASK-063: para TODOS los packs) ---
-        #
-        # El `if pack.is_gaming:` que abria esta seccion se ha ido y no se ha
-        # sustituido por su equivalente. Motivo: el gate era el sintoma de un
-        # cableado que ya no existe. `Pack` es un solo modelo con las tres listas
-        # (`apps`, `target_categories`, `start_categories`), `execute_pack` y
-        # `start_pack_categories` son las dos puertas de todo el producto y ya no
-        # miran `is_gaming` para decidir nada. Dejar el gate seria alinear el
-        # formulario con lo que el servicio NO hace: el usuario veria un pack sin
-        # donde elegir categorias, con un servicio que se las pregunta igual.
+        # --- SECCION ACORDEON CATEGORIAS (TASK-063: para packs no protegidos) ---
+        # TASK-071: Un pack protegido no tiene categorías de apagado ni de arranque.
+        if pack.is_protected:
+            return
+
         active_count = len(pack.target_categories) + len(pack.start_categories)
         acc_state = {"open": False}
 
@@ -489,8 +515,8 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
             return
         try:
             borrado = self.pack_service.delete_pack(pack_id)
-        except ValueError:
-            self._inline_status(f"⛔ El pack '{pack.name}' es de sistema y no se puede borrar.", ROJO)
+        except ValueError as e:
+            self._inline_status(f"⛔ {e}", ROJO)
             return
         if not borrado:
             self._inline_status(MSG_PACK_INEXISTENTE, AMBAR)
@@ -506,6 +532,22 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
             self.refresh_packs()
 
         NewPackModal(self.winfo_toplevel(), _create)
+
+    def add_app_to_protected(self, pack_id: str):
+        import os
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(
+            title="Seleccionar ejecutable para proteger",
+            filetypes=[("Ejecutables", "*.exe *.com"), ("Todos los archivos", "*.*")]
+        )
+        if path:
+            filename = os.path.basename(path).lower()
+            pack = self.pack_service.get_all_packs().get(pack_id)
+            if pack and filename not in [a.lower() for a in pack.apps]:
+                pack.apps.append(filename)
+                self.pack_service.update_pack(pack)
+                self.refresh_packs()
+                self._inline_status(f"✅ '{filename}' agregada a aplicaciones protegidas.", VERDE)
 
     def remove_app_from_pack(self, pack_id: str, app_name: str, button=None):
         pack = self.pack_service.get_all_packs().get(pack_id)

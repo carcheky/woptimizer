@@ -2,7 +2,7 @@
   "project": "woptimizer",
   "version": "3.0.1.dev0",
   "updated_at": "2026-10-07",
-  "active_task_id": "TASK-071",
+  "active_task_id": "TASK-073",
   "tasks": [
     {
       "id": "TASK-001",
@@ -1539,7 +1539,7 @@
       "description": "FEATURE pedida por el dueno el 2026-10-05: un pack especial donde las aplicaciones añadidas nunca se matan por la ejecucion de ningun otro pack, no pueden ser iniciadas ni matadas desde el propio pack, y son invisibles en el Gestor de Procesos y en los demas packs. Requiere is_protected=True estricto en Pack, exclusión mutua indestructible en process_service y gaming_service, filtro de invisibilidad en ProcessManagerView, y tarjeta de pack no ejecutable en PackManagerView.",
       "complexity": "high",
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "TASK-069",
         "TASK-072"
