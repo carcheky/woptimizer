@@ -56,8 +56,8 @@ ciclo se da por versionado sin haberlo estado.
 | `0` | Nada que comitear (benigno) | `git diff --cached --quiet` == 0 tras `add -A` | `WOPT_NOOP <motivo>` (**sin hash**) |
 | `0` | Repo sano (solo diagnóstico) | `--verify` y el par `GIT_DIR`/`GIT_WORK_TREE` es utilizable | `WOPT_REPO_OK <git_dir>` |
 | `1` | Fallo de una operación de git | `git status`, `git add -A` o `git commit` con rc != 0, o excepción al lanzarlos | `WOPT_FAIL <operacion> <detalle>` |
-| `2` | Uso incorrecto | sin mensaje, mensaje vacío, más de un posicional, flag desconocido, **mensaje sin identificador de ciclo ni de tarea**, **o llega una sola de las dos variables `GIT_DIR`/`GIT_WORK_TREE`**, **o la cabecera pasa de 120 caracteres**, **o la cabecera incumple `type-empty`/`type-enum`/`type-case`/`subject-empty`/`subject-case`** | `WOPT_USAGE <detalle>` / `WOPT_USAGE ancla-mensaje <detalle>` / `WOPT_USAGE paridad-git <detalle>` / `WOPT_USAGE cabecera-larga <que se espera> <medicion>` / `WOPT_USAGE cabecera-regla <regla> <detalle>` |
-| `3` | Repositorio no verificable | `GIT_DIR` inexistente, no es un git dir, `GIT_WORK_TREE` que no es un directorio, `HEAD` no resuelve, `is-inside-work-tree` != `true`, o `git` no ejecutable | `WOPT_REPO_INVALIDO <detalle>` |
+| `2` | Uso incorrecto | sin mensaje, mensaje vacío, más de un posicional, flag desconocido, **mensaje sin identificador de ciclo ni de tarea**, **o llega una sola de las dos variables `GIT_DIR`/`GIT_WORK_TREE`**, **o el `cwd` no esta dentro de la raiz del proyecto (TASK-072)**, **o la cabecera pasa de 120 caracteres**, **o la cabecera incumple `type-empty`/`type-enum`/`type-case`/`subject-empty`/`subject-case`** | `WOPT_USAGE <detalle>` / `WOPT_USAGE ancla-mensaje <detalle>` / `WOPT_USAGE paridad-git <detalle>` / `WOPT_USAGE cwd-fuera-de-raiz <detalle>` / `WOPT_USAGE cabecera-larga <que se espera> <medicion>` / `WOPT_USAGE cabecera-regla <regla> <detalle>` |
+| `3` | Repositorio no verificable | `GIT_DIR` inexistente, no es un git dir, `GIT_WORK_TREE` que no es un directorio, `HEAD` no resuelve, `is-inside-work-tree` != `true`, `git` no ejecutable, **o el repositorio declara un arbol y la invocacion pretende versionar otro (TASK-072)** | `WOPT_REPO_INVALIDO <detalle>` |
 
 Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
 
@@ -193,6 +193,61 @@ exactamente la mentira que un diagnóstico no debe contar. Con el par entero sal
 de las dos variables sale `2` con `WOPT_USAGE paridad-git`. MEDIDO el 2026-10-05: el mutante que
 se salta la puerta en `--verify` sobrevivía a las 139 pruebas, y ahora muere en
 `test_la_puerta_de_paridad_tambien_cubre_el_modo_verify`.
+
+### Las dos alarmas de ubicación (TASK-072): por qué el wrapper se vigila a sí mismo
+
+**MEDIDO: tres veces en la historia de este repo un subagente ha escrito un commit en el
+historial REAL con un árbol que no era el suyo** (ciclo 56/`TASK-069` y dos veces el 2026-10-08; la
+última, `a5de331`, la confeso y revirtió el propio `mutation-auditor`). No lo causó el agente: lo
+causó **este fichero**, que es la puerta que existe para que nadie versione sin ancla. La causa
+medida son cuatro líneas suyas:
+
+```python
+REPO_ROOT     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOCAL_GIT_DIR = os.path.expandvars(r"%LOCALAPPDATA%\woptimizer_git\.git")
+env["GIT_DIR"]       = env.get("GIT_DIR") or LOCAL_GIT_DIR
+env["GIT_WORK_TREE"] = env.get("GIT_WORK_TREE") or REPO_ROOT
+```
+
+El árbol **se deriva** de dónde vive el script; el repositorio es una **constante absoluta**, luego
+**no admite hermeticidad ninguna**. Invocado desde una copia del proyecto en `%TEMP%`, el wrapper
+escribe en el repo real con el árbol de la cámara, y su propio `--verify` responde `WOPT_REPO_OK`
+desde la cámara. Son los dos lados de un mismo defecto, y por eso hay **dos** alarmas:
+
+| # | Qué se comprueba | Código | ¿Se puede saltar? |
+|---|---|---|---|
+| 1 | el `cwd` **dentro** de `REPO_ROOT` (contenido, no igualdad: trabajar en un subdirectorio es legítimo) | `2` `WOPT_USAGE cwd-fuera-de-raiz` | sí, con `--allow-cwd-externo`, y **suena**: dos líneas `AVISO` en el log |
+| 2 | el repositorio y el árbol **son el mismo par** | `3` `WOPT_REPO_INVALIDO` | **no**: no es una costumbre, es una incoherencia entre el repositorio y el árbol |
+
+**Por qué la 1 sola no cerraba el caso medido:** en `a5de331` el `cwd` estaba **dentro** del árbol de
+la cámara, luego una alarma de cwd no lo habría detenido. La 2 es la que lo cierra, y por eso está
+separada.
+
+**De dónde sale el "árbol declarado":** del propio repositorio, con `git config`, y son dos fuentes
+en este orden: `core.worktree` (la de git) y los remotos que sean una **ruta local existente**. Una
+URL de red no cuenta, luego `origin = https://github.com/...` no puede pasar por árbol de este host.
+MEDIDO el 2026-10-08 sobre el repo real de este proyecto: **`core.worktree` NO está puesto** (`git
+config --get core.worktree` sale con 1) y lo que hay es
+`remote.mirror-local.url=C:/Users/carch/Nextcloud/Scripts/woptimizer/`.
+
+**El ancla NO se escribe en ningún sitio, a propósito.** La versión con escritura —un fichero de ancla
+dentro del `GIT_DIR`— se descartó porque en un repo recién clonado el ancla no existe todavía, la
+crearía la **primera** invocación, y si esa primera invocación es la de una cámara en `%TEMP%`
+deja el repo real anclado al árbol de la cámara y a partir de ahí rechaza al árbol bueno. **Un ancla
+que se escribe a sí misma es un ancla que envenena.**
+
+**Límites declarados de la 2** (para que un límite no se lea como cobertura):
+
+* Si el repositorio **no declara** ningún árbol, la alarma no tiene nada que comparar y **acepta**,
+  diciendo en voz alta por `INFO ancla-arbol:` que la comprobación no se pudo hacer. En este repo
+  sí hay declaración, luego el límite no se ejerce aquí: está escrito para el repo de otra máquina.
+* Solo mira el **par repo/árbol**, no el estado del índice.
+
+**Coste para el bucle: cero.** El orquestador commitea desde la raíz del proyecto siempre, así que
+`cwd == REPO_ROOT` y el camino bueno no se entera. Lo que sí se mide es el otro lado: la escritura
+real sigue funcionando, y está verificado —`test_el_wrapper_no_versiona_desde_un_cwd_ajeno_ni_un_
+arbol_ajeno` **commitea de verdad** en su control, con el `HEAD` de la sonda movido y el fichero
+dentro del commit, y no solo un código de salida.
 
 ### Cobertura
 
@@ -344,6 +399,8 @@ disyuntiva que ya resolvió el check 8 con las exenciones de la Deuda).
 ```
 parse_args  ->  validar_repo (repo + arbol)  ->  [repo invalido: 3]
              ->  PUERTA DE PARIDAD (WOPT_USAGE paridad-git + 2)
+             ->  ALARMA DEL CWD (WOPT_USAGE cwd-fuera-de-raiz + 2)
+             ->  ALARMA DEL PAR REPO/ARBOL (WOPT_REPO_INVALIDO + 3)
              ->  [--verify]  ->  status --porcelain
              ->  NOOP (WOPT_NOOP + 0, EXENTO)
              ->  INFO rama: <rama>  +  [AVISO si es rama de publicacion, NO rechaza]

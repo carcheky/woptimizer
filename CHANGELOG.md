@@ -1,5 +1,17 @@
 ## CYCLE-060 - 2026-10-08
 
+### 🔴 Ronda 3 — la puerta de versionado se vigila a si misma, y el defecto original volvia por la puerta de atras
+
+**Estado**: seis supervivientes de la segunda ronda de auditoria cerrados y verificados por mutacion, mas un agujero del producto que no estaba en el encargo. Tests: **198** (142 + 56). **Ningun cambio en el programa**: `src/woptimizer/**` intacto.
+
+**1. El defecto original volvia por la forma que git documenta.** El guard que prohibe `git cat-file --batch-check` sin `input=` exigia el token **exacto**, y `--batch-check=%(objectname)` —que es como se pide un formato— no lo es. MEDIDO contra el git de este equipo: esa forma **sin `input=`** responde **rc 0 con la salida vacia**, o sea el mismo falso verde que este ciclo vino a matar: `HASH not in ''` es cierto para **cualquier** hash. El guard no lo veía y su documentacion decia que si. Ahora compara el nombre del token antes del `=`, que es lo que dicen las dos formas.
+
+**2. «No se sabe» era verde, y el propio codigo lo decia al reves.** El docstring decia que un argv que no se puede resolver «nunca se trata como verde», y el codigo hacia justo eso. Ahora no se sabe **no cuenta como limpio**: cuenta como **indeciso**, y los indecisos estan **escritos uno a uno en el test** (16 llamadas, todas lanzadores de proceso). Añadir una queda en rojo, y borrar una que ya no existe tambien.
+
+**3. El envoltorio de git ya no se vigila a si mismo, y esa era la noticia.** Tres veces en la historia de este repo un subagente ha escrito un commit en el historial **real** con un arbol que no era el suyo. No lo causo el agente: lo causo el envoltorio, que es la puerta que existe para que nadie versione sin ancla. Su repositorio es una **ruta absoluta constante** y su arbol se deduce de donde vive el script, luego una copia del proyecto en una carpeta temporal commitea en el historial de verdad. Hay dos alarmas: **estar fuera de la raiz del proyecto** se rechaza (y se puede saltar a proposito, avisando), y **repositorio y arbol que no se corresponden** se rechazan sin salida. La segunda es la que importa, porque en el caso medido el directorio de trabajo **si** estaba dentro del arbol: la primera sola no lo habria cerrado.
+
+**El camino bueno no se ha roto**: el bucle sigue versionando igual desde la raiz, y el test nuevo lo **comprueba commiteando de verdad**, no mirando un codigo de salida.
+
 **Tooling** - `TASK-072` (El arnés pedía entrada por consola y dos comprobaciones no comprobaban nada)
 
 **Estado**: **arreglo hecho y medido, con los cinco mutantes cazados a mano y los once supervivientes que encontró la auditoría cerrados en la segunda ronda.** Tests: **197** (142 + 55). **Ningún cambio en el programa**: `src/woptimizer/**` intacto.

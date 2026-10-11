@@ -17589,8 +17589,14 @@ def test_el_contrato_de_codigos_esta_atado_a_cada_linea_wopt():
         # consumidor que ramifica por el codigo. Son dos y no uno porque la linea
         # `WOPT_*` tiene que cerrar su `sys.exit` EN SU RAMA (fila 144), y el
         # `sys.exit` compartido por un `if/else` dejaba las dos huerfanas.
-        ("WOPT_USAGE", "CODE_USAGE"): 5,
-        ("WOPT_REPO_INVALIDO", "CODE_REPO"): 2,
+        # TASK-072 ronda 3 subio esto de 5 a 6 y los `WOPT_REPO_INVALIDO` de 2 a
+        # 3: las DOS alarmas de ubicacion del wrapper. La del cwd es un rechazo
+        # de uso mas (`WOPT_USAGE cwd-fuera-de-raiz`, 2) y la del par
+        # repositorio/arbol es `WOPT_REPO_INVALIDO` (3) porque no es un problema
+        # de la invocacion sino de que este repositorio no es el de este arbol.
+        # El motivo de cada codigo esta en el docstring del propio wrapper.
+        ("WOPT_USAGE", "CODE_USAGE"): 6,
+        ("WOPT_REPO_INVALIDO", "CODE_REPO"): 3,
     })
     RE_MARCADOR = _re.compile(r"WOPT_[A-Z_]+")
 
@@ -19869,6 +19875,174 @@ def test_un_arbol_que_no_es_un_directorio_sale_con_3_y_lo_dice():
           "arbol, no un rc de git.")
 
 
+def test_el_wrapper_no_versiona_desde_un_cwd_ajeno_ni_un_arbol_ajeno():
+    """TASK-072 ronda 3: LAS DOS ALARMAS DE UBICACION, con dos controles.
+
+    MEDIDO: tres veces en la historia de este repo un subagente ha escrito un
+    commit en el HISTORIAL REAL con un arbol que no era el suyo (ciclo 56/TASK-069
+    y dos veces el 2026-10-08, la ultima `a5de331`, que el propio
+    `mutation-auditor` confeso y revirtio). No lo causo el agente: lo causo el
+    wrapper, que es la puerta que existe para que nadie versione sin ancla.
+    MEDIDA la causa, que son cuatro lineas suyas:
+
+        REPO_ROOT     = os.path.dirname(...(os.path.abspath(__file__)))
+        LOCAL_GIT_DIR = os.path.expandvars(r"%LOCALAPPDATA%\\woptimizer_git\\.git")
+
+    El arbol se deriva de donde vive el script, pero el repositorio es una
+    CONSTANTE ABSOLUTA: invocado desde una copia en `%TEMP%` el wrapper escribe
+    en el repo real con el arbol de la camara, y su `--verify` lo certifica con
+    `WOPT_REPO_OK`. Por eso hay DOS alarmas y no una, y **la del cwd sola NO
+    cerraba el caso medido**: en `a5de331` el cwd estaba DENTRO del arbol de la
+    camara. Las dos, cada una con su mutante:
+
+    | # | Invocacion | Que tiene que pasar | Mutante que muere |
+    |---|---|---|---|
+    | A | cwd FUERA de la raiz, arbol sucio | 2 `cwd-fuera-de-raiz`, NADA escrito | borrar la alarma del cwd |
+    | B | cwd en la raiz, arbol valido | **0 y commit de verdad** | una alarma que siempre suena |
+    | C | repo que declara OTRO arbol | 3 `WOPT_REPO_INVALIDO`, NADA escrito | borrar la alarma del par |
+    | D | repo que declara ESTE arbol | **0 y commit de verdad** | un ancla que no compara |
+
+    Los controles B y D son la mitad que hace que esto sea una prueba y no un
+    adorno: sin ellos, "el wrapper siempre sale con 2" pasaria. B mide ademas la
+    segunda mitad del encargo --**que la escritura real siga funcionando**--, y
+    por eso el camino bueno se ejecuta de verdad y se comprueba el `HEAD` de la
+    sonda, no solo el codigo de salida.
+
+    HERMETICO, y aqui esta el cuidado: `GIT_DIR` y `GIT_WORK_TREE` son los dos
+    de la SONDA, temporales y desechables, luego **ninguna de las cuatro
+    invocaciones puede escribir en el repo real ni aunque el test este
+    mutado**. Por eso la sonda NO reproduce `a5de331` con el `GIT_DIR` real --eso
+    seria pedirle al test que pueda contaminar el historial para poder
+    comprobar que no lo contaminationa--, y lo reproduce con la misma clase de
+    incoherencia (repo que declara un arbol y arbol que no es ese) sobre un
+    repo temporal. El testigo de no-contaminacion es `_head_del_repo_real()`.
+    """
+    print("Probando que el wrapper no versiona desde un cwd ajeno ni con un arbol "
+          "ajeno (y que el camino bueno sigue escribiendo)...")
+    import shutil
+    import tempfile
+
+    gsc = _cargar_el_wrapper()
+    wrapper = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+    MENSAJE = "chore(t072): las alarmas de ubicacion del wrapper (TASK-072)"
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t072_ubicacion_")
+    d_repo, git_dir, arbol = _repo_y_arbol_temporales_de_la_sonda(
+        tmp, "chore(t072): fixture de las alarmas de ubicacion")
+    # El cwd de A: un directorio hermano, FUERA de la raiz del proyecto y fuera
+    # del arbol de trabajo. Es el caso de una camara en %TEMP%.
+    fuera = os.path.join(tmp, "cwd_ajeno")
+    os.makedirs(fuera, exist_ok=True)
+    # El arbol de C: un TERCER arbol, distinto del declarado y del de B.
+    arbol_ajeno = os.path.join(tmp, "arbol_ajeno")
+    os.makedirs(arbol_ajeno, exist_ok=True)
+    for nombre in ("sonda_alarma.txt", "sonda_alarma_ajena.txt"):
+        with open(os.path.join(arbol if "ajena" not in nombre else arbol_ajeno,
+                               nombre), "w", encoding="utf-8") as fh:
+            fh.write("arbol sucio a proposito: con la alarma de menos esto se "
+                     "versiona en un repo que no es de este arbol\n")
+
+    head_real_antes = _head_del_repo_real()
+
+    def commits():
+        return _git_de_fixture(["rev-list", "--count", "HEAD"], d_repo).strip()
+
+    def tocar(arbol_destino, nombre):
+        with open(os.path.join(arbol_destino, nombre), "w",
+                  encoding="utf-8") as fh:
+            fh.write("cambio de verdad, escrito a proposito\n")
+
+    try:
+        commits_antes = commits()
+        assert _status_porcelain_de_la_sonda(git_dir, arbol), (
+            "el arbol de la sonda tiene que estar SUCIO: con el arbol limpio el "
+            "wrapper sale por el NOOP antes de llegar a ninguna puerta y este test "
+            "no mediria nada")
+
+        # --- A: cwd FUERA de la raiz del proyecto -> 2, sin escribir --------
+        r_a = _invocar_el_wrapper(wrapper, fuera, git_dir, arbol, MENSAJE)
+        assert r_a.returncode == 2, (
+            f"MUTANTE (alarma del cwd): con el cwd fuera de la raiz del proyecto "
+            f"el wrapper tiene que salir con 2 (WOPT_USAGE cwd-fuera-de-raiz) y "
+            f"salidio con {r_a.returncode}. Sin la alarma, una copia del proyecto "
+            "en %TEMP% commitea en el historial real: es el modo de fallo MEDIDO "
+            f"tres veces en este repo. stdout={r_a.stdout!r} "
+            f"stderr={r_a.stderr!r}")
+        lineas = [l for l in (r_a.stdout or "").splitlines() if l.strip()]
+        assert lineas and lineas[-1].startswith("WOPT_USAGE cwd-fuera-de-raiz"), (
+            "la linea canonica del cwd tiene que ser la ULTIMA y empezar por "
+            f"`WOPT_USAGE cwd-fuera-de-raiz`; la ultima fue "
+            f"{lineas[-1] if lineas else '(sin lineas)'!r}")
+        assert commits() == commits_antes and not _rutas_stageadas(d_repo), (
+            "una invocacion rechazada NO puede haber escrito nada: ni un commit, "
+            f"ni una ruta stageada (commits {commits_antes} -> {commits()}, "
+            f"stageadas {_rutas_stageadas(d_repo)!r}). Una puerta que muta el "
+            "arbol para luego decir que no es lo que se prohibe en TASK-061")
+
+        # --- B: CONTROL. Desde la raiz, con el par entero, se COMITEA -------
+        r_b = _invocar_el_wrapper(wrapper, gsc.REPO_ROOT, git_dir, arbol, MENSAJE)
+        assert r_b.returncode == 0 and "WOPT_COMMIT_OK" in (r_b.stdout or ""), (
+            f"CONTROL: desde la raiz del proyecto, con el par entero y el arbol "
+            f"que el repo declara, el wrapper tiene que COMITEAR (0 y "
+            f"WOPT_COMMIT_OK) y salio con {r_b.returncode}. Sin este control, una "
+            "alarma que siempre suena pasaria el test entero y dejaria al bucle "
+            f"sin poder versionar. stdout={r_b.stdout!r} stderr={r_b.stderr!r}")
+        assert commits() == str(int(commits_antes) + 1), (
+            f"CONTROL: el camino bueno tiene que mover el HEAD de verdad: "
+            f"{commits_antes} -> {commits()}")
+        assert "sonda_alarma.txt" in _ficheros_del_commit(d_repo), (
+            "CONTROL: el commit tiene que llevar el fichero del arbol, o el 0 "
+            "de arriba seria un NOOP disfrazado")
+
+        # El repo de la sonda pasa a DECLARAR un arbol: `core.worktree` es la
+        # declaracion de git, y es lo que hace que el par repo/arbol tenga algo
+        # que contrastar (en el repo real de este proyecto la que hay es un
+        # remoto local; las dos se leen, y la razon esta en el wrapper).
+        _git_de_fixture(["config", "core.worktree", arbol_ajeno], d_repo)
+
+        # --- C: el repo declara un arbol y se le pasa OTRO -> 3 -------------
+        commits_antes_c = commits()
+        tocar(arbol_ajeno, "sonda_alarma_ajena.txt")
+        r_c = _invocar_el_wrapper(wrapper, gsc.REPO_ROOT, git_dir, arbol, MENSAJE)
+        assert r_c.returncode == 3, (
+            f"MUTANTE (alarma del par repo/arbol): el repo declara "
+            f"`{arbol_ajeno}` y la invocacion versiona `{arbol}`, luego tiene que "
+            f"salir con 3 y salio con {r_c.returncode}. **La alarma del cwd no "
+            "basta para esto**: en `a5de331` el cwd estaba dentro del arbol de la "
+            "camara, luego sin esta segunda alarma el caso MEDIDO sigue "
+            f"abierto. stdout={r_c.stdout!r} stderr={r_c.stderr!r}")
+        assert "WOPT_REPO_INVALIDO" in (r_c.stdout or ""), (
+            f"el 3 tiene que emitir WOPT_REPO_INVALIDO: {r_c.stdout!r}")
+        assert "WOPT_REPO_OK" not in (r_c.stdout or ""), (
+            "un `--verify` o un rechazo no pueden certificar un repo que no es "
+            f"el de este arbol: {r_c.stdout!r}")
+        assert commits() == commits_antes_c and not _rutas_stageadas(d_repo), (
+            "el rechazo del par repo/arbol NO puede haber escrito nada: ni un "
+            f"commit ({commits_antes_c} -> {commits()}) ni una ruta stageada "
+            f"({_rutas_stageadas(d_repo)!r})")
+        assert os.path.exists(os.path.join(arbol_ajeno, "sonda_alarma_ajena.txt")), (
+            "el fichero del arbol ajeno tiene que seguir ahi: la puerta no toca "
+            "el arbol de trabajo en ningun sentido")
+
+        # --- D: CONTROL. El arbol que el repo declara SI se versiona --------
+        r_d = _invocar_el_wrapper(wrapper, gsc.REPO_ROOT, git_dir, arbol_ajeno,
+                                  MENSAJE)
+        assert r_d.returncode == 0 and "WOPT_COMMIT_OK" in (r_d.stdout or ""), (
+            f"CONTROL: cuando el arbol SI es el que declara el repo, el wrapper "
+            f"tiene que commitear (0) y salio con {r_d.returncode}. Un ancla que "
+            "no se puede cumplir es una puerta cerrada, que es el otro modo de "
+            f"fallar. stdout={r_d.stdout!r} stderr={r_d.stderr!r}")
+
+        assert _head_del_repo_real() == head_real_antes, (
+            "ninguna de las cuatro invocaciones puede mover el HEAD del repo "
+            "real: las cuatro llevan el par temporal de la sonda")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Alarmas de ubicacion OK: cwd ajeno da 2 sin escribir, repo que declara "
+          "otro arbol da 3 sin escribir, y desde la raiz el camino bueno sigue "
+          "commiteando de verdad.")
+
+
 def test_is_inside_work_tree_false_hace_rechazar_el_repo():
     """TASK-061 iteracion 2 (mata a M9): `is-inside-work-tree` == `false` tiene
     que RECHAZAR el repo.
@@ -21150,9 +21324,29 @@ def _argv_de_un_argumento(nodo, variables, uso, profundidad=0):
     --batch-check"`). Sin distinguirlas, o se aceptaria la forma de shell como
     si fuera un argv, o se exigiria `input=` a una llamada que no existe.
 
-    Devuelve `None` cuando NO SE SABE, y `None` no es "no lleva la primitive":
-    quien decide lo trata como "no se ha podido mirar", nunca como verde. La
-    profundidad acota la recursion porque un par de asignaciones cruzadas
+    Devuelve `None` cuando NO SE SABE, y `None` NO es "no lleva la primitive".
+    Lo que se hace con ese `None` esta escrito donde se decide
+    (`_llamadas_cat_file_batch_check`): no cuenta como llamada limpia, cuenta como
+    **INDECISA**, y las indecisas se COMPARAN con un registro escrito a mano en
+    el test. Es decir: "no se ha podido mirar" no es verde, es una entrada que
+    alguien tiene que haber decidido poner ahi.
+
+    **POR QUE no es fail-closed, y por que esa es la decision correcta.** La
+    version anterior de este docstring decia "nunca como verde" y el codigo hacia
+    lo contrario (`if resuelto is None: continue`): la prosa y el comportamiento
+    se contradecian, que es la clase de defecto que este ciclo ya cerro dos
+    veces. Las dos salidas eran fallar el guard o decir la verdad. Medido el
+    2026-10-08 sobre este fichero: **3898 de las 6448 llamadas tienen algun
+    argumento irresoluble**, y la casi totalidad son `os.path.join`,
+    `isinstance`, `len` u `open`, que no lanzan ningun proceso. Un guard que
+    tratara "no se sabe" como violacion se pondria rojo permanentemente por
+    ellas, y un guard rojo permanente es un guard que nadie mira: el modo de
+    fallo que este mismo guard sufrio al reves con una regla mas debil que nadie
+    noto (S7r). El residuo acotado a los LANZADORES es lo que hace el intercambio
+    honesto: 16 llamadas, las 16 escritas a mano en el test, y **cualquiera de
+    mas tumba la suite**.
+
+    La profundidad acota la recursion porque un par de asignaciones cruzadas
     (`a = b; b = a`) es un bucle, y un bucle en un guard es un cuelgue.
 
     `uso` es la linea de la llamada que se esta mirando, y es lo que decide que
@@ -21208,17 +21402,42 @@ def _argv_de_un_argumento(nodo, variables, uso, profundidad=0):
     return None
 
 
+# Los lanzadores de proceso, que son los UNICOS que pueden esconder una llamada
+# a `git`. El criterio de "no se ha podido mirar" se mide contra esta lista y no
+# contra todas las llamadas del fichero: MEDIDO el 2026-10-08 sobre este
+# `run_tests.py` con la resolucion entera, hay 6448 llamadas de las que 3898
+# llevan algun argumento irresoluble (`os.path.join`, `isinstance`, `len`...), y
+# de las 6448 solo 17 son lanzadores con el argv indecidible. Declarar sospechosa
+# cualquier llamada irresoluble daria 3898 permanentemente, luego un guard
+# vermello se apaga solo; declarar sospechosa solo la que puede LANZAR un
+# proceso deja el residuo en 16 y, lo que importa, lo hace CONTABLE.
+_LANZADORES_DE_PROCESO = ("run", "Popen", "call", "check_call", "check_output",
+                          "system", "getoutput", "getstatusoutput")
+
+
 def _variables_del_modulo(arbol):
-    """`{nombre: [(linea, nodo), ...]}` de las asignaciones de una sola pieza.
+    """`{nombre: [(linea, nodo), ...]}` de los enlaces de una sola pieza.
 
     Sin esto, la forma `args = [...]` + `subprocess.run(args)` es invisible: un
     `Name` no es una lista y un guard que solo mira literales la deja pasar. La
     lista esta ORDENADA por linea porque un mismo nombre puede estar enlazado en
     varios sitios (MEDIDO el 2026-10-08: `args` esta enlazado en la linea 7873
     con `nodo.args` y en la del mutante con la lista), y lo que resuelve el uso
-    es el enlace ANTERIOR, no el que aparezca el ultimo al recorrer. Un `for` o
-    una desestructuracion no se resuelven y se tratan como "no se sabe", nunca
-    como "no lleva la primitive".
+    es el enlace ANTERIOR, no el que aparezca el ultimo al recorrer.
+
+    **El TARGET de un `for` tambien es un enlace** (TASK-072 ronda 3, S4r/B13).
+    MEDIDO antes del arreglo: `for _argv in (["git", "cat-file",
+    "--batch-check"],): subprocess.run(_argv)` era invisible, porque el target de
+    un `for` no es ni un `ast.Assign` ni un `ast.AnnAssign`. Y no es una forma
+    exotica: es COMO se recorren las llamadas del envoltorio de git de este
+    fichero, luego el hueco estaba en la forma que el propio guard usa. El
+    enlace se registra con la linea del `for`, que es anterior a su cuerpo, asi
+    que la regla del "enlace anterior al uso" lo resuelve igual que cualquier
+    otro.
+
+    Una desestructuracion (`a, b = ...`) y el target de una comprehension NO se
+    resuelven: quedan en el registro de "no se ha podido mirar" del guard, que
+    es lo unico que puede vigilarlos.
     """
     variables = {}
     for nodo in ast.walk(arbol):
@@ -21230,13 +21449,37 @@ def _variables_del_modulo(arbol):
                 and nodo.value is not None:
             variables.setdefault(nodo.target.id, []).append(
                 (nodo.lineno, nodo.value))
+        elif isinstance(nodo, (ast.For, ast.AsyncFor)):
+            for objetivo in ast.walk(nodo.target):
+                if isinstance(objetivo, ast.Name):
+                    variables.setdefault(objetivo.id, []).append(
+                        (nodo.lineno, nodo.iter))
     for enlaces in variables.values():
         enlaces.sort(key=lambda enlace: enlace[0])
     return variables
 
 
+def _es_el_token_de_batch_check(token):
+    """`(bool)`: el token es `--batch-check` o `--batch-check=<atomos>`.
+
+    MEDIDO el 2026-10-08 por el `mutation-auditor` (TASK-072 ronda 3, S2r/B11,
+    severidad ALTA): exigir el token EXACTO `"--batch-check" in tokens` no ve
+    `--batch-check=%(objectname)`, que es la forma que documenta git para pedir
+    un formato y la que escribe cualquiera que quiera "solo el nombre del
+    objeto". Y no era una forma exotica ni inocua: MEDIDO contra el `git` de
+    este host, `git cat-file --batch-check=%(objectname)` SIN `input=` responde
+    **rc=0 con stdout VACIO**, o sea el mismo falso verde que este ciclo vino a
+    matar (`'deadbee' not in ''` es True para CUALQUIER hash), y el guard
+    respondia `sin_input=[] con_input=[]`: cero detecciones. Comparar el nombre
+    del token ANTES del `=` es lo que cierra las dos formas de una vez, y es lo
+    que dice `git`: `--batch-check` es el nombre de la primitive y `=<atomos>` es
+    su formato.
+    """
+    return str(token).split("=")[0].strip() == "--batch-check"
+
+
 def _llamadas_cat_file_batch_check(fuente):
-    """`(sin_input, con_input)`: lineas que pasan `git cat-file --batch-check`.
+    """`(sin_input, con_input, indecisas)`: como se reparte la primitive.
 
     MEDIDO el 2026-10-08 con el `ast` de este mismo fichero: 7 formas de
     escribir la llamada prohibida, y las 7 se ven (tupla, variable
@@ -21244,7 +21487,9 @@ def _llamadas_cat_file_batch_check(fuente):
     `shell=True` incluidas). El limite DECLARADO de este guard, para que un
     limite no se lea como cobertura: ve la primitive CUANDO SE PASA COMO
     ARGUMENTO de la llamada --secuencia, tupla, nombre o concatenacion-- o como
-    cadena de comando con `shell=True`. NO ve una cadena que contenga el texto
+    cadena de comando con `shell=True`, y **en las dos formas del token**, con y
+    sin formato (`--batch-check` y `--batch-check=%(objectname)`), que es lo que
+    hace `_es_el_token_de_batch_check`. NO ve una cadena que contenga el texto
     de la llamada sin ser un comando, que es el caso del fuente de un proceso
     hijo escrito con `fh.write(...)`: eso es un PROGRAMA, no una invocacion, y
     ahi la primitive la decide otro fichero.
@@ -21254,37 +21499,57 @@ def _llamadas_cat_file_batch_check(fuente):
     diferencia entre un guard que se autovigila y uno decorativo: con
     `for argumento in []` debajo, un predicado auxiliar sigue dando el mismo
     veredicto y el guard queda mirando cero llamadas sin que nadie lo note.
+
+    **LA TERCERA LISTA, `indecisas`, es lo que hace que "no se sabe" no sea
+    verde** (TASK-072 ronda 3, S3r/B14). Una llamada cuyo argv no se puede
+    resolver NO se cuenta como limpia: se cuenta como indecisa, y el test
+    compara esa lista con un REGISTRO escrito a mano. Asi el mutante que
+    convierte un argv resoluble en un `Name` sin enlace --que antes pasaba
+    desapercibido porque `continue` lo hacia verde-- cambia el registro y tumba
+    la suite. Solo se registran las llamadas que pueden LANZAR un proceso
+    (`_LANZADORES_DE_PROCESO`): las demas no pueden esconder una llamada a git
+    y registrarlas seria ruido que enseguida se apaga.
     """
     arbol = ast.parse(fuente) if isinstance(fuente, str) else fuente
     variables = _variables_del_modulo(arbol)
-    sin_input, con_input = [], []
+    sin_input, con_input, indecisas = [], [], []
     for nodo in ast.walk(arbol):
         if not isinstance(nodo, ast.Call):
             continue
-        pasado = False
+        # El argv es el primer argumento posicional, o el keyword `args`/`argv`
+        # de las formas que lo nombran. Los keywords se recorren aparte porque
+        # `shell=True` decide de la cadena de comando.
+        argv = nodo.args[0] if nodo.args else next(
+            (kw.value for kw in nodo.keywords if kw.arg in ("args", "argv")), None)
+        resuelto = _argv_de_un_argumento(argv, variables, nodo.lineno)
+        if resuelto is None:
+            if argv is not None and ast.unparse(nodo.func).rsplit(".", 1)[-1] \
+                    in _LANZADORES_DE_PROCESO:
+                indecisas.append((
+                    ast.unparse(nodo.func),
+                    " ".join(ast.unparse(argv).split()),
+                    nodo.lineno,
+                ))
+            continue
+        es_secuencia, tokens = resuelto
         es_shell = any(kw.arg == "shell" for kw in nodo.keywords)
-        for argumento in list(nodo.args) + [kw.value for kw in nodo.keywords]:
-            resuelto = _argv_de_un_argumento(argumento, variables, nodo.lineno)
-            if resuelto is None:
-                continue
-            es_secuencia, tokens = resuelto
-            if es_secuencia:
-                # Se exigen los DOS tokens y no una subcadena: `cat-file -e` es
-                # otra primitive, y un `--batch-check` suelto en otra parte del
-                # fichero no es esta llamada.
-                if "cat-file" in tokens and "--batch-check" in tokens:
-                    pasado = True
-                    break
-            if es_shell and any("--batch-check" in token for token in tokens):
+        pasado = False
+        if es_secuencia:
+            # Se exigen el token de `cat-file` y el NOMBRE del token de la
+            # primitive: `cat-file -e` es otra primitive, y un `--batch-check`
+            # suelto en otra parte del fichero no es esta llamada.
+            if "cat-file" in tokens and any(
+                    _es_el_token_de_batch_check(token) for token in tokens):
                 pasado = True
-                break
+        if not pasado and es_shell:
+            pasado = any("--batch-check" in str(token) for token in tokens)
         if not pasado:
             continue
         if any(kw.arg == "input" for kw in nodo.keywords):
             con_input.append(nodo.lineno)
         else:
             sin_input.append(nodo.lineno)
-    return sin_input, con_input
+    return sin_input, con_input, indecisas
 
 
 def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
@@ -21321,12 +21586,17 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
     una primitive distinta y correcta para "existen estos N objetos", y con un
     `cat-file -t` por hash serian ~100 subprocesos. Este guard solo vigila
     `run_tests.py`, que es donde el defecto estaba.
+
+    **RONDA 3 (TASK-072): CINCO formas mas y el registro de lo indeciso.** Cada
+    una responde a un superviviente medido por el `mutation-auditor`, y todas se
+    apoyan en las DOS mitades: que la deteccion REAL ve la llamada y que el
+    veredicto de `input=` es el que corresponde.
     """
     raiz = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(raiz, "run_tests.py"), encoding="utf-8") as fh:
         fuente = fh.read()
 
-    SIN_INPUT, _CON_INPUT = _llamadas_cat_file_batch_check(fuente)
+    SIN_INPUT, _CON_INPUT, INDECISAS = _llamadas_cat_file_batch_check(fuente)
     assert not SIN_INPUT, (
         "hay llamadas a `git cat-file --batch-check` SIN `input=` en las lineas "
         f"{SIN_INPUT}. `cat-file --batch-check` lee los nombres por STDIN: sin "
@@ -21337,31 +21607,97 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
         "por ~100 hashes del journal en una sola llamada"
     )
 
+    # --- EL REGISTRO DE "NO SE HA PODIDO MIRAR" (S3r, mutante B14) ------------
+    #
+    # MEDIDO el 2026-10-08 con el `ast` sobre este fichero: hay 6448 llamadas de
+    # las que 3898 llevan algun argumento irresoluble, y SOLO 16 son lanzadores de
+    # proceso con el argv indecidible. Estas son esas 16, con la razon por la que
+    # cada una no puede esconder un `cat-file --batch-check`:
+    #
+    # La comparacion es de igualdad EXACTA y en los dos sentidos. Por un lado
+    # anadir una llamada indecidible tumba la suite (que es lo que mata a B14: un
+    # argv resoluble cambiado por un `Name` sin enlace aparece en el registro y no
+    # esta escrito aqui). Por el otro, que una entrada sobre sea una que ya no
+    # existe tambien tumba la suite, de modo que el registro no se pudre en
+    # silencio cuando el codigo que justificaba una linea cambia.
+    REGISTRO_INDECISAS = {
+        # Las 4 llamadas de `['git'] + args` son el ENVOLTORIO `_git_de_fixture`
+        # y el helper de existencia: el `args` es el PARAMETRO de la funcion, que
+        # en el cuerpo no esta enlazado a nada. El guard ve que invocan `git` y
+        # no puede ver el resto del argv; lo que NO puede es que el `cat-file`
+        # se esconda en un parametro sin dejar rastro, porque las dos primitivas
+        # que este repo usa con git son las de estos mismos ayudantes.
+        ("subprocess.run", "['git'] + args"): 3,
+        # Las 2 de `[_sys.executable, wrapper, mensaje]` son el wrapper REAL
+        # invocado como proceso: ningun argv, luego ningun `cat-file`.
+        ("subprocess.run", "[_sys.executable, wrapper, mensaje]"): 2,
+        # Las 2 de `[_sys.executable, '-c', parent_code]`: el padre desatendido
+        # de los tests de herencia de stdin. `parent_code` es el fuente de un
+        # programa hijo, no un argv de git.
+        ("subprocess.Popen", "[_sys.executable, '-c', parent_code]"): 2,
+        # Las 2 de `[sys.executable, os.path.join(tmp, 'validate_docs.py')]`:
+        # el VALIDADOR de docs, que tiene su propio `--batch-check` legitimo
+        # con `input=` (`validate_docs.py:519`) y otro fichero.
+        ("subprocess.run", "[sys.executable, os.path.join(tmp, 'validate_docs.py')]"): 2,
+        # `cat-file -e` es OTRA primitive: se ve el token en el texto del argv,
+        # pero `-e` NO es la primitive vigilada, asi que decidirse no cambia el
+        # veredicto. Se registra por el motivo de siempre: si alguien lo cambia
+        # por `--batch-check`, el registro cambia y hay que mirarlo.
+        ("subprocess.run", "['git', 'cat-file', '-e', hash_]"): 1,
+        ("_sp.run", "['cmd', '/c', 'mklink'] + list(args)"): 1,
+        ("subprocess.run", "[_sys.executable, wrapper] + args"): 1,
+        ("subprocess.run", "[_sys.executable, ruta_wrapper_copia, "
+                           "'chore(manual): sin ancla']"): 1,
+        ("subprocess.Popen", "[sys.executable, ruta_hijo, raiz_repo, d_hist]"): 1,
+        ("subprocess.Popen", "[sys.executable, '-c', parent_code]"): 1,
+        ("subprocess.run", "[sys.executable, ruta_validador]"): 1,
+    }
+    visto = {}
+    for funcion, argv, _linea in INDECISAS:
+        clave = (funcion, argv)
+        visto[clave] = visto.get(clave, 0) + 1
+    de_mas = sorted(k for k, n in visto.items()
+                    if REGISTRO_INDECISAS.get(k) != n)
+    de_menos = sorted(k for k in REGISTRO_INDECISAS if k not in visto)
+    assert not (de_mas or de_menos), (
+        "el REGISTRO de las llamadas cuyo argv NO se ha podido resolver esta "
+        "desfasado, y eso es un rojo por dos motivos opuestos que se cancelan "
+        f"si no se mira.\n  derivado:   {sorted(visto.items())}\n"
+        f"  registrado: {sorted(REGISTRO_INDECISAS.items())}\n"
+        f"  de mas:     {de_mas or 'ninguna'}\n"
+        f"  de menos:   {de_menos or 'ninguna'}\n"
+        "Si hay una de mas, alguien ha anadido una llamada que este guard no "
+        "puede mirar y hay que decidir si es inocente y por que (y anotarlo aqui). "
+        "Si hay una de menos, el codigo que justificaba esa entrada ya no esta y "
+        "hay que borrar la entrada: un registro que se pudre es un registro que "
+        "nadie vuelve a mirar")
+
     # Las SIETE formas que el `mutation-auditor` midio como invisibles mas la
-    # octava (la variable con `input=`, que ata las dos mitades). Cada una lleva
-    # el veredicto que se espera del `input=`, y `con_input=False` significa
-    # "tiene que acabar en SIN_INPUT", no "no se ha visto".
+    # octava (la variable con `input=`, que ata las dos mitades), MAS las cinco
+    # de la ronda 3. Cada una lleva el veredicto que se espera del `input=` y el
+    # numero de llamadas que la deteccion tiene que ver, y `con_input=False`
+    # significa "tiene que acabar en SIN_INPUT", no "no se ha visto".
     FRAGMENTOS = [
         ("sin git y sin input=", "subprocess.run(['cat-file', '--batch-check'])",
-         False),
+         False, 1),
         ("con git y sin input=",
-         "subprocess.run(['git', 'cat-file', '--batch-check'])", False),
+         "subprocess.run(['git', 'cat-file', '--batch-check'])", False, 1),
         ("con git y con input=",
          "subprocess.run(['git', 'cat-file', '--batch-check'], input='x\\n')",
-         True),
-        ("TUPLA", "subprocess.run(('git', 'cat-file', '--batch-check'))", False),
+         True, 1),
+        ("TUPLA", "subprocess.run(('git', 'cat-file', '--batch-check'))", False, 1),
         ("VARIABLE INTERMEDIA",
          "args = ['git', 'cat-file', '--batch-check']\nsubprocess.run(args)",
-         False),
+         False, 1),
         ("CONCATENACION",
-         "subprocess.run(['git', 'cat-file', '--batch' + '-check'])", False),
+         "subprocess.run(['git', 'cat-file', '--batch' + '-check'])", False, 1),
         ("LISTA MAS LISTA",
-         "subprocess.run(['git'] + ['cat-file', '--batch-check'])", False),
+         "subprocess.run(['git'] + ['cat-file', '--batch-check'])", False, 1),
         ("CADENA CON shell=True",
-         "subprocess.run('git cat-file --batch-check', shell=True)", False),
+         "subprocess.run('git cat-file --batch-check', shell=True)", False, 1),
         ("VARIABLE CON input=",
          "argv = ['git', 'cat-file', '--batch-check']\ndatos = 'x\\n'\n"
-         "subprocess.run(argv, input=datos)", True),
+         "subprocess.run(argv, input=datos)", True, 1),
         # La que fija la REGLA del enlace, y no una forma mas: el nombre se
         # vuelve a enlazar DESPUES del uso, luego el enlace que vale es el que
         # precede a la llamada. Con un "la ultima asignacion gana" esta forma no
@@ -21370,38 +21706,93 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
         # lado de la llamada).
         ("ENLACE ANTERIOR AL USO",
          "args = ['git', 'cat-file', '--batch-check']\nsubprocess.run(args)\n"
-         "args = 'nada que ver'", False),
+         "args = 'nada que ver'", False, 1),
+        # --- RONDA 3 ---------------------------------------------------------
+        # S2r/B11 (ALTA): la forma CON FORMATO. MEDIDO contra el git de este
+        # host, `git cat-file --batch-check=%(objectname)` SIN `input=` responde
+        # rc=0 con stdout VACIO: es el MISMO falso verde que este ciclo vino a
+        # matar, reintroducible por la forma que git documenta. Estas dos matan
+        # al mutante del token exacto (`"--batch-check" in tokens`).
+        ("FORMATO objectname CON input=",
+         "datos = 'x\\n'\nsubprocess.run(['git', 'cat-file', "
+         "'--batch-check=%(objectname)'], input=datos)", True, 1),
+        ("FORMATO objecttype objectsize SIN input=",
+         "subprocess.run(['git', 'cat-file', "
+         "'--batch-check=%(objecttype) %(objectsize)'])", False, 1),
+        # S5r/B10: la rama `ast.JoinedStr` se puede anular entera y, sin esto,
+        # nadie lo nota porque el f-string es la unica forma que la ejerce. Con
+        # un `FormattedValue` de verdad, no con un f-string de adorno.
+        ("F-STRING CON FORMATO Y input=",
+         "datos = 'x\\n'\nsufijo = 'type'\n"
+         "subprocess.run(['git', 'cat-file', "
+         "f'--batch-check=%(object{sufijo})'], input=datos)", True, 1),
+        # S4r/B13: el argv llega por el TARGET de un `for`, que es como se
+        # recorren las llamadas del envoltorio de git de este mismo fichero.
+        ("TARGET DE UN for",
+         "for argv in (['git', 'cat-file', '--batch-check'],):\n"
+         "    subprocess.run(argv)", False, 1),
+        # S7r/G2b: la regla del enlace retrocedida a "siempre el primero". Con el
+        # orden al reves, el primero es inocuo (`log`) y el ultimo peligroso, que
+        # es la unica disposicion en la que la regla debil deja pasar la llamada.
+        ("ORDEN INVERTIDO DE ENLACES",
+         "args = ['git', 'log']\nargs = ['git', 'cat-file', '--batch-check']\n"
+         "subprocess.run(args)", False, 1),
+        # S6r/B15: el control NEGATIVO vive DENTRO del bucle, con su numero de
+        # detecciones esperado en vez de en un `assert` aparte. Fuera de aqui se
+        # puede anular solo (`assert not (...)` -> `assert True`) y el guard se
+        # queda con la alarma siempre sonando sin que nadie lo note.
+        ("NEGATIVO cat-file -e",
+         "subprocess.run(['git', 'cat-file', '-e', 'deadbee'])", False, 0),
     ]
     fallos = []
-    for nombre, fragmento, con_input in FRAGMENTOS:
-        sin, con = _llamadas_cat_file_batch_check(fragmento)
-        if len(sin) + len(con) != 1:
+    comprobados = []
+    detectadas = 0
+    for nombre, fragmento, con_input, esperados in FRAGMENTOS:
+        sin, con, _ind = _llamadas_cat_file_batch_check(fragmento)
+        comprobados.append(nombre)
+        detectadas += len(sin) + len(con)
+        if len(sin) + len(con) != esperados:
             fallos.append(
-                f"{nombre}: la deteccion REAL tiene que ver UNA llamada y ha visto "
-                f"{len(sin) + len(con)} (sin={sin}, con={con}). Un guard que no "
-                "ve la forma que vigila no vigila")
-        elif bool(con) != con_input:
+                f"{nombre}: la deteccion REAL tiene que ver {esperados} llamada(s) "
+                f"y ha visto {len(sin) + len(con)} (sin={sin}, con={con}). Un "
+                "guard que no ve la forma que vigila no vigila")
+        elif esperados and bool(con) != con_input:
             fallos.append(
                 f"{nombre}: la deteccion la ve y la clasifica como "
                 f"{'CON' if con else 'SIN'} `input=`, y se esperaba lo contrario")
+    # Los tres dientes del bucle, y cada uno tapa un mutante distinto (S6r/B15):
+    # que se mire cada fragmento, que se mire de verdad lo que devuelve la
+    # deteccion, y que el control negativo siga ESTANDO. Un bucle de
+    # contraprueba que se puede vaciar, o un control que se puede borrar, dejan
+    # la suite en verde con el guard mirando cero llamadas: los tres son el mismo
+    # punto ciego que el auditor_denuncio dos rondas.
+    esperados_positivos = sum(esperado for _n, _f, _c, esperado in FRAGMENTOS)
+    assert len(comprobados) == len(FRAGMENTOS), (
+        f"la contraprueba tiene que pasar por las {len(FRAGMENTOS)} formas y ha "
+        f"pasado por {len(comprobados)}. Un bucle de contraprueba que se puede "
+        "vaciar deja la suite en verde con el guard mirando cero formas, que es el "
+        "mismo punto ciego que un predicado auxiliar")
+    assert detectadas == esperados_positivos, (
+        f"la deteccion real tiene que ver {esperados_positivos} llamadas en total "
+        f"y el bucle ha acumulado {detectadas}. Con el cuerpo del bucle vaciado o "
+        "con la contraprueba cambiada por un `assert True`, el total cae a cero y "
+        "el control negativo se va con el: es el mutante S6r/B15")
+    assert "NEGATIVO cat-file -e" in comprobados, (
+        "el control NEGATIVO tiene que seguir en la contraprueba: `cat-file -e` "
+        "es la primitive del helper de existencia y NO lleva `--batch-check`, luego "
+        "no puede salir. Fuera de aqui se puede anular entero (`assert not (...)` "
+        "-> `assert True`) sin que nadie lo note, que es el mutante S6r/B15; dentro "
+        "del bucle hay que borrar una fila, y esa fila se reclama aqui")
     assert not fallos, (
         "la contraprueba del guard tiene que ejercer la DETECCION REAL sobre las "
         f"formas que importan y las dos mitades de cada una: {fallos}. Con una "
         "contraprueba que solo mira un predicado auxiliar, desactivar el bucle "
         "que decide deja la suite en verde con el guard mirando cero llamadas")
 
-    # Control NEGATIVO: `cat-file -e` es la primitive del helper nuevo y NO
-    # lleva `--batch-check`, luego no puede salir en SIN_INPUT. Sin esta linea,
-    # "detecta" podria significar "detecta cualquier llamada de git".
-    sin_control, con_control = _llamadas_cat_file_batch_check(
-        "subprocess.run(['git', 'cat-file', '-e', 'deadbee'])")
-    assert not (sin_control or con_control), (
-        f"la deteccion tiene que ser ESPECIFICA: `cat-file -e` no lleva "
-        f"`--batch-check` y no puede salir (sin={sin_control}, "
-        f"con={con_control})")
     print("Guard estructural de cat-file: 0 llamadas sin input= en run_tests.py; "
           f"la deteccion real ve las {len(FRAGMENTOS)} formas de la contraprueba, "
-          "clasifica el input= de cada una y no ve `cat-file -e`.")
+          f"clasifica el input= de cada una, no ve `cat-file -e` y deja "
+          f"{len(INDECISAS)} llamadas registradas como indecisas.")
 
 
 def test_el_helper_de_existencia_revienta_un_rc_indefinido_tras_tres_intentos():
@@ -25081,4 +25472,12 @@ if __name__ == "__main__":
     test_el_helper_de_existencia_revienta_un_rc_indefinido_tras_tres_intentos()
     test_el_envoltorio_de_git_reintenta_tres_veces_un_fallo_transitorio()
     test_el_check_9_conserva_su_pre_vuelo_de_existencia()
+    # TASK-072 ronda 3: el BLINDAJE DEL WRAPPER y los cinco supervivientes del
+    # guard. Suite: 197 -> 198. UNA sola, DETRAS del marcador (tooling puro: git
+    # en `%TEMP%`, subproceso y `ast`), y es la del blindaje porque es la que
+    # protege el historial: sin ella el wrapper sigue siendo, el mismo de
+    # siempre, la VIA por la que tres veces se ha contaminado el repo real.
+    # Los cinco supervivientes del guard NO necesitan sondas propias: los mata la
+    # contraprueba que ya vivia dentro de `..._cat_file_batch_check_...`.
+    test_el_wrapper_no_versiona_desde_un_cwd_ajeno_ni_un_arbol_ajeno()
     print("\nALL TESTS PASSED.")

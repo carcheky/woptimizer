@@ -18,7 +18,35 @@ CONTRATO DE CODIGOS DE SALIDA (normativo, documentado en docs/ai/sandbox-rules.m
     2  WOPT_USAGE paridad-git <detalle>        llega una sola de las dos variables
     2  WOPT_USAGE cabecera-larga <que> <med>   la cabecera pasa de 120 caracteres
     2  WOPT_USAGE cabecera-regla <regla> <mot> la cabecera incumple otra regla
+    2  WOPT_USAGE cwd-fuera-de-raiz <detalle>  el cwd no esta en la raiz del proyecto
     3  WOPT_REPO_INVALIDO <detalle>            repositorio no verificable
+
+LAS DOS ALARMAS DE UBICACION (TASK-072, ronda 3). Este fichero ES la puerta que
+existe para que nadie versione sin ancla, y medido tres veces en la historia de
+este repo ha sido tambien la VIA por la que un subagente ha contaminado el
+historial real (ciclo 56/TASK-069, y dos veces el 2026-10-08). La causa esta en
+sus propias lineas: `REPO_ROOT` se deriva de `__file__`, pero `LOCAL_GIT_DIR` es
+una CONSTANTE ABSOLUTA y no admite hermeticidad ninguna; luego una copia en
+`%TEMP%` commitea en el repo real con el arbol de la camara, y su propio
+`--verify` lo certifica con `WOPT_REPO_OK`.
+
+Las dos alarmas cierran los dos lados de ese defecto, y son independientes:
+
+    1. `cwd` FUERA de `REPO_ROOT` -> 2 (`cwd-fuera-de-raiz`). El bucle commitea
+       desde la raiz, luego el camino bueno no se entera. Se puede saltar con
+       `--allow-cwd-externo`, que suena en el log.
+    2. Repositorio y arbol QUE NO SE CORRESPONDEN -> 3. El repositorio declara
+       cual es su arbol (`core.worktree`, o un remoto que sea una ruta local
+       existente) y lo que se va a versionar tiene que ser ese. **La 1 sola no
+       cierra el caso medido**: en `a5de331` el cwd estaba DENTRO del arbol de la
+       camara, luego la 2 es la que lo detiene. No se puede saltar: no es una
+       costumbre, es una incoherencia entre el repositorio y el arbol.
+
+LIMITES DECLARADOS de la segunda, porque un limite que no se escribe se lee
+como cobertura: (a) si el repositorio no declara ningun arbol, la alarma no
+tiene nada que comparar y **acepta** (sale un `INFO ancla-arbol:` que lo dice);
+(b) solo mira `run_tests`-style argv, no el estado del indice. El `INFO` del
+camino sin declaracion lo nombra en voz alta en cada invocacion.
 
 PUERTA DE LA CABECERA (TASK-066): el mensaje tiene que parsear como
 conventional commit y su cabecera no pasar de 120, con el criterio COPIADO del
@@ -66,6 +94,9 @@ validacion, imprime `WOPT_REPO_OK <git_dir>` + 0 si el repo esta sano, o
 Uso:
     python .taskmaster/git_safe_commit.py "tipo(scope): descripcion (TASK-NNN)"
     python .taskmaster/git_safe_commit.py --verify
+
+Desde la raiz del proyecto. Fuera de ella se sale con 2
+(`WOPT_USAGE cwd-fuera-de-raiz`); `--allow-cwd-externo` lo salta, suena.
 """
 
 import sys
@@ -146,6 +177,79 @@ MOTIVO_PARIDAD_ROTA = (
     "temporal. Medido, y la hermeticidad de repo y arbol es lo que queda cerrado"
 )
 
+# --- Las dos alarmas de ubicacion (TASK-072, ronda 3) ------------------------
+#
+# MEDIDO: tres veces en la historia de este repo un subagente ha escrito un
+# commit en el HISTORIAL REAL con un arbol que no era el suyo (ciclo 56/TASK-069,
+# y dos veces el 2026-10-08 en la ronda 1 y la ronda 2 de este ciclo). No lo
+# causo el agente: lo causo ESTE fichero, que es la puerta que existe para que
+# nadie versione sin ancla.
+#
+# La causa medida, en cuatro lineas:
+#     REPO_ROOT     = os.path.dirname(...(os.path.abspath(__file__)))
+#     LOCAL_GIT_DIR = os.path.expandvars(r"%LOCALAPPDATA%\woptimizer_git\.git")
+#     env["GIT_DIR"]        = env.get("GIT_DIR") or LOCAL_GIT_DIR
+#     env["GIT_WORK_TREE"]  = env.get("GIT_WORK_TREE") or REPO_ROOT
+#
+# El arbol SE DERIVA de donde vive el script, pero el repositorio es una
+# CONSTANTE ABSOLUTA, luego no admite hermeticidad ninguna. Invocado desde una
+# copia en `%TEMP%`, el wrapper escribe en el repo real con el arbol de la
+# camara, y su propio `--verify` responde `WOPT_REPO_OK` desde la camara. Dos
+# alarmas distintas cierran los dos lados de ese mismo defecto:
+#
+#   1. `cwd` FUERA del arbol del proyecto -> 2, porque quien esta ahi no esta
+#      versionando lo que cree.
+#   2. repositorio y arbol QUE NO SE CORRESPONDEN -> 3, porque es el caso
+#      medido (`a5de331`): el cwd SI estaba dentro del arbol de la copia, luego
+#      la alarma 1 sola NO lo habria cerrado. Aqui el repo DECLARA cual es su
+#      arbol (`core.worktree`, o un remoto que es una ruta local existente) y lo
+#      que se le quiere versionar tiene que ser ese.
+#
+# La 1 se puede saltar con `--allow-cwd-externo`, que suena en el log. La 2 NO
+# se puede saltar: no es una costumbre, es una incoherencia entre el repositorio
+# y el arbol, y por eso es codigo 3 y no codigo 2.
+#
+# POR QUE CODIGO 3 y no 2 en la segunda: 3 es "no pude ni comprobar / no es
+# utilizable", que es exactamente lo que ocurre --este repositorio no es el
+# repositorio de este arbol--, y 2 es "tu invocacion esta mal", que aqui seria
+# verdad y a la vez insuficiente: la invocacion seria la misma con el arbol
+# correcto. Ademas la linea `WOPT_REPO_INVALIDO` es la que `--verify` ya sabe
+# leer, luego el diagnostico no gana un caso nuevo.
+MOTIVO_CWD_FUERA = (
+    "estas fuera del proyecto: el directorio de trabajo es '<cwd>' y el arbol de "
+    "este wrapper es '<raiz>'. El arbol es lo que versionan 'git add -A' y 'git "
+    "commit', luego commitear desde aqui versiona un ARBOL AJENO. POR QUE importa: "
+    "con el arbol derivado de '__file__' y el repositorio en una constante "
+    "absoluta, una COPIA del proyecto en %TEMP% commitea en el historial real, y "
+    "eso ya ha pasado tres veces en este repo. Lanza el wrapper desde la raiz del "
+    "proyecto, o pon '--allow-cwd-externo' si sabes lo que haces: con el flag se "
+    "sigue y queda el AVISO en el log"
+)
+
+MOTIVO_ARBOL_AJENO = (
+    "este repositorio declara que su arbol es '<declarado>' y la invocacion "
+    "pretende versionar '<arbol>'. Versionarlos juntos mete un arbol en el "
+    "historial de otro. POR QUE importa: es el modo de fallo MEDIDO de este "
+    "wrapper --el repositorio es una constante y el arbol se deriva de '__file__'--, "
+    "y produce justo los 'arboles sucios que no sabes de donde vienen'. Si de verdad "
+    "has movido el proyecto, cambia el arbol que declara el repo ('git config "
+    "core.worktree <ruta>') en vez de forzar aqui el versionado"
+)
+
+# INFO (no rechazo) cuando el repo no declara su arbol. ASCII PURO.
+AVISO_SIN_DECLARACION = (
+    "el repositorio no declara que arbol es (ni 'core.worktree' ni un remoto que "
+    "sea una ruta local existente), luego la alarma de correspondencia no puede "
+    "comparar nada y la versionada. ES UN LIMITE DECLARADO, no una comprobacion: si "
+    "este repo se usa con un arbol ajeno, la puerta no lo nota"
+)
+
+# `git config --get-regexp` devuelve `remote.<nombre>.url <valor>` por linea.
+# Se filtra lo que parece una RUTA LOCAL: `C:/...`, `C:\...`, `/...` y el prefijo
+# `file://`. Una URL de red (`https://github.com/...`) no declara un arbol de este
+# host y se descarta, que es lo que evita tomar `origin` por el arbol.
+_RE_REMOTO_LOCAL = re.compile(r"^(?:[A-Za-z]:[\\/]|[/\\]|file://)")
+
 
 
 def detalle(texto, max_len=240):
@@ -196,6 +300,108 @@ def get_env():
     env["GIT_DIR"] = env.get("GIT_DIR") or LOCAL_GIT_DIR
     env["GIT_WORK_TREE"] = env.get("GIT_WORK_TREE") or REPO_ROOT
     return env, paridad_rota
+
+
+def _canonica(ruta):
+    r"""La ruta tal y como hay que COMPARARLAS: absoluta y normalizada.
+
+    `normcase` en Windows pasa a minusculas y unifica separadores, luego
+    `C:/Users/X` y `c:\users\x` son la misma. `realpath` NO se usa a proposito:
+    resolver enlaces symbolically antes de comparar haria que dos rutas que
+    git escribe de una manera y Python de otra dejaran de coincidir, y el fallo
+    seria un falso 3.
+    """
+    return os.path.normcase(os.path.abspath(ruta))
+
+
+def cwd_dentro_del_arbol(repo_root):
+    """`(ok, cwd, raiz)`: quien llama esta dentro del arbol del proyecto.
+
+    El caso normal del bucle es `cwd == raiz`: el orquestador commitea desde la
+    raiz siempre, luego el coste de esta puerta es cero para el camino bueno y
+    solo muerde a quien llama desde otro sitio. El criterio es de CONTENIDO
+    (`cwd` dentro de `raiz`, no necesariamente igual), porque working en un
+    subdirectorio del proyecto --`.agents/`, `docs/`-- es una invocacion
+    legitima y no debe salir con 2.
+
+    `os.getcwd()` puede fallar si el directorio actual se borro por debajo (un
+    temporal de una sonda, tipico). No se inventa un valor: se devuelve `False`
+    y el motivo, y `main()` lo tradujo al mismo rechazo que un cwd ajeno.
+    """
+    try:
+        cwd = os.getcwd()
+    except OSError as exc:
+        return False, "", f"no se pudo leer el directorio de trabajo: {exc}"
+    raiz = _canonica(repo_root)
+    aqui = _canonica(cwd)
+    return (aqui == raiz or aqui.startswith(raiz + os.sep)), cwd, raiz
+
+
+def arboles_declarados_por_el_repo(env):
+    """`[str]` de los arboles que el REPOSITORIO dice que son suyos.
+
+    MEDIDO el 2026-10-08 sobre el repo real de este proyecto: `core.worktree`
+    **no esta puesto** (`git config --get core.worktree` sale con 1) y lo que si
+    hay es `remote.mirror-local.url=C:/Users/carch/Nextcloud/Scripts/woptimizer/`,
+    que es la declaracion de que este repositorio y este arbol son el mismo
+    par. Sin una fuente asi el par repo/arbol no tiene nada que contrastar y la
+    alarma se queda muda, que es un limite DECLARADO (`AVISO_SIN_DECLARACION`),
+    no una comprobacion que se pueda creer.
+
+    Son DOS fuentes y en este orden: `core.worktree` (la de git) y los remotos
+    que sean una ruta local existente. Se aceptan varias porque un repo puede
+    tener mas de un clon local: basta con que el arbol de la invocacion sea UNO
+    de los declarados. Una URL de red no cuenta, luego `origin` =
+    `https://github.com/...` no puede pasar por arbol de este host.
+    """
+    declarados = []
+    rc, out, err, exc = run_git(["config", "--get", "core.worktree"], env)
+    if exc is None and rc == 0 and out.strip():
+        declarados.append(out.strip().splitlines()[0].strip())
+
+    rc, out, err, exc = run_git(
+        ["config", "--get-regexp", r"^remote\..*\.url$"], env)
+    if exc is None and rc == 0 and out.strip():
+        for linea in out.splitlines():
+            if " " not in linea:
+                continue
+            valor = linea.split(" ", 1)[1].strip().strip('"')
+            if not _RE_REMOTO_LOCAL.match(valor):
+                continue
+            ruta = valor[len("file://"):] if valor.startswith("file://") else valor
+            if os.path.isdir(ruta):
+                declarados.append(ruta)
+    return declarados
+
+
+def ancla_del_arbol(env, git_dir):
+    """`(ok, detalle)`: el repositorio y el arbol de la invocacion son el par.
+
+    Devuelve `True` con un detalle informativo cuando no hay nada que oponer
+    (el repo no declara arbol, limite declarado y escrito). Devuelve `False` con
+    el motivo cuando el repo declara un arbol y este NO es el que se va a
+    versionar, que es el caso medido de `a5de331`.
+
+    **Solo lectura**: pregunta al repo con `git config` y no escribe ni un
+    fichero, ni un ancla, ni un config. La version con escritura (un fichero de
+    ancla DENTRO del `GIT_DIR`) se descarto a proposito: en un repo recien
+    clonado el ancla no existe todavia, luego la crearia la PRIMERA invocacion,
+    y si esa primera invocacion es la de una camara en `%TEMP%` deja el repo real
+    anclado al arbol de la camara y a partir de ahi rechaza al arbol bueno. Un
+    ancla que se escribe a si misma es un ancla que envenena.
+    """
+    arbol = _canonica(env.get("GIT_WORK_TREE") or REPO_ROOT)
+    declarados = arboles_declarados_por_el_repo(env)
+    if not declarados:
+        return True, ("sin declaracion: el repositorio no dice que arbol es, "
+                      "luego no hay nada que comparar")
+    for declarado in declarados:
+        if _canonica(declarado) == arbol:
+            return True, f"declarado: {declarado}"
+    return False, (
+        f"el repositorio '{git_dir}' declara como suyo el arbol "
+        f"'{declarados[0]}' y la invocacion pretende versionar '{arbol}'"
+    )
 
 
 def run_git(args, env):
@@ -281,25 +487,28 @@ def validar_repo(env):
 
 
 def parse_args(argv):
-    """Devuelve (verify, mensaje, error_de_uso)."""
+    """Devuelve (verify, allow_cwd_externo, mensaje, error_de_uso)."""
     verify = False
+    allow_cwd_externo = False
     posicionales = []
     for arg in argv:
         if arg == "--verify":
             verify = True
+        elif arg == "--allow-cwd-externo":
+            allow_cwd_externo = True
         elif arg.startswith("-"):
-            return False, None, f"flag desconocido: {arg}"
+            return False, False, None, f"flag desconocido: {arg}"
         else:
             posicionales.append(arg)
 
     if verify and posicionales:
-        return False, None, "--verify no admite un mensaje de commit"
+        return False, allow_cwd_externo, None, "--verify no admite un mensaje de commit"
     if len(posicionales) > 1:
-        return False, None, "se esperaba un unico mensaje entrecomillado"
+        return False, allow_cwd_externo, None, "se esperaba un unico mensaje entrecomillado"
     mensaje = posicionales[0].strip() if posicionales else ""
     if not verify and not mensaje:
-        return False, None, "falta el mensaje de commit (o esta vacio)"
-    return verify, mensaje, None
+        return False, allow_cwd_externo, None, "falta el mensaje de commit (o esta vacio)"
+    return verify, allow_cwd_externo, mensaje, None
 
 
 def ancla_del_mensaje(mensaje, ids):
@@ -609,6 +818,13 @@ def imprimir_uso():
     print('Uso: python .taskmaster/git_safe_commit.py "tipo(scope): descripcion (TASK-NNN)"')
     print("     python .taskmaster/git_safe_commit.py --verify")
     print()
+    print("EL WRAPPER TIENE QUE LLAMARSE DESDE LA RAIZ DEL PROYECTO (TASK-072):")
+    print("  el arbol de trabajo es lo que versionan 'git add -A' y 'git commit', y")
+    print("  con el arbol derivado de '__file__' y el repositorio en una constante")
+    print("  absoluta, commitear desde una COPIA del proyecto en %TEMP% escribe en el")
+    print("  historial real. Desde fuera de la raiz se sale con 2; con")
+    print("  '--allow-cwd-externo' se sigue y queda el AVISO en el log.")
+    print()
     print("El mensaje LLEVA IDENTIFICADOR, y el wrapper lo exige (TASK-059):")
     print("  'TASK-NNN'  existente en .taskmaster/tasks.json   (p. ej. '(TASK-059)')")
     print("  'CYCLE-NNN'                                       (p. ej. 'CYCLE-059')")
@@ -634,7 +850,7 @@ def imprimir_uso():
 
 
 def main():
-    verify, mensaje, error_uso = parse_args(sys.argv[1:])
+    verify, allow_cwd_externo, mensaje, error_uso = parse_args(sys.argv[1:])
     if error_uso:
         imprimir_uso()
         print(f"WOPT_USAGE {detalle(error_uso)}")
@@ -664,6 +880,58 @@ def main():
     if paridad_rota:
         print(f"WOPT_USAGE paridad-git {detalle(MOTIVO_PARIDAD_ROTA)}")
         sys.exit(CODE_USAGE)
+
+    # 0bis. ALARMA DE UBICACION, LA DEL CWD (TASK-072 ronda 3). Va al lado de
+    #      la de paridad y por el mismo motivo: es de SOLO LECTURA, ocurre antes
+    #      del NOOP y antes de `add -A`, y en `--verify` tambien, porque un
+    #      "`WOPT_REPO_OK`" no puede ser el diagnostico de alguien que esta
+    #      versionando desde un directorio que no es el proyecto.
+    #
+    #      El caso normal del bucle es `cwd == REPO_ROOT` (el orquestador
+    #      commitea desde la raiz), luego el coste es cero para el camino bueno.
+    dentro, cwd, raiz = cwd_dentro_del_arbol(REPO_ROOT)
+    if not dentro:
+        if not allow_cwd_externo:
+            motivo = MOTIVO_CWD_FUERA
+            if cwd:
+                motivo = motivo.replace("<cwd>", detalle(cwd)).replace(
+                    "<raiz>", detalle(raiz))
+            else:
+                # `os.getcwd()` no se pudo leer: mismo rechazo, con el motivo
+                # real en lugar de dos marcadores de plantilla.
+                motivo = ("no se pudo resolver el directorio de trabajo: "
+                          + detalle(raiz) + "; " + MOTIVO_CWD_FUERA)
+            print(f"WOPT_USAGE cwd-fuera-de-raiz {detalle(motivo)}")
+            sys.exit(CODE_USAGE)
+        print(f"AVISO cwd: '{detalle(cwd)}' esta FUERA del arbol del proyecto "
+              f"'{detalle(raiz)}' y se sigue porque se paso "
+              "'--allow-cwd-externo'.")
+        print("AVISO POR QUE esto NO se rechaza: la alarma existe porque con el "
+              "arbol derivado de '__file__' y el repositorio en una constante "
+              "absoluta, commitear desde una copia del proyecto en %TEMP% escribe "
+              "en el historial real. Si has llegado aqui sin saber por que, quita "
+              "el flag y lanza el wrapper desde la raiz del proyecto.")
+
+    # 0ter. ALARMA DE UBICACION, LA DEL PAR REPO/ARBOL (TASK-072 ronda 3). La
+    #       que cierra el caso MEDIDO (`a5de331`): el cwd SI estaba dentro del
+    #       arbol de la camara, luego la alarma de arriba, sola, no lo habria
+    #       cerrado. Aqui lo que se comprueba es que el repositorio y el arbol
+    #       sean EL MISMO par, y sale con 3 (`WOPT_REPO_INVALIDO`) porque no es
+    #       un problema de la invocacion: es que este repositorio no es el
+    #       repositorio de este arbol.
+    #
+    #       Va DESPUES de las alarmas de uso (codigo 2) y ANTES del NOOP y de
+    #       `add -A`, como las demas: es de SOLO LECTURA y un rechazo no muta el
+    #       arbol ni el indice.
+    ok_ancla, detalle_ancla = ancla_del_arbol(env, git_dir)
+    if not ok_ancla:
+        print(f"WOPT_REPO_INVALIDO {detalle(detalle_ancla)}. {detalle(MOTIVO_ARBOL_AJENO)}")
+        sys.exit(CODE_REPO)
+    if detalle_ancla.startswith("sin declaracion"):
+        print(f"INFO ancla-arbol: {detalle(detalle_ancla)}. "
+              f"{detalle(AVISO_SIN_DECLARACION)}")
+    else:
+        print(f"INFO ancla-arbol: {detalle(detalle_ancla)}")
 
     if verify:
         # Modo diagnostico: misma validacion, cero escrituras.

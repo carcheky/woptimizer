@@ -1,5 +1,26 @@
 ## [CYCLE-060] 2026-10-08 - arnes-hang-stdin-git
 
+### Ronda 3 (TASK-072): las dos alarmas de ubicacion del wrapper y los cinco supervivientes del guard
+
+**Area**: Tooling. **Tests**: 197 -> **198 = 142 + 56**. Cero cambios en `src/woptimizer/**`.
+
+| # | Que | Donde |
+|---|---|---|
+| S2r/B11 (ALTA) | `--batch-check=<atomos>` se detecta comparando el nombre del token antes del `=` | `_es_el_token_de_batch_check` |
+| S3r/B14 | `None` ya no es verde: el argv indecisible se REGISTRA y el test compara el registro con una lista escrita a mano | `_llamadas_cat_file_batch_check` devuelve una tercera lista |
+| S4r/B13 | el target de un `for` es un enlace mas | `_variables_del_modulo` |
+| S5r/B10 | el f-string entra en la contraprueba | `FRAGMENTOS` |
+| S6r/B15 | el control negativo vive DENTRO del bucle, con su recuento esperado, y hay tres dientes sobre el bucle | `FRAGMENTOS` |
+| S7r/G2b | un fragmento con el orden de enlaces invertido | `FRAGMENTOS` |
+| Alarma 1 | `cwd` fuera de `REPO_ROOT` -> 2, con `--allow-cwd-externo` como salida que suena | `cwd_dentro_del_arbol` |
+| Alarma 2 | repositorio y arbol que no se corresponden -> 3, sin salida | `ancla_del_arbol` |
+
+**Cada uno muere por su asercion**, medido parcheando el arbol y restaurando byte a byte (8 mutantes del guard + 2 del wrapper, 10 de 10 en rojo).
+
+**El residuo, medido y escrito**: de 6448 llamadas de `run_tests.py`, 3898 llevan algun argumento irresoluble y solo **16** son lanzadores de proceso con el argv indecidible. Un guard que tratara «no se sabe» como violacion se pondria rojo permanentemente y nadie lo miraria, que es el otro modo de fallar.
+
+**Limites declarados**: la alarma 2 acepta si el repositorio no declara ningun arbol (lo dice por `INFO`); `core.worktree` no esta puesto en el repo real de este proyecto y la declaracion que hay es `remote.mirror-local.url=<ruta local>`.
+
 **Area**: Tooling. **Change**: `openspec/changes/2026-10-08-arnes-hang-stdin-git/`
 **Estado**: **COMPLETED** (T-1 a T-5). `TASK-072` cerrada.
 **Tests**: 191 -> **194 = 142 + 52**. Documentacion: **0 FAIL**. Cero cambios en `src/woptimizer/**` (AC-6).
