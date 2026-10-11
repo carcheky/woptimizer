@@ -1104,5 +1104,18 @@
     ],
     "tests": "191 -> 198 = 142 backend + 56 headless (run_tests.py). Documentacion: 0 FAIL. verify_ui_syntax.py EXITO (9/9). Rama beta.",
     "notes": "TASK-072: (1) stdin heredado en las 37 llamadas de git solucionado con stdin=subprocess.DEVNULL. (2) Pre-vuelos tautologicos de cat-file --batch-check reemplazados por _objeto_existe_en_fixture usando cat-file -e. (3) Ronda 2 de mutacion cerro los 11 supervivientes reportados con 3 tests adicionales y guard estructural de AST. Ronda 3 afino deteccion de atomos de batch-check y alarmas de ubicacion del wrapper."
+  },
+  {
+    "cycle": 61,
+    "date": "2026-10-11",
+    "slug": "task-071-protected-apps",
+    "task": "TASK-071",
+    "area": "Core / UI",
+    "status": "COMPLETED. Pack de aplicaciones protegidas implementado en Modelos, Servicios y UI. is_protected booleano estricto, exclusion mutua anti-kill, invisibilidad en ProcessManagerView y no-ejecucion en PackManagerView y DashboardView. 5 tests headless nuevos (198 -> 203: 142 backend + 61 headless). run_tests.py en verde y validate_docs.py en 0 FAIL.",
+    "commits": [
+      "4349b10"
+    ],
+    "tests": "198 -> 203 = 142 backend + 61 headless (run_tests.py). Documentacion: 0 FAIL. verify_ui_syntax.py EXITO (9/9). Rama beta.",
+    "notes": "TASK-071: Feature pedida por el dueno (2026-10-05). apps en protected_apps jamas son matadas por ningun pack ni categoria, son invisibles en la tabla de procesos y el pack protegido no puede ser eliminado, iniciado ni matado."
   }
 ]

@@ -1,3 +1,15 @@
+## CYCLE-061 - 2026-10-11
+
+### ✨ Añadido — Aplicaciones protegidas (pack no ejecutable e indestructible)
+
+**Estado**: Feature completada y verificada. Tests: **203** (142 backend + 61 headless UI). Commit: `4349b10`.
+
+- **Pack de aplicaciones protegidas (`protected_apps`)**: Las aplicaciones añadidas a este pack nunca son cerradas por la ejecución de ningún otro pack (modo Gaming, packs de usuario o categorías automáticas).
+- **Invariante de no-ejecución e inmutabilidad**: El pack protegido no puede eliminarse (`ValueError`), no ofrece botones de inicio ni de apagado, y cualquier intento de ejecución retorna inmediatamente `(0, 0, 0, 0.0)`.
+- **Invisibilidad en el Gestor de Procesos**: Los procesos protegidos no aparecen en la lista de procesos activos ni en el desplegable de asignación a otros packs.
+- **5 tests headless nuevos** añadidos a `run_tests.py` cubriendo validación estricta Pydantic (`is_protected: bool`), prevención de borrado, supervivencia anti-kill en `process_service` y `gaming_service`, e interfaz en `ProcessManagerView`, `PackManagerView` y `DashboardView`.
+- **Auditoría de mutación completada**: Verificada la detección de mutantes en disco y cero regresiones.
+
 ## CYCLE-060 - 2026-10-08
 
 ### 🔴 Ronda 3 — la puerta de versionado se vigila a si misma, y el defecto original volvia por la puerta de atras

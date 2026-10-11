@@ -1,3 +1,19 @@
+## [CYCLE-061] 2026-10-11 - task-071-protected-apps
+
+### Implementación de TASK-071: Aplicaciones Protegidas
+
+**Area**: Core / UI. **Change**: `openspec/changes/2026-10-07-task-071-protected-apps/`
+**Estado**: **COMPLETED** (T-1 a T-5). `TASK-071` cerrada.
+**Tests**: 198 -> **203 = 142 + 61**. Documentacion: **0 FAIL**. Rama beta. Commit: `4349b10`.
+
+| T | Que | Donde |
+|---|---|---|
+| T1 | `is_protected: bool = Field(default=False, strict=True)` en `Pack`, `DEFAULT_PROTECTED_PACK`, `_ensure_protected_pack()`, rechazo de `delete_pack()`, `get_protected_pack()` y `get_protected_apps()` | `models.py`, `pack_service.py` |
+| T2 | Exclusión de apps protegidas en `kill_processes` y `kill_pack_apps`, e integración en keepers de `GamingService._seleccion` y `execute_pack` no-ejecutable | `process_service.py`, `gaming_service.py` |
+| T3 | Ocultación de apps protegidas en `ProcessManagerView._render_list()` y exclusión del desplegable de packs | `process_manager_view.py` |
+| T4 | Tarjeta especial con badge `🛡️ PROTEGIDAS` y sin botones de ejecución/borrado en `PackManagerView`; exclusión de portada en `DashboardView` | `pack_manager_view.py`, `dashboard_view.py` |
+| T5 | 5 tests headless (199-203) en `run_tests.py`; tabla de `testing-guide.md` actualizada | `run_tests.py`, `testing-guide.md` |
+
 ## [CYCLE-060] 2026-10-08 - arnes-hang-stdin-git
 
 ### Ronda 3 (TASK-072): las dos alarmas de ubicacion del wrapper y los cinco supervivientes del guard

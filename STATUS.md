@@ -12,17 +12,17 @@
 | Tests headless | 🟢 | `run_tests.py`, **203 tests** (142 backend + 61 headless UI) |
 | Benchmark base | 🟢 | 182 ms init · 4.97 ms escaneo · 0.003 ms cache · 30 MB RSS |
 | Process DB | 🟢 | 96 entradas · 8 categorías · 0 huérfanas · 🛡️ 34 protegidas |
-| Versionado | 🟢 | Rama `beta` · último commit `dbeed31` · `main` publicada `v1.1.0` |
+| Versionado | 🟢 | Rama `beta` · último commit `4349b10` · `main` publicada `v1.1.0` |
 | Build (PyInstaller) | 🟡 | Artefacto de distribución; se regenera al publicar vía CI |
 
 ---
 
 ## 🔄 Estado de la Ejecución
 
-- **Ciclos completados:** 60 (`rd_journal.json`)
+- **Ciclos completados:** 61 (`rd_journal.json`)
 - **Rama de trabajo:** `beta` (nunca commitear a `main` directamente)
-- **Último ciclo (#60):** TASK-072 — Hang stdin en `_git_de_fixture` y pre-vuelos tautológicos
-- **Tarea activa (`active_task_id`):** `TASK-071` (`pending`, `high`)
+- **Último ciclo (#61):** TASK-071 — Aplicaciones protegidas (pack indestructible e inejecutable)
+- **Tarea activa (`active_task_id`):** `TASK-073` (`pending`, `high`)
 
 ---
 
@@ -30,15 +30,14 @@
 
 | ID | Estado | Prioridad | Título | Notas clave |
 |---|---|---|---|---|
-| **TASK-071** | `pending` | **high** | Pack de apps protegidas | Spec en `openspec/changes/2026-10-07-task-071-protected-apps/`. Reutiliza `keepers` |
+| **TASK-073** | `pending` | **high** | RuntimeError en `ProcessManagerView._load` tras destrucción | Race condition ventana destruida |
 | **TASK-068** | `in_progress` | high | Arranque por categorías revierte TASK-063 | Código hecho, 189→198 tests. **2 decisiones del dueño bloquean cierre (P-1, P-2b)** |
-| **TASK-073** | `pending` | high | RuntimeError en `ProcessManagerView._load` tras destrucción | Race condition ventana destruida |
 | **TASK-074** | `pending` | medium | Blindar paridad git tooling (código 2 asimétrico) | |
 | **TASK-075** | `pending` | medium | Desacoplar `validate_docs.py` de `%LOCALAPPDATA%` para CI | |
 | **TASK-076** | `pending` | medium | Desduplicar flags PyInstaller (`force_build.py` vs `release.yml`) | |
 | **TASK-077** | `pending` | low | Normalizar CRLF en `.bat`/`.ps1` (`git add --renormalize`) | |
 
-> **Prioridad de ejecución:** `TASK-071` (activa, feature pedida) → `TASK-073` → resto por prioridad.
+> **Prioridad de ejecución:** `TASK-073` (activa) → resto por prioridad.
 > **TASK-068** está bloqueada por decisiones del dueño (P-1 y P-2b, ver más abajo).
 
 ---
@@ -103,6 +102,7 @@
 
 | Ciclo | Área | Qué se hizo |
 |---|---|---|
+| #61 | Core / UI | Aplicaciones protegidas no ejecutables e indestructibles (TASK-071) |
 | #60 | Tooling | Hang stdin git fixture solucionado (TASK-072) |
 | #59 | Tooling | `validate_docs.py` una vez por fichero (TASK-070) |
 | #52 | Tooling | Puerta de ancla obligatoria en commits (TASK-059) |
@@ -118,4 +118,4 @@
 | #36 | Testing | Contratos ciclo vida Confirmable (TASK-046) |
 | #35 | Rendimiento | Memoización categorización O(1) (TASK-045) |
 
-> Historial completo de los 60 ciclos en `.taskmaster/rd_journal.json` y `.taskmaster/CHANGELOG.md`.
+> Historial completo de los 61 ciclos en `.taskmaster/rd_journal.json` y `.taskmaster/CHANGELOG.md`.
