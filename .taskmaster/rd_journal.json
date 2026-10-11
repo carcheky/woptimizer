@@ -1113,7 +1113,8 @@
     "area": "Core / UI",
     "status": "COMPLETED. Pack de aplicaciones protegidas implementado en Modelos, Servicios y UI. is_protected booleano estricto, exclusion mutua anti-kill, invisibilidad en ProcessManagerView y no-ejecucion en PackManagerView y DashboardView. 5 tests headless nuevos (198 -> 203: 142 backend + 61 headless). run_tests.py en verde y validate_docs.py en 0 FAIL.",
     "commits": [
-      "4349b10"
+      "4349b10",
+      "28165c4"
     ],
     "tests": "198 -> 203 = 142 backend + 61 headless (run_tests.py). Documentacion: 0 FAIL. verify_ui_syntax.py EXITO (9/9). Rama beta.",
     "notes": "TASK-071: Feature pedida por el dueno (2026-10-05). apps en protected_apps jamas son matadas por ningun pack ni categoria, son invisibles en la tabla de procesos y el pack protegido no puede ser eliminado, iniciado ni matado."
