@@ -1176,5 +1176,20 @@
   ],
   "tests": "220 tests = 155 backend + 65 headless (run_tests.py, derivado con ast; eran 207). validate_docs.py -> 150 OK, 0 FAIL, 0 SKIP. verify_ui_syntax.py EXITO. Linea base en camara autocontenida: ALL TESTS PASSED, 28671 B, exit 0.",
   "notes": "HALLAZGO MEDIDO QUE ABRE UN AGUJERO, no introducido por el ciclo: S3 (media) - build.bat sale con 0 aunque force_build.py falle, ejecutado de extremo a extremo con el .bat real; el mismo .bat SI sabe salir con 1 en el paso 1, luego no lo hace en el paso 3. El .bat puede decir 'compilado' y no haber compilado. No hay guard (errorlevel/exit /b/LASTEXITCODE: 0 coincidencias en run_tests.py). release.yml SI propaga (pwsh + exit $LASTEXITCODE anadido por el runner), asi que el .exe roto llega por build.bat, no por CI. S1 (baja) - 2 U+FFFD en run_tests.py:14105 (docstring de TASK-075), CORREGIDO en este ciclo. El .spec sigue siendo residuo ignorado (.gitignore:29): centralizar en el rompia el build de produccion porque actions/checkout no lo trae. PRIMERA VEZ QUE EL CHECKPOINT DE EMPAQUETADO CORRE CON VEREDICTO: se ejecuto force_build.py y el .exe salio con los assets dentro, lo que convierte el fix de TASK-076 en algo comprobado sobre el producto y no solo sobre el codigo."
+ },
+ {
+  "cycle": 66,
+  "date": "2026-10-19",
+  "slug": "task-077-eol-real-y-exit-de-build",
+  "task": "TASK-077",
+  "area": "Tooling / Build",
+  "status": "COMPLETED + PASS tras un FAIL intermedio. El encargo quedo entero desmentido por el arquitecto: CERO ficheros incumplen .gitattributes en el repo versionado (i/crlf = 0 sobre 256 tracked) y 'git add --renormalize' es un NO-OP ABSOLUTO, porque eol=crlf actua en el checkout y git add nunca escribe en el arbol. La anomalia eran 37 ficheros del arbol LOCAL, que se normalizan con 'git checkout-index' y NO generan commit. Ademas se absorbio S3: build.bat salia con 0 aunque la compilacion fallara. Auditoria: FAIL (el dev declaro verde una suite ROJA), reparacion TASK-077, y RE-AUDITORIA PASS con 14/14 mutantes de producto muertos. Tests 224 -> 226 = 155 backend + 71 headless. Sin cambios en src/woptimizer.",
+  "commits": [
+   "270e204",
+   "17a9c55",
+   "4d66b89"
+  ],
+  "tests": "226 tests = 155 backend + 71 headless (run_tests.py, derivado con ast). validate_docs.py -> 152 OK, 0 FAIL, 0 SKIP. verify_ui_syntax.py EXITO. EXIT=0 verificado por el ORQUESTADOR en 4d66b89: 28922 B terminando en ALL TESTS PASSED.",
+  "notes": "INCIDENTE DEL CICLO, y el mas instructivo del tramo: el dev entrego 17a9c55 declarando la suite en verde. Estaba ROJA (EXIT=1). El rojo NO era del repo real - validate_docs.py daba 152 OK / 0 FAIL - sino de la COPIA que hace el test del validador: _copiar_el_esqueleto_del_validador no copiaba build.bat, asi que el ancla anadido en STATUS.md:75 no resolvia ahi, la fila se quedaba con fuentes == ['tarea'] y saltaba el check de 'fila cerrada reabierta'. O sea: un test verde sobre un repo que otro test acusaba. La funcion que hace esa copia tiene escrito en su docstring que hay que ampliarla cuando el validador aprende a leer algo nuevo, y no se hizo. La re-auditoria lo cerro probando los 21 ficheros de raiz FUERA del esqueleto uno a uno por el validador real: 0 errores resueltos, 0 nuevos. R5: el diagnostico bueno del rc=0 lo daba el 'exit /b 0' incondicional, NO el 'call' ausente; medido con build.bat@270e204, que con python real imprime las DOS lineas y rc=0, mientras que un secuestro habria impreso ninguna. 'La causa era DOBLE' era falso. S3b (el que rompe el producto): sin la precondicion antes de borrar, build.bat BORRABA el .exe bueno y anunciaba un motivo que no era el real. N3x: el guard de EOL indexaba por nombre de fichero, de modo que un build.bat en CRLF en un subdirectorio tapaba al de la raiz en LF -> lista vacia -> VERDE FALSO. P2 (aceptable): la cita autorreferente se movio 2 veces en 3 transiciones; rompe con ruido (nombra fichero y linea) y el arreglo de fondo es rediseño del guard de TASK-076."
  }
 ]

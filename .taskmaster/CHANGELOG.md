@@ -1,3 +1,72 @@
+## [CYCLE-066] 2026-10-19 - task-077-eol-real-y-exit-de-build
+
+### TASK-077: el EOL no era un defecto del repo, y build.bat moria en silencio
+
+**Area**: Tooling / Build. **Change**: `openspec/changes/2026-10-18-eol-real-y-exit-de-build/`
+**Estado**: **COMPLETED** — FAIL intermedio, reparacion, y **re-auditoria PASS** (14/14 mutantes de producto). **Tests**: 207 -> **226 = 155 + 71**. `src/woptimizer/**` intacto.
+**Commits**: `270e204` (arquitectura), `17a9c55` (primera implementacion, **ROJA**), `4d66b89` (reparacion).
+
+**Models**
+- Paso 1 (Buscar): `flash` — el backlog dio TASK-077 como activa.
+- Paso 2 (Planear): `pro` (override) — tooling/Build.
+- Paso 3 (Ejecutar): `inherit` x2 (primera entrega + reparacion).
+- Paso 4 (Auditar): `inherit` x2 -> **FAIL**, luego **PASS**.
+
+### EL ENCARGO, DESMENTIDO ENTERO POR EL ARQUITECTO
+
+- **Cero ficheros incumplen `.gitattributes` en el repo versionado**: `git ls-files --eol` -> **`i/crlf = 0`** sobre 256 tracked. El indice es LF puro.
+- **`git add --renormalize .` es un NO-OP ABSOLUTO**, medido en clon desechable con el incumplimiento real: **0 ficheros staged**. `eol=crlf` actua en el **checkout**; `git add` nunca escribe en el arbol. El fix que funciona es `git checkout-index -f -- <los 37 explicitos>`.
+- **Consecuencia que el dueno debe saber**: el fix correcto **NO GENERA NINGUN COMMIT**. Es normalizacion del arbol de trabajo, no edicion.
+- **`benchmark.py` estaba bien y no se toca**: es `.py`, y `* text=auto eol=lf` lo pone en LF. Convertirlo habria **introducido** la violacion. La mitad de la premisa se la invento `tasks.json`.
+- **La premisa operativa es FALSA** (`build.bat` LF vs CRLF, medido con `cmd.exe` real): salida y `errorlevel` **identicos byte a byte**. Se conserva `eol=crlf` —no porque el parser se rompa, sino porque hace el arbol determinista — y lo que se corrige es el **POR QUE escrito**, que era una frase peligrosa: invita al siguiente a borrar las tres reglas por decorativas.
+- **`git ls-files --eol` no sirve como guard en CI**: `actions/checkout` aplica los atributos en el checkout fresco, asi que daria `w/crlf` **esté sano o no el repo** -> **VERDE FALSO**. El guard lee **bytes**, sin PyYAML y sin `subprocess`.
+
+### 🔴 EL INCIDENTE DEL CICLO: se entregó verde lo que estaba rojo
+
+El primer `17a9c55` declaro la suite en verde. **Estaba ROJA** (`EXIT=1`). Y el rojo **no era del repo real** —`validate_docs.py` daba 152 OK / 0 FAIL— **era de la COPIA** que hace el test del validador:
+
+`_copiar_el_esqueleto_del_validador` copia esta tupla:
+```
+("llms.txt", "llms-full.txt", "AGENTS.md", "README.md", "STATUS.md",
+ "CHANGELOG.md", "mkdocs.yml", "run_tests.py", "validate_docs.py", "build_llms_full.py")
+```
+**No incluia `build.bat`.** En el ciclo 66 se anadio a `STATUS.md:75` un ancla sobre `build.bat`; en la copia ese ancla **no resolvia**, la fila 75 se quedaba con `fuentes == ["tarea"]` (solo `TASK-077`, cerrada) y disparaba el check `fuentes == ["tarea"] and not tareas_vivas` -> **error**.
+
+Es decir: **un test verde sobre un repo que otro test acusaba.** Y la funcion que hace esa copia tiene escrito en su propio docstring: *"Ampliar el esqueleto es justo lo que este docstring manda: que la copia exponga la lectura nueva."*
+
+**La re-auditoria lo cerro probando los 21 ficheros de raiz FUERA del esqueleto uno a uno por el validador real: 0 errores resueltos, 0 nuevos.** Salvedad del auditor: la lista incluye `requirements.txt`, que **no existe** (lo hay es `requirements-mkdocs.txt`). La garantia es de la lista de hoy.
+
+### Los tres huecos reparados, y como mueren
+
+| id | mutacion | guard | Motivo literal |
+|---|---|---|---|
+| M-D | `build.bat` fuera del esqueleto | `run_tests.py:13491` | `assert len(errors) == 1` — `STATUS.md Deuda fila 75: VIVA y su UNICA fuente es una TAREA YA CERRADA: TASK-077.status == completed` |
+| M-A | sin `if errorlevel 1` antes de borrar | `:20808` | `assert os.path.exists(exe_previo)` — «se llevo el dist\woptimizer.exe que ya funcionaba» |
+| M-B | indice por `basename` | `:20528` | `assert fallos` — verde FALSO con el repo en LF |
+| M-B2 | control positivo en LF | `:20521` | `assert not fallos` — **el control discrimina** |
+| R4 | fila insertada en la linea 60 | `:28243` | `sandbox-rules.md:1133 ya no cita...` — rompe **con ruido** |
+| M-E1/E2 | `:sin_pyinstaller` -> `:fallo` / motivo generico | `:20814` | una salida por causa |
+| M-D4 | `:sin_pyinstaller` sale con 0 | `:20804` | |
+| M-E3/E4 | sin el `call` del paso 1 / paso 3 | `:20729` / `:20748` | los `call` **si** son load-bearing (celda A / celda B) |
+| M-A-D1/D2 | cascada de la celda D | `:20814` / `:20820` | |
+| M-G1 | `.gitattributes` vuelve a citar `0x30` | `:20589` | `afirma que el ultimo byte es 0x30 y en disco es 0x31` |
+
+**14 mutantes de producto, 14 muertos.** Los 4 que sobreviven (`M-F1/F2/F3/F2G1`) sustituyen la asercion del guard por `assert True`: es borrar el test, no un agujero — y `M-G1` demuestra que con el guard intacto el documento no puede mentir.
+
+**R5, el diagnostico bueno.** El primer `17a9c55` afirmaba que la causa era DOBLE (faltaba el `call`) y que el `rc=0` de la medicion del ciclo 65 tenia otro motivo. **Falso, medido**: con `build.bat@270e204` y `python` real (un `.exe`), da **rc=0 con las DOS lineas impresas** — exactamente el log del ciclo 65. Un secuestro de control habria impreso **ninguna**. El `0` lo daba el **`exit /b 0` incondicional**.
+
+### R4 · P2, ¿cuarta reincidencia? — MEDIDA: no
+
+Recorridos los 114 commits reales extrayendo la tupla del propio guard: `22264 -> 22264 -> 22875 (+611) -> 23082 (+207)`. El `22730` que cuenta el dev **no esta en ningun commit**. Se movio en **2 de 3** transiciones, rompe **con ruido** (nombra fichero y linea) y el arreglo de fondo es **rediseño del guard de TASK-076**. Bomba de mantenimiento, no agujero.
+
+### Residuos: cero en el repo
+
+Barritos los 13 ficheros tocados: **0 `U+FFFD`, 0 mojibake, 0 CJK/Hangul, 0 soft hyphen**. Los 2 hangul de `CHANGELOG.md:26` (CYCLE-064) los corrigio el orquestador y los llevo el `add -A`.
+
+**Confesiones de los dos subagentes, y ambas verificables:**
+- El auditor del FAIL: primera suite completa muerta por un `AssertionError` en `22568` porque **el** puso `GIT_DIR` en su shell. Rehecha limpia. Ademas su PARTE 3 llevo **3 CJK** propios, detectados y corregidos antes de comitear.
+- El dev del FAIL: declaro verde lo que estaba rojo; su primer intento de mutar el esqueleto dio `FileNotFoundError` (fallo de camara, no veredicto); se le colaron tres erratas, una de ellas un identificador en chino; y un `tasks.json` en CRLF.
+
 ## [CYCLE-065] 2026-10-18 - task-076-paridad-flags-pyinstaller
 
 ### TASK-076: fuente unica de los flags de PyInstaller, y guard derivado de `src/`

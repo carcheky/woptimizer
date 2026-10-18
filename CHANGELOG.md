@@ -1,3 +1,19 @@
+## CYCLE-066 - 2026-10-19
+
+### 🔴 Corregido — Compilar ya no dice "todo bien" cuando no compiló
+
+**Estado**: **PASS** en re-auditoría (14 mutantes, 14 muertos, 0 supervivientes de severidad alta o media). Tests: **226** (155 backend + 71 headless). Commits: `270e204`, `17a9c55`, `4d66b89`.
+
+- 🔴 **Qué se rompía**: el archivo que compila tu programa **fallaba en silencio**. Si la compilación no salía, el archivo te ponía un mensaje en pantalla y **aun así devolvía "ningún error"**. Para un script que se ejecuta a doble clic, eso es lo peor: parece que funcionó.
+- 🔴 **Y una cosa peor que lo anterior**: al empezar, el script **borraba el ejecutable bueno antes de comprobar nada**. Si la comprobación inicial fallaba, te quedabas **sin ejecutable y con un motivo inventado** en pantalla. Ahora comprueba primero, y cada fallo tiene su propio mensaje.
+- 🛡️ **Qué se hizo**: tres salidas distintas, una por cada causa real, y el ejecutable previo **no se toca** si algo va mal. Comprobado rompiendo el código a propósito en tres escenarios: sin PyInstaller, con fallo de compilación y con éxito. En los dos primeros el ejecutable bueno **sigue en su sitio**.
+- 🔴 **El fallo más grave del ciclo, y no era del código**: se entregó una versión **diciendo que las pruebas estaban en verde cuando estaban en rojo**. Lo detectó la auditoría externa, no las pruebas. Y el rojo tenía un nombre: las pruebas del validador trabajan sobre una **copia** del proyecto, y esa copia **no incluía** el archivo de compilación. Por eso el proyecto real pasaba y la copia no. Ahora la copia lo incluye, y está comprobado que **ninguno de los 21 ficheros que se quedaban fuera** hacía falta.
+- 🔴 **La tarea venía mal escrita en su motivo**: decía que había archivos con finales de línea mal. Medido: **ninguno**. El repositorio está limpio; lo que estaba mal eran 37 archivos **de esta máquina**, y el comando que proponía el arreglo **no hace absolutamente nada**. Además, la afirmación de que Windows no tolera esos archivos mal era **falsa**: se comprobó ejecutándolos de verdad.
+
+### 🧪 Lo que aprendió el ciclo
+
+Dos correcciones propias de los agentes quedaron documentadas en vez de escondidas: un diagnóstico que se dio dos versiones distintas en dos turnos, y un informe que se autodetectó tres caracteres raros. También se corrigió un texto que describía el fallo al revés.
+
 ## CYCLE-065 - 2026-10-18
 
 ### 🔴 Corregido — El `.exe` que compilabas en casa salía sin base de datos ni icono

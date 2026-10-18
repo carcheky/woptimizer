@@ -724,3 +724,565 @@ vez **solo moviendo el numero**. Es la **tercera** vez en la misma tarea
 **VIVA y sin arreglar**: el fix de fondo sigue siendo que el guard **derive** los
 numeros con `ast` en vez de citarlos. No se ha hecho aqui porque es un guard de
 otro ciclo (TASK-076) y rehacerlo es rediseño, no ejecución.
+---
+
+# PARTE 3 -- RE-AUDITORIA del ciclo 66 (mutation-auditor, 2026-10-18)
+
+**Rol**: `mutation-auditor` · **HEAD esperado**: `4d66b89` · **HEAD medido**: `4d66b89`
+(`git log --oneline -1`, con `GIT_DIR` desechable en `%LOCALAPPDATA%`).
+**Suite**: `run_tests.py` = **226 tests** (155 backend + 71 headless), 28 928 lineas.
+**Camaras** (las dos con `.git` PROPIO y desechable, `git init` dentro, `GIT_DIR`
+explicito en cada comando):
+
+| Camara | Ruta | Origen |
+|---|---|---|
+| A | `%TEMP%\wopt_aud77_709e72a7` | copia del repo real (suite completa) |
+| B | `%TEMP%\wopt_aud77b_c5466c94` | copia de la A sin `.git` (mutaciones) |
+
+**PRUEBA DE AISLAMIENTO, antes de mutar nada:**
+
+```
+absolute-git-dir: C:/Users/carch/AppData/Local/Temp/wopt_aud77b_c5466c94/.git
+dentro de la camara: True
+existe .git en la camara: False        <-- el gitlink FICHERO no se copio
+```
+
+El `.git` del repo real es un **fichero** de 57 bytes que apunta a
+`%LOCALAPPDATA%`; se excluyo con `shutil.ignore_patterns(".git")`, que cubre
+ficheros y directorios, NO con `robocopy /XD` (que es como se ha contaminado el
+repo dos veces).
+
+**Runner dirigido, validado ANTES de mutar nada**: los 8 guards de este ciclo,
+sobre el arbol SANO, `EXIT=0` y `ALL GUARDS PASSED.` con `run_tests.py` en
+28 928 lineas. Se genera desde el `run_tests.py` **ya mutado**, que es lo que
+impide medir el fichero sano.
+
+> **Informe incremental**: cada veredicto se escribe en cuanto existe.
+
+## 16. Veredictos medidos en esta re-auditoria
+
+| Id | Que se rompio | Veredicto | Motivo LITERAL |
+|---|---|---|---|
+| **M-D** | `build.bat` fuera de la tupla `ficheros` del esqueleto del validador | **MUERE** | `run_tests.py:13491` `assert len(errors) == 1` - `Errors: ['.taskmaster/rd_journal.json: ESTA CORRUPTO...', 'STATUS.md Deuda fila 75: VIVA y su UNICA fuente es una TAREA YA CERRADA: TASK-077.status == completed. Una fila cerrada reabierta sin decirlo es el fallo que el criterio describe']` |
+| **M-A** | `build.bat` sin el `if errorlevel 1 goto :sin_pyinstaller` del paso 1 | **MUERE** | `run_tests.py:20808` `assert os.path.exists(exe_previo)` - `sin PyInstaller, build.bat NO COMPILABA, y aun asi se llevo el dist\woptimizer.exe que ya funcionaba`. El stdout del mutante imprime `Construyendo...` y `[ERROR] Fallo la compilacion. Revisa el log de PyInstaller.` |
+
+Los dos mueren **por la asercion del guard que toca**, en lineas distintas
+(`13491` y `20808`), y ninguno por `FileNotFoundError`, `NameError` ni sintaxis.
+
+### 16.1 Confesion de un veredicto FALSO mio (mismo patron que el del dev)
+
+La **suite completa** en la camara A dio `EXIT=1` con un `AssertionError` en
+`test_la_resolucion_del_repositorio_tiene_un_solo_punto` (`run_tests.py:22568`):
+
+```
+la ruta resuelta es 'C:\...\wopt_aud77_709e72a7\.git' y el default del host es
+'C:\...\wopt_t075_punto_j6b6_ku3\localappdata\woptimizer_git\.git'
+```
+
+**No es un fallo del codigo: es mio.** Yo lance esa corrida con
+`$env:GIT_DIR` y `$env:GIT_WORK_TREE` puestos en mi propio shell, y ese test
+exige precisamente que **no** haya `GIT_DIR` en el entorno. Lo registro porque es
+la tercera vez en este ciclo que ese mismo descuido produce un muerto que no
+existe, y porque la regla es que una muerte hay que poder **atribuirla**, no
+contarla.| **M-B** | el evaluador vuelve a indexar por `basename` | **MUERE** | `run_tests.py:20528` `assert fallos` - `el build.bat de la RAIZ esta en LF y el de herramientas/ en CRLF. Indexando por nombre de fichero, el sano pisa al incumplidor y el evaluador devuelve la lista vacia` |
+| **M-B2** | el CONTROL POSITIVO del test anterior pasa a LF | **MUERE** | `run_tests.py:20521` `assert not fallos` - `los DOS build.bat en CRLF ... tienen que dar OK; el evaluador dio ['bytes: build.bat no tiene...']` |
+| **R4** | fila `\| 9 \|` insertada en la linea 60 de la tabla de codigos | **MUERE** | `run_tests.py:28243` `assert cita in texto[indice]` - `docs/ai/sandbox-rules.md:1133 ya no cita sandbox-rules.md:55-56: es una de las cuatro afirmaciones que atan la tabla al numero de linea` |
+| **M-E1** | `:sin_pyinstaller` pasa a caer en el `:fallo` comun | **MUERE** | `run_tests.py:20814` `assert "PyInstaller no esta instalado" in r.stdout` |
+| **M-E2** | `:sin_pyinstaller` imprime el motivo viejo generico | **MUERE** | `run_tests.py:20814` (la misma asercion, otro camino) |
+| **M-D4** | `:sin_pyinstaller` sale con `exit /b 0` | **MUERE** | `run_tests.py:20804` `assert r.returncode != 0` - `... salio con 0: el if errorlevel 1 del paso 1 no esta propagando (mutante S3)` |
+| **M-E3** | sin el `call` del **paso 1** | **MUERE** | `run_tests.py:20729` (celda **A**, `assert r.returncode == 7`, `devolvio 0`) |
+| **M-E4** | sin el `call` del **paso 3** | **MUERE** | `run_tests.py:20748` (celda **B**, `assert r.returncode != 0`) |
+| **M-A-D1** | `M-A` + asercion del `.exe` desactivada | **MUERE** | `run_tests.py:20814` |
+| **M-A-D2** | `M-A` + `.exe` + motivo desactivados | **MUERE** | `run_tests.py:20820` `assert "Fallo la compilacion" not in r.stdout` |
+| **M-G1** | `.gitattributes` vuelve a citar `0x30` | **MUERE** | `run_tests.py:20589` `assert citado == ultimo` - `.gitattributes:27 afirma que el ultimo byte de build.bat es 0x30 y en disco es 0x31` |
+| **M-F1** | `assert len(citadas) == 1` -> `>= 0` | **SOBREVIVE** | `ALL GUARDS PASSED.` - **tautologico**, ver §21 |
+| **M-F2** | `assert citado == ultimo` -> `assert True` | **SOBREVIVE** | `ALL GUARDS PASSED.` - **tautologico**, ver §21 |
+| **M-F3** | `assert ultimo != "0a"` -> `assert True` | **SOBREVIVE** | `ALL GUARDS PASSED.` - **tautologico**, ver §21 |
+| **M-F2G1** | `M-F2` + el documento mintiendo | **SOBREVIVE** | `ALL GUARDS PASSED.` - **tautologico por construccion**, ver §21 |
+| **R7a** | `build.bat` BORRADO del arbol | **PARCIAL** | `20353` `assert presentes` MUERE con motivo correcto; **doselixiones por `FileNotFoundError`**, que no son veredicto. Ver §20 |
+
+**14 mutantes de producto: 14 mueren. Los 4 supervivientes son mutantes
+tautologicos** (desactivan la asercion del propio guard) y se tratan en §21.
+
+### 16.2 Verde final de la camara B, restaurada byte a byte
+
+```
+RESTAURADO byte a byte: OK
+... test_las_citas_de_sandbox_rules_siguen_siendo_ciertas OK.
+ALL GUARDS PASSED.
+EXIT=0
+```
+
+## 17. R1 - El rojo que motivo la reparacion: **medido y cerrado**
+
+### 17.1 El mutante que lo reproduce
+
+`M-D` quita `"build.bat"` de la tupla `ficheros` de
+`_copiar_el_esqueleto_del_validador` (`run_tests.py:13186`) y muere en
+`run_tests.py:13491` con el error de la **fila 75** en el mensaje, literal:
+
+```
+AssertionError: un journal ILEGIBLE es un fallo del ancla y solo uno: ...
+Errors: ['.taskmaster/rd_journal.json: ESTA CORRUPTO. El ancla del changelog de
+raiz no se puede comprobar, ...',
+ 'STATUS.md Deuda fila 75: VIVA y su UNICA fuente es una TAREA YA CERRADA:
+ TASK-077.status == completed. Una fila cerrada reabierta sin decirlo es el
+ fallo que el criterio describe']
+```
+
+**El estado que la PARTE 1 senalo ya no es alcanzable**: no hay combinacion de
+`build.bat` presente y copia del esqueleto que produzca `len(errors) == 2`.
+Verificado en los dos sentidos: con `build.bat` en la tupla el esqueleto carga
+159 errores de historial y el test exige 1; sin el, carga 160 y el rojo es
+**este**, el de la fila 75.
+
+### 17.2 LA CONTRAPRUEBA: el esqueleto cubre TODO lo que el validador lee de raiz
+
+El dev afirma que, antes de ensanchar, paso la lista completa de ficheros de
+raiz por el validador real uno a uno. **Eso no es lo que mide el encargo** ("si
+queda alguno fuera, el mismo rojo puede volver"), asi que lo he medido yo, y
+**mas fuerte**: no con los 8 candidatos que nombro el dev, sino con **los 21**
+ficheros de raiz que existen en disco y que el esqueleto **no** copia.
+
+**Metodo**: se monta el esqueleto REAL con el helper del propio
+`run_tests.py`, se pasa por `validar()` de verdad, y luego se anade **uno a
+uno** cada fichero de raiz ausente y se vuelve a pasar. Si anadirlo cambia la
+lista de errores, ese fichero es *load-bearing* y deberia estar en el esqueleto.
+
+| Fichero de raiz FUERA del esqueleto | veredicto | errores |
+|---|---|---|
+| `.commitlintrc.json`, `.gitattributes`, `.gitignore`, `.releaserc.json`, `LICENSE` | **inerte** | 159 -> 159 |
+| `benchmark.py`, `force_build.py`, `run.py`, `smoke_check.py`, `verify_app.py`, `verify_exe.py`, `verify_ui_syntax.py` | **inerte** | 159 -> 159 |
+| `package.json`, `pyproject.toml`, `requirements-mkdocs.txt`, `woptimizer.spec`, `saved_processes.json` | **inerte** | 159 -> 159 |
+| `_chk.py`, `_chk2.py`, `_matrix_c26.py` | **inerte** | 159 -> 159 |
+
+**0 de 21 cargan: 0 errores resueltos y 0 errores nuevos.** El esqueleto esta
+completo para esta cuenta, y el mismo rojo **no puede volver por esta via**.
+
+Dos salvedades honestas:
+
+1. **El dev nombro un fichero que no existe.** Su lista de ocho candidatos
+   incluye `requirements.txt`, que **no esta en la raiz del repo** (lo que hay
+   es `requirements-mkdocs.txt`). Esa comprobacion fue vacuamente neutra; lo
+   mio la cubre con `requirements-mkdocs.txt`, que si existe y tambien es
+   inerte.
+2. **La garantia es de la lista de HOY, no de la de manana.** El esqueleto es
+   una tupla escrita a mano: si `validate_docs.py` anade manana una lectura
+   nueva de un fichero de raiz, el mismo rojo puede volver. El mecanismo que
+   lo puso en rojo esta vivo (es `M-D`), pero **nadie avisa del ficheros nuevo**
+   antes de que el test se ponga rojo. Eso no lo arregla este ciclo.## 18. R5 - De las dos afirmaciones sobre el `rc=0` del ciclo 65, **la buena es la de la PARTE 2**
+
+El turno anterior afirmo que el fallo era **doble** y que faltaba el `call`. La
+PARTE 2 dice que **eso era falso** y que el `0` lo producia el `exit /b 0`
+incondicional. **Medido, no supuesto.**
+
+### 18.1 Como se reprodujo el hecho, siniftedidir de opinion
+
+`build.bat`@`270e204` (antes de TASK-077) es el que fallaba en el ciclo 65. Con
+el se ejecuta `cmd /c build.bat` en dos escenarios que se distinguen en una
+cosa, **`python`**:
+
+- **REAL**: `python` es el del host (un `.exe`). Es exactamente lo que hizo el
+  ciclo 65, que sustituyo **`force_build.py`** por un stub y **no toco el PATH**.
+- **SHIM**: `python` es un `python.cmd` en el PATH (lo que construye la camara
+  de los tests, y lo que hace posible el secuestro del control).
+
+| `.bat` | escenario | rc | `Construyendo...` | `Fallo la compilacion` |
+|---|---|---|---|---|
+| **ANTES** `270e204` | **REAL** | **0** | **SI** | **SI** |
+| **ANTES** `270e204` | SHIM | 0 | **no** | **no** |
+| `17a9c55` | REAL | 2 | SI | SI |
+| `17a9c55` | SHIM | 7 | SI | SI |
+| HOY `4d66b89` | REAL | 2 | SI | SI |
+| HOY `4d66b89` | SHIM | 7 | SI | SI |
+
+`where python` en este host: **solo** `Python313\python.exe` y el stub de
+`WindowsApps\python.exe`. `where python.cmd`: **NINGUNO**.
+
+### 18.2 La lectura
+
+La primera fila reproduce **exactamente** el log del ciclo 65
+(`mutation-report.md` del ciclo 65, lineas 194-201): `Construyendo...`
+impreso, `[ERROR] Fallo la compilacion` impreso, `rc = 0`.
+
+- En ese escenario el `call` **no puede ser la causa**: `python` es un `.exe` y
+  un `.exe` sin `call` **no.secuestra** el control. Y el log lo confirma: si
+  hubiera habido secuestro, **`Construyendo...` no se habria impreso nunca**,
+  porque no se ejecuta nada por debajo del paso 1.
+- El `0` lo produce el **`exit /b 0` incondicional** del `270e204`, que va
+  justo despues del `else` que imprime el error de compilacion. Eso es lo que
+  se ve en el `.bat` de esa epoca.
+
+**Conclusion R5: "la causa era DOBLE" era FALSO, y la correccion de la PARTE 2
+es la buena.** Los dos `call` siguen siendo load-bearing, pero para **otro**
+escenario (el del `SHIM`, fila 2: sin `call` el `.bat` no imprime nada y sale 0).
+Son dos hechos distintos y el docstring corregido los separa, que es
+exactamente lo que habia que hacer.
+
+**Donde el docstring corregido se pasa de largo** (BAJO, no afecta al
+veredicto): dice *"el `exit /b 0` incondicional **de la etiqueta `:fallo`**"*.
+En `270e204` **no existia ninguna etiqueta `:fallo`**: era un `if/else` y el
+`exit /b 0` era la ultima linea del fichero. El nombre `:fallo` es del codigo
+**posterior**. El diagnostico es correcto; el ancla es de otro fichero.
+
+## 19. R6 - Residuos: **limpio**, y el hallazgo de la PARTE 1 esta cerrado
+
+Barrido de `run_tests.py`, `build.bat`, `.gitattributes`, `STATUS.md`,
+`docs/ai/testing-guide.md`, `docs/ai/sandbox-rules.md`, `AGENTS.md`,
+`README.md`, ambos `CHANGELOG.md`, `validate_docs.py`, `tasks.json` y este
+mismo informe:
+
+| fichero | U+FFFD | CJK/Hangul | formato / soft hyphen | mojibake |
+|---|---|---|---|---|
+| los **13** ficheros | **0** | **0** | **0** | **0** |
+
+**El hallazgo 8.5 de la PARTE 1 (dos silabas hangules en `CHANGELOG.md:26`,
+`U+C790` y `U+B3D9`) esta CERRADO en `4d66b89`, y el dev no lo reporta.**
+Medido el diff `17a9c55..4d66b89` sobre ese fichero: la linea 26 pasa de
+`automatizaci<hangul>n` a `automatizaci<o acute>n`. Hoy el fichero tiene **0
+caracteres Hangul**. No es un hallazgo de este ciclo, pero es una correccion
+**hecha y no declarada**, que es el patron contrario al que este repoAUDITA.
+
+Un residuo lateral que **no** es de este ciclo y que sigue ahi: `CHANGELOG.md:26`
+dice *"la tarea **estabaorientada**"* (palabras pegadas, sin espacio). Esta en
+ambos lados del diff, luego es anterior a TASK-077. Severidad **BAJA**.
+
+## 20. R7 - Abrio la reparacion otro agujero?
+
+### 20.1 `build.bat` atado al esqueleto: que pasa si se borra del repo
+
+`R7a` lo borra del arbol. **MUERE en rojo, pero por tres mecanismos distintos**:
+
+| guard | como muere | veredicto |
+|---|---|---|
+| `test_la_politica_eol_cubre_todo_script_de_consola_que_existe` | `run_tests.py:20353` `assert presentes` - `el arbol de trabajo no tiene NINGUN script de consola (.bat, .cmd, .ps1)` | **MUERE, motivo correcto** |
+| `test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador` | `run_tests.py:13192` -> `shutil.copy2` -> **`FileNotFoundError`** | **NO ES VEREDICTO** |
+| `test_la_cita_del_ultimo_byte_de_build_bat_no_se_caduca` | `run_tests.py:20584` -> `open(...)` -> **`FileNotFoundError`** | **NO ES VEREDICTO** |
+
+**Respuesta a la pregunta: si se borra, el test NO se pone a medir otra cosa, y
+NO hay verde falso.** Se pone en rojo. Pero **dos de los tres guards revientan
+con una excepcion sin capturar en vez de con una asercion que diga que pasa**, y
+eso es un coste de diagnostico real: quien lo lea ve un `FileNotFoundError` en
+`shutil.copy2` y tiene que ir a buscar el por que.
+
+Detalle que conviene: el guard de la politica EOL muere en `20353`
+(`assert presentes`) y **no** en `20359` (`assert "build.bat" in presentes`),
+porque `build.bat` era el **unico** `.bat` de la raiz: al borrarlo, la primera
+asercion muerde antes. La asercion mas especifica existe y es correcta; hoy es
+**inalcanzable por el camino de borrar el fichero entero**.
+
+### 20.2 Los 2 tests nuevos (celda D y celda E): contraprueba, medida
+
+**Celda D: las TRES aserciones son load-bearing, y se demuestra en cascada.**
+
+| asercion | mutante que la muerde | veredicto |
+|---|---|---|
+| `assert os.path.exists(exe_previo)` (`20808`) | `M-A` | **MUERE** |
+| `assert "PyInstaller no esta instalado" in r.stdout` (`20814`) | `M-E1`, `M-E2`, y `M-A-D1` | **MUERE** |
+| `assert "Fallo la compilacion" not in r.stdout` (`20820`) | `M-A-D2` | **MUERE** |
+| `assert r.returncode != 0` (`20804`) | `M-D4` | **MUERE** |
+
+El efecto cascada es la prueba de que no son la misma asercion contada cuatro
+veces: desactivando una, la siguiente sigue mordiendo, **en otra linea**.
+
+**Celda E: sus dos aserciones son CIERTAS pero hoy estan SOMBREADAS.** Los dos
+mutantes que las tenian que cazar mueren **antes**, en las celdas A y B:
+
+| mutante | celda E (20860) | donde muere de verdad |
+|---|---|---|
+| `M-E3` (sin `call` paso 1) | nunca llega | **20729**, celda **A**: `devolvio 0` |
+| `M-E4` (sin `call` paso 3) | nunca llega | **20748**, celda **B**: `assert r.returncode != 0` |
+
+Esto **no es un verde falso**: los dos mutantes mueren, y con motivo. Pero la
+celda E, tal como esta escrita, **no aporta deteccion propia hoy**, porque su
+camara copia el `build.bat` **del repo**, y el mutante del `call` ya ha roto las
+celdas anteriores. Su docstring dice que el `call` del paso 3 *"no cambia el rc
+y solo se ve por la AUSENCIA del mensaje"*, y eso es cierto **en el `.bat` de la
+camara**, pero **nunca llega a ejecutarse**. Severidad **BAJA**: no deja pasar
+nada malo; es codigo y comentario que describen una proteccion que el orden de
+las celdas ya no deja exerterse.### 20.3 La propiedad `0x31` y el guard que la vigila
+
+**Re-medida, como pide el encargo** (`build.bat` en la camara y en el repo real,
+identico byte a byte):
+
+```
+SIZE=3956  CRLF=83  LF=83  CR=83   -> 0 LF sueltos, 0 CR duros
+ULTIMO BYTE = 0x31
+```
+
+`.gitattributes` cita hoy `0x31` y el guard `M-G1` (volver a `0x30`) **MUERE**
+en `20589`. La afirmacion del dev --"anadir una linea al `.bat` pone el guard
+en rojo en vez de dejar el documento mintiendo en silencio"-- **se sostiene**.
+
+**Pero el guard SI se puede vaciar**, y hay que decirlo con su nombre: `M-F1`,
+`M-F2` y `M-F3` desactivan **una cada vez** sus tres aserciones (`len(citadas)
+== 1`, `citado == ultimo` y `ultimo != "0a"`) y el test pasa igual. Con
+`M-F2G1` (el guard sin comparacion **y** el documento volviendo a mentir) el
+documento dice `0x30` en disco con el byte real `0x31` y la suite sigue verde.
+
+**Como hay que leer esto** (§21): es un **mutante tautologico**, no un agujero
+del producto. Sustituir una asercion por `assert True` es **borrar el test**, y
+un test borrado no falla nunca: eso no se cuenta como superviviente en el
+sentido de "el codigo puede estar mal y nadie lo ve". Lo que **si** se cuenta,
+y es lo que importa, es que **este guard es el unico testigo** de esa cifra: no
+hay una segunda red. Medido: con solo `M-G1`, el unico que muere es el `20589`.
+
+## 21. Los 4 supervivientes, y por que son EQUIVALENTES
+
+| mutante | que desactiva | por que sobrevive |
+|---|---|---|
+| `M-F1` | `assert len(citadas) == 1` -> `>= 0` | **tautologico**: la asercion pasa a no afirmar nada |
+| `M-F2` | `assert citado == ultimo` -> `assert True` | **tautologico**: idem |
+| `M-F3` | `assert ultimo != "0a"` -> `assert True` | **tautologico**: idem |
+| `M-F2G1` | `M-F2` + el documento mintiendo | **tautologico por composicion**: sin la comparacion no hay sujeto |
+
+El criterio de aceptacion de este encargo es *"si queda algo que se manifestaria
+si el codigo o el doc estuvieran mal, es FAIL"*. Un mutante que **borra la
+asercion que mide** no se manifestaria porque **no queda nada que lo midiera**:
+es el equivalente de borrar el fichero de test, y en ese sentido es
+**EQUIVALENTE demostrado**, no un fallo de verificacion. La contraprueba de que
+**no** es un agujero esta en `M-G1`: con el documento mintiendo y el guard
+**intacto**, el guard muere con la linea y el digito exactos.
+
+Aun asi lo dejo dicho sin suavizar: **el guard del ultimo byte tiene una sola
+asercion de comparacion y nadie mas mira esa cifra.** Si alguien la borra, el
+documento vuelve a mentir en silencio. Es la misma forma que el `S3` que la
+PARTE 1 encontro --"queda algo que se manifestaria si el doc estuviera mal"--,
+pero **un nivel mas arriba**: aqui el que se puede borrar es el vigilante, no el
+producto. Se arregla con un segundo testigo (por ejemplo `validate_docs.py`
+leyendo el byte), no con mas aserciones en el mismo test.
+
+## 22. R4 - La cita autorreferente: **se rompe con RUIDO**, no en silencio
+
+### 22.1 El mutante
+
+`R4` inserta una fila `| 9 |` en la **linea 60** de la tabla de codigos de
+`docs/ai/sandbox-rules.md` (verificada en disco antes de correr), y **MUERE**:
+
+```
+run_tests.py:28243  assert cita in texto[indice]
+AssertionError: docs/ai/sandbox-rules.md:1133 ya no cita `sandbox-rules.md:55-56`:
+ es una de las cuatro afirmaciones que atan la tabla al numero de linea
+```
+
+**Contesta la pregunta del encargo: NO se puede romper sin que nadie se entere.**
+El rojo dice **que fichero**, **que numero** y **que se movio**. Y como ya
+apunto la PARTE 1, `min(posiciones) > 61` **no** detecta esta fila (mover la
+seccion hacia abajo mantiene el `> 61`): lo que la detecta es la asercion de
+**contenido** de la cita de la 1133. El mecanismo es el correcto.
+
+### 22.2 Cuantas veces ha pasado de verdad
+
+Medido sobre el **historial real** (`git log -- run_tests.py`, 114 commits),
+extrayendo de cada version la tupla `("run_tests.py", ("NNNNN",))` que el propio
+guard declara:
+
+| commit | numero que declara el guard | salto |
+|---|---|---|
+| `bb33b51` | `22264` | (nace aqui) |
+| `2decac4` | `22264` | 0 |
+| `17a9c55` | `22875` | **+611** |
+| `4d66b89` | `23082` | **+207** |
+
+**Medido: 2 saltos en 3 transiciones**, no cuatro. El dev cuenta tres
+(`22264 -> 22730 -> 22875 -> 23082`); el `22730` **no esta en ningun commit**:
+fue un estado intermedio dentro de la sesion que acabo en `22875`. La cuenta
+honesta es **dos saltos visibles en el historial, tres si se cuenta el estado
+intermedio que el dev declara**.
+
+### 22.3 Deuda aceptable o cuarta reincidencia
+
+**No es una cuarta reincidencia, y no es un agujero: es una bomba de
+mantenimiento, y de las que este repo ya paga bien.** Los tres hechos:
+
+1. **No hay verde falso.** Rompe ruidosamente, con el numero de linea en el
+   mensaje (§22.1). Un fallo que grita no es un fallo peligroso.
+2. **Esta pagada hoy.** Medido: en `4d66b89` el guard declara `23082` y la frase
+   esta **efectivamente** en la `23082`. Coinciden.
+3. **El coste es real y el arreglo es el que dice el dev.** Derivar los numeros
+   con `ast` en vez de citarlos es un rediseño del guard de **TASK-076**, no una
+   ejecucion de TASK-077. **Deferarlo es la decision correcta**; lo que no
+   quiero es que se llame "deuda P2 aceptada" sin recordar que **cada commit de
+   esta tarea la ha vuelto a detonar** (+611 y +207).
+
+**Mi veredicto sobre R4: deuda declarada, sin agujero, con el ruido correcto.
+No es motivo de FAIL.**## 23. Estado del repo real y de las camaras
+
+### 23.1 Baseline de la suite COMPLETA (camara A, entorno limpio)
+
+Correcha **sin `GIT_DIR` ni `GIT_WORK_TREE` en el entorno** -- que es la
+condicion que exige `test_la_resolucion_del_repositorio_tiene_un_solo_punto`, y
+la que hizo fallar mi primera corrida (ver §16.1):
+
+```
+python run_tests.py  ->  EXIT=0   784 s   SIZE=29072 bytes   392 lineas
+--- ULTIMA LINEA ---
+ALL TESTS PASSED.
+
+Probando que la politica EOL cubre los scripts de consola que existen...
+Probando que el guard de EOL rechaza lo mismo que acepta...
+Probando que build.bat propaga el codigo de salida de force_build...
+Probando que la camara de build.bat detecta la regresion...
+Probando que un .bat homonimo no tapa a otro en el guard de EOL...
+Probando que la cita del ultimo byte de build.bat no se caduca...
+
+ALL TESTS PASSED.
+```
+
+**Los seis guards de TASK-077 se ejecutaron en la corrida completa.** El rojo
+que la PARTE 1 senalo a `17a9c55` **esta cerrado**: en `4d66b89` la suite esta
+verde, y la camara es **byte a byte igual al repo real** (sha `run_tests.py`
+`3f05f09c1671`, `build.bat` `f97fa894d4b3` en los tres arboles).
+
+### 23.2 Camara B tras los 16 mutantes
+
+```
+RESTAURADO byte a byte: OK
+ALL GUARDS PASSED.   EXIT=0
+```
+
+### 23.3 Prueba de NO contaminacion del repo real
+
+Ver seccion final, ejecutada DESPUES de las 16 mutaciones.
+
+## 24. VERDICT: **PASS**
+
+**Los 14 mutantes de producto mueren, cada uno por la asercion que le toca.** El
+superviviente queMotivo el FAIL anterior (`S3`) esta **cerrado y medido**:
+
+| el FAIL de `17a9c55` | veredicto en `4d66b89` |
+|---|---|
+| la suite ROJA por `build.bat` fuera del esqueleto | **cerrada**: `M-D` reproduce el rojo y la suite completa da `ALL TESTS PASSED.` |
+| `S3` sobrevivia: sin la precondicion se lleva el `.exe` bueno | **cerrada**: `M-A` MUERE en `20808`, `assert os.path.exists(exe_previo)` |
+| `N3x`: el evaluador indexaba por `basename` | **cerrada**: `M-B` MUERE en `20528`; y el control positivo **existe y discrimina** (`M-B2` MUERE en `20521`) |
+| `.gitattributes` citaba `0x30` | **cerrada**: el digito es `0x31` medido, y `M-G1` MUERE en `20589` si vuelve a mentir |
+
+Los **4 supervivientes** (`M-F1`, `M-F2`, `M-F3`, `M-F2G1`) son **mutantes
+tautologicos**: desactivan la asercion del propio guard, luego por construccion
+no tienen sujeto. El criterio del encargo --*"si queda algo que se manifestaria
+si el codigo o el doc estuvieran mal, es FAIL"*-- **no se cumple**: lo que
+sobrevive es el vigilante, no el producto, y `M-G1` demuestra que con el vigilante
+intacto el documento no puede mentir en silencio.
+
+### Respuestas directas a las preguntas del encargo
+
+| Pregunta | Respuesta, medida |
+|---|---|
+| **R1** - el rojo de `17a9c55` | **CERRADO.** `M-D` lo reproduce y muere en `13491` con el error de la fila 75. |
+| **R1** - ¿el esqueleto cubre todo lo que el validador lee de raiz? | **SI.** Los **21** ficheros de raiz ausentes del esqueleto son **inerte**: 0 errores resueltos, 0 nuevos. (El dev nombro `requirements.txt`, que **no existe**; ademas probe los 21, no 8.) |
+| **R2** - `S3b` | **CERRADO.** `M-A` MUERE en `20808`. La matriz de tres salidas (`M-D4`, `M-E1`, `M-E2`) confirma que cada causa imprime SU motivo. |
+| **R3** - `N3x` | **CERRADO.** `M-B` MUERE en `20528`; `M-B2` prueba que el control positivo **no** es decorativo. |
+| **R4** - la cita autorreferente | **Se rompe con RUIDO**, no en silencio: `R4` MUERE en `28243` nombrando fichero y linea. **2 saltos medidos** en el historial (`22264 -> 22875 -> 23082`), no 4. **Deuda aceptable**, no cuarta reincidencia: el guard esta pagado hoy y el arreglo de fondo es un rediseño de TASK-076. |
+| **R5** - el diagnostico bueno | **El de la PARTE 2.** Medido: `270e204` con `python` real da **rc=0 con las DOS lineas impresas**, que es el log del ciclo 65; el secuestro habria impreso **ninguna**. El `0` lo daba el `exit /b 0`. "La causa era DOBLE" era **falso**. |
+| **R6** - residuos | **LIMPIO** en los 13 ficheros (0 U+FFFD, 0 CJK, 0 formato, 0 mojibake). El hangul de `CHANGELOG.md:26` que reporto la PARTE 1 **esta corregido** en este commit, sin declarar. |
+| **R7** - ¿abrio otro agujero? | **NO en la direccion peligrosa.** Ni un verde falso. Ver §20 y los hallazgos de abajo. |
+
+### Hallazgos que quedan vivos, por severidad
+
+**ALTO - ninguno.**
+
+**MEDIO - ninguno.**
+
+**BAJO-1 - Dos guards revientan con `FileNotFoundError` si `build.bat` se borra
+del repo** (`run_tests.py:13192` en `_copiar_el_esqueleto_del_validador` y
+`20584` en el guard del ultimo byte). Es rojo, no verde, asi que no es un
+agujero de seguridad; pero es un **crash sin asercion que lo explique**, y
+justo en la asercion que se escribio para cerrar ese mismo agujero
+(`assert "build.bat" in presentes`, `20359`, hoy inalcanzable porque al borrar
+el fichero entero muerde antes `20353`).
+
+**BAJO-2 - La celda E de `test_build_bat_propaga_...` esta SOMBREADA.** Sus dos
+aserciones (`20860`) son ciertas, pero `M-E3` y `M-E4` mueren en las celdas
+**A** (`20729`) y **B** (`20748`), porque la celda E copia el `build.bat` **del
+repo**, ya roto. No deja pasar nada malo; el docstring describe una proteccion
+que el orden de las celdas ya no deja exerterse.
+
+**BAJO-3 - El guard del ultimo byte tiene una sola asercion de comparacion y
+nadie mas mira esa cifra** (§20.3). Se puede vaciar en una linea y el documento
+vuelve a mentir. Arreglo: un segundo testigo en `validate_docs.py`, no mas
+aserciones en el mismo test.
+
+**BAJO-4 - El docstring corregido de R5 ancla el `exit /b 0` "de la etiqueta
+`:fallo`",** y en `270e204` **esa etiqueta no existia**: era el `if/else` y el
+`exit /b 0` era la ultima linea. El diagnostico es correcto; el ancla es del
+codigo posterior.
+
+**BAJO-5 - `CHANGELOG.md:26`: "la tarea estabaorientada"** (palabras pegadas).
+Anterior a TASK-077, esta en ambos lados del diff.
+
+**P2 (deuda declarada, ya pagada hoy)** - las cuatro citas por numero de linea.
+Se rompe ruidosamente y el arreglo de fondo es de TASK-076.
+
+### Lo que el dev acierta y lo que no
+
+| Afirmacion del dev | veredicto |
+|---|---|
+| `build.bat` entra en el esqueleto y cierra el rojo | **CIERTA**, medida por `M-D` y por la suite completa |
+| "se paso la lista completa de ficheros de raiz uno a uno" | **CIERTA en el metodo, incompleta en la lista**: nombra 8, de los cuales **`requirements.txt` no existe**; probe los 21 y ninguno carga |
+| la precondicion va antes de borrar y hay tres salidas por causa | **CIERTA**: `M-A`, `M-D4`, `M-E1`, `M-E2` mueren los cuatro |
+| el indice por ruta relativa cierra `N3x` | **CIERTA**: `M-B` y `M-B2` |
+| el digito derivado y vigilado | **CIERTA**: `M-G1` |
+| el `rc=0` del ciclo 65 lo daba el `exit /b 0`, no el `call` ausente | **CIERTA**: reproducida con `270e204` + `python` real |
+| los dos `call` siguen siendo load-bearing | **CIERTA**, y para **otro** escenario (shim `.cmd` en el PATH) |
+| celda E mide los dos `call` | **CIERTA en la afirmacion, CIEGA en la practica**: la celda nunca se alcanza (§20.2) |
+| "3 veces que se movio la cita" | **2 saltos medidos** en el historial; el tercero (`22730`) no esta en ningun commit |
+
+### El punto que el encargo mandaba no suavizar
+
+**La PARTE 1 se equivoco en el diagnostico del ciclo 65 y la PARTE 2 lo corrige
+bien.** Lo he medido en vez de repetirlo: con el `.bat` de `270e204` y `python`
+resolviendo a un `.exe` -- que es exactamente lo que hizo el ciclo 65, que
+sustituyo `force_build.py` y **no toco el PATH** -- el `.bat` imprime
+`Construyendo...` y `[ERROR] Fallo la compilacion` y sale con **0**. Esa es la
+salida que el ciclo 65 pego, caracter por caracter. Un secuestro de control
+habria impreso **ninguna** de las dos lineas. El `0` salia del `exit /b 0`.
+
+Lo que **no** se sostiene es la cadena de HardwareBook que hay alrededor: una
+afirmacion de causa que se corrige en un turno y se vuelve a atribuir en el
+siguiente es exactamente el fallo que este encargo audita. La PARTE 2 eligio la
+diagnostica buena y lo escrebio con su evidencia, que es lo que habia que hacer.
+### 23.3 Prueba de NO contaminacion del repo real (ejecutada AL FINAL)
+
+```
+--- HEAD y reflog ---
+4d66b89 fix(build): precondicion antes de borrar el exe, EOL por ruta y esqueleto del validador (TASK-077)
+17a9c55 fix(build): propagar el codigo de salida y vigilar la politica EOL sobre bytes (TASK-077)
+270e204 chore(architect): planificar TASK-077 (TASK-077)
+
+git rev-parse --git-dir  (desde la raiz del proyecto)
+C:\Users\carch\AppData\Local\woptimizer_git\.git
+
+git status --porcelain
+ M openspec/changes/2026-10-18-eol-real-y-exit-de-build/mutation-report.md
+
+git diff --cached --stat
+(nada stageado)
+
+--- el .git del repo real SIGUE SIENDO UN FICHERO ---
+es fichero: True | es directorio: False | 57 bytes
+contenido: b'gitdir: C:/Users/carch/AppData/Local/woptimizer_git/.git\n'
+
+--- reflog: NO ha cambiado ---
+4d66b89 HEAD@{0}: commit: ...
+17a9c55 HEAD@{1}: commit: ...
+270e204 HEAD@{2}: commit: ...
+
+--- ficheros del repo REAL con mtime posterior al inicio de la auditoria ---
+   23:50:08 (+02:00)  src\woptimizer\woptimizer.log     <-- 31 s ANTES de empezar
+   00:15:06 (+02:00)  openspec\...\mutation-report.md  <-- este informe
+TOTAL: 2
+
+--- hash de los ficheros que la auditoria AUDITO (intactos) ---
+   run_tests.py                           3f05f09c1671367c
+   build.bat                              f97fa894d4b3d576
+   .gitattributes                         ff72d02e73c3f548
+   docs/ai/sandbox-rules.md               35ad44055983c4ba
+   (identicos a los de las dos camaras)
+```
+
+**Lo unico escrito en el repo es este informe**, que es lo unico que el encargo
+permitia. **No se ha hecho ningun commit, ni `checkout`, ni `reset`, ni `stash`,
+ni `clean`, ni `restore`, ni se ha invocado `git_safe_commit.py` ni una vez.**
+El HEAD sigue en `4d66b89` y el reflog tiene las mismas tres entradas que al
+empezar. `src/woptimizer/woptimizer.log` tiene un mtime 31 segundos **anterior**
+al inicio de esta auditoria: es del arranque de la app, no mio.
