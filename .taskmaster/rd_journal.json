@@ -1134,5 +1134,19 @@
   ],
   "tests": "205 tests = 142 backend + 63 headless (run_tests.py, derivado con ast). verify_ui_syntax.py EXITO (10 modulos). validate_docs.py 143 OK / 0 FAIL. Base de camara verde: 26404 B, ALL TESTS PASSED., rc=0.",
   "notes": "TASK-073: RuntimeError 'main thread is not in main loop' al programar self.after desde worker con la ventana destruida. MEDIDO y REFUTADO por el arquitecto: winfo_exists() desde un worker tambien lanza, luego el guard que prescribia el AC era codigo muerto; la solucion es try/except RuntimeError. Ademas no eran 5 call sites sino 10 en 3 vistas. Deuda que queda abierta para el ciclo 63: A11, exentos = publicados - llamados no tiene contraprueba en la suite (quitarla deja el proyecto entero verde); con el codigo real NO es alcanzable, los unicos nombres publicados son _handle_ok y _handle_err, unicos y nunca llamados."
+ },
+ {
+  "cycle": 63,
+  "date": "2026-10-18",
+  "slug": "task-074-paridad-antes-del-repo-invalido",
+  "task": "TASK-074",
+  "area": "Tooling / Testing",
+  "status": "COMPLETED + PASS. La puerta de paridad (codigo 2) sube por encima de la del repo invalido (codigo 3) en los DOS modos, commit y --verify. El contrato publico cambio 1 celda de 8: --verify + par asimetrico + repo no verificable pasa de 3 WOPT_REPO_INVALIDO a 2 WOPT_USAGE paridad-git. Verificado por la matriz de 8 celdas medida por subproceso contra el wrapper real, y por 11 mutantes. Tres sondas nuevas o reescritas en run_tests.py. Sandbox-rules.md actualizado con la PRECEDENCIA, no solo los codigos. Sin cambios en src/woptimizer. Auditoria: PASS, cero supervivientes que rompan contrato.",
+  "commits": [
+   "83a79ad",
+   "3e155f5"
+  ],
+  "tests": "207 tests = 142 backend + 65 headless (run_tests.py, derivado con ast; la spec pedia 208 y el dev escribio el numero real). verify_ui_syntax.py rc=0. validate_docs.py 145 OK / 0 FAIL. Suite completa en camara con historial real: 366 lineas, ALL TESTS PASSED.",
+  "notes": "PREMISA DE LA TAREA REFUTADA por el arquitecto antes de escribir codigo: el camino de commit YA devolvia 2; lo que caia a 3 era el mutante. Y la contradiccion real estaba en --verify, no en commit. Ademas la sonda que la tarea mandaba tocar mide --verify, o sea que su AC original era insatisfacible por el motivo OPUESTO al que se suponia. Auditoria: 11 mutantes, 9 killed, 1 equivalente (M5', muerto solo por la sonda AST, equivalencia demostrada contra las 207 sondas) y 2 NO MEDIDO por fallos de arnes propios, rehechos. Tres deudas nuevas H1/H2/H3, todas bajas: el doc es mas estricto que el codigo sobre la ultima linea canonica; la sonda AST exige 'verify' como primer operando del and; y el nombre de la sonda reescrita ya no describe lo que mide. Repo real intacto."
  }
 ]

@@ -1,3 +1,66 @@
+## [CYCLE-063] 2026-10-18 - task-074-paridad-antes-del-repo-invalido
+
+### TASK-074: el `2` de la paridad precede al `3` del repo, en los dos modos
+
+**Area**: Tooling / Testing. **Change**: `openspec/changes/2026-10-18-paridad-antes-del-repo-invalido/`
+**Estado**: **COMPLETED** — auditoria **PASS**. **Tests**: 205 -> **207 = 142 + 65**. `src/woptimizer/**` intacto.
+**Commits**: `83a79ad` (arquitectura), `3e155f5` (implementacion).
+
+**Models**
+- Paso 1 (Buscar): `flash` — el backlog dio TASK-074 como activa.
+- Paso 2 (Planear): `pro` (override) — el area es Tooling/Testing y el encargo toca la puerta de versionado de todo el bucle.
+- Paso 3 (Ejecutar): `inherit`.
+- Paso 4 (Auditar): `inherit` -> **PASS**.
+
+**El cambio**: en `main()` de `.taskmaster/git_safe_commit.py`, la puerta `if paridad_rota:` (:891) sube por encima de `if verify and not ok:` (:906). El contrato publico cambia **1 celda de 8**: `--verify` + par asimetrico + repo no verificable pasa de `3 WOPT_REPO_INVALIDO` a `2 WOPT_USAGE paridad-git`.
+
+**La premisa de la tarea era falsa, y se midi antes de escribir codigo:**
+1. El camino de `commit` con par roto + repo no verificable **ya devolvia `2`**. Lo que caia a `3` era el mutante, no el codigo.
+2. La contradiccion real estaba en `--verify`, no en `commit`.
+3. `test_la_puerta_de_paridad_va_despues_de_validar_repo` (la sonda que la tarea mandaba ampliar) mide **`--verify`**: su acceptance criterion original era insatisfacible por el motivo **opuesto** al que se suponia.
+4. TASK-074 estaba en el backlog (`STATUS.md:35`), no en "Deuda Tecnica Conocida"; su descripcion citaba una fila 125 que no existe (el fichero tiene 123).
+
+**Razon de la decision (arquitecto, medida)**: `paridad_rota` se calcula leyendo `os.environ` (`get_env():299`) sin preguntar a git, mientras que con par asimetrico `validar_repo` **mira un par impuesto** (`work_tree = env.get("GIT_WORK_TREE") or REPO_ROOT`, `:459`), que es justo lo que la alarma de ancla dice que no debe pasar. La alternativa —dejar el `3` por delante— obligaria a comprobar la paridad **despues** de esa alarma, que depende de `GIT_WORK_TREE` y podria decir "el repositorio declara X y la invocacion pretende Y" cuando la verdad es "no me diste el arbol".
+
+### Mutaciones auditadas (Paso 4) — 11 mutantes
+
+| Fix | Mutacion | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Precedencia paridad > repo | `R4-k` · `and ok` | **killed** (3 sondas) | «con un par ASIMETRICO y un repo NO verificable tiene que ganar el 2… y salio con **3**» |
+| Precedencia en `--verify` | `R4-n` · `and not verify` | **killed** (4 sondas) | «`--verify` con el par ASIMETRICO tiene que salir con 2… y salio con **0**» |
+| Posicion de la puerta | `M5'` · puerta sobre `validar_repo` | **killed, solo AST** | «la puerta (linea 860) tiene que ir DESPUES de `validar_repo` (864)» — **equivalente**, demostrado contra las 207 |
+| Rigidez del AST | `M4-f` · `not ok and verify` | **killed** | por «no encontrado», no por su asercion |
+| Puerta muda | `M4d` · `pass` en vez de `print` | **killed** (5) | aserto de `paridad-git` |
+| Puerta fuera de `main()` | `M4e` | **killed** (5) | contraprueba de «no encontrado» |
+| Wrapper que siempre dice 2 | `M5e` · `if True:` | **killed** (7 de 10) | `run_tests.py:20287 assert r_ok.returncode == 3` — **el control de par entero es el que salta** |
+| Ancla de mensaje | `K1` · aceptar `T-\d+` | **killed** (2) | «`chore: T-061 (algo)` tiene que RECHAZARSE» |
+| Orden de fronteras | `K2` · puerta del mensaje antes del NOOP | **killed** | «el orden de las cuatro fronteras… esta roto» |
+| `M4d` v1 / `K2` v1 | — | **NO MEDIDO** | no-op y `IndentationError`: fallos del arnes, rehechos |
+
+**Matriz de 8 celdas medida por subproceso contra el wrapper real**: cuadra entera con la del arquitecto. La unica celda que cambio es `--verify` + rota + no verificable, ahora `2 WOPT_USAGE paridad-git`.
+
+**Contrapruebas que hacen discriminante la sonda nueva**: los controles de **par entero → `3`** son lo que impide que un wrapper que devuelva `2` siempre pase. Medido con `M5e`: el sujeto pasa y el control de par entero es el que salta (`run_tests.py:20287`).
+
+**Desviacion de la spec medida, no asumida**: F2.5 pedia 205 -> **208**. La verdad son **207**: se reescribe una sonda existente, no se anade una tercera. El dev escribio el numero real, que es el que deriva `ast`.
+
+### Hallazgos que no estaban en el encargo
+
+- **El nombre de una sonda miente**: `test_la_puerta_de_paridad_va_despues_de_validar_repo` **se llama asi pero no mide eso**. `validar_repo` no imprime nada, luego su posicion respecto a el es **inobservable**: la sonda media la posicion respecto a `if verify and not ok`. Solo un test AST puede fijarla. El dev lo documento en el docstring en vez de dejar el nombre.
+- **Dos bugs reales en la sonda AST del dev**, encontrados por su propia contraprueba: `ast.unparse` escribe `verify and (not ok)` y la comparacion por texto **nunca** encontraba la linea; y el camino de commit imprime su `INFO` **despues** de la linea canonica, luego «la canonica es la ultima linea» era falso. Los dos corregidos.
+- **`sandbox-rules.md:55-56` se cita POR NUMERO DE LINEA** en `validate_docs.py:1278` y `:1773`. Insertar filas habria desplazado lo que el validador creia comprobar sin que dijera nada. Auditado: sigue siendo la fila `0`.
+
+### Deuda que sale de este ciclo (las tres, bajas)
+
+- **H1** `sandbox-rules.md` (regla 4) exige que la linea `WOPT_*` sea la ultima impresa, pero el camino de commit imprime su `INFO` despues. El documento es mas estricto que el codigo.
+- **H2** La sonda AST exige `verify` como **primer** operando del `and`: `not ok and verify` la mata por «no encontrado», no por su asercion. Fallo ruidoso, no silencioso.
+- **H3** La sonda reescrita conserva un nombre que ya no describe lo que mide (declarado en su docstring).
+
+### Outcome
+- Commits: `83a79ad`, `3e155f5`
+- Tests: 207/207 PASS (142 backend + 65 headless)
+- Docs: `docs/ai/sandbox-rules.md` (precedencia + tabla `--verify`), `docs/ai/testing-guide.md` (filas 206-207), `STATUS.md`, `AGENTS.md`, `README.md`
+- Repo real: HEAD `3e155f5`, reflog sin entradas de la auditoria, digest del wrapper identico antes y después
+
 ## [CYCLE-062] 2026-10-18 - task-073-tkinter-after-guard
 
 ### TASK-073 -> TASK-078 -> TASK-079: publicacion segura en el bucle de Tk

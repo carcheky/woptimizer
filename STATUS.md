@@ -19,10 +19,10 @@
 
 ## 🔄 Estado de la Ejecución
 
-- **Ciclos completados:** 62 (`rd_journal.json`)
+- **Ciclos completados:** 63 (`rd_journal.json`)
 - **Rama de trabajo:** `beta` (nunca commitear a `main` directamente)
-- **Último ciclo (#62):** TASK-073 → TASK-078 → TASK-079 — publicación segura en el bucle de Tk. Veredicto de auditoría: **PARTIAL**
-- **Tarea activa (`active_task_id`):** `TASK-074` (siguiente del backlog; la deuda A11 del ciclo 62 es candidata aFormalizarse)
+- **Último ciclo (#63):** TASK-074 — precedencia de la puerta de paridad (2) sobre la de repo inválido (3) en ambos modos. Veredicto de auditoría: **PASS**
+- **Tarea activa (`active_task_id`):** `TASK-075` (siguiente del backlog; la deuda A11 del ciclo 62 y las bajas H1-H3 son candidatas a formalizarse)
 
 ---
 
@@ -61,6 +61,17 @@
 
 - **Shell intermitente (`spawn EPERM`):** El entorno de agentes bloquea subprocesos vía Node. Afecta a `tm.py` y a veces a `.taskmaster/git_safe_commit.py`. Workaround: reintentar. No tiene fix posible desde el repo. Blindado con el contrato de códigos de salida de `.taskmaster/git_safe_commit.py` (`docs/ai/sandbox-rules.md`).
 - **`.git` corrupto (VFS Nextcloud):** El historial vive en `%LOCALAPPDATA%\woptimizer_git\.git`. Se acepta y se blinda con `.taskmaster/git_safe_commit.py --verify` (`docs/ai/sandbox-rules.md`).
+
+### 🔴 Crítica
+
+- **Shell intermitente (`spawn EPERM`):** El entorno de agentes bloquea subprocesos vía Node. Afecta a `tm.py` y a veces a `.taskmaster/git_safe_commit.py`. Workaround: reintentar. No tiene fix posible desde el repo. Blindado con el contrato de códigos de salida de `.taskmaster/git_safe_commit.py` (`docs/ai/sandbox-rules.md`).
+- **`.git` corrupto (VFS Nextcloud):** El historial vive en `%LOCALAPPDATA%\woptimizer_git\.git`. Se acepta y se blinda con `.taskmaster/git_safe_commit.py --verify` (`docs/ai/sandbox-rules.md`).
+
+### 🟢 Baja (CYCLE-063, abiertas y sin riesgo vivo)
+
+- **H1 · el doc es más estricto que el código:** `sandbox-rules.md` (regla 4) exige que la línea `WOPT_*` sea la última impresa, pero el camino de **commit** imprime su `INFO no se intenta el .git…` **después** de `WOPT_REPO_INVALIDO`. El dev lo midió y lo declaró, no lo arregló: es otro cambio de contrato y merece tarea propia. Evidencia: `openspec/changes/2026-10-18-paridad-antes-del-repo-invalido/mutation-report.md`.
+- **H2 · rigidez de la sonda AST:** `test_la_puerta_de_paridad_va_despues_de_validar_repo_por_estructura` (`run_tests.py`) exige `verify` como **primer** operando del `and`; `not ok and verify` la mata por «no encontrado», no por su aserción. Fallo ruidoso, no silencioso. Evidencia: `openspec/changes/2026-10-18-paridad-antes-del-repo-invalido/mutation-report.md`.
+- **H3 · nombre que miente:** `test_la_puerta_de_paridad_va_despues_de_validar_repo` (`run_tests.py`) ya no mide la posición frente a `validar_repo` (esa posición es inobservable: `validar_repo` no imprime). Declarado en su docstring. Evidencia: `openspec/changes/2026-10-18-paridad-antes-del-repo-invalido/mutation-report.md`.
 
 ### 🟡 Media
 
@@ -103,6 +114,7 @@
 
 | Ciclo | Área | Qué se hizo |
 |---|---|---|
+| #63 | Tooling | Precedencia paridad (2) antes que repo invalido (3) en ambos modos (TASK-074) |
 | #62 | UI / Testing | Publicación segura en el bucle de Tk desde hilos (TASK-073/078/079) |
 | #61 | Core / UI | Aplicaciones protegidas no ejecutables e indestructibles (TASK-071) |
 | #60 | Tooling | Hang stdin git fixture solucionado (TASK-072) |

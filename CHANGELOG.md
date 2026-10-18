@@ -1,3 +1,18 @@
+## CYCLE-063 - 2026-10-18
+
+### 🛡️ Corregido — La puerta que protege los commits ya no se contradice a sí misma
+
+**Estado**: **PASS** en auditoría de mutación (11 mutantes, cero supervivientes que rompan el contrato). Tests: **207** (142 backend + 65 headless). Commits: `83a79ad`, `3e155f5`.
+
+- 🔴 **Qué se rompía**: el envoltorio que protege los commits tenía **dos reglas que se pisan**. Si le pedías una cosa y el repositorio estaba mal, te respondía con el motivo equivocado: te decía "el repositorio no existe" cuando lo que te faltaba era dar las dos variables de entorno. Y lo hacía de forma **distinta según por dónde lo llamaras**: una ruta lo decía, la otra no.
+- 🛡️ **Qué se hizo**: ahora la respuesta es la misma en las dos rutas, y siempre la más útil — la que te dice **qué hacer**. El manual técnico del proyecto se actualizó con la **precedencia** completa, no solo la lista de códigos, que era lo que quedaba desfasado.
+- 🔴 **Y la tarea venía mal escrita**: decía que el fallo estaba en el commit normal. Medido antes de tocar nada: **ese camino ya funcionaba**. El fallo real estaba en el otro, y la comprobación que la tarea mandaba arreglar miraba justo el sitio donde no pasa. Se corrigió el encargo, no el síntoma.
+- 🧪 **Tres comprobaciones nuevas, y la más importante es una que no se ve**: la posición del código se verifica leyendo el programa directamente, porque por fuera **no se puede observar** si una comprobación va antes o después de otra. Se comprobó que esa comprobación detecta también cuando alguien la mueve de verdad, no solo cuando la borra.
+
+### ⚠️ Pendiente — Tres cosas menores
+
+Ninguna afecta al funcionamiento: el manual es más estricto que el código en un detalle del mensaje de error, una comprobación acepta el código en un orden concreto del que no depende nada, y una comprobación conserva un nombre viejo que ya no describe lo que mide. Quedan anotadas para cuando toque.
+
 ## CYCLE-062 - 2026-10-18
 
 ### 🛡️ Corregido — El error que salía al cerrar la ventana durante un escaneo
