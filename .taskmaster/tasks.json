@@ -1,8 +1,8 @@
 {
   "project": "woptimizer",
   "version": "3.0.1.dev0",
-  "updated_at": "2026-10-07",
-  "active_task_id": "TASK-080",
+  "updated_at": "2026-10-19",
+  "active_task_id": "TASK-081",
   "tasks": [
     {
       "id": "TASK-001",
@@ -1742,6 +1742,27 @@
         "`python verify_ui_syntax.py`, `python run_tests.py` (terminando en `ALL TESTS PASSED.`) y `python validate_docs.py` en verde."
       ],
       "notes": "Cerrada. Solo se tocan guardas de `run_tests.py` y documentacion del change; el codigo de `src/woptimizer/**` no se modifica. Siguen sobreviviendo a proposito los mutantes EQUIVALENTES S2 (`except BaseException`) y S3 (`tk.TclError` declarado y sin provocar): su premisa se reverifico contra `tk_thread.py:83`, que captura `except Exception`, asi que cambiarla los desharía. Medicion de los 7 mutantes en camara desechable de %TEMP% (git clone --local, mutacion verificada en disco): r4b, r4b_control, r5f, r5f_clausura_llamada, r2b_vista_nueva y r2b_sin_derivacion MUERTOS por la asercion que nombra el defecto; r5f_principal VERDE por diseno (la clausura publicada corre en el hilo principal y puede tocar el widget). Verificacion: verify_ui_syntax OK, run_tests.py termina en 'ALL TESTS PASSED.' (rc=0, 26404 B) y validate_docs.py 143 OK / 0 FAIL (rc=0). El recuento de tests sigue en 205, asi que los cuatro sitios que lo derivan con ast no se tocan y llms-full.txt no se desincroniza. Detalle en openspec/changes/2026-10-18-tkinter-after-guard/mutation-report.md seccion 10."
+    },
+    {
+      "id": "TASK-081",
+      "title": "El alcance de verify_ui_syntax.py esta VACIO: verde con el codigo roto (cierra la clase de las enumeraciones escritas a mano)",
+      "description": "verify_ui_syntax.py:9-20 enumera DIEZ rutas escritas a mano en vez de derivar el alcance. MEDIDO en camara con control positivo: theme.py y tray_menu.py (NO listados) rotos -> exit 0 VERDE; app.py (SI listado) roto -> exit 1 (el control que discrimina); un modulo NUEVO roto -> exit 0 VERDE. El arbol real tiene 12 .py bajo src/woptimizer/ui y la lista cubre 10. theme.py (2026-10-01) y tray_menu.py (2026-10-04) se crearon DESPUES del ultimo toque real de la lista (bbcc472, 2026-10-18, que solo anadio tk_thread.py) y nunca entraron: la lista se actualiza a mano cuando alguien se acuerda. Este agujero YA FUE DOCUMENTADO en openspec/changes/2026-09-29-double-tap-confirmation/proposal.md:319-320 y se 'arreglo' ANADIENDO confirmation.py a la lista (:73, :271-272), que es el arreglo que degrada el guard. ADEMAS: verify_ui_syntax no aparece en NINGUN test del repo (su unica mencion en run_tests.py es :13177, dentro de un docstring), y corre en CI (release.yml:87). Se reproduce SIN incidente en 8 segundos.",
+      "complexity": 4,
+      "priority": "high",
+      "status": "pending",
+      "dependencies": [],
+      "module": "openspec/changes/2026-10-19-verificacion-ui-alcance-derivado/proposal.md",
+      "acceptance_criteria": [
+        "AC-1 verify_ui_syntax.py deriva su alcance con rglob('*.py') sobre src/woptimizer/ y NO contiene ninguna tupla o lista de literales de ruta. Comprobado con AST, no con busqueda de texto. MATA M-L (reintroducir la tupla literal) y M-R (rglob en comentario o codigo muerto: un guard de texto pasaria, uno de AST no)",
+        "AC-2 El script imprime el numero DERIVADO y STATUS.md lo declara derivado; un guard compara la cifra que imprime el script con la de STATUS.md. MATA M-S (volver a '10 modulos' como cifra fija)",
+        "AC-3 CONTRAPRUEBA: en %TEMP%, src/ real + verify_ui_syntax.py + un modulo NUEVO con error de sintaxis exige exit 1 Y que la salida nombre ese modulo. MATA M-L por la via del PRODUCTO, imposible de falsear con un comentario. Es el AC que no puede sobrevivir sin el fix (reproduce M4)",
+        "AC-4 CONTROL POSITIVO de AC-3: el mismo arbol SIN el modulo roto da exit 0, y con un modulo sano anadido tambien exit 0. MATA M-C (camara que devuelve exit 1 siempre). Sin este control un script permanentemente roto cumpliria AC-3; es el control que falto en el ciclo 66 y por eso el mutante S2 sobrevivio",
+        "AC-5 GUARD DE FORMA: con ast, ninguna funcion de run_tests.py, validate_docs.py ni verify_ui_syntax.py contiene una lista/tupla de DOS O MAS literales de ruta bajo src/woptimizer/**.py sin derivar con rglob/os.walk/iterdir/glob. Cada hallazgo se nombra con fichero y linea. MATA M-W (reintroducir la lista de 4 rutas en run_tests.py:8198). DENUNCIA, no repara, las dos enumeraciones pre-existentes: run_tests.py:8198 y run_tests.py:13184. SIN lista muda de permitidos: cada excepcion exige en el docstring de su guard (a) por que existe y (b) que la retira; una entrada sin las dos frases se rechaza",
+        "AC-6 python verify_ui_syntax.py exit 0 con el recuento derivado; python run_tests.py ALL TESTS PASSED exit 0; python validate_docs.py 0 FAIL; y ni STATUS.md ni CHANGELOG.md con una cifra de modulos UI escrita a mano",
+        "CERO ediciones bajo src/woptimizer/ (todo el cambio es de tooling y de suite)",
+        "CIERRE por el wrapper con identificador en la rama beta y git status --porcelain vacio: chore o fix segun corresponda (TASK-081). Nunca main"
+      ],
+      "notes": "ELEGIDO por el criterio del repo '¿se manifestaria si el codigo o el documento estuvieran mal?': NO, y esta MEDIDO en verde. Es el unico guard del inventario que corre en CI sin contraprueba y que ya fallo dos veces de hecho.\nINVENTARIO DE LA CLASE (medido con ast sobre los 226 tests de run_tests.py): 146 son tests de comportamiento y 80 guards estructurales; de esos, (a) 27 SIN contraprueba, (b) 12 con contraprueba que NO construye variante degradada, (c) 41 que si la construye y exige el rojo. El bucket (b) es una SOBREESTIMACION (criterio estatico, no logico): incluye guards con contraprueba real que el criterio no vio construir, p.ej. run_tests.py:20320. El reparto (b)/(c) exacto es del mutation-auditor; el reparto (a) contra (b+c) si es defendible.\nLO QUE NO SE ARREGLA Y POR QUE: _copiar_el_esqueleto_del_validador (run_tests.py:13184) tiene la MISMA forma pero MEDIDO que quitar cualquiera de sus entradas da ROJO con fichero y linea nombrados -> es BOMBA DE MANTENIMIENTO, NO AGUJERO. Formalizarlo seria un error de diagnostico. test_no_literal_colors_in_views (run_tests.py:8198) tiene la misma forma (lista 4 de 12) pero un color literal no rompe la app: su control de run_tests.py:8223-8226 prueba que el DETECTOR detecta, no que la LISTA este completa. AC-5 los denuncia y no los repara.\nPROPIEDAD ESTRUCTURAL: un guard es vaciable cuando el conjunto de sujetos que mira esta escrito como enumeracion literal dentro del propio guard y ese conjunto es un dato DERIVADO del sistema de ficheros. Enumeracion y conjunto son dos fuentes de verdad que nadie ata. El repo ya tiene la respuesta a 4500 lineas de distancia: run_tests.py:12725 y :1084 derivan con rglob; :8198 y :13184 enumeran.\nCOMPENSACION ACCIDENTAL: theme.py y tray_menu.py se detectan hoy solo porque run_tests.py:279 importa woptimizer.ui.app sin proteccion y de ahi cuelgan por el grafo de imports. Depende de que todo modulo tenga camino de importacion hasta app.py; un modulo nuevo que nada importa (M4) no lo tiene y no lo detecta nadie.\nRESTOS DECLARADOS: _chk.py (488 B), _chk2.py (211 B) y _matrix_c26.py (20668 B) son scripts sueltos TRACKEADOS en la raiz del ciclo TASK-036. No los toca este ciclo; test_no_legacy_test_files_in_root (run_tests.py:12649) vigila test_*.py y no este patron: la misma clase de enumeracion, en la raiz.\nTASK-080 NO se toca: su propia medicion dice que CI no puede dar verde todavia (25 hashes de rd_journal.json sin pushear). Activarlo hoy rompe el pipeline."
     }
   ]
 }
