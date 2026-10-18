@@ -5,7 +5,7 @@
 - **Motor de Procesos**: `psutil` (reemplaza cualquier llamada externa a PowerShell o WMI).
 - **Persistencia y Validación**: `pydantic v2` para esquemas de datos estructurados.
 - **Interfaz Gráfica**: `customtkinter` (modo oscuro por defecto, componentes modernos).
-- **Empaquetador**: `PyInstaller` con manifiesto UAC admin.
+- **Empaquetador**: `PyInstaller` con manifiesto UAC admin. Los flags se declaran **una sola vez**, en `force_build.py`; `build.bat` y el job `build` de CI lo invocan y no los re-listan.
 
 ## Invariante de 3 Capas (Three-Tier Rule)
 ```

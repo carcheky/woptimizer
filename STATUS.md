@@ -9,7 +9,7 @@
 | Indicador | Estado | Detalle |
 |---|---|---|
 | Sintaxis UI | 🟢 | `verify_ui_syntax.py` — 10 módulos |
-| Tests headless | 🟢 | `run_tests.py`, **213 tests** (148 backend + 65 headless UI) |
+| Tests headless | 🟢 | `run_tests.py`, **220 tests** (155 backend + 65 headless UI) |
 | Benchmark base | 🟢 | 182 ms init · 4.97 ms escaneo · 0.003 ms cache · 30 MB RSS |
 | Process DB | 🟢 | 96 entradas · 8 categorías · 0 huérfanas · 🛡️ 34 protegidas |
 | Versionado | 🟢 | Rama `beta` · último commit `4349b10` · `main` publicada `v1.1.0` |
@@ -34,7 +34,7 @@
 | **TASK-068** | `in_progress` | high | Arranque por categorías revierte TASK-063 | Código hecho, 189→198 tests. **2 decisiones del dueño bloquean cierre (P-1, P-2b)** |
 | **TASK-074** | ✅ `completed` | medium | Blindar paridad git tooling (código 2 asimétrico) | **RESUELTO 2026-10-18:** el `2` de `paridad-git` precede al `3` del repo **en los dos modos**. MEDIDO en las ocho celdas: cambia **una**, `--verify` + par roto + repo roto, de 3 a 2. La posición respecto a `validar_repo` era inobservable (no imprime) y ahora la ata una sonda AST |
 | **TASK-075** | ✅ `completed` | medium | Desacoplar `validate_docs.py` de `%LOCALAPPDATA%` para CI | **RESUELTO 2026-10-18:** una sola resolución del repositorio (`--git-dir` > `WOPTIMIZER_GIT_DIR` > `GIT_DIR` > `%LOCALAPPDATA%`) usada por los DOS consumidores que leen git; `--git-dir` y `--sin-ancla-de-git` con `[SKIP]` propio. La exclusión de CI **sigue** y su motivo escrito era falso: no es la ruta, son 25 hashes sin pushear |
-| **TASK-076** | `pending` | medium | Desduplicar flags PyInstaller (`force_build.py` vs `release.yml`) | |
+| **TASK-076** | ✅ `completed` | medium | Desduplicar flags PyInstaller (`force_build.py` vs `release.yml`) | **RESUELTO 2026-10-18:** la premisa del encargo era FALSA —`force_build.py:11-16` y `release.yml:208` ya eran **idénticos** byte a byte—, así que la asimetría real estaba en `build.bat:27` y en el ejemplo de `docs/ai/sandbox-rules.md`, que compilaban SIN `--add-data assets;assets`. Fuente única `force_build.py` (la invocan `build.bat` y el job `build`). **7 guards**, y el que discrimina (AC-2) deriva su expectativa de `src/`: sin él, el bug de `build.bat:27` no lo mataba nadie |
 | **TASK-077** | `pending` | low | Normalizar CRLF en `.bat`/`.ps1` (`git add --renormalize`) | |
 
 > **Prioridad de ejecución:** `TASK-074` cerrado el 2026-10-18; siguiente del backlog, `TASK-075` (desacoplar `validate_docs.py` de `%LOCALAPPDATA%`, que hoy impide que corra en CI) → resto por prioridad.
@@ -84,7 +84,7 @@
 
 - **D1** (media): `validate_docs.py:293` afirma que `WOPTIMIZER_GIT_DIR` tiene "el mismo contrato" que `--git-dir`. MEDIDO: solo `--git-dir` se exige (repo inválido → FAIL propio); los otros tres peldaños caen en el FAIL del historial. Fix: reescribir el comentario con la asimetría real.
 - **D2** (media): tres **"207" caducados** en `STATUS.md:106`, `docs/ai/testing-guide.md:57` y el badge de `README.md:6`; `testing-guide.md:57` se contradice además con `STATUS.md:12`. Son **invisibles** al check del recuento porque lee **una sola línea por fichero**. Fix: las tres cifras, y hacer que el check derive de varias líneas o de un marcador único.
-- **D3** (baja): `release.yml` declarado con 193 líneas; tiene 214. Evidencia: `openspec/changes/2026-10-18-validate-docs-ruta-y-degradacion/mutation-report.md`.
+- **D3** (baja): `release.yml` declarado con 193 líneas; tiene **215** (MEDIDO en TASK-076, 2026-10-18; eran 214 y este cambio movió una al reescribir el paso `build`). Cifra corregida, **deuda viva**: es un recuento escrito a mano sobre un fichero que se edita, la misma clase que D2, y se caducara otra vez en el siguiente cambio. Fix de fondo: derivarla o marcarla como "se declara al cierre del ciclo que toque el fichero". Evidencia: `openspec/changes/2026-10-18-validate-docs-ruta-y-degradacion/mutation-report.md`.
 - **P1** (no medido **por presupuesto**): el registro de llamadas indecisas de `test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input` (`run_tests.py`) creció 3 entradas documentadas (los `subprocess.run` de los flags del validador). Falta el mutante que compruebe que ese registro no se puede vaciar sin ponerse rojo. Evidencia: `openspec/changes/2026-10-18-validate-docs-ruta-y-degradacion/mutation-report.md`.
 
 ---

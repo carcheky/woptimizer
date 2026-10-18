@@ -27035,6 +27035,551 @@ def test_ninguna_vista_programa_after_a_mano():
     print("test_ninguna_vista_programa_after_a_mano OK.")
 
 
+# --- TASK-076: una sola declaracion de los flags de PyInstaller ---------------
+# MEDIDO antes de escribir una linea (architect-review, ciclo #65): la premisa
+# central del encargo era FALSA. `force_build.py:11-16` y
+# `.github/workflows/release.yml:208` eran IDENTICOS byte a byte y en orden --
+# los seis flags, los mismos -- luego un "test de paridad" entre esos dos
+# habria pasado en verde SIN MEDIR NADA. La asimetria real estaba en los dos
+# sitios que el encargo no miraba: `build.bat:27` y el ejemplo de
+# `docs/ai/sandbox-rules.md:19-27`, que compilaban SIN `--add-data
+# assets;assets`.
+#
+# Y no era cosmetico. MEDIDO en `src/`: `config.py:11-14` hace que `_data_dir()`
+# sea `sys._MEIPASS` cuando el ejecutable esta frozen, `process_service.py:347`
+# lee de ahi `assets/process_db.json` (49 517 B, 73 entradas) y `app.py:23` y
+# `:269` leen `assets/woptimizer.ico`. Sin ese paquete el `.exe` local arranca
+# SIN base de datos de procesos y SIN icono, mientras que el que publica
+# Actions si los lleva: el producto roto era el local, no el publicado.
+#
+# DISENO: `force_build.py` es la declaracion UNICA y los otros dos sitios la
+# INVOCAN. Y no un modulo `FLAGS = [...]` que los tres importen: dos ficheros
+# que importan la misma lista siguen siendo DOS listas, y la igualdad entre
+# ellas se cumple sola -- el guard que las comparara seguiria siendo el
+# tautologo que este encargo vino a quitar.
+#
+# LOS DOS GUARDS QUE DISTINGUEN, y por que el segundo es el que cuenta:
+#   * AC-1 (unicidad): que no vuelva a existir una segunda lista. Mata al que
+#     reintroduce flags, sea donde sea.
+#   * AC-2 (cobertura): la expectativa sale de `src/woptimizer/**/*.py` -- de
+#     las rutas que la app LEE -- y no de `force_build.py`. Por eso el defecto
+#     de `build.bat:27` de hoy es su mutante R2-a, y hasta ahora no lo mataba
+#     NADIE.
+FLAGS_QUE_SOLO_VIVEN_EN_FORCE_BUILD = (
+    "--onefile", "--noconsole", "--uac-admin", "--add-data", "--name",
+    "--clean", "--spec",
+)
+# `release.yml` trae otros `--` que NO son de PyInstaller (`git ...` y
+# compañía), y por eso lo prohibido es ESTA lista y no cualquier guion doble: un
+# guard mas laxo que la realidad es un guard que nadie se cree.
+CONSUMIDORES_DE_LA_DECLARACION = (".github/workflows/release.yml", "build.bat")
+# Los SIETE guards de esta tarea, por nombre. El AC-6 los recorre con `ast`:
+# MEDIDO, `pyproject.toml:15-19` solo declara `pytest` y `pyinstaller`, asi que
+# un guard con `yaml.safe_load` pasaria en ESTE host y reventaria en el job
+# `verify` con `ModuleNotFoundError`. Leen texto, no parsean YAML.
+GUARDAS_DE_LOS_FLAGS = (
+    "test_una_sola_declaracion_de_flags_de_pyinstaller",
+    "test_los_assets_que_lee_la_app_llegan_al_ejecutable",
+    "test_la_doc_no_vuelve_a_re_listar_los_flags",
+    "test_las_citas_de_sandbox_rules_siguen_siendo_ciertas",
+    "test_el_spec_no_vuelve_a_ser_la_fuente_de_verdad",
+    "test_los_guards_de_flags_no_necesitan_yaml_ni_ejecutan_nada",
+    "test_la_linea_base_de_flags_se_deriva_del_fichero_real",
+)
+# `assets/<lo que sea>` leyendo con la forma `os.path.join(<dir>, "assets", ...)`:
+# es la que escriben los TRES call sites medidos (`process_service.py:347` y
+# `app.py:23` y `:269`).
+_RE_ASSET_BAJO_UN_JOIN = None  # se compila dentro del test: `re` no es global
+
+
+def _texto_de(ruta):
+    with open(ruta, encoding="utf-8", errors="replace") as fh:
+        return fh.read()
+
+
+def _como_token(texto, token):
+    """`token` aparece como ARGUMENTO, no como prefijo de otro.
+
+    Sin los dos `lookaround` un guard que buscara `--name` veria tambien a
+    `--names`, y uno que buscara `--add-data` veria a `--add-database`: pasaria
+    en verde sobre un fichero que declara otra cosa.
+    """
+    import re as _re
+    return bool(_re.search(r"(?<![\w-])" + _re.escape(token) + r"(?![\w-])", texto))
+
+
+def _argumentos_de_pyiinstaller(ruta):
+    """Los argumentos que el fichero REAL pasa a PyInstaller, derivados con `ast`.
+
+    No es una lista escrita aqui. Por eso el mutante que borre una linea de
+    `force_build.py` se ve: una constante en el test cumpliria la igualdad con
+    si misma y no mediria el fichero (tercera vez del patron "una comprobacion
+    sin contraprueba no es una comprobacion", TASK-059 / TASK-066).
+    """
+    arbol = ast.parse(_texto_de(ruta), filename=ruta)
+    for nodo in ast.walk(arbol):
+        if not isinstance(nodo, ast.Call):
+            continue
+        func = nodo.func
+        if not (isinstance(func, ast.Attribute) and func.attr == "check_call"):
+            continue
+        for argumento in nodo.args:
+            if isinstance(argumento, (ast.List, ast.Tuple)):
+                salida = []
+                for elemento in argumento.elts:
+                    if isinstance(elemento, ast.Constant):
+                        salida.append(elemento.value)
+                    else:
+                        salida.append(ast.unparse(elemento))
+                return salida
+    raise AssertionError(
+        f"{ruta}: no hay ninguna llamada `subprocess.check_call([...])` de la que "
+        "derivar los argumentos. Sin esa llamada la declaracion de flags ha "
+        "cambiado de sitio y ESTE guard estaria mirando una lista de suyas."
+    )
+
+
+def _pares_de_add_data(argumentos):
+    """Los pares `ORIGEN;DESTINO` que declara `--add-data`, en orden.
+
+    Sin el separador no hay par: `--add-data assets` a pelo (mutante R2-c)
+    deja de cubrir nada, y por eso cae por la puerta y no por un `if` de cortesia.
+    """
+    pares = []
+    for indice, valor in enumerate(argumentos):
+        if valor == "--add-data" and indice + 1 < len(argumentos):
+            siguiente = argumentos[indice + 1]
+            if isinstance(siguiente, str) and ";" in siguiente:
+                origen, destino = siguiente.split(";", 1)
+                pares.append((origen, destino))
+    return pares
+
+
+def _cubre(pares, ruta):
+    """`ruta` (`assets/lo/que/sea`) viaja dentro del ejecutable con estos pares.
+
+    El DESTINO tiene que ser `assets`, porque es ahi donde `_data_dir()` lee en
+    modo frozen, y el ORIGEN tiene que colgar de `assets/` o ser un prefijo
+    suyo: empaquetar `assets;data` (mutante R2-b) saca los assets de donde la app
+    los busca y NO cuenta como cobertura.
+    """
+    for origen, destino in pares:
+        if destino.replace("\\", "/") != "assets":
+            continue
+        origen = origen.replace("\\", "/").rstrip("/")
+        if ruta == origen or ruta.startswith(origen + "/"):
+            return True
+    return False
+
+
+def _seccion_markdown(cuerpo, encabezado):
+    """El bloque que empieza en `encabezado` y acaba en el siguiente encabezado."""
+    lineas = cuerpo.splitlines()
+    if encabezado not in lineas:
+        return None
+    inicio = lineas.index(encabezado)
+    for indice in range(inicio + 1, len(lineas)):
+        if lineas[indice].startswith("#"):
+            return "\n".join(lineas[inicio:indice])
+    return "\n".join(lineas[inicio:])
+
+
+def test_una_sola_declaracion_de_flags_de_pyinstaller():
+    """TASK-076 AC-1: los flags se declaran en UN sitio y los demas lo invocan.
+
+    **LO QUE ESTE GUARD NO ES.** No compara `force_build.py` con `release.yml`:
+    MEDIDO, esos dos ficheros eran identicos ANTES de este cambio (comparador
+    sobre los tres, byte a byte y en orden), luego una prueba de paridad entre
+    ellos habria salido en verde sin mirar nada. Y del mismo modo, un modulo
+    `FLAGS` que los dos importasen no arregla nada: seguiria habiendo dos listas
+    en dos ficheros, y si uno copia del otro la igualdad se cumple sola.
+
+    **LO QUE ES.** Que no exista una SEGUNDA declaracion: ninguna llamada directa
+    a PyInstaller en los dos consumidores, ninguno con un flag de la lista, y
+    los dos Invoke `force_build.py` con `python` delante. En Windows,
+    `force_build.py` a secas no ejecuta nada (mutante R1-c), y ese es el unico
+    mutante que sobrevive si uno solo comprueba que la cadena aparece.
+
+    CONTROL: un `release.yml` sintetico con la llamada de la vuelta a los flags
+    tiene que ser detectado por el mismo detector, o el guard no miraria nada.
+    """
+    print("Probando que los flags de PyInstaller tienen una sola declaracion...")
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    for relativo in CONSUMIDORES_DE_LA_DECLARACION:
+        texto = _texto_de(os.path.join(raiz, *relativo.split("/")))
+        encontrados = [flag for flag in FLAGS_QUE_SOLO_VIVEN_EN_FORCE_BUILD
+                       if _como_token(texto, flag)]
+        assert not encontrados, (
+            f"{relativo} declara {encontrados}: los flags viven en "
+            "`force_build.py` y este fichero lo INVOCA. Una segunda lista es la "
+            "que diverge sin avisar, y la divergencia que ya costo un `.exe` sin "
+            "`assets/` era exactamente esta."
+        )
+        import re as _re
+        assert not _re.search(r"-m\s+PyInstaller", texto), (
+            f"{relativo} llama a PyInstaller directamente. La compilacion va por "
+            "`force_build.py`: es el builder sincrono que hace el bypass de "
+            "`spawn EPERM` que exige `docs/ai/sandbox-rules.md` seccion 2."
+        )
+        assert _re.search(r"python\s+force_build\.py\b", texto), (
+            f"{relativo} tiene que invocar `python force_build.py`. En Windows "
+            "`force_build.py` a secas no se ejecuta: el `.bat` necesita el "
+            "interprete delante y el paso del workflow tambien."
+        )
+
+    # CONTROL: el detector ve una vuelta a los flags si se la ponen delante.
+    control = ("      - name: Compilar\n"
+               "        run: python -m PyInstaller --onefile --noconsole "
+               "--uac-admin --name woptimizer --clean src/woptimizer/__main__.py\n")
+    assert [flag for flag in FLAGS_QUE_SOLO_VIVEN_EN_FORCE_BUILD
+            if _como_token(control, flag)], (
+        "el detector de flags no ve la lista completa del mutante R1-a: "
+        "un guard que no detecta el caso que describe no es un guard")
+    assert not _re.search(r"python\s+force_build\.py\b", control), (
+        "el control no es el caso malo que dice ser: trae la llamada directa")
+    print("test_una_sola_declaracion_de_flags_de_pyinstaller OK.")
+
+
+def test_los_assets_que_lee_la_app_llegan_al_ejecutable():
+    """TASK-076 AC-2: la cobertura, y el guard que de verdad discrimina.
+
+    **POR QUE ESTE Y NO EL DE PARIDAD.** La expectativa sale de `src/`: se
+    escanea `src/woptimizer/**/*.py` y se recoge cada ruta bajo `assets/` que la
+    app LEE, que son `assets/process_db.json` (`process_service.py:347`) y
+    `assets/woptimizer.ico` (`app.py:23` y `:269`). Despues se exige que la
+    UNICA declaracion las meta dentro del ejecutable. Las dos derivaciones no se
+    pueden simplificar una contra otra, que es justo lo que hace tautologico un
+    test que compara `force_build.py` consigo mismo.
+
+    **EL DEFECTO QUE MATA.** El mutante R2-a (borrar `"--add-data",
+    "assets;assets",`) es LITERALMENTE lo que hacia `build.bat:27` antes de este
+    cambio, y la suite estaba en verde. Con el flag fuera, `config.py:11-14`
+    sigue devolviendo `sys._MEIPASS` y el ejecutable arranca sin base de datos de
+    procesos ni icono. El par con otro destino (R2-b) y el `--add-data` sin
+    separador (R2-c) mueren por la misma puerta.
+
+    El `.exe` ya compilado en `dist/` NO se arregla con esto: el guard mira el
+    codigo, no repara un binario viejo.
+
+    Deteccion de CERO sobre CERO: si el escaner de `src/` no encontrase ninguna
+    ruta, "no falta nada" seria verde sin mirar nada, asi que el conjunto vacio
+    es un fallo con su motivo.
+    """
+    print("Probando que los assets que lee la app llegan al ejecutable...")
+    import re as _re2
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    patron = _re2.compile(
+        r"os\.path\.join\(\s*[^,]+,\s*[\"']assets[\"']\s*,\s*[\"']([^\"']+)[\"']")
+    leidas = set()
+    for dirpath, _dirs, ficheros in os.walk(os.path.join(raiz, "src", "woptimizer")):
+        for fichero in ficheros:
+            if not fichero.endswith(".py"):
+                continue
+            for nombre in patron.findall(_texto_de(os.path.join(dirpath, fichero))):
+                leidas.add("assets/" + nombre)
+    assert leidas, (
+        "el escaner de `src/woptimizer/**` no ha encontrado NINGUNA ruta bajo "
+        "`assets/`. Cero rutas que cubrir sale en verde sin medir nada: o el "
+        "patron se ha roto, o la app ha dejado de leer assets y entonces este "
+        "guard deberia quedarse sin objeto, no en silencio"
+    )
+
+    argumentos = _argumentos_de_pyiinstaller(os.path.join(raiz, "force_build.py"))
+    pares = _pares_de_add_data(argumentos)
+    faltan = [ruta for ruta in sorted(leidas) if not _cubre(pares, ruta)]
+    assert not faltan, (
+        f"la app lee {sorted(leidas)} (`_data_dir()` es `sys._MEIPASS` en "
+        f"frozen, `config.py:11-14`) y la declaracion de `force_build.py` no "
+        f"cubre {faltan}: sus `--add-data` son {pares}. Sin eso el ejecutable "
+        "arranca sin base de datos de procesos y sin icono"
+    )
+
+    # CONTRAPROUEBAS: el predicado tiene que tener dientes por los tres
+    # mutantes, sin tocar el fichero real.
+    solo_assets = ["--add-data", "assets;assets"]
+    assert _cubre(_pares_de_add_data(solo_assets), "assets/process_db.json"), (
+        "el predicado no cubre ni el caso que el codigo tiene hoy")
+    assert not _cubre(_pares_de_add_data(["--add-data", "assets;data"]),
+                      "assets/process_db.json"), (
+        "mutante R2-b: empaquetar en `data` NO es cubrir `assets/`, porque es ahi "
+        "donde `_data_dir()` lee. Un predicado que lo aceptaria estaria mintiendo")
+    assert not _cubre(_pares_de_add_data(["--add-data", "assets"]),
+                      "assets/process_db.json"), (
+        "mutante R2-c: `--add-data` sin `;destino` no declara destino, luego no "
+        "cubre nada. Sin este control el mutante R2-c pasaria en verde")
+    assert not _cubre(_pares_de_add_data([]), "assets/woptimizer.ico"), (
+        "sin ninguna declaracion no hay cobertura: ese es el mutante R2-a")
+    print("test_los_assets_que_lee_la_app_llegan_al_ejecutable OK.")
+
+
+def test_la_doc_no_vuelve_a_re_listar_los_flags():
+    """TASK-076 AC-3: la documentacion no vuelve a ser una cuarta declaracion.
+
+    La seccion 2 de `docs/ai/sandbox-rules.md` explicaba el bypass de shell
+    copiando la llamada, y esa copia era la lista CORTA: cinco flags sin
+    `--add-data assets;assets`. Un ejemplo de codigo ejecutable que no lleva el
+    paquete es un ejecutable sin assets publicado como si lo llevara.
+
+    El alcance es la SECCION, no el fichero entero, y es una distincion con
+    motivo: la seccion 3 NOMBRA `--uac-admin` y `--add-data` como REQUISITO, y
+    nombrar un requisito no es declararlo. Esa seccion 3 tiene que seguir
+    nombrando los dos, porque los dos son obligatorios y por razones distintas:
+    el primero para matar procesos elevados, el segundo porque `_data_dir()`
+    es `sys._MEIPASS` en frozen.
+
+    CONTROL: un bloque con la lista corta de antes tiene que ser detectado por
+    el mismo detector.
+    """
+    print("Probando que la doc no vuelve a listar los flags...")
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    cuerpo = _texto_de(os.path.join(raiz, "docs", "ai", "sandbox-rules.md"))
+    seccion = _seccion_markdown(cuerpo, "### 2. Bypass de Shell para Compilación (PyInstaller)")
+    assert seccion is not None, (
+        "`docs/ai/sandbox-rules.md` tiene que conservar la seccion 2; sin ella "
+        "el bypass de shell queda sin explicar y este guard mira la nada")
+    encontrados = [flag for flag in FLAGS_QUE_SOLO_VIVEN_EN_FORCE_BUILD
+                   if _como_token(seccion, flag)]
+    assert not encontrados, (
+        f"la seccion 2 vuelve a declarar {encontrados} como codigo ejecutable. "
+        "Los flags viven en `force_build.py`; aqui se explica POR QUE se "
+        "compila asi, y el ejemplo invoca ese fichero"
+    )
+
+    # La seccion 3 sigue siendo la que NOMBRA el requisito, y lo nombra entero.
+    invariante = _seccion_markdown(cuerpo, "### 3. Invariante de Salida")
+    assert invariante is not None, "la seccion 3 de invariantes no esta ya"
+    assert _como_token(invariante, "--uac-admin"), (
+        "el requisito de matar procesos elevados no puede desaparecer de la doc")
+    assert _como_token(invariante, "--add-data"), (
+        "el requisito de empaquetar `assets/` desaparecio de la doc: es el que "
+        "explica por que el ejecutable necesita el paquete, y sin el se vuelve "
+        "a omitir sin que nadie lo decida")
+
+    # CONTROL: el detector ve la lista corta de la vuelta a los flags.
+    control = ("### 2. Bypass de Shell para Compilación (PyInstaller)\n"
+               "```python\nsubprocess.check_call([sys.executable, \"-m\", \"PyInstaller\",\n"
+               "    \"--onefile\", \"--noconsole\", \"--uac-admin\", \"--name\", \"woptimizer\",\n"
+               "    \"--clean\", \"src/woptimizer/__main__.py\"])\n```\n")
+    assert [flag for flag in FLAGS_QUE_SOLO_VIVEN_EN_FORCE_BUILD
+            if _como_token(control, flag)], (
+        "el detector no ve la lista corta del mutante R3-a: el control tiene que "
+        "ser el caso malo que dice ser")
+    print("test_la_doc_no_vuelve_a_re_listar_los_flags OK.")
+
+
+def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
+    """TASK-076 AC-4: las cuatro afirmaciones que citan `sandbox-rules.md:55-56`.
+
+    **POR QUE ESTE GUARD EXISTE Y POR QUE NO SE PONE EN ROJO.** Cuatro sitios
+    citan esas dos lineas POR NUMERO: `validate_docs.py:1429`,
+    `validate_docs.py:1924`, `run_tests.py:22264` y
+    `docs/ai/sandbox-rules.md:1133`, y las cuatro dicen que son las dos filas del
+    `0` de la tabla de codigos de salida. MEDIDO: `_declara_el_codigo_sobrecargado`
+    (`validate_docs.py:1935`) compila el patron con `re.MULTILINE` sobre el
+    CUERPO ENTERO y no mira numeros de linea, luego insertar una fila por encima
+    de la 55 **no pone el validador en rojo**: lo que se rompe es que las cuatro
+    afirmaciones quedan mintiendo en silencio. Un test que solo buscara la
+    cadena `55-56` no veria nada, porque la cadena no cambia.
+
+    Asercion sobre CONTENIDO: las lineas 55 y 56 TIENEN QUE SER las dos filas
+    del `0`, la de `WOPT_COMMIT_OK` y la de `WOPT_NOOP`, con la cabecera de la
+    tabla dos lineas mas arriba. Mutante R4-a: una fila `| 0 | ... |` insertada
+    por encima de la 55 desplaza la tabla y este guard muere.
+
+    Ademas se comprueba que la seccion "Por que el validador NO corre en CI"
+    sigue por encima de la 61 (`run_tests.py:22262`), que es el suelo que hace
+    falta para que esas citas no se pudran.
+    """
+    print("Probando que las citas por linea de sandbox-rules.md son ciertas...")
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    cuerpo = _texto_de(os.path.join(raiz, "docs", "ai", "sandbox-rules.md"))
+    lineas = cuerpo.splitlines()
+    assert len(lineas) > 56, (
+        f"`docs/ai/sandbox-rules.md` tiene {len(lineas)} lineas y las citas "
+        "apuntan a la 55 y a la 56")
+    cabecera, separador, fila_commit, fila_noop = (lineas[52], lineas[53],
+                                                   lineas[54], lineas[55])
+    assert cabecera.startswith("| ") and "Significado" in cabecera, (
+        f"la linea 53 tiene que ser la cabecera de la tabla de codigos y es "
+        f"{cabecera!r}: algo se inserto por encima y las citas quedaron mintiendo")
+    assert separador.startswith("|---") or set(separador) <= set("|-: "), (
+        f"la linea 54 tiene que ser el separador de esa tabla y es {separador!r}")
+    assert fila_commit.startswith("| `0` |") and "WOPT_COMMIT_OK" in fila_commit, (
+        f"la linea 55 tiene que ser la fila del `0` que dice `WOPT_COMMIT_OK` y "
+        f"es {fila_commit!r}. Las cuatro afirmaciones la citan por numero")
+    assert fila_noop.startswith("| `0` |") and "WOPT_NOOP" in fila_noop, (
+        f"la linea 56 tiene que ser la fila del `0` que dice `WOPT_NOOP` y es "
+        f"{fila_noop!r}")
+
+    # Las CUATRO afirmaciones siguen citando el par. Sin esto, corregir el
+    # numero de una y olvidar las otras tres deja tres mentiras nuevas.
+    cita = "sandbox-rules.md:55-56"
+    for relativo, numeros in (("validate_docs.py", ("1429", "1924")),
+                              ("run_tests.py", ("22264",)),
+                              ("docs/ai/sandbox-rules.md", ("1133",))):
+        texto = _texto_de(os.path.join(raiz, *relativo.split("/"))).splitlines()
+        for numero in numeros:
+            indice = int(numero) - 1
+            assert indice < len(texto), (
+                f"{relativo} tiene {len(texto)} lineas y se cita la {numero}")
+            assert cita in texto[indice], (
+                f"{relativo}:{numero} ya no cita `sandbox-rules.md:55-56`: es una "
+                "de las cuatro afirmaciones que atan la tabla al numero de linea")
+
+    cabecera_ci = "Por que el validador NO corre en CI"
+    posiciones = [i for i, l in enumerate(lineas, start=1) if cabecera_ci in l]
+    assert posiciones and min(posiciones) > 61, (
+        f"la seccion {cabecera_ci!r} tiene que seguir AL FINAL (linea "
+        f"{min(posiciones) if posiciones else 0}): mientras las citas sean por "
+        "numero, una fila insertada por encima de la 61 las desplaza sin avisar")
+    print("test_las_citas_de_sandbox_rules_siguen_siendo_ciertas OK.")
+
+
+def test_el_spec_no_vuelve_a_ser_la_fuente_de_verdad():
+    """TASK-076 AC-5: `woptimizer.spec` existe, pero NO puede ser la fuente.
+
+    MEDIDO: el fichero esta en `.gitignore:29` (`*.spec`) y NO aparece en
+    `git ls-files`, luego es un residuo que PyInstaller regenera en cada build.
+    El job `build` hace `actions/checkout` + `pip install -e ".[dev]"`: si
+    `release.yml` compilara con `--spec woptimizer.spec`, el runner no tendria
+    ese fichero y **el build de produccion se romperia** con un fichero que el
+    host si tiene. Mutante R5-a.
+
+    La centralizacion que NO se puede hacer es, por tanto, la que el encargo
+    pedia: versionar el `.spec` exigiria quitar `*.spec` del `.gitignore`, y eso
+    es otro cambio con otro contrato. Aqui lo que se ata es que nadie compila
+    por `--spec` y que el `.spec` sigue sin versionar.
+    """
+    print("Probando que el .spec no vuelve a ser la fuente de verdad...")
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    gitignore = _texto_de(os.path.join(raiz, ".gitignore"))
+    assert "*.spec" in gitignore, (
+        "`.gitignore` tiene que seguir sin versionar los `.spec`: si aparece el "
+        "fichero en el checkout, el build de CI puede depender de un artefacto "
+        "local y la premise de este cambio cambia")
+    for relativo in ("force_build.py",) + CONSUMIDORES_DE_LA_DECLARACION:
+        texto = _texto_de(os.path.join(raiz, *relativo.split("/")))
+        assert not _como_token(texto, "--spec"), (
+            f"{relativo} compila con `--spec`. El runner de `actions/checkout` "
+            "no tiene `woptimizer.spec` (esta en `.gitignore` y no aparece en "
+            "`git ls-files`), luego ese paso rompe el unico build que publica "
+            "releases")
+    # El residuo puede seguir en el arbol del dueno: no es la fuente y el
+    # guard no lo borra. Lo que se mide es que nadie lo invoque.
+    print("test_el_spec_no_vuelve_a_ser_la_fuente_de_verdad OK.")
+
+
+def test_los_guards_de_flags_no_necesitan_yaml_ni_ejecutan_nada():
+    """TASK-076 AC-6: los guards de este bloque son de TEXTO y no de proceso.
+
+    MEDIDO, `pyproject.toml:15-19` solo declara `pytest` y `pyinstaller`. Un
+    guard que hiciera `yaml.safe_load(release.yml)` pasaria en ESTE host -- donde
+    hay PyYAML por debajo -- y reventaria en el job `verify` con
+    `ModuleNotFoundError`, o sea el rojo llega al sitio donde ya no se puede
+    arreglar. Mutante R6-a.
+
+    Tampoco pueden lanzar subprocesos: la suite es headless y el sandbox bloquea
+    `spawn EPERM`, y ademas un guard que compila el `.exe` tardaria minutos en
+    cada vuelta. La comprobacion es sobre el AST de las SIETE funciones, no
+    sobre el texto: asi el propio nombre de la dependencia no se cuenta a si
+    mismo como evidencia.
+
+    Y se afirma la PREMISA, no la consecuencia: si un dia `pyproject.toml`
+    declara PyYAML, este guard hay que reescribirlo, no es que se quede igual
+    funcionando.
+    """
+    print("Probando que los guards de flags son de texto y no necesitan yaml...")
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    pyproject = _texto_de(os.path.join(raiz, "pyproject.toml")).lower()
+    for dependencia in ("pyyaml", "ruamel"):
+        assert dependencia not in pyproject, (
+            f"`pyproject.toml` declara {dependencia}: este guard tiene que "
+            "re-escribirse, porque su premisa (que no hay parser de YAML en las "
+            "dev deps) ha cambiado")
+
+    cuerpo = _texto_de(os.path.abspath(__file__))
+    arbol = ast.parse(cuerpo, filename=__file__)
+    por_nombre = {}
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.FunctionDef):
+            por_nombre.setdefault(nodo.name, nodo)
+    faltan = [nombre for nombre in GUARDAS_DE_LOS_FLAGS if nombre not in por_nombre]
+    assert not faltan, (
+        f"no encuentro {faltan} en `run_tests.py`: el AC-6 recorre esta lista "
+        "por nombre, asi que un guard que no este aqui se queda sin vigilar")
+
+    raices_prohibidas = ("yaml", "subprocess")
+    llamadas_prohibidas = ("system", "popen", "startfile", "Popen", "run",
+                           "check_call", "check_output", "call")
+    for nombre in GUARDAS_DE_LOS_FLAGS:
+        nodo = por_nombre[nombre]
+        for hijo in ast.walk(nodo):
+            raices = []
+            if isinstance(hijo, ast.Import):
+                raices = [alias.name.split(".")[0] for alias in hijo.names]
+            elif isinstance(hijo, ast.ImportFrom):
+                raices = [(hijo.module or "").split(".")[0]]
+            elif isinstance(hijo, ast.Name):
+                raices = [hijo.id]
+            for raiz_mala in raices:
+                assert raiz_mala not in raices_prohibidas, (
+                    f"{nombre} importa {raiz_mala}: MEDIDO, las dev deps son "
+                    "`pytest` y `pyinstaller`, luego esto revienta en el job "
+                    "`verify` con ModuleNotFoundError")
+            if isinstance(hijo, ast.Attribute):
+                assert hijo.attr not in llamadas_prohibidas, (
+                    f"{nombre} llama a .{hijo.attr}(): los guards de esta tarea "
+                    "leen texto y no lanzan procesos. Un guard que compila el "
+                    "`.exe` no es un guard de la suite")
+    print("test_los_guards_de_flags_no_necesitan_yaml_ni_ejecutan_nada OK.")
+
+
+def test_la_linea_base_de_flags_se_deriva_del_fichero_real():
+    """TASK-076 AC-7: la linea base se MIDIO, y se mide del fichero real.
+
+    La premisa del encargo se comprobo con un comparador sobre los tres
+    ficheros ANTES de tocar nada: `force_build.py` y `release.yml` eran
+    identicos, y `build.bat` era el divergente. Este test ata esa medicion para
+    que el changelog no llegue a decir "los dos eran distintos" cuando
+    medidos eran iguales, y para que la lista de flags no se convierta en una
+    constante escrita a mano que cumple la igualdad consigo misma.
+
+    **CONTRAPROUEBA, y es la que discrimina (mutante R7-a).** Se deriva de la
+    ruta que se le pasa: una copia en `%TEMP%` con OTRA lista tiene que dar OTRA
+    derivacion. Si el comparador leyera de una copia o de una constante
+    incrustada, las dos darian lo mismo y este control lo mata.
+    """
+    print("Probando que la linea base de flags sale del fichero real...")
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    real = os.path.join(raiz, "force_build.py")
+    medido = _argumentos_de_pyiinstaller(real)
+    esperado = ["sys.executable", "-m", "PyInstaller", "--onefile", "--noconsole",
+                "--uac-admin", "--name", "woptimizer", "--clean", "--add-data",
+                "assets;assets", "src/woptimizer/__main__.py"]
+    assert medido == esperado, (
+        f"`force_build.py` declara {medido} y la linea base medida es "
+        f"{esperado}. Si esto cambia, el `.exe` cambia, y la cifra hay que "
+        "medirla otra vez en vez de arrastrar la vieja")
+    assert _argumentos_de_pyiinstaller(real) is not medido, (
+        "el derivation devuelve la MISMA lista: eso solo pasaria si copiase una "
+        "constante, y una constante no mide el fichero")
+
+    # CONTRAPROUEBA del mutante R7-a: otra ruta, otra derivacion.
+    import tempfile as _tempfile
+    camara = _tempfile.mkdtemp(prefix="wopt_t076_linea_base_")
+    copia = os.path.join(camara, "force_build.py")
+    with open(copia, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("import subprocess, sys\nsubprocess.check_call([\n"
+                 "    sys.executable, \"-m\", \"PyInstaller\",\n"
+                 "    \"--onefile\", \"src/woptimizer/__main__.py\"])\n")
+    desde_copia = _argumentos_de_pyiinstaller(copia)
+    assert desde_copia != medido, (
+        f"la derivacion de {copia} ha dado la MISMA lista que la del fichero "
+        f"real ({desde_copia}): eso significa que no lee el fichero que se le "
+        "pasa, y un comparador que no lee no mide la linea base")
+    print("test_la_linea_base_de_flags_se_deriva_del_fichero_real OK.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -27322,6 +27867,23 @@ if __name__ == "__main__":
     # solo el reparto lo ve.
     test_el_reparto_de_tests_no_re_tokeniza_por_sentencia()                # T1
     test_el_split_derivado_no_cambia_con_el_arreglo()                      # T2
+    # TASK-076: la declaracion UNICA de los flags de PyInstaller. Suite:
+    # 213 -> 220. Los siete van ANTES del marcador headless porque ninguno abre
+    # una ventana: son tooling puro, leen texto con regex y `ast`, y escriben
+    # como mucho en `%TEMP%`. Luego el reparto se queda en 155 backend + 65
+    # headless = 220.
+    #
+    # El primero mata la SEGUNDA lista (que es lo que dejo un `.exe` local sin
+    # `assets/`), el segundo es el que discrimina de verdad -- su expectativa
+    # sale de `src/` y no de la declaracion -- y el tercero ata el numero de
+    # linea que cuatro afirmaciones citan y que el validador NO mira.
+    test_una_sola_declaracion_de_flags_de_pyinstaller()                     # AC-1
+    test_los_assets_que_lee_la_app_llegan_al_ejecutable()                  # AC-2
+    test_la_doc_no_vuelve_a_re_listar_los_flags()                           # AC-3
+    test_las_citas_de_sandbox_rules_siguen_siendo_ciertas()                # AC-4
+    test_el_spec_no_vuelve_a_ser_la_fuente_de_verdad()                     # AC-5
+    test_los_guards_de_flags_no_necesitan_yaml_ni_ejecutan_nada()          # AC-6
+    test_la_linea_base_de_flags_se_deriva_del_fichero_real()                # AC-7
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.

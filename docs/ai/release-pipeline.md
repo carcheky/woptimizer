@@ -84,7 +84,7 @@ Dos consecuencias medibles, ambas del mismo origen:
 1. **`commits`** — `commitlint` sobre **el rango del push actual** (`github.event.before..HEAD`). Sin este paso, un mensaje mal escrito no da error: semantic-release lo ignora y no publica nada. Ese es el fallo silencioso que hace poco fiable un pipeline de releases.
 2. **`verify`** — `verify_ui_syntax.py` + `run_tests.py` en **windows**, que es donde la app vive.
 3. **`release`** — `npx --yes semantic-release@25`. Calcula la version, crea el tag y la Release.
-4. **`build`** — PyInstaller **desde el commit etiquetado**, y adjunta `dist/woptimizer.exe` con `softprops/action-gh-release@v2`.
+4. **`build`** — compila **desde el commit etiquetado** con `python force_build.py`, que es la **declaración única** de los flags, y adjunta `dist/woptimizer.exe` con `softprops/action-gh-release@v2`. El `.exe` publicado y el local salen del mismo código: si el paso declarara sus propios flags, volvería a haber dos listas que divergen sin avisar (fue lo que dejaba el ejecutable local sin `assets/`).
 
 ## 4. `validate_docs.py` NO se ejecuta en CI
 

@@ -22,9 +22,9 @@ REM 2. Limpiar cache anterior
 if exist "build" rmdir /s /q "build"
 if exist "dist\woptimizer.exe" del /f /q "dist\woptimizer.exe"
 
-REM 3. Ejecutar PyInstaller
+REM 3. Compilar (los flags viven en force_build.py, no aqui)
 echo Construyendo...
-pyinstaller --onefile --noconsole --uac-admin --name woptimizer --clean src/woptimizer/__main__.py
+python force_build.py
 
 REM 4. Verificar salida
 if exist "dist\woptimizer.exe" (

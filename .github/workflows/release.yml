@@ -202,10 +202,11 @@ jobs:
       - name: Instalar dependencias
         run: pip install -e ".[dev]"
 
-      # Mismos flags que force_build.py: si divergen, el .exe publicado y el
-      # .exe local dejan de ser el mismo producto.
-      - name: Compilar con PyInstaller
-        run: python -m PyInstaller --onefile --noconsole --uac-admin --name woptimizer --clean --add-data "assets;assets" src/woptimizer/__main__.py
+      # Los flags NO se declaran aqui: los declara `force_build.py`, que es el
+      # unico sitio que los escribe. El .exe publicado sale del mismo codigo que
+      # el local, y no de una copia que pueda divergir sin avisar.
+      - name: Compilar el ejecutable
+        run: python force_build.py
 
       - name: Adjuntar el ejecutable a la release
         uses: softprops/action-gh-release@v3

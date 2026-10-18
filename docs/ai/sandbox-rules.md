@@ -15,21 +15,21 @@ El entorno de ejecución de agentes en Windows a menudo restringe la creación d
 
 ### 2. Bypass de Shell para Compilación (PyInstaller)
 - NUNCA llamar a `pyinstaller` mediante comandos de shell si el sandbox bloquea subprocesos.
-- Ejecutar mediante el builder nativo síncrono `force_build.py` o mediante la API de Python:
-  ```python
-  import subprocess, sys
-  subprocess.check_call([
-      sys.executable, "-m", "PyInstaller",
-      "--onefile", "--noconsole", "--uac-admin",
-      "--name", "woptimizer", "--clean",
-      "src/woptimizer/__main__.py"
-  ])
+- Los flags de la compilación se declaran **una sola vez**, en `force_build.py`, y aquí no se vuelven a escribir:
+  ```bat
+  REM force_build.py invoca PyInstaller con sys.executable -m, que es el bypass
+  REM de shell. La llamada NO se copia aqui: dos ficheros con la misma lista de
+  REM flags cumplen la paridad solos, se separan sin que nadie lo note, y el
+  REM ejecutable sale sin `assets/` -- sin base de datos de procesos ni icono.
+  python force_build.py
   ```
+  REM Si de verdad hace falta la llamada cruda, su forma canonica esta en
+  REM `force_build.py`, que invocan `build.bat` y el job `build` de CI.
 - O delegar al shell de Windows sin bloqueo de proceso hijo usando `build_trigger.vbs` con `os.startfile()`.
 
 ### 3. Invariante de Salida
 - El ejecutable siempre debe colocarse en: `dist/woptimizer.exe`.
-- Debe incluir el flag `--uac-admin` para poder matar procesos elevados de sistema.
+- Debe incluir el flag `--uac-admin` para poder matar procesos elevados de sistema **y** el flag `--add-data assets;assets` para empaquetar `assets/`, porque `config.py:11-14` hace que `_data_dir()` sea `sys._MEIPASS` en modo frozen y tanto `process_service.py:347` como `app.py:23` leen de ahí: sin ese paquete el ejecutable arranca sin base de datos de procesos y sin icono. Los dos flags los declara `force_build.py`.
 
 ## Aislamiento Git en Entornos Cloud (VFS)
 
