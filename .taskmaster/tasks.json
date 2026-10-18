@@ -1679,6 +1679,29 @@
         "`python verify_ui_syntax.py`, `python run_tests.py` (terminando en `ALL TESTS PASSED.`) y `python validate_docs.py` en verde; el reparto 142 backend + 63 headless se mantiene."
       ],
       "notes": "Reparacion de guard, no de produccion: no se toco el comportamiento de src/woptimizer/** (solo docstrings de tk_thread.py). Los mutantes S2 y S3 son EQUIVALENTES y siguen sobreviviendo a proposito. Verificacion: verify_ui_syntax OK, run_tests.py termina en 'ALL TESTS PASSED.' (rc=0, 26404 B) y validate_docs.py 143 OK / 0 FAIL (rc=0). La camara de mutantes de %TEMP% midio que A2a, D1b, M8a y F1 mueren por AssertionError. Detalle en openspec/changes/2026-10-18-tkinter-after-guard/mutation-report.md seccion 8."
+    },
+    {
+      "id": "TASK-079",
+      "title": "Cerrar R4b, R5f y R2b: los tres huecos sin contraprueba que dejo la re-auditoria de TASK-078",
+      "description": "Segunda reparacion del ciclo, ahora de GUARDAS y no de codigo. La re-auditoria de TASK-078 (mutation-auditor, veredicto FAIL, 17 mutantes / 12 killed / 5 survived) dejo tres huecos que NO eran de produccion sino de cobertura, todos medidos contra el codigo y con el motivo literal en openspec/changes/2026-10-18-tkinter-after-guard/mutation-report.md seccion 9. R4b (ALTA): el guard de la frontera de `ui/tk_thread.py` (run_tests.py:25886-25901) calculaba los importados como `nodo.module.split('.')[0]`, o sea el PRIMER SEGMENTO; con la forma de import que escribe este repo (`from woptimizer.services import process_service`) eso vale `woptimizer`, que no esta en la lista de prohibidos, asi que la puerta podia importar `services` y la suite pasaba en verde. Consecuencia: el 'killed' que TASK-078 dio a F1b fue FALSO (murio por el NameError del typo, no por la asercion) y el defecto de fondo nunca estuvo cerrado. R5f (ALTA): los callbacks de `load_db_async` se pasaban por `_publicaciones_malas`, que solo cobra la regla de la PUERTA, con un docstring que lo justificaba diciendo que 'dentro de esos cuerpos tocar widgets es lo correcto, ya estan en el hilo principal'. Esa medicion es FALSA: `ProcessService.load_db_async` invoca `on_error` y `callback` DENTRO de su `_download` (process_service.py:402/411), que es el cuerpo de `threading.Thread(target=_download)` (:416), o sea que corren en el hilo SECUNDARIO. R2b (MEDIA): la derivacion por `glob` de `views/*.py` era una COMPARACION y no el origen de lo que el guard abre, asi que borrarla dejaba la suite en verde (mutante R2b, 'ALL TESTS PASSED.'). Ademas hay que corregir tres afirmaciones documentales del propio change que siguen repitiendo mediciones refutadas (proposal.md:28 y :144, tasks.md:24 y :84) antes de que el change se archive con ellas dentro.",
+      "complexity": "medium",
+      "priority": "high",
+      "status": "completed",
+      "dependencies": [
+        "TASK-078"
+      ],
+      "module": "run_tests.py",
+      "acceptance_criteria": [
+        "R4b: el guard de la frontera de `ui/tk_thread.py` compara la RUTA COMPLETA del modulo (no su primer segmento) y prohibe `woptimizer.services...`, `woptimizer.models...`, y las raices `psutil`, `json`, `subprocess`, `customtkinter`, `tkinter`, `services`, `models`, tanto con prefijo de paquete como sin el; con contraprueba en suite sobre las tres formas de import que el repo escribe y control negativo sobre `typing`.",
+        "R4b: mutado `ui/tk_thread.py` para importar `from woptimizer.services import process_service`, la suite muere por AssertionError nombrando el modulo (no por NameError ni por verde).",
+        "R5f: los callbacks que `load_db_async` ejecuta en el hilo secundario pagan el invariante ENTERO del worker (no solo la regla de la puerta), sin bajar a las clausuras locales que entregan a `publicar_en_bucle` porque esas si corren en el principal; el docstring que decía 'ya estan en el hilo principal' se corrige con la medicion del servicio.",
+        "R5f: un callback de `load_db_async` que toca `status_label` desde el hilo secundario muere por la asercion del invariante del worker, nombrando el call site.",
+        "R2b: el conjunto de ficheros que el guard ABRE se deriva del disco (no de una lista escrita a mano), y una vista nueva en `views/` que no este en `ESPERADOS` hace morir el guard nombrandola.",
+        "R2b: borrada la derivacion por `glob`, el guard muere por su propia asercion y no pasa en verde.",
+        "Documentacion del change corregida con lo MEDIDO: `winfo_exists()` lanza en el mundo SIN bucle principal y con `mainloop()` vivo devuelve 1/0 sin lanzar; y `llamadas == []` deja de llamarse 'la asercion que discrimina' porque mide al doble (mutante X1 de la seccion 6 del informe).",
+        "`python verify_ui_syntax.py`, `python run_tests.py` (terminando en `ALL TESTS PASSED.`) y `python validate_docs.py` en verde."
+      ],
+      "notes": "Cerrada. Solo se tocan guardas de `run_tests.py` y documentacion del change; el codigo de `src/woptimizer/**` no se modifica. Siguen sobreviviendo a proposito los mutantes EQUIVALENTES S2 (`except BaseException`) y S3 (`tk.TclError` declarado y sin provocar): su premisa se reverifico contra `tk_thread.py:83`, que captura `except Exception`, asi que cambiarla los desharía. Medicion de los 7 mutantes en camara desechable de %TEMP% (git clone --local, mutacion verificada en disco): r4b, r4b_control, r5f, r5f_clausura_llamada, r2b_vista_nueva y r2b_sin_derivacion MUERTOS por la asercion que nombra el defecto; r5f_principal VERDE por diseno (la clausura publicada corre en el hilo principal y puede tocar el widget). Verificacion: verify_ui_syntax OK, run_tests.py termina en 'ALL TESTS PASSED.' (rc=0, 26404 B) y validate_docs.py 143 OK / 0 FAIL (rc=0). El recuento de tests sigue en 205, asi que los cuatro sitios que lo derivan con ast no se tocan y llms-full.txt no se desincroniza. Detalle en openspec/changes/2026-10-18-tkinter-after-guard/mutation-report.md seccion 10."
     }
   ]
 }

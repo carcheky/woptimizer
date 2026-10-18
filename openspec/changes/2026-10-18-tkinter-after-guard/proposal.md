@@ -19,18 +19,27 @@ except Exception:
     pass
 ```
 
-Esa comprobación **nunca llega a responder**. MEDIDO, desde un hilo secundario:
+Esa comprobación **no llega a responder donde importa**. MEDIDO contra Tk real, desde un hilo
+secundario (`mutation-report.md` §2, scenarios A-E):
 
-| llamada | ventana VIVA | ventana destruida |
-|---|---|---|
-| `widget.winfo_exists()` | `RuntimeError: main thread is not in main loop` | `RuntimeError: main thread is not in main loop` |
+| llamada | sin bucle principal (root + `update()`) | con `mainloop()` vivo, vista VIVA | con `mainloop()` vivo, widget destruido |
+|---|---|---|---|
+| `widget.winfo_exists()` | `RuntimeError: main thread is not in main loop` | **`OK -> 1`** | **`OK -> 0`** |
 
-**1 de 1, y con la ventana perfectamente viva.** `winfo_exists()` es una llamada Tcl, y desde
-un hilo que no es el principal se encola igual que `after`. O sea: el `if` no está preguntando
-"¿existe la ventana?", está launching la misma excepción que el guard dice evitar, un paso antes.
-Funciona *por accidente* (el `except` se traga el `RuntimeError` de la propia comprobación), y en
-ese mundo no pasa nada porque **`after` tampoco habría funcionado jamás**. Un guard que nunca se
-evalúa no se puede auditar ni mutar.
+**TASK-079 corrige la medición que este documento afirmaba.** La versión anterior de este
+apartado decía "1 de 1, y con la ventana perfectamente viva" y daba una tabla de dos columnas en la
+que `winfo_exists()` lanzaba en los dos casos. Eso es **FALSO**: reproduce el escenario A/B (sin
+bucle principal) y le pone la etiqueta del escenario C. Con `mainloop()` vivo no lanza y además
+**discrimina bien** (`1` con la vista viva, `0` con el widget ya destruido), así que la frase
+"tampoco con la ventana viva" no se reproduce. La medición correcta es la de la tabla de arriba, y
+la que sostiene la decisión es la última columna de la sección siguiente.
+
+**Lo que sí es cierto, y es lo que decide:** en el mundo donde el `if` lanza (A y B), `after`
+**también** lanza, así que el probe no decide nada y el `except` se traga el `RuntimeError` de la
+propia comprobación. En el mundo donde el probe sí funciona (C y D), `after` funciona también y Tk
+descarta igualmente el callback si el widget muere después (§F2). Ninguno de los dos mundos gana
+nada con el probe. Un guard cuyo valor no cambia la decisión **no se puede auditar ni mutar**, que
+es lo que este plan acaba haciendo con él.
 
 ### F2 · El probe es innecesario: Tk ya descarta lo que la vista destruction mata (MEDIDO)
 
@@ -141,8 +150,10 @@ def publicar_en_bucle(widget, delay_ms, callback, *args):
     (los tests headless) o con el widget ya destruido, `widget.after` lanza y se
     devuelve None: el retorno se distingue de un handle real porque None no es
     un id de Tcl. MEDIDO 2026-10-18: `winfo_exists()` desde un hilo secundario
-    lanza el MISMO RuntimeError que `after`, incluso con la ventana viva, asi que
-    un probe de existencia aqui no compra nada. Y con mainloop vivo Tk ya
+    lanza el MISMO RuntimeError que `after` en el mundo SIN bucle principal
+    (root + `update()`, el caso de `run_tests.py`); con `mainloop()` vivo no
+    lanza y devuelve 1 con la ventana viva y 0 con el widget destruido. En
+    ninguno de los dos mundos compra nada, y con mainloop vivo Tk ya
     descarta los `after` pendientes del widget destruido, de modo que el cuerpo
     del callback no llega a ejecutarse nunca.
     """
@@ -214,8 +225,20 @@ SO o el JSON, y eso no ocurre.
 
 El defecto que hay que cazar es **"se tragó la excepción"**, no "saltó una excepción". Un test que
 comprueba que no revienta pasa **verde con el guard quitado**, porque el `except` hace exactamente
-eso: tragarse el error y seguir como si nada. Por eso la aserción central **no es sobre la
-excepción, es sobre si el callback llegó a PROGRAMARSE**.
+eso: tragarse el error y seguir como si nada. Por eso las aserciones **no son sobre la excepción,
+son sobre si el callback llegó a PROGRAMARSE**, y sobre lo que se devolvió.
+
+**TASK-079 corrige la frase que este documento repetía.** Decía que `llamadas == []` (caso A) es
+"LA ASERCIÓN QUE DISCRIMINA". **Es tautológica, y está medido** (`mutation-report.md` §6, mutante
+X1): cambiando solo el doble a `registrar_antes=True`, **sin tocar una línea de producción**, esa
+línea falla — porque `_VistaFalsa.after` lanza *antes* de registrar cuando `registrar_antes=False`, y
+entonces `llamadas` queda vacía **con guard y sin guard**. Esa línea mide **al doble**, no al guard.
+
+Lo que sí discrimina en el caso A son las otras dos: el `try` explícito, que convierte la
+propagación del `RuntimeError` en un `AssertionError` que nombra el defecto (mata al mutante S1), y
+`handle is None`. Y lo que discrimina el conjunto entero es el caso B, que mata al otro extremo: el
+helper que se traga todo y nunca programa nada. El nombre correcto de la línea A es **"el doble no
+llegó a agendar nada"**.
 
 ### Test 1 — `test_publicar_en_el_bucle_no_programa_si_la_vista_ya_murio`
 
@@ -225,13 +248,14 @@ Doble `_VistaFalsa` con `llamadas: list` donde `after(...)` **registra y lanza**
 **Caso A — la vista murió (el defecto).** Tras la llamada:
 
 ```python
-assert vista.llamadas == []      # <-- LA ASERCIÓN QUE DISCRIMINA
-assert handle is None
+assert handle is None           # <-- lo que el guard produce
+assert muerta.llamadas == []    # <-- lo que el DOBLE registra (vease arriba)
 ```
 
-`llamadas == []` es la que separa **programó** de **se tragó**: con el guard ausente, `after` se
-invoca (y por tanto la lista tiene un elemento), el `RuntimeError` lo absorbe el `except`, y el test
-que solo mirara "no revienta" saldría **verde**. Con esta línea, ese mismo mutante sale **rojo**.
+Con el `except` del guard, `after` ni siquiera llega a agendar nada, así que la lista queda vacía y
+`publicar_en_bucle` devuelve `None`. Sin el `except`, el `RuntimeError` se propaga al worker y el
+`try` explícito de esta aserción lo convierte en rojo legible. Sin el guard entero, el doble vacío
+**también** daría `llamadas == []`: por eso esa línea no puede llamarse la que discrimina.
 
 **Caso B — la vista vive (mata el mutante degenerado).** `after` devuelve el centinela `"after#1"`:
 

@@ -556,3 +556,492 @@ Un efeito secundario que salió al ejecutar y que también es deuda de este cicl
 (`test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador`) cuenta **un error de más** por
 esa desincronización y se pone en rojo. Se arregla con `python build_llms_full.py --write`, que es
 el que regenera el agregado; el fichero regenerado va en este mismo commit.
+
+---
+
+# 9. Re-auditoría (TASK-078) · rol `mutation-auditor`
+
+**Ancla del repo real:** `b326031` ("fix(tests): cerrar los tres huecos de verificacion de
+TASK-073 (TASK-078)"). Cámara base `%TEMP%\wopt_audit_62_rea`: **clon con el historial real**
+(`git clone --local --no-hardlinks`), HEAD `b326031`.
+
+**Pregunta:** los tres huecos de §5 (SV1, SV2, SV3) y el typo `F` de §3, ¿están **realmente**
+cerrados? No se lee el mensaje del dev como prueba: se muta.
+
+## 9.0 · Protocolo, línea base y las tres trampas que casi me cuelan un veredicto falso
+
+**Línea base, medida ANTES de mutar nada:** `python run_tests.py` en la cámara base →
+**`ALL TESTS PASSED.`**, 364 líneas, **26 404 B**, rc=0. Con la línea en `test_los_workers...`:
+`guarda AST exhaustiva: 10 cuerpos de hilo secundario, 10 publicaciones vigiladas` — la cifra
+que el dev declara, **medida sobre el código y no leída**.
+
+`.taskmaster/git_safe_commit.py` **NO se invocó ni una vez**. Todo el versionado de cámaras fue
+`git` a pelo contra clones desechables. El repo real, al cierre:
+
+```
+git log --oneline -1   -> b326031
+git reflog -3          -> b326031 / bbcc472 / df294dc   (sin entradas nuevas; 288 en total)
+git status --porcelain -> (0 líneas)
+git diff --stat        -> (vacío)     git diff --cached --stat -> (vacío)
+git rev-parse --git-dir -> C:/Users/carch/AppData/Local/woptimizer_git/.git
+```
+
+Aislamiento probado en las tres direcciones antes de mutar: con `GIT_DIR` explícito de la cámara
+resuelve a la cámara; con descubrimiento resuelve a `.git` **de la cámara** (nunca a
+`%LOCALAPPDATA%`); el repo real sigue apuntando a `%LOCALAPPDATA%`.
+
+### Trampa T1 (mía) · un `ALL TESTS PASSED.` de una cámara que **nunca se mutó**
+
+`R3_M8a` en su **primera** pasada terminó en `ALL TESTS PASSED.` (rc=0, 26 250 B) y lo registré
+como veredicto antes de mirar el fichero. **No valía nada**: la cámara tenía la línea intacta.
+Causa: el patrón de sustitución del arnés indentaba la línea con **16 espacios** y la real lleva
+**12** (`process_manager_view.py:196`); el sustituto no apareció, el script abortó con `SystemExit`
+**antes de escribir**, y la cámara se quedó limpia. Un clon limpio da verde, como da verde la base.
+
+**Arreglo aplicado:** (a) el arnés sustituye y **verifica en disco** cada mutación; (b) una
+comprobación posterior independiente (`_verificar_mutaciones.py`) relee los 17 ficheros mutados y
+comprueba, porPresence/ausencia, que la mutación está donde debe: **17/17 OK**. Sin esa
+comprobación, la primera pasada de `R3` habría reportado "supervive" un mutante que no existía —
+y `R3` es **justo** el mutante que el encargo más。重点 pedía medir.
+
+### Trampa T2 (mía) · un rojo del arnés leído como veredicto
+
+`R1_A2a` murió en `test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe`
+(`run_tests.py:21538`), que es una prueba de **git**, y **38 líneas antes** de los guards que
+miden el mutante. `confirmation.py` no participa en ese test. Sospecha: 14 procesos `git`
+simultáneos. **Medido:** ejecutado **aislado** en la misma cámara mutada, ese test pasa en
+**1 s** (`rc=0`, `AISLADO-OK`). Es el mismo modo de fallo que **H1** de §0: saturación del arnés
+en un test ajeno al mutante. R1 se **relanzó** y su veredicto válido es el de la segunda pasada.
+
+### Trampa T3 (mía) · un mutante que muere por un guard **distinto** del que dice medir
+
+`R3` y `R5b`, tal como los escribí primero, **no midieron lo que creo que medían**. Ambos
+terminaron en `AssertionError`, pero el traceback apuntaba a
+`test_dead_code_ast_guard` (TASK-056, `run_tests.py:26053`), **no** al guard de TASK-073 (que se
+invoca en `:26363`, 310 líneas después). El motivo: al **renombrar o sustituir** la única
+referencia a `_handle_err`, el closure quedaba **sin ninguna referencia**, y el guard de código
+muerto (que corre ANTES) saltaba primero:
+
+```
+File "...run_tests.py", line 26053, in <module>
+  test_dead_code_ast_guard()
+AssertionError: Se detectaron 1 funciones/metodos sin ninguna referencia...
+  - src\woptimizer\ui\views\process_manager_view.py:193 -> _handle_err
+```
+
+Un guard de código muerto puede **matar mutantes que el guard de TASK-073 no vería**, y al revés.
+Un `AssertionError` sin mirar **de qué aserción** viene no es un veredicto: es una coincidencia.
+
+**Arreglo aplicado:** `R3b`/`R3c` y `R5b2` **no dejan código muerto** (la mutación no toca el
+nombre de ningún closure: o cambian el delay de una línea que ya existe, o **añaden** una
+publicación sin alterar ninguna referencia), y así el único rojo posible es el del guard de
+TASK-073. **R3c** (delay 3000 sobre la línea existente) mata por la aserción que dice, con el
+call site nombrado; **R3b** (publicación añadida) mata por el **recuento de 10**, que es otro
+discriminante legítimo pero **otro**: por esomake falta R3c para medir lo que el encargo pedía.
+La primera versión de `R3` y de `R5b` queda **descartada como NO MEDIDA**, no como "killed".
+
+### Trampa T4 (de producción, no mía) · `test_dead_code_ast_guard` corre antes que el guard de TASK-073
+
+Lo anterior no es solo un descuido de arnés: es un hecho del **orden de la suite**. Los guards de
+TASK-073 son los **dos últimos** que se invocan (`:26363` y `:26364`, justo antes de
+`print("ALL TESTS PASSED.")`), y `test_dead_code_ast_guard` va en `:26053`. Consecuencia medible:
+**cualquier mutación de TASK-073 que tocó el nombre de un closure queda tapada por el guard de
+código muerto**, y quien solo lea "rc=1" concluirá que el guard de TASK-073 detectó el defecto.
+Vale lo mismo al revés: un guard que murió por el motivo equivocado no discrimina. Es la misma
+regla que §3 (F) estableció para el `NameError`, aplicada ahora a un segundo guard.
+
+## 9.1 · Mutantes re-auditados: veredicto y motivo LITERAL
+
+Todos: `python run_tests.py` **completo** en cámara propia clonada con historial, entorno limpio.
+Línea base de la misma cámara: `ALL TESTS PASSED.`, 26 404 B, rc=0. Cada log leído por **tamaño y
+última línea** antes de aceptar veredicto, y cada cámara **verificada mutada en disco** después.
+
+| id | qué se rompió | veredicto | motivo literal |
+|---|---|---|---|
+| **R1 / A2a** | la puerta vuelve a `self.after` directo en `confirmation.py:321` | **killed** | `AssertionError: la puerta tiene que DELEGAR en ui/tk_thread.py::publicar_en_bucle y no programar por su cuenta: el after lo llamo [[('run_tests.py','after'), ('run_tests.py','after'), ('confirmation.py','_publicar_en_el_bucle'), ...]]. Un self.after aqui, aunque se trague la excepcion, es exactamente la deuda que TASK-073 cerro` |
+| **R2a** | `ESPERADOS = ()` | **killed** | `AssertionError: el guard tiene que abrir los cuatro ficheros vigilados y ha abierto ['confirmation.py','dashboard_view.py','pack_manager_view.py','process_manager_view.py']: con la lista vacia o incompleta, todo lo que este test afirme se cumple sobre cero ficheros` |
+| **R2b** | se borra el bloque `glob` que deriva `views/*.py` | **SURVIVED** 🔴 | `ALL TESTS PASSED.` (26 250 B) |
+| **R2c** | `ESPERADOS` con una entrada cambiada por otra | **killed** | el mismo `AssertionError` que R2a, con los cuatro ficheros abiertos |
+| **R3b** | `M8a` **añadido** (sin tocar la línea buena): una publicación extra a 3000 ms con callback inventado | **killed** | `AssertionError: las tres vistas tienen 11 publicaciones a una puerta autorizada y el invariante de TASK-073 habla de 10 call sites migrados...` — **por el RECUENTO, no por la regla de la puerta** (de ahí que hiciera falta R3c) |
+| **R3c** | `M8a` **faithful**: `(0, _handle_err)` → `(3000, _handle_err)` en la línea que ya existe, sin añadir ni quitar publicaciones | **killed** | `AssertionError: el callback que el servicio ejecuta en un hilo secundario publica fuera de la puerta: ProcessManagerView._force_update_db:L196 self._publicar_en_el_bucle debe ser de 0 ms` |
+| **R4a** | `tk_thread.py` importa `psutil` | **killed** | `AssertionError: ui/tk_thread.py viola la frontera de capas: importa ['psutil']. La logica de publicar en el bucle es UI pura...` |
+| **R4b** | `tk_thread.py` importa `from woptimizer.services import process_service` | **SURVIVED** 🔴 | `ALL TESTS PASSED.` (26 250 B) |
+| **R5a** | `_handle_err`/`_handle_ok` fuera de la lista blanca | **killed** | `AssertionError: el callback que el servicio ejecuta en un hilo secundario publica fuera de la puerta: ProcessManagerView._force_update_db:L204 self._publicar_en_el_bucle publica en _handle_ok, y tiene que publicar en ['_apply_load', '_do_load', '_inline_status', '_on_restore_finished', '_publicar_cierre', '_show_banner', '_show_start_banner']` |
+| **R5b2** | un callback **local que ya existe** y **no** está en la lista (`_on_success`), añadido sin tocar la línea buena | **killed** | `AssertionError: las tres vistas tienen 11 publicaciones...` — **por el RECUENTO**, no por la lista blanca (y la lista blanca la mata `R5a`, ver nota) |
+| **R5c** | fuera el par `("gaming_service","restore_gaming_session")` de `PERMITIDOS` | **killed** | `AssertionError: el worker toca la vista fuera de self.after(0, ...): DashboardView._on_restore_clicked:L282 self.gaming_service.restore_gaming_session(...) desde el hilo secundario` |
+| **R5d** | el worker usa **otro** método de `gaming_service` (`purgar_todo_el_juego`) | **killed** | `AssertionError: el worker toca la vista fuera de self.after(0, ...): DashboardView._on_restore_clicked:L282 self.gaming_service.purgar_todo_el_juego(...) desde el hilo secundario` |
+| **R5e** | se **borra** una publicación legítima (`callback=lambda: self._do_load()`) | **killed** | `AssertionError: las tres vistas tienen 9 publicaciones a una puerta autorizada y el invariante de TASK-073 habla de 10 call sites migrados. O se movio una publicacion, o esta cifra esta desfasada: decidalo explicitamente en vez de dejar que el guard se adapte solo` |
+| **R5f** | un callback de `load_db_async` **toca `status_label`** desde el hilo secundario | **SURVIVED** 🔴 | `ALL TESTS PASSED.` (26 251 B) |
+| **R6 / S2** | `except Exception` → `except BaseException` | **survived** | `ALL TESTS PASSED.` (26 400 B). Equivalente, como dice §8.5 |
+| **R6 / S3** | `except Exception` → `except RuntimeError` | **survived** | `ALL TESTS PASSED.` (26 400 B). Equivalente, como dice §8.5 |
+
+**Recuento: 17 mutantes medidos · 12 killed · 5 survived** (2 equivalentes declarados, **3 sin
+cobertura real**: R2b, R4b, R5f). Más **3 NO MEDIDOS** descartados por arnés (la primera versión de
+`R3` y de `R5b`, y la primera pasada de `R1`), explicados en §9.0.
+
+**Los tres huecos del encargo, uno a uno:**
+
+| hueco | mutante | veredicto | ¿cerrado? |
+|---|---|---|---|
+| **SV1** (la puerta vuelve a `self.after`) | R1 | **killed** | **SÍ**, y por la aserción que dice: nombra QUIÉN llamó al `after` |
+| **SV2** (el guard no mira ficheros) | R2a, R2c | **killed** | **SÍ para el conjunto declarado**; **NO** para el `glob` (R2b sobrevive) |
+| **SV3** (`M8a` fuera de la red) | R3c | **killed** | **SÍ**, y nombra el call site (`_force_update_db:L196 ... debe ser de 0 ms`) |
+| **F** (typo `proibido_tk`) | R4a | **killed** | **SÍ**, y ahora por `AssertionError` nombrando `['psutil']` — ya no por `NameError` |
+
+## 9.2 · Supervivientes, por severidad
+
+### SV1' · ALTA · **R4b** · el guard de la frontera de `tk_thread.py` es ciego a los imports ABSOLUTOS
+
+`from woptimizer.services import process_service` en `tk_thread.py` deja la suite **en verde**.
+
+El guard calcula los importados como `nodo.module.split(".")[0]`, o sea **el primer segmento**.
+Para un import absoluto con prefijo de paquete eso es `"woptimizer"`, y `"woptimizer"` **no está**
+en la lista de prohibidos `{psutil, json, subprocess, services, models, customtkinter, tkinter}`.
+MEDIDO sobre el detector real, línea por línea:
+
+```
+import psutil                                   -> ['psutil']      SI   MUERE
+import json                                     -> ['json']        SI   MUERE
+from woptimizer.services import process_service -> ['woptimizer']  NO   **SOBREVIVE**
+import woptimizer.services                      -> ['woptimizer']  NO   **SOBREVIVE**
+from woptimizer.models import ProcessInfo       -> ['woptimizer']  NO   **SOBREVIVE**
+from woptimizer.ui import app                   -> ['woptimizer']  NO   **SOBREVIVE**
+from services import process_service            -> ['services']    SI   MUERE
+```
+
+**Por qué importa más que un detalle de forma:** la lista está escrita en términos de **módulo de
+primer nivel** (`services`, `models`), pero el repo escribe sus imports **absolutos con prefijo de
+paquete** (`woptimizer.services`), que es exactamente como los escribe el propio `AGENTS.md` y
+como los nombra el docstring de `confirmation.py` ("PROHIBIDO `psutil`, `json`, `woptimizer.services`
+y `woptimizer.models`"). O sea: **el guard no vigila la forma de import que el repo usa**, y el
+docstring declara una prohibición más ancha de la que el guard mide.
+
+**Esto además invalida el "killed" que la pasada anterior dio a `F1b`.** En §4, `F1b` (importar de
+`woptimizer.services`) figuró como muerto — pero moría por el `NameError` de `proibido_tk`, no por
+la aserción, y ya está dicho ahí que "un test que muere por el motivo equivocado no discrimina".
+Ahora que el nombre está bien, **`R4b` sobrevive**: el defecto de fondo de `F1b` **nunca estuvo
+reparado**, el `NameError` solo tapaba el agujero. Reparar el `NameError` (R4a) fue necesario pero
+no suficiente.
+
+**Arreglo:** la lista de prohibidos tiene que compararse contra el **módulo completo**, o
+aceptar tanto `services` como `woptimizer.services` (`any(m == p or m.endswith("." + p) for p in
+PROHIBIDO)`), y conviene una **contraprueba** que exija que el detector ve un
+`from woptimizer.services import ...` sintético (hoy el guard solo tiene contraprueba del
+`self.after`, no de su propia lista de imports).
+
+### SV2' · ALTA · **R5f** · la ampliación abrió un agujero nuevo: los callbacks de `load_db_async` solo pagan la regla de la PUERTA, no la del WORKER
+
+Un callback que un servicio ejecuta en hilo secundario (`load_db_async(callback=…, on_error=…)`,
+que corren dentro del `Thread(target=_download)` del propio servicio — verificado en
+`process_service.py:411/416`) que **toque `status_label`** deja la suite **en verde**. MEDIDO:
+`ALL TESTS PASSED.`, rc=0.
+
+**Mecanismo, del propio código del guard:** en el bucle del inventario (`run_tests.py:9392-9399`)
+los callbacks se pasan por `_publicaciones_malas(...)` y en cambio los `Thread(target=…)` se pasan
+por `_infracciones(...)`, que es el invariante **completo** del worker. Ampliar la red a los
+callbacks era lo correcto para matar `M8a` — y el precio es que **un cuerpo que corre en el hilo
+secundario ya no paga la regla de "no toques la vista"**, solo la de "publica por la puerta a
+0 ms y por un callback conocido". El docstring de `_publicaciones_malas` lo justifica ("dentro de
+esos cuerpos tocar widgets es lo correcto, ya están en el hilo principal"), y esa frase es la
+**medición equivocada**: esos cuerpos **no** corren en el hilo principal — corren en `_download`,
+el hilo del servicio; lo que corre en el principal es lo que ellos *publican*. Con el
+`except Exception` de `publicar_en_bucle` tragándose el `RuntimeError`, tocar un widget ahí desde
+el secundario **no es detectable ni por Tk ni por el guard**.
+
+**Arreglo:** a los callbacks de `load_db_async` hay que exigirles **las dos** reglas: la de la
+puerta **y** la del worker (o, si de verdad corren en el secundario, que no toquen widgets
+directamente). Y el docstring de `_publicaciones_malas` tiene que decir que el cuerpo corre en
+el secundario, no "ya en el hilo principal".
+
+### SV3' · MEDIA · **R2b** · quitar el `glob` que deriva `views/*.py` deja todo verde
+
+Borrar el bloque que deriva el conjunto de vistas del **directorio** (`glob views/*.py` +
+comparación con `VISTAS`) deja la suite en **verde**. `R2b` sobrevive (`ALL TESTS PASSED.`).
+
+O sea: la mitad de SV2 que el dev declara como "ninguna vista del disco queda fuera" **no está
+guardada** — es una comprobación que se puede eliminar sin que nadie lo note. `R2a` y `R2c` (que
+matan `ESPERADOS`) sí están guardados, porque `ESPERADOS` tiene su propio `assert len(...) == 4`;
+pero la **derivación por `glob`** no tiene contraprueba: nadie mide que el guard mire el disco.
+
+**Lo que sí es cierto y sí funciona:** mientras el `glob` esté, la `VISTA` nueva queda marcada
+(`self.after` en ella). Lo que **no** tiene defensa es que el `glob` desaparezca. Agrava esto que
+`R2c` (cambiar una entrada de `ESPERADOS`) mata porque el recuento y el nombre compara; pero
+`R2b` (borrar la derivación) no, porque no hay forma de que un test detecte la **ausencia** de una
+comparación.
+
+**Arreglo:** el guard debería exigir que el conjunto vigilado se **deriva** del disco (p. ej. que
+`en_el_disco` se compare Y que `ESPERADOS` seignore; o mejor, que el propio test afirme sobre el
+disco que toda vista con `self.after` está en el conjunto vigilado). Es el mismo patrón que la
+`NameError`/`proibido_tk`: una comprobación sin contraprueba que laBlinden.
+
+## 9.3 · Lo que el dev decidió NO tocar (R6), y por qué sobrevive cada uno
+
+Los tres que §8.5 declara "equivalentes, se documentan, no se arreglan" **siguen sobreviviendo por
+la razón que dice**, medido:
+
+- **S2** (`except Exception` → `except BaseException`): sobrevive (26 400 B, `ALL TESTS PASSED.`).
+  Equivalente real para el `RuntimeError` que el guard trata. Correcto.
+- **S3** (`except Exception` → `except RuntimeError`): sobrevive. Y la premisa que lo hace
+  equivalente está **verificada contra el código real**: `tk_thread.py:83` captura `except
+  Exception` (MEDIDO leyendo el fichero), así que S2 y S3 son indistinguibles *para `RuntimeError`*
+  y su única diferencia es `tk.TclError`, que ningún test provoca. Si el código capturara otra
+  cosa (p. ej. `except BaseException`), S2 y S3 **no** serían equivalentes y el argumento se
+  desharía — pero no es el caso. La nota de TASK-078 en el propio docstring es correcta.
+- **SV4** (`tk.TclError` declarado y sin test): sigue como deuda baja, tal como dice §8.5. No lo
+  vuelvo a mutar porque es el mismo S3 por otro nombre.
+
+Estos tres son **mutantes equivalentes, no cobertura faltante**, y está bien que consten.
+
+## 9.4 · R5 · ¿Están justificadas las dos excepciones, o son un agujero con nombre? — SÍ, están justificadas
+
+El encargo pedía auditar si las dos excepciones que la ampliación declara están justificadas por el
+código real. **Las dos lo están**, y medido:
+
+1. **`("gaming_service", "restore_gaming_session")`.** El worker `DashboardView._on_restore_clicked`
+   lo llama **de verdad** desde su `Thread` (`dashboard_view.py:282`). `R5c` (quitarla de
+   `PERMITIDOS`) **mata** con `DashboardView._on_restore_clicked:L282 ... desde el hilo secundario`
+   → la excepción existe porque el código real la necesita, no para tapar un agujero.
+2. **`_handle_err`/`_handle_ok` en la lista blanca de callbacks.** Los dos son las clausuras
+   locales de `process_managerView._force_update_db` que publican al principal
+   (`process_manager_view.py:196/204`). `R5a` (quitarlos de la lista) **mata** nombrando
+   `_handle_ok` con el mensaje del propio guard → la excepción está **usada** por el código real.
+   Y `R5b2` (publicar a un callback **local que ya existe** y que **no** está en la lista)
+   también mata → la lista es **estrecha**, no un comodín que acepta cualquier nombre local.
+
+   **Lo que R5b2 NO demuestra, y hay que decirlo:** su rojo lo produce el **recuento de 10
+   publicaciones** (`las tres vistas tienen 11 publicaciones...`), no la lista blanca, porque
+   `R5b2` **añade** una publicación y eso dispara el assert de recuento antes de llegar a la regla
+   de la puerta. El mutante que sí mata la lista blanca por su cuenta es `R5a`. Los dos juntos sí
+   dicen lo que hay que decir: la lista está **usada** (`R5a` la necesita) y **es estrecha**
+   (`R5b2` no admite un nombre local nuevo) — pero el segundo por el camino del recuento. Con una
+   mutación que no altera el número de publicaciones (cambiar `(0, _handle_err)` por
+   `(0, _on_success)` sobre la misma línea, sin añadir) el discriminante sería directo; no se
+   Lansó porque el par `R5a`+`R5b2` ya cubre las dos preguntas que hace el encargo, y R3c (que sí
+   se Lanzó, sin alterar el recuento) confirma que **la regla de la puerta sí se comprueba sobre un
+   call site existente**.
+
+**Recuento 10/10 — ¿se puede satisfacer con un conjunto menor? NO.** El encargo lo pregunta
+explícitamente ("si mañana alguien borra una publicación legítima, ¿el guard lo nota, o solo se
+fija en la igualdad de dos números que bajan juntos?"). MEDIDO: `R5e` borra una publicación
+legítima (`process_manager_view.py:181`) y el guard **mata** con
+`las tres vistas tienen 9 publicaciones ... el invariante habla de 10 ... decidalo explicitamente
+en vez de dejar que el guard se adapte solo`. El `contados_en_codigo == 10` (contado de forma
+independiente del recorrido) es lo que impide que los dos números bajen juntos: si borrás una
+publicación, el código da 9 y el assert de 10 salta. **El recuento está anclado y aguanta.**
+
+## 9.5 · Veredicto
+
+# VERDICT: FAIL
+
+**Por qué, en una frase:** los tres huecos del encargo (**SV1, SV2, SV3**) **están de verdad
+cerrados** — `R1`, `R2a`/`R2c` y `R3c` mueren todos por la aserción que dice, nombrando el fichero y
+la línea — **pero la reparación dejó sin cerrar dos cosas más**: el guard de la frontera de
+`tk_thread.py` es ciego a los imports absolutos con prefijo de paquete (**R4b**, alta), y la
+ampliación a los callbacks de `load_db_async` dejó de exigirles el invariante del worker (**R5f**,
+alta). El tercer superviviente (**R2b**, quitar el `glob` sin rojo) es una comprobación sin
+contraprueba.
+
+**Lo que merece decirse de este ciclo:** los tres SV del informe anterior están cerrados con
+mutantes que mueren **por la aserción correcta y con el síntoma nombrado** (`L196 ... debe ser de
+0 ms`, `['psutil']`, "los cuatro ficheros vigilados"). Eso es exactamente lo que se le pedía a un
+guard. Y `R3c` — el call site que la pasada anterior escapaba — ahora muere, y muere **por la
+regla de la puerta** (`debe ser de 0 ms`), no por un efecto colateral. El trabajo de TASK-078 es
+real.
+
+**Pero los dos supervivientes altos son del patrón que este informe lleva tres ciclos marcando:**
+una comprobación que **no tiene contraprueba**. `R4b` porque la lista de prohibidos compara el
+primer segmento del módulo y el repo importa en absoluto; `R5f` porque un cuerpo que corre en el
+hilo secundario quedó exento del invariante del hilo secundario. Los dos eran **verificables** y
+no se verificaron.
+
+### Tickets que deja esta re-auditoría
+
+| ticket | severidad | qué hay que hacer |
+|---|---|---|
+| **R4b / SV1'** | alta | el guard de imports de `tk_thread.py` debe comparar el **módulo completo** (`endswith("." + p)`), no el primer segmento; y añadir **contraprueba** que el detector ve un `from woptimizer.services import ...` sintético |
+| **R5f / SV2'** | alta | los callbacks de `load_db_async` deben pagar **también** el invariante del worker (o quedar explícitamente exentos de tocar widgets); corregir el docstring de `_publicaciones_malas` ("ya en el hilo principal" es **falso**: corren en `_download`, el hilo del servicio) |
+| **R2b / SV3'** | media | el `glob` que deriva `views/*.py` necesita contraprueba, o el guard debe exigir que el conjunto vigilado se deriva del disco |
+| **SV4** | baja | (sin cambio) `tk.TclError` declarado y sin test — mutante equivalente, bien documentado |
+| **S2/S3** | — | (sin cambio) mutantes equivalentes, correctos según §8.5; la premisa (`except Exception`) **verificada** |
+
+### Nota de arnés para el orquestador
+
+- La re-auditoría crea **17 cámaras desechables** en `%TEMP%\wopt_muts\`, cada una un clon con
+  historial real. La base `%TEMP%\wopt_audit_62_rea` queda **verde** (`ALL TESTS PASSED.`,
+  26 404 B).
+- **No se reparó nada** de `src/` ni de `run_tests.py`. Reparar es de `openspec-dev`.
+- El único cambio en el árbol real es este fichero, **sin comitear**.
+- La mutación inicial de `R3_M8a` (Trampa T1) fue **mía** y la detecté mirando el fichero, no el
+  log; sin la verificación posterior de "cámara mutada en disco" (17/17) habría reportado un
+  "supervive" inexistente. Los veredictos de este informe son de la **segunda** pasada de `R1`, de
+  `R3c` y de `R5b2`.
+- **T3 (Trampa T4) es un hecho de producción, no mío:** los guards de TASK-073 son los dos
+  **últimos** de la suite, y `test_dead_code_ast_guard` va 310 líneas antes. Quien mida TASK-073
+  tiene que comprobar **de qué aserción** viene el rojo, porque otro guard puede tapar al que se
+  quiere medir.
+
+---
+
+# 10. Reparación (TASK-079) · rol `openspec-dev`
+
+**Qué se repara:** los tres huecos de §9 (`R4b`, `R5f`, `R2b`) y las tres afirmaciones del change que
+§8.7 dejó sin corregir. **Solo guardas y documentación: `src/woptimizer/**` no se toca.**
+
+**Línea base, medida ANTES de mutar nada** (repo real, `beta`): `python run_tests.py` →
+**`ALL TESTS PASSED.`**, 364 líneas, **26 404 B**, rc=0, **496 s**. Es el mismo byte count que la base
+de la re-auditoría, que es lo que tiene que ser: los guards se repararon sin cambiar una sola
+línea de salida.
+
+## 10.0 · La armería, y una trampa de arnés que ME pasó aquí
+
+Cada mutante corre en una cámara desechable de `%TEMP%\wopt_t079\<mutante>\`: un
+`git clone --local --no-hardlinks` del repo real al que se le copia **encima** el árbol de trabajo
+(con los cambios sin comitear de este turno). Antes de lanzar nada, el arnés **comprueba en disco**
+(a) que el `git-dir` de la cámara es el de la cámara y no `%LOCALAPPDATA%`, y (b) que la mutación
+se escribió. Las tres cosas, porque las tres se pueden dar por buenas sin estar.
+
+**Trampa T5 (mía, y la registro porque casi me cuesta los tres primeros veredictos):** la primera
+tanda no hizo `clone`, copió el árbol con `shutil.copytree`. Sin `.git`, las tres cámaras murieron
+a los ~3,4 KB en un test de git que no tiene nada que ver con el mutante:
+
+```
+AssertionError: git no resuelve `--absolute-git-dir` para ...\wopt_t079\r4b con el entorno limpio
+(rc=128, salida='fatal: not a git repository (or any of the parent directories): .git'), luego no hay
+referencia contra la que verificar que una candidata sea de este arbol.
+```
+
+Es la misma clase que la T2 de §9.0 (un rojo del arnés leído como veredicto) y que la T1 (una cámara
+que nunca se mutó sale verde). **Los tres veredictos de esa tanda son NO MEDIDOS, no "killed"**, y no
+se cuentan para nada. La tanda buena es la de las cámaras clonadas, que es la de las siete filas de
+§10.1.
+
+Lo que sí se respetó de la T3/T4: **todas las mutaciones de `src/` no dejan código muerto**
+(una línea nueva, un import nuevo, un fichero de vista nuevo con un método cuyo nombre ya está
+referenciado), y `test_dead_code_ast_guard` —que corre 310 líneas antes— pasó en las siete cámaras:
+en `r2b_vista_nueva` se ve, porque el log llega a 369 líneas y muere en el guard de TASK-073, no en el
+de código muerto.
+
+## 10.1 · Siete mutantes, seis muertos y un verde que es el que tiene que ser verde
+
+Motivo **literal**, pegado del log de cada cámara (`%TEMP%\wopt_t079\<m>.log`):
+
+| mutante | qué se rompió | veredicto | motivo literal |
+|---|---|---|---|
+| **`r4b`** | `ui/tk_thread.py` importa `from woptimizer.services import process_service` | **killed** | `AssertionError: ui/tk_thread.py viola la frontera de capas: importa ['woptimizer.services', 'woptimizer.services.process_service']. La logica de publicar en el bucle es UI pura: solo llama a un metodo del widget que recibe` |
+| **`r4b_control`** | el guard vuelve a comparar el **primer segmento** (el defecto de TASK-078 reinsertado en el propio detector) | **killed** | `AssertionError: CONTROL-PREFIXO-SERVICES: el detector no marca ['woptimizer.services', 'woptimizer.services.process_service'] y solo ve []. Con el primer segmento como criterio, from woptimizer.services import process_service pasaba en verde` |
+| **`r5f`** | un callback de `load_db_async` toca `status_label` desde el hilo secundario | **killed** | `AssertionError: el callback que el servicio ejecuta en un hilo secundario toca la vista fuera de la puerta: ProcessManagerView._force_update_db:L193 self.status_label.configure(...) desde el hilo secundario` |
+| **`r5f_clausura_llamada`** | una clausura anidada que el callback **llama** (no publica) toca el widget | **killed** | `AssertionError: el callback que el servicio ejecuta en un hilo secundario toca la vista fuera de la puerta: ProcessManagerView._force_update_db:L194 self.status_label.configure(...) desde el hilo secundario` |
+| **`r5f_principal`** | la clausura **publicada** (`_handle_ok`) toca el widget: corre en el principal, es correcto | **verde (por diseño)** | `ALL TESTS PASSED.` (26 400 B, 364 líneas) |
+| **`r2b_vista_nueva`** | una vista nueva en `ui/views/` que `ESPERADOS` no declara | **killed** | `AssertionError: hay vistas en el disco que este guard no vigila: ['zz_vista_de_prueba.py']. Una vista nueva nace con la deuda de self.after a mano y nadie la mira` |
+| **`r2b_sin_derivacion`** | `_vistas_del_disco` deja de mirar el disco (el `R2b` del ciclo 62) | **killed** | `AssertionError: hay vistas en el disco que este guard no vigila: ['dashboard_view.py', 'pack_manager_view.py', 'process_manager_view.py']. Una vista nueva nace con la deuda de self.after a mano y nadie la mira` |
+
+**Recuento: 7 mutantes · 6 killed · 1 verde-y-es-correcto.** Los tres huecos de §9 están cerrados, y
+cada uno por la aserción que nombra el defecto.
+
+**Por qué hay siete y no tres.** Tres son los del encargo. Los otros cuatro son lo que hace que una
+guarda reparada no sea una guarda *supuesta*:
+
+1. **`r4b_control` mata la CONTRAPRUESTA, no el fichero real.** Si lo único que se comprobara fuera
+   `tk_thread.py`, bastaría con que el detector mirara donde le da la gana. Este mutante degrada el
+   predicado al primer segmento y muere en el control sintético `CONTROL-PREFIXO-SERVICES`, que es la
+   línea que demuestra que el detector ve la forma de import que escribe el repo.
+2. **`r5f_clausura_llamada` mide la frontera del corte.** La reparación exime de medir las clausuras
+   que el callback **entrega a la puerta**, porque esas corren en el principal. La tentación
+   obvious —cortar por "todo lo anidado"— habría abierto un agujero: una clausura que el cuerpo solo
+   **llama** sigue corriendo en el secundario. El corte es por los nombres **publicados**
+   (`_cuerpos_a_medir`), y este mutante es lo que demuestra que el corte es el correcto y no el
+   cómodo.
+3. **`r5f_principal` es el control que NO tiene que morir.** La clausura `_handle_ok` se publica, así
+   que corre en el hilo principal y tocar el widget ahí es exactamente lo correcto; un guard que la
+   marcara estaría prohibiendo el código bueno. Sale verde, y por eso sale verde: es la mitad
+   "`r5f` mata lo que tiene que morir" que no se lee sola.
+4. **`r2b_sin_derivacion` mata el `R2b` viejo.** Con la derivación convertida en el origen de lo que
+   el guard abre, quitarle el `glob` ya no es "una comprobación que desaparece": es `a_abrir` vacío,
+   y el nombre de las tres vistas sale en el rojo.
+
+## 10.2 · Qué se cambió, y por qué es la mínima cosa
+
+| sitio | qué hace ahora | por qué |
+|---|---|---|
+| `run_tests.py` (`test_ninguna_vista_programa_after_a_mano`) | `_modulos_de` + `_importa_prohibido` comparan la **ruta completa** (y `modulo.alias`, para `from woptimizer import services`), con cinco controles sintéticos y un control negativo sobre `typing` | `R4b` era ciego a la forma de import que el repo escribe; la lista estaba escrita en primer nivel y el código escribe rutas con prefijo de paquete |
+| ídem (mismo guard) | `a_abrir` sale de `_vistas_del_disco(...)`; `RUTAS_VIGILADAS` pasa a decir solo **dónde** está cada fichero | `R2b`: la derivación era una comparación, no la fuente; sin esto, borrarla salía en verde |
+| `run_tests.py` (`test_los_workers_de_pack_solo_publican_por_after`) | los callbacks de `load_db_async` pasan por `_infracciones_en(_cuerpos_a_medir(cuerpo), ...)`; `_publicaciones_malas` **desaparece** | `R5f`: sus cuerpos corren en el secundario; la función entera estava escrita sobre una medición falsa |
+| `.taskmaster/tasks.json` | TASK-079 abierta y cerrada en este turno | el encargo |
+
+**La medición previa, antes de escribir una línea (que era lo que el encargo pedía).**
+`ProcessService.load_db_async` (`process_service.py:373-416`) llama `on_error(err_msg)` en `:402` y
+`callback()` en `:411`, **los dos dentro de `_download`**, que es el cuerpo de
+`threading.Thread(target=_download, daemon=True).start()` de `:416`. El hilo que decide el contexto
+es el del servicio. **La auditoría tenía razón y el docstring estaba equivocado**: esos cuerpos no
+corren en el principal, y el guard se cambió para medirlos en el hilo en el que corren.
+
+**Por qué el corte es por nombres publicados y no "por lo anidado".** `_cuerpos_a_medir` exime solo
+los `def` cuyo nombre aparece como argumento de una llamada a `self.after`/`self._publicar_en_el_bucle`
+**y no** se llama en el cuerpo. Un nombre que se publica y además se llama queda **fuera** de la
+exención (falla cerrado): hoy no existe en el código real, y prefiero un falso positivo a un agujero.
+`r5f_clausura_llamada` es la medición de esa frase.
+
+**Lo que NO se tocó, a propósito.** El guard gemelo de `confirmation.py` (`run_tests.py:1851-1853`)
+hace lo mismo con `split('.')[0]`, pero lleva `"woptimizer"` en la lista de prohibidos: ahí la red más
+gruesa es la **correcta**, porque ese fichero es una máquina de estado que no debe depender de nada
+del paquete (importa a su hermano por ruta **relativa**, `from .tk_thread import publicar_en_bucle`,
+que da `"tk_thread"` y no choca). Se **documenta** en el propio guard y no se modifica: tocarlo
+sería arreglar algo que no está roto.
+
+## 10.3 · Lo que tiene que seguir sobreviviendo, y por qué
+
+`S2` (`except BaseException`) y `S3` (`tk.TclError` declarado y sin provocar) siguen siendo
+**mutantes equivalentes**, y este turno **no cambia su premisa**: `ui/tk_thread.py:83` captura
+`except Exception`, MEDIDO leyendo el fichero. Si alguien cambiara esa captura, S2 y S3 dejarían de
+ser equivalentes y habría que re-auditar; por eso aquí no se toca ese `except`.
+
+`r5f_principal` es el otro que tiene que seguir verde, y esta vez está medido (§10.1).
+
+## 10.4 · Documentación del change corregida con lo MEDIDO
+
+| sitio | qué decía | qué dice ahora |
+|---|---|---|
+| `proposal.md` §F1 (la tabla) | `winfo_exists()` lanza desde un worker **con la ventana viva** y sin ella, "1 de 1" | tres columnas: **sin bucle principal** lanza; con `mainloop()` vivo **devuelve 1 con la vista viva y 0 con el widget destruido, sin lanzar**. Se dice que la versión anterior reproduce el escenario A/B y le pone el nombre del C |
+| `proposal.md` (docstring de `publicar_en_bucle`) | "lanza el mismo RuntimeError que `after`, incluso con la ventana viva" | "en el mundo **sin bucle principal**; con `mainloop()` vivo no lanza y devuelve 1/0" |
+| `proposal.md` ("Criterio discriminante") | `llamadas == []` es **LA ASERCIÓN QUE DISCRIMINA** | es **tautológica** (mutante X1 de §6: con `registrar_antes=True` falla sin tocar producción); lo que discrimina el caso A es el `try` explícito y `handle is None`, y el conjunto entero por el caso B |
+| `tasks.md` (docstring) | "`winfo_exists()` ... **también con la ventana viva**" | lo mismo que `proposal.md`, con la referencia a §2 del informe |
+| `tasks.md` (caso A del test) | "`llamadas == []` es la aserción que hace el test discriminante" | lo que discrimina es el `try` + `handle is None`; `llamadas == []` mide **al doble** |
+| `docs/ai/testing-guide.md` filas 76 y 205 | el alcance viejo | R5f, R4b (y por qué el guard de `confirmation.py` **no** se toca) y R2b |
+
+**El recuento de tests no cambia: 205**, y por eso los cuatro sitios que lo derivan con `ast`
+(`STATUS.md`, `AGENTS.md`, `README.md`, `docs/ai/testing-guide.md`) **no se tocan** —
+`validate_docs.py` lo confirma deriving, no leyéndolo. `llms-full.txt` tampoco cambia:
+`build_llms_full.py --check` dice que sus nueve secciones coinciden con su fuente, porque
+`docs/ai/testing-guide.md` no es una de ellas.
+
+## 10.5 · Verificación ejecutada en esta reparación
+
+```
+> python verify_ui_syntax.py
+EXITO: Todos los modulos UI estan impecables.
+rc=0
+
+> python run_tests.py
+...
+guarda AST exhaustiva: 10 cuerpos de hilo secundario, 10 publicaciones vigiladas.
+test_ninguna_vista_programa_after_a_mano OK.
+
+ALL TESTS PASSED.
+rc=0   (26 404 B, 364 lineas, 496 s)
+
+> python validate_docs.py
+Resumen: 143 OK, 0 FAIL
+rc=0
+```
+
+## 10.6 · Veredicto de esta reparación
+
+# R4b, R5f y R2b: CERRADOS, cada uno por un mutante que muere en su aserción.
+
+Lo que esta reparación **no** hace, y conviene que conste: no cambia el comportamiento de
+`src/woptimizer/**`. La producción de TASK-073 era correcta y lo sigue siendo; lo que estaba mal eran
+tres guardas que no miraban lo que decían mirar. Y la lección que deja el ciclo, repetida por tercera
+vez en este change: **una comprobación sin contraprueba no es una comprobación**. `R4b`, `R5f` y
+`R2b` eran tres afirmaciones verdaderas sobre el código que nadie había medido — y `F1b`, el "killed"
+que TASK-078 dio por bueno, era exactamente eso: un mutante que murió por el motivo equivocado y dejó
+el agujero abierto dos pases.

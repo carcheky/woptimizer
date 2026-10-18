@@ -20,8 +20,12 @@ nivel de módulo, y esta función no lo necesita: solo llama a un método del wi
       vista murió entre la decisión y la llamada.
 - [ ] Docstring con las **mediciones** del 2026-10-18, porque el guard que se descartó es el que
       un próximo agente va a proponer otra vez:
-      - `winfo_exists()` desde un hilo secundario lanza `RuntimeError: main thread is not in main
-        loop` **también con la ventana viva** → un probe de existencia no funciona aquí.
+      - [ ] `winfo_exists()` desde un hilo secundario lanza `RuntimeError: main thread is not in main
+        loop` en el mundo **sin bucle principal** (root + `update()`, el caso de `run_tests.py`) →
+        un probe de existencia no aporta nada ahí, porque `after` también lanza. Con `mainloop()`
+        **vivo** NO lanza: devuelve `1` con la vista viva y `0` con el widget ya destruido
+        (TASK-079 corrige la redacción anterior, "también con la ventana viva", que es FALSA y
+        reprodujo el escenario sin bucle teniendo el nombre del escenario con bucle).
       - con `mainloop()` vivo, `after(400)` programado y la ventana destruida 150 ms después, el
         callback **nunca se ejecuta**: Tk lo descarta con el widget. Por eso no hace falta sonda de
         existencia, y por eso un `try/except` solo es la solución completa.
@@ -81,9 +85,13 @@ se pone en rojo. Por diseño, no por error.
 Doble `_VistaFalsa` con `llamadas: list`; `after(...)` **registra y lanza** el `RuntimeError` real.
 
 - [ ] Caso A (vista muerta): `llamadas == []`, `handle is None`, sin excepción.
-      **`llamadas == []` es la aserción que hace el test discriminante**: con el guard quitado,
-      `after` se invoca, el `except` se traga el error y un test que solo comprobara "no revienta"
-      saldría verde.
+      **Lo que discrimina el caso A es el `try` + `handle is None`, no `llamadas == []`** (TASK-079
+      corrige la redacción anterior, que llamaba a esa línea "la aserción que hace el test
+      discriminante"): con `registrar_antes=False` el doble lanza ANTES de registrar, así que la lista
+      queda vacía **con guard y sin guard** — mutante X1 de `mutation-report.md` §6. `llamadas == []`
+      mide **al doble** (que Tcl no llegara a agendar nada). El mutante que este caso mata (S1, el
+      `except` que se traga el `RuntimeError`) muere por el `try` explícito, que convierte la
+      propagación en un `AssertionError` legible.
 - [ ] Caso B (vista viva, `after` devuelve `"after#1"`): `llamadas == [(0, cb, (1, 2))]` y
       `handle == "after#1"`. Mata el mutante degenerado que nunca programa nada.
 - [ ] Caso C (vista viva, `after` revienta): `handle is None`, sin excepción, `llamadas` con **una**

@@ -8810,6 +8810,16 @@ def test_los_workers_de_pack_solo_publican_por_after():
     separan y el guard lo dice, en vez de callar sobre un call site que nadie
     mira.
 
+    **TASK-079 (R5f): los callbacks de `load_db_async` pagan el invariante
+    ENTERO del worker.** Corren en el hilo SECUNDARIO —el servicio los invoca
+    desde dentro de su `_download` (`process_service.py:402/411`, el cuerpo de
+    `Thread(target=_download)` de `:416`)—, asi que tocar la vista desde ahi
+    rompe la misma regla que rompe un `_run`. La excepcion que TASK-078 les
+    concedio ("dentro de esos cuerpos tocar widgets es lo correcto, ya estan en
+    el hilo principal") era una MEDICION FALSA. Lo unico que corre en el
+    principal es lo que publican, y por eso el corte es por los nombres
+    PUBLICADOS (`_cuerpos_a_medir`), no por "todo lo anidado".
+
     **La guarda se prueba contra si misma** (control del detector, no del
     fichero): ocho infracciones sinteticas que tiene que ver —un metodo de
     widget, `self.master.after`, una escritura en `self`, un `del self.<attr>`,
@@ -8974,30 +8984,61 @@ def test_los_workers_de_pack_solo_publican_por_after():
                     f"{destino_malo}, y tiene que publicar en {sorted(CALLBACKS)}")
         return None
 
-    def _publicaciones_malas(nodo, etiqueta):
-        """SOLO las publicaciones de un cuerpo que ya corre en el principal.
+    def _cuerpos_a_medir(nodo):
+        """Los nodos del cuerpo de un callback de hilo, SIN las clausuras PUBLICADAS.
 
-        Es la invariante de los CALLBACKS que un servicio ejecuta en un hilo
-        secundario y que publican para volver al principal: dentro de esos
-        cuerpos tocar widgets es lo correcto (ya estan en el hilo principal),
-        asi que se les exige la regla de la PUERTA -- 0 ms y callback conocido --
-        y no la del worker, que si prohibe lo contrario. Mezclar las dos seria
-        declarar infraccion a `_handle_err` por escribir en `status_label`.
+        TASK-079 (R5f): lo que el callback entrega a `publicar_en_bucle` son
+        clausuras LOCALES (`_handle_err`, `_handle_ok`), y esas ya corren en el
+        hilo principal: son la carga util de la publicacion, no el worker. Mirar
+        dentro de ellas seria medir el hilo equivocado y declarar infraccion al
+        `self.status_label.configure(...)` del principal, que es justo lo que el
+        principal tiene que poder hacer.
+
+        El corte es por los NOMBRES que se publican, NO por "todo lo anidado": una
+        clausura que el cuerpo solo LLAMA sigue corriendo en el secundario, y esa
+        se mide entera. Un nombre que se publica y ademas se llama queda FUERA de
+        la exencion (falla cerrado): asi se tape una combinacion rara que hoy no
+        existe en el codigo real, y no un agujero.
         """
-        malos = []
-        for call in [n for n in ast.walk(nodo) if isinstance(n, ast.Call)]:
-            raiz, _ = _raiz_de_self(call.func)
-            if raiz not in ("after", PUBLICADOR):
+        publicados, llamados = set(), set()
+        for otro in ast.walk(nodo):
+            if not isinstance(otro, ast.Call):
                 continue
-            infraccion = _infraccion_de_publicacion(call, etiqueta)
-            if infraccion:
-                malos.append(infraccion)
-        return malos
+            if isinstance(otro.func, ast.Name):
+                llamados.add(otro.func.id)
+                continue
+            raiz, _ = _raiz_de_self(otro.func)
+            if raiz in ("after", PUBLICADOR):
+                publicados.update(a.id for a in list(otro.args)[1:]
+                                  + [kw.value for kw in otro.keywords]
+                                  if isinstance(a, ast.Name))
+        exentos = publicados - llamados
 
-    def _infracciones(worker, etiqueta):
-        """Todas las violaciones del invariante en UN worker. Lista vacia = conforme."""
+        medidos = []
+
+        def _bajar(bloque):
+            for hijo in bloque:
+                medidos.append(hijo)
+                if isinstance(hijo, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                    if getattr(hijo, "name", None) in exentos:
+                        continue
+                _bajar(list(ast.iter_child_nodes(hijo)))
+
+        _bajar(list(ast.iter_child_nodes(nodo)))
+        return medidos
+
+    def _infracciones_en(nodos, etiqueta):
+        """El invariante del worker sobre una lista de nodos YA recortada.
+
+        Existe para que la regla se escriba UNA vez (`_infracciones`) y se aplique
+        a dos alcances distintos: el `ast.walk` completo de un worker, y el
+        cuerpo de un callback de hilo SIN las clausuras que publica
+        (`_cuerpos_a_medir`). Dos copias de estas reglas en dos sitios son dos
+        reglas que pueden divergir sin que nadie lo note.
+        """
+        nodos = list(nodos)
         malos = []
-        for call in [n for n in ast.walk(worker) if isinstance(n, ast.Call)]:
+        for call in [n for n in nodos if isinstance(n, ast.Call)]:
             # Un `getattr`/`setattr`/`delattr` SOBRE `self` es un acceso entero a
             # la vista. Se marca aqui porque `_raiz_de_self` solo lo veria cuando
             # cuelga de un `Attribute` (`getattr(self, 'x').y`), no cuando la
@@ -9040,7 +9081,7 @@ def test_los_workers_de_pack_solo_publican_por_after():
             infraccion = _infraccion_de_publicacion(call, etiqueta)
             if infraccion:
                 malos.append(infraccion)
-        for nodo in ast.walk(worker):
+        for nodo in nodos:
             if isinstance(nodo, ast.Assign):
                 objetivos = nodo.targets
             elif isinstance(nodo, (ast.AugAssign, ast.AnnAssign)):
@@ -9061,6 +9102,10 @@ def test_los_workers_de_pack_solo_publican_por_after():
                             f"self.{'.'.join(camino)} desde el hilo secundario"
                         )
         return malos
+
+    def _infracciones(worker, etiqueta):
+        """Todas las violaciones del invariante en UN worker. Lista vacia = conforme."""
+        return _infracciones_en(ast.walk(worker), etiqueta)
 
     # Control 1: las tres infracciones que la guarda VIEJA no veia.
     codigo_malo = (
@@ -9385,16 +9430,31 @@ def test_los_workers_de_pack_solo_publican_por_after():
                         f"ni por self.{PUBLICADOR}(0, ...)"
                     )
                     publicaciones_vistas += _publicaciones_de(worker)
-                # Los callbacks de `load_db_async` son worker por el mismo
-                # motivo, pero su cuerpo corre YA en el principal cuando
-                # publica, asi que se les exige la puerta y no el resto del
-                # invariante (ver `_publicaciones_malas`).
+                # Los callbacks de `load_db_async` pagan el invariante ENTERO del
+                # worker, no solo la regla de la puerta.
+                #
+                # TASK-079 (R5f): hasta aqui se les pasaba por
+                # `_publicaciones_malas`, que solo miraba la puerta, con un
+                # docstring que justificaba la excepcion diciendo que "dentro de
+                # esos cuerpos tocar widgets es lo correcto, ya estan en el hilo
+                # principal". ESA MEDICION ERA FALSA y esta reparacion la
+                # desmiente con el codigo delante: `ProcessService.load_db_async`
+                # invoca `on_error(err_msg)` y `callback()` DENTRO de su
+                # `_download` (`process_service.py:402/411`), que es el cuerpo
+                # de `threading.Thread(target=_download)` (`:416`). El hilo que
+                # decide el contexto es el del servicio, no el que creo la
+                # funcion: esos cuerpos corren en el SECUNDARIO, y lo unico que
+                # corre en el principal es lo que ellos publican.
+                #
+                # Sin bajar a las clausuras que entregan su cuerpo a la puerta
+                # (`_handle_err`, `_handle_ok`), que si son carga del principal.
                 for nombre_cb, cuerpo in _callbacks_de_hilo(metodo, etiqueta):
                     workers_vistos += 1
-                    malos_cb = _publicaciones_malas(cuerpo, etiqueta)
+                    malos_cb = _infracciones_en(_cuerpos_a_medir(cuerpo), etiqueta)
                     assert not malos_cb, (
-                        "el callback que el servicio ejecuta en un hilo secundario "
-                        "publica fuera de la puerta: " + "; ".join(malos_cb)
+                        "el callback que el servicio ejecuta en un hilo "
+                        "secundario toca la vista fuera de la puerta: "
+                        + "; ".join(malos_cb)
                     )
                     publicaciones_vistas += _publicaciones_de(cuerpo)
 
@@ -25727,6 +25787,13 @@ def test_ninguna_vista_programa_after_a_mano():
         abajo prueba que el DETECTOR detecta; no prueba que se le PIDAN
         ficheros. Con la lista vacia no observa nada y todo sale verde, que es
         el mismo fallo un nivel mas arriba.
+
+    TASK-079 (R2b), el agujero que quedo de SV2: la derivacion por `glob` era
+    una COMPARACION, no el origen de lo que se abre, y por eso nadie media si
+    estaba viva. Borrarla (mutante R2b) dejaba la suite en verde porque el `for`
+    iba sobre una lista escrita a mano. Ahora `a_abrir` sale del disco: sin la
+    derivacion, `vistos` sale vacio y lo dice el assert de recuento, y con ella
+    una vista nueva entra en el `for` y se nombra en el rojo.
     """
     print("Testing that no view calls self.after by hand (TASK-073)...")
     VISTAS = ("dashboard_view.py", "pack_manager_view.py", "process_manager_view.py")
@@ -25763,9 +25830,53 @@ def test_ninguna_vista_programa_after_a_mano():
         return None
 
     raiz_repo = os.path.dirname(os.path.abspath(__file__))
+
+    def _vistas_del_disco(directorio):
+        """Los nombres de fichero que HAY en `directorio`, no los que alguien recuerda.
+
+        TASK-079 (R2b): este bloque ya existia, pero no era LO QUE SE ABRE. El
+        `for` de abajo iba sobre `RUTAS_VIGILADAS` --una lista escrita a mano-- y
+        el `glob` solo servia para COMPARAR despues. Borrar la derivacion entera
+        (mutante R2b) dejaba la suite en verde, porque nada dependia de ella:
+        "ninguna vista del disco queda fuera" era una afirmacion sin contraprueba
+        que nadie habia medido. Ahora el conjunto que se ABRE sale de aqui, y
+        `VISTAS`/`ESPERADOS` son la declaracion de lo que TIENE que haber, no la
+        fuente. `__init__.py` queda fuera a proposito: no es una vista.
+        """
+        import glob as _glob
+        encontradas = {os.path.basename(p)
+                       for p in _glob.glob(os.path.join(directorio, "*.py"))}
+        encontradas.discard("__init__.py")
+        return encontradas
+
+    # Si la derivacion desapareciera, esto tiene que morir por la ASERCION de
+    # abajo, que nombra el disco, y no por un `NameError` de nombre sin definir:
+    # es la misma leccion del typo `proibido_tk` de TASK-078, donde el rojo por
+    # `NameError` no decia nada del defecto.
+    try:
+        en_el_disco = _vistas_del_disco(
+            os.path.join(raiz_repo, "src", "woptimizer", "ui", "views"))
+    except NameError:
+        en_el_disco = set()
+
+    # Y ninguna VISTA NUEVA puede entrar por la puerta de atras: el conjunto se
+    # deriva del directorio, no de una lista que alguien tiene que acordarse de
+    # ampliar.
+    assert en_el_disco == set(VISTAS), (
+        f"hay vistas en el disco que este guard no vigila: "
+        f"{sorted(en_el_disco ^ set(VISTAS))}. Una vista nueva nace con la "
+        "deuda de `self.after` a mano y nadie la mira"
+    )
+    a_abrir = sorted(en_el_disco | {"confirmation.py"})
+
     arboles = {}
     vistos = []
-    for nombre, relativo in RUTAS_VIGILADAS.items():
+    for nombre in a_abrir:
+        # `RUTAS_VIGILADAS` dice DONDE esta cada fichero conocido; una vista que
+        # no aparezca ahi cae en `views/<nombre>`, que es donde la ha puesto el
+        # glob. Asi una vista nueva se ABRE y se vigila aunque nadie la haya
+        # apuntado en ninguna lista: el rojo de arriba la nombra antes de esto.
+        relativo = RUTAS_VIGILADAS.get(nombre, os.path.join("views", nombre))
         ruta = os.path.join(raiz_repo, "src", "woptimizer", "ui", relativo)
         with open(ruta, "r", encoding="utf-8") as fh:
             arboles[nombre] = ast.parse(fh.read(), nombre)
@@ -25791,19 +25902,6 @@ def test_ninguna_vista_programa_after_a_mano():
     assert set(vistos) == set(ESPERADOS), (
         f"el conjunto vigilado es {sorted(vistos)} y el que este guard declara "
         f"es {sorted(ESPERADOS)}: son cosas distintas y por eso se comparan"
-    )
-    # Y ninguna VISTA NUEVA puede entrar por la puerta de atras: el conjunto se
-    # deriva del directorio, no de una lista que alguien tiene que acordarse de
-    # ampliar. `__init__.py` queda fuera a proposito (no es una vista).
-    import glob as _glob
-    en_el_disco = {os.path.basename(p) for p in
-                   _glob.glob(os.path.join(raiz_repo, "src", "woptimizer", "ui",
-                                           "views", "*.py"))}
-    en_el_disco.discard("__init__.py")
-    assert en_el_disco == set(VISTAS), (
-        f"hay vistas en el disco que este guard no vigila: "
-        f"{sorted(en_el_disco ^ set(VISTAS))}. Una vista nueva nace con la "
-        "deuda de `self.after` a mano y nadie la mira"
     )
 
     # -- CONTRAPRUESTA 1: la deteccion tiene que ver un `self.after` --------
@@ -25880,25 +25978,96 @@ def test_ninguna_vista_programa_after_a_mano():
     # guard cuyo mensaje no se puede imprimir es un guard sin diagnostico: los
     # mutantes F1/F1b del ciclo 2XO "murieron" por el NameError, que no dice
     # nada del defecto. El nombre va en el mensaje a proposito, como en el otro.
+    #
+    # TASK-079 (R4b): el detector de abajo comparaba `module.split('.')[0]`, o
+    # sea el PRIMER SEGMENTO. Con la forma de import que escribe este repo
+    # --`from woptimizer.services import process_service`-- eso vale
+    # "woptimizer", que no esta en la lista de prohibidos: la puerta podia
+    # importar `services` y la suite pasaba en verde. La lista esta escrita en
+    # modulos de primer nivel y el codigo escribe rutas con prefijo de paquete,
+    # o sea que el guard no vigilaba la forma que el repo usa. El "killed" que
+    # TASK-078 dio a `F1b` fue FALSO por esto: murio por el `NameError` del
+    # typo y el defecto de fondo nunca estuvo cerrado.
+    RAICES_PROHIBIDAS_TK = {"psutil", "json", "subprocess", "customtkinter",
+                            "tkinter", "services", "models"}
+    IMPORTES_DE_SERVICIO_TK = ("woptimizer.services", "woptimizer.models")
+
+    def _modulos_de(arbol):
+        """Los modulos importados con la RUTA COMPLETA, no su primer segmento.
+
+        Se anade tambien `modulo.alias`: `from woptimizer import services`
+        declara `services` como submodule de `woptimizer`, y sin esa segunda
+        entrada el mismo agujero vuelve por la puerta de al lado.
+        """
+        modulos = set()
+        for nodo in ast.walk(arbol):
+            if isinstance(nodo, ast.Import):
+                modulos.update(a.name for a in nodo.names)
+            elif isinstance(nodo, ast.ImportFrom) and nodo.module:
+                modulos.add(nodo.module)
+                modulos.update(f"{nodo.module}.{a.name}" for a in nodo.names)
+        return modulos
+
+    def _importa_prohibido(modulo):
+        """El modulo (o cualquier submodulo suyo) rompe la frontera de capas."""
+        if modulo.split(".")[0] in RAICES_PROHIBIDAS_TK:
+            return True
+        return any(modulo == p or modulo.startswith(p + ".") for p in IMPORTES_DE_SERVICIO_TK)
+
     ruta_tk = os.path.join(raiz_repo, "src", "woptimizer", "ui", "tk_thread.py")
     with open(ruta_tk, "r", encoding="utf-8") as fh:
         arbol_tk = ast.parse(fh.read(), "tk_thread.py")
-    importados = set()
-    for nodo in ast.walk(arbol_tk):
-        if isinstance(nodo, ast.Import):
-            importados.update(a.name.split(".")[0] for a in nodo.names)
-        elif isinstance(nodo, ast.ImportFrom) and nodo.module:
-            importados.add(nodo.module.split(".")[0])
-    prohibido_tk = importados & {"psutil", "json", "subprocess", "services",
-                                 "models", "customtkinter", "tkinter"}
+    importados = _modulos_de(arbol_tk)
+    prohibido_tk = sorted(m for m in importados if _importa_prohibido(m))
     assert not prohibido_tk, (
-        f"ui/tk_thread.py viola la frontera de capas: importa {sorted(prohibido_tk)}. "
+        f"ui/tk_thread.py viola la frontera de capas: importa {prohibido_tk}. "
         "La logica de publicar en el bucle es UI pura: solo llama a un metodo "
         "del widget que recibe"
     )
     assert "typing" in importados, (
         f"se esperaba `typing` y no aparece; los imports reales son {sorted(importados)}"
     )
+
+    # -- CONTRAPRUESTA (R4b): el detector ve la FORMA de import del repo ----
+    # La contraprueba de mas arriba era del `self.after`, no de esta lista: con
+    # el listillo viejo, meter `from woptimizer.services import
+    # process_service` en `tk_thread.py` salia en verde (mutante R4b, medido).
+    # Un guard que nadie ha mutado no prueba nada, asi que las TRES formas que
+    # el repo escribe tienen que marcar, y las dos que se permiten, no.
+    for etiqueta_control, fuente_control, esperados_control in (
+        ("PREFIXO-SERVICES",
+         "from typing import Any\n"
+         "from woptimizer.services import process_service\n",
+         {"woptimizer.services", "woptimizer.services.process_service"}),
+        ("PREFIXO-MODELS",
+         "import woptimizer.models\n",
+         {"woptimizer.models"}),
+        ("SUBMODULO-EN-IMPORT",
+         "from woptimizer import services\n",
+         {"woptimizer.services"}),
+        ("RAIZ", "import psutil\n", {"psutil"}),
+        ("SIN-PREFIXO", "from services import process_service\n", {"services"}),
+    ):
+        marcados = sorted(m for m in _modulos_de(ast.parse(fuente_control))
+                          if _importa_prohibido(m))
+        assert esperados_control.issubset(set(marcados)), (
+            f"CONTROL-{etiqueta_control}: el detector no marca {sorted(esperados_control)} "
+            f"y solo ve {marcados}. Con el primer segmento como criterio, "
+            "`from woptimizer.services import process_service` pasaba en verde"
+        )
+    assert sorted(m for m in _modulos_de(ast.parse("from typing import Any\n")) if _importa_prohibido(m)) == [], (
+        "el detector marca de mas: `typing` es lo UNICO que la puerta puede "
+        "importar sin dejar de ser UI pura"
+    )
+
+    # -- Y POR QUE el guard de `confirmation.py` (`:1851-1853`) NO se toca ---
+    # El de `confirmation.py` hace lo mismo con `split('.')[0]`, pero lleva
+    # `"woptimizer"` en la lista de prohibidos: ahi la comparacion es a proposito
+    # mas gruesa, porque ese fichero es una maquina de estado que no debe
+    # depender de NADA del paquete (importa su hermano por ruta RELATIVA,
+    # `from .tk_thread import ...`, que da "tk_thread" y no choca). Ese guard ve
+    # `from woptimizer.services import ...` y `from .services import ...`; no
+    # tiene el agujero que R4b midio en este. Se documenta, no se cambia.
 
     print("test_ninguna_vista_programa_after_a_mano OK.")
 
