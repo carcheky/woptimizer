@@ -24,8 +24,18 @@
 # este repo en LF y en CRLF da SALIDA y CODIGO DE SALIDA IDENTICOS byte a byte en
 # 6 escenarios, incluidos `if errorlevel 1 (` multilinea, `if exist (...) else
 # (...)`, `goto :label` y el caso duro de la ULTIMA LINEA SIN salto terminador --
-# `build.bat` no acaba en `0x0A`, su ultimo byte es `0x30`. Un `.bat` en LF en
-# este host funciona.
+# `build.bat` no acaba en `0x0A`, su ultimo byte es `0x31`, el `1` de su ultimo
+# `exit /b 1`. Un `.bat` en LF en este host funciona.
+#
+# Y POR QUE el digito de ahi arriba esta DERIVADO y no escrito a mano: lo estuvo,
+# y mentia. Decia `0x30`, que era cierto del `.bat` ANTERIOR (terminaba en
+# `exit /b 0`); el arreglo de TASK-077 anadio una linea al final, movio el ultimo
+# byte, y el documento siguió citando el viejo. Un dato derivado escrito a mano es
+# el mismo defecto que D2 de STATUS.md, aqui sobre un byte. Lo vigila
+# `test_la_cita_del_ultimo_byte_de_build_bat_no_se_caduca`, que extrae el digito
+# de estas lineas y lo COMPARA con el byte real del fichero, asi que si alguien
+# anade una linea al `.bat` el guard se pone rojo en vez de dejar el texto
+# mintiendo en silencio.
 #
 # Se declaran CRLF por CONVENCION NATIVA y por DETERMINISMO DEL ARBOL: asi el
 # arbol de trabajo de Windows es siempre el nativo, sin depender de como lo hizo
