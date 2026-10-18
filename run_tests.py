@@ -20131,6 +20131,617 @@ def test_la_paridad_gana_al_repo_invalido_en_los_dos_modos():
           "entero + repo roto da 3 en los dos.")
 
 
+# --- TASK-077: guard de politica EOL, armado sobre BYTES -------------------------
+#
+# MEDIDO (arquitecto, ciclo 66) lo que este guard NO puede ser: una asercion
+# basada en `git ls-files --eol`. En CI, `actions/checkout` hace un checkout
+# fresco que APLICA los atributos, luego ese comando reporta `w/crlf` este sano
+# o no el repo. No es un falso rojo: es un VERDE FALSO, que es la direccion
+# peligrosa. Por eso `.gitattributes` se lee como TEXTO (no es YAML: cero
+# PyYAML, que `pyproject.toml:15-19` no trae) y los bytes se leen del disco.
+#
+# El evaluador se separa del test para que la CONTRAPRUESTA pueda darle otra
+# raiz: sin esa separacion, F3.2 solo podria repetir el sujeto y no medir nada.
+_EXT_SCRIPT_DE_CONSOLA = (".bat", ".cmd", ".ps1")
+# Extensiones que Windows ejecuta como script de consola y que por eso son las
+# que la politica del repo declara al reves. Sale de la lista, no del repo: si
+# se derivara del repo, borrar el ultimo `.bat` dejaria el bucle vacio.
+#
+# Directorios que el recorrido EXCLUYE, y el motivo de cada uno (MEDIDO el
+# 2026-10-18 al escribir este guard, y el primero no es una hipotesis):
+#
+# * `basura` es la **cuarentena del dueno**: `.gitignore:75-79` dice que ahi se
+#   mueve lo que sobra "para que el DUEÑO lo borre de una vez" y que esta
+#   "FUERA DEL INDICE A PROPOSITO: si se versionara, 'borrar la basura' seria
+#   otro commit". Ahi hay un `commit_version.bat` en **LF puro** (55 LF, 0 CR)
+#   y es CORRECTO que lo este: la politica EOL gobierna lo que el repo
+#   **contiene**, y `basura/` no lo contiene. Sin esta exclusion el guard daba
+#   rojo por un fichero que nadie ha pedido versionar jamas, y un guard que
+#   grita por eso deja de que lo escuchen.
+# * `docs/archive` SI se versiona, luego NO se excluye. La confusion con
+#   `basura/` es la que hace `_gitignore` por commenting el uno contra el otro.
+_DIRECTORIOS_FUERA_DE_LA_POLITICA = ("basura",)
+
+
+def _reglas_de_effective(raiz):
+    """`(patron, eol)` de `.gitattributes`, en ORDEN de declaracion.
+
+    Se lee como texto plano y con la MISMA precedencia que git: **gana la ultima
+    regla que casa**, no la primera. Sin esa regla el resolvedor no seria el de
+    git y un `.bat` re-declarado al final pasaria por la regla general.
+    """
+    ruta = os.path.join(raiz, ".gitattributes")
+    with open(ruta, encoding="utf-8") as fh:
+        lineas = fh.read().splitlines()
+    reglas = []
+    for num, linea in enumerate(lineas, 1):
+        limpia = linea.strip()
+        if not limpia or limpia.startswith("#"):
+            continue
+        partes = limpia.split()
+        patron, atributos = partes[0], partes[1:]
+        eol = None
+        for atributo in atributos:
+            if atributo.startswith("eol="):
+                eol = atributo[len("eol="):]
+        reglas.append((patron, eol, num))
+    return reglas
+
+
+def _eol_efectivo_de(nombre, reglas):
+    """El `eol` que git aplica a `nombre`, o `None` si ninguna regla lo fija."""
+    eol = None
+    import fnmatch
+    for patron, valor, _num in reglas:
+        if fnmatch.fnmatch(nombre, patron):
+            eol = valor
+    return eol
+
+
+def _fallos_de_politica_eol(raiz):
+    """Los fallos de la politica EOL en `raiz`, como lista de mensajes.
+
+    Vacio significa "cumplida". Las TRES afirmaciones, y por que cada una esta:
+
+    * **cobertura**: toda extension de script de consola PRESENTE en el arbol
+      tiene que tener regla efectiva `crlf`. Sin mirar el contenido: es la
+      pregunta "¿la politica declara esto?", y por eso el mutante `E1` (borrar
+      `*.bat text eol=crlf`) muere aqui y no en la comprobacion de bytes.
+    * **conjunto no vacio**: si no hay NINGUN script de consola en el arbol, el
+      recorrido de arriba no mira nada y sale limpio sin haber medido. Se exige
+      que el conjunto presente no sea vacio.
+    * **bytes**: el fichero tiene que LLEVAR `\r\n` y no tener NI UN `\n`
+      suelto. Es la mitad que hace discriminante al test hoy: `build.bat` estava
+      en LF puro, con 39 `\n` y 0 `\r`.
+    * **normalizado sin CR**: `datos.replace(b"\\r\\n", b"")` no puede conservar
+      ni un `0x0D`. Caza la clase `3012c48` (CR duro a media linea), que es
+      ruido de EOL que el filtro `clean` no normaliza.
+    """
+    fallos = []
+    reglas = _reglas_de_effective(raiz)
+
+    presentes = {}
+    for dirpath, dirnames, filenames in os.walk(raiz):
+        # `.git` es un FICHERO (apunta al repo desacoplado) pero un clon lo
+        # tiene como directorio: se salta igual, y `__pycache__`/`dist`/`build`
+        # para que un `.bat` de una build no contamine el veredicto del repo.
+        # `basura/` es la cuarentena del dueno: FUERA del indice a proposito
+        # (`.gitignore:75-79`), luego lo que hay ahi no lo gobierna la politica
+        # del repo y un `.bat` en LF dentro de ella esta bien.
+        saltados = (".git", "__pycache__", "dist", "build")
+        saltados += _DIRECTORIOS_FUERA_DE_LA_POLITICA
+        dirnames[:] = [d for d in dirnames if d not in saltados]
+        for nombre in filenames:
+            if nombre.lower().endswith(_EXT_SCRIPT_DE_CONSOLA):
+                presentes[nombre] = os.path.join(dirpath, nombre)
+
+    for nombre in sorted(presentes):
+        efectivo = _eol_efectivo_de(nombre, reglas)
+        if efectivo != "crlf":
+            fallos.append(
+                f"cobertura: {nombre} esta presente y su regla efectiva es "
+                f"{efectivo!r}, no 'crlf'")
+            # Sin cobertura declarada no se puede exigir CRLF a los bytes: se
+            # sigue al siguiente, o el mensaje seria doble y mas dificil de leer.
+            continue
+        with open(presentes[nombre], "rb") as fh:
+            datos = fh.read()
+        if not datos:
+            fallos.append(f"bytes: {nombre} esta vacio, no hay EOL que medir")
+            continue
+        if b"\r\n" not in datos:
+            fallos.append(
+                f"bytes: {nombre} no tiene ni un CRLF (tiene "
+                f"{datos.count(b'\n')} LF y {datos.count(b'\r')} CR)")
+        sueltos = datos.replace(b"\r\n", b"").count(b"\n")
+        if sueltos:
+            fallos.append(
+                f"bytes: {nombre} tiene {sueltos} LF SUELTOS (sin CR antecedente)")
+        if datos.replace(b"\r\n", b"").count(b"\r"):
+            fallos.append(
+                f"normalizado: {nombre} conserva un CR DURO tras normalizar "
+                f"(\\r\\n -> \\n no lo quita): es la clase 3012c48")
+    return fallos
+
+
+def _fallos_de_politica_eol_de_la_raiz(raiz):
+    """.gitattributes tiene que EXISTIR y declarar una regla base `lf`.
+
+    El resolvedor de arriba, con el `.gitattributes` ausente, devolveria `None`
+    para todo y `fallos` saldria con un mensaje de cobertura por fichero: verde
+    falso con forma de fallo de cobertura, que es peor que un rojo. Se separa
+    para que esa degradacion se vea COMO ES.
+    """
+    ruta = os.path.join(raiz, ".gitattributes")
+    assert os.path.exists(ruta), (
+        f"{raiz} no tiene `.gitattributes`: la politica EOL no se hereda del host, "
+        "se DECLARA (TASK-069). Sin el fichero este guard no puede medir nada")
+    base = _eol_efectivo_de("cualquiera.txt", _reglas_de_effective(raiz))
+    assert base == "lf", (
+        f"la regla base de `.gitattributes` deriva a {base!r} y tiene que ser "
+        "'lf': el indice guarda LF para que el arbol no dependa de la maquina")
+    return _fallos_de_politica_eol(raiz)
+
+
+def test_la_politica_eol_cubre_todo_script_de_consola_que_existe():
+    """TASK-077 AC-1: la politica EOL cubre lo que HAY, sobre BYTES.
+
+    MEDIDO antes de este test: `build.bat` estaba en LF puro en el arbol de esta
+    maquina -- 39 `\n` y 0 `\r` -- pese a que su regla efectiva es `eol=crlf`.
+    Un editor lo guarda asi una vez y el cambio es invisible para `git status` y
+    para `add -A` (el filtro `clean` normaliza CRLF->LF y el blob resultante es el
+    MISMO objeto del indice), o sea que se pierde en el proximo checkout sin que
+    nadie lo decida. Este guard es el que se encarga de que eso no vuelva.
+
+    **Por que NO se apoya en `git ls-files --eol`.** MEDIDO por el arquitecto:
+    en CI, `actions/checkout` aplica los atributos en el checkout fresco, asi
+    que ese comando reportaria `w/crlf` este sano o no el repo. Eso no es un
+    falso rojo, es un **verde falso**: el guard pasaria con el repo roto. Aqui
+    se leen BYTES, que es lo unico que no depende de como hizo el runner su
+    checkout.
+
+    **Por que (c) discrimina HOY:** `b"\\r\\n" not in datos` es cierto para el
+    `build.bat` sin corregir, y el fallo dice "no tiene ni un CRLF", no "no se
+    encontro el fichero". Con F1 aplicado pasa.
+
+    **Y lo que el guard EXCLUYE, con su motivo.** `basura/` queda fuera porque
+    `.gitignore:75-79` la declara cuarentena del dueno **fuera del indice a
+    proposito**: hay ahi un `commit_version.bat` en LF puro y esta BIEN que lo
+    este, porque la politica gobierna lo que el repo contiene. La exclusion se
+    **ancla al fichero** (`basura/` tiene que seguir en `.gitignore`), no a una
+    lista escrita aqui: una lista que nadie contrasta es una lista que un dia
+    excluye de mas sin que nadie lo note.
+    """
+    print("Probando que la politica EOL cubre los scripts de consola que existen...")
+    raiz = os.path.dirname(os.path.abspath(__file__))
+
+    presentes = [n for n in os.listdir(raiz) if n.lower().endswith(_EXT_SCRIPT_DE_CONSOLA)]
+    assert presentes, (
+        "el arbol de trabajo no tiene NINGUN script de consola ("
+        f"{', '.join(_EXT_SCRIPT_DE_CONSOLA)}): el bucle de este guard no miraria "
+        "nada y pasaria sin haber medido. Se exige que el conjunto PRESENTE no "
+        "sea vacio, porque sin esta segunda mitad borrar el ultimo `.bat` "
+        "dejaria el test en verde")
+    assert "build.bat" in presentes, (
+        f"los scripts de consola presentes son {presentes} y `build.bat` no esta: "
+        "es el que la politica declara en CRLF y el que esta chamber mide. Sin el "
+        "la afirmacion sobre bytes no tiene sujeto")
+
+    # La EXCLUSION se ancla al fichero, no a una constante escrita aqui. Sin
+    # esto, `basura/` podria dejar de estar en `.gitignore` (y sus ficheros
+    # empezar a caer dentro de la politica) con la lista de este guard sin
+    # enterarse: una exclusion que no se contrasta es una exclusion ciega.
+    ruta_ignore = os.path.join(raiz, ".gitignore")
+    with open(ruta_ignore, encoding="utf-8") as fh:
+        lineas_ignore = fh.read().splitlines()
+    ignorados = {l.strip() for l in lineas_ignore}
+    for directorio in _DIRECTORIOS_FUERA_DE_LA_POLITICA:
+        assert f"{directorio}/" in ignorados, (
+            f"`{directorio}/` no esta en `.gitignore` pero este guard lo EXCLUYE de "
+            "la politica EOL. O se anade al `.gitignore` (y entonces la exclusion "
+            "tiene motivo), o se saca de `_DIRECTORIOS_FUERA_DE_LA_POLITICA` (y "
+            "entonces sus ficheros tienen que cumplir la politica). Excluir sin "
+            "que el `.gitignore` lo diga es dejar de mirar ficheros sin avisar")
+
+    fallos = _fallos_de_politica_eol_de_la_raiz(raiz)
+    assert not fallos, (
+        "la politica EOL incumple en el arbol de trabajo:\n  - "
+        + "\n  - ".join(fallos)
+        + "\n\nUn `.bat` en LF no rompe `cmd.exe` (MEDIDO: salida y codigo de "
+        "salida identicos en 6 escenarios), pero la politica lo declara al reves "
+        "y sin este guard el incumplimiento se pierde en el checkout en silencio")
+
+
+def test_el_guard_de_eol_rechaza_lo_mismo_que_acepta():
+    """TASK-077 AC-2: CONTRAPRUESTA del guard de EOL, en camara de `%TEMP%`.
+
+    Es la cuarta vez en este repo que aparece el patron "una comprobacion sin
+    contraprueba no es una comprobacion" (ciclos 60 y 62). Sin este test, el
+    anterior se puede vaciar entero: un evaluador que devolviera `fallos == []`
+    SIEMPRE daria OK en los tres escenarios de abajo y `F3.1` seguiria verde.
+
+    Camara en `%TEMP%` con el `.gitattributes` REAL y scripts sinteticos:
+
+    | escenario | exigido |
+    |---|---|
+    | `.bat` con CRLF | el evaluador dice **OK** |
+    | `.bat` con LF | el evaluador dice **FAIL** |
+    | regla `*.bat` borrada, `.bat` presente | **FAIL** por cobertura |
+
+    El tercero es el que distingue "no hay regla" de "hay bytes malos": sin el,
+    un resolvedor que devolviera `crlf` para todo pasaria los dos primeros.
+
+    Sin PyYAML, sin `subprocess` y sin ventana: `.gitattributes` se copia como
+    TEXTO y los `.bat` se escriben con `open(..., "wb")`, que es lo unico que
+    puede fijar un `\r\n` de verdad.
+    """
+    print("Probando que el guard de EOL rechaza lo mismo que acepta...")
+    import shutil
+
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    tmp = tempfile.mkdtemp(prefix="wopt_t077_eol_")
+    try:
+        # Escenario 1 y 2: MISMO `.gitattributes`, dos `.bat` con bytes distintos.
+        for etiqueta, eol in (("ok", b"\r\n"), ("mal", b"\n")):
+            sub = os.path.join(tmp, etiqueta)
+            os.makedirs(sub)
+            shutil.copyfile(os.path.join(raiz, ".gitattributes"),
+                            os.path.join(sub, ".gitattributes"))
+            with open(os.path.join(sub, f"{etiqueta}.bat"), "wb") as fh:
+                fh.write(b"@echo off" + eol + b"REM hola" + eol)
+
+        veredicto_ok = _fallos_de_politica_eol_de_la_raiz(os.path.join(tmp, "ok"))
+        assert not veredicto_ok, (
+            f"un `.bat` en CRLF con la regla `*.bat text eol=crlf` presente tiene "
+            f"que dar OK y el evaluador dio {veredicto_ok!r}. Un guard que "
+            "rechaza lo que la politica acepta esta midiendo otra cosa")
+
+        veredicto_mal = _fallos_de_politica_eol_de_la_raiz(os.path.join(tmp, "mal"))
+        assert veredicto_mal, (
+            "un `.bat` en LF tiene que dar FAIL y el evaluador dio OK. Un "
+            "evaluador que devolviera la lista vacia SIEMPRE pasaria las dos "
+            "aserciones de este test, y el guard de la politica no mediria nada")
+
+        # El mensaje nombra la VIOLACION REAL y no una regla de estilo: el que
+        # recibe el fallo tiene que saber que arreglar.
+        assert any("CRLF" in m or "sueltos" in m for m in veredicto_mal), (
+            f"el fallo del `.bat` en LF tiene que hablar de los BYTES y no de la "
+            f"cobertura, y el evaluador dio: {veredicto_mal!r}")
+
+        # Escenario 3: la MISMA camara con la regla `*.bat` BORRADA del
+        # `.gitattributes`. El `.bat` sigue en CRLF, luego los bytes estan bien:
+        # si esto pasara, el guard no miraria la politica.
+        sub3 = os.path.join(tmp, "sin_regla")
+        os.makedirs(sub3)
+        shutil.copyfile(os.path.join(raiz, ".gitattributes"),
+                        os.path.join(sub3, ".gitattributes"))
+        ruta_attr = os.path.join(sub3, ".gitattributes")
+        with open(ruta_attr, encoding="utf-8") as fh:
+            lineas = fh.read().splitlines()
+        sin_regla = [l for l in lineas
+                     if not l.strip().startswith("*.bat ")]
+        assert len(sin_regla) < len(lineas), (
+            "no se encontro ninguna linea `*.bat ...` en el `.gitattributes` REAL "
+            "que borrar: el escenario 3 no probaria nada, seria el mismo 1")
+        with open(ruta_attr, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(sin_regla) + "\n")
+        with open(os.path.join(sub3, "presente.bat"), "wb") as fh:
+            fh.write(b"@echo off\r\nREM hola\r\n")
+
+        veredicto_sin_regla = _fallos_de_politica_eol_de_la_raiz(sub3)
+        assert veredicto_sin_regla, (
+            "con la regla `*.bat` borrada y un `.bat` PRESENTE, el `.gitattributes` "
+            "real se lo hereda de `* text=auto eol=lf`: tiene que dar FAIL. Si da "
+            "OK, el guard no mira la politica sino solo los bytes")
+        assert any("cobertura" in m for m in veredicto_sin_regla), (
+            f"el escenario 3 tiene que morir por la COBERTURA (no tener regla "
+            f"crlf efectiva), y el evaluador dio: {veredicto_sin_regla!r}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _dibujar_stub_de_python(camara, exit_code, crea_exe):
+    """El stub `python.cmd` en `%PATH%`, y SOLO el stub.
+
+    MEDIDO el 2026-10-18: la primera version de este helper copiaba tambien el
+    `build.bat` real, y al reutilizarlo desde la contraprueba **pisaba el
+    mutante con el fichero sano**. La contraprueba daba verde por el motivo
+    equivocado y este comentario existe para que el helper siga siendo solo
+    lo que su nombre dice.
+
+    El stub decide sin PyInstaller: sale con `exit_code` si se le pide
+    compilar, y crea `dist\\woptimizer.exe` si `crea_exe`. Va en `%PATH%` POR
+    DELANTE, asi que el `python` que ve el `.bat` es este y no el del host.
+
+    Sin esto no habria forma de decidir el resultado sin PyInstaller instalado
+    ni red, que es lo que hace la camara ejecutable en cualquier host.
+    """
+    stub_dir = os.path.join(camara, "stub")
+    os.makedirs(stub_dir, exist_ok=True)
+    with open(os.path.join(stub_dir, "python.cmd"), "wb") as fh:
+        fh.write((
+            "@echo off\r\n"
+            "REM Stub de TASK-077: decide el resultado sin PyInstaller.\r\n"
+            "echo %* | findstr /C:\"PyInstaller\" >nul\r\n"
+            "if not errorlevel 1 exit /b 0\r\n"
+            f"if \"%WOPT_FALLA%\"==\"1\" exit /b {exit_code}\r\n"
+            "if \"%WOPT_CREA_EXE%\"==\"1\" (\r\n"
+            "  if not exist dist mkdir dist\r\n"
+            "  echo stub > dist\\woptimizer.exe\r\n"
+            ")\r\n"
+            "exit /b 0\r\n"
+        ).encode("ascii"))
+    return stub_dir
+
+
+def _dibujar_build_bat(camara, exit_code, crea_exe):
+    """`build.bat` REAL en `camara` + el stub de `python`. Devuelve el stub.
+
+    Se parte en DOS porque la contraprueba necesita el stub SIN que el
+    `build.bat` real le pise encima el mutante que acaba de escribir.
+    """
+    import shutil
+
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    shutil.copyfile(os.path.join(raiz, "build.bat"), os.path.join(camara, "build.bat"))
+    return _dibujar_stub_de_python(camara, exit_code, crea_exe)
+
+
+def _correr_build_bat(camara, stub_dir, falla, crea_exe):
+    """El codigo de salida REAL de `build.bat`, con `python` stubbeado.
+
+    `cmd /c` porque es lo que ejecuta un `.bat` de verdad. `stdin` se manda a
+    `NUL` a proposito: `build.bat:17` tiene un `pause`, y sin esto la camara se
+    queda esperando teclado en el paso 1.
+    """
+    import subprocess
+
+    env = os.environ.copy()
+    env["PATH"] = stub_dir + os.pathsep + env.get("PATH", "")
+    env["WOPT_FALLA"] = "1" if falla else "0"
+    env["WOPT_CREA_EXE"] = "1" if crea_exe else "0"
+    r = subprocess.run(["cmd", "/c", "build.bat"], cwd=camara, env=env,
+                       stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=180)
+    return r
+
+
+def test_build_bat_propaga_el_codigo_de_salida_de_force_build():
+    """TASK-077 AC-3 (S3 de STATUS.md): `build.bat` sale con el codigo de fallo.
+
+    MEDIDO de extremo a extremo antes de este test: con `force_build.py` exiting
+    con 7, `build.bat` salia con **0**. La causa era DOBLE, y las dos se
+    midieron con una matriz de 5 celdas ejecutando `cmd.exe` de verdad:
+
+    1. **`call` ausente en el paso 1.** MEDIDO: si `python` resuelve a un
+       `.cmd`/`.bat` (un shim en `%PATH%`, o el `python.bat` de una
+       instalacion vieja), ese `.cmd` **secuestra el control** y todo lo que
+       viene debajo no se ejecuta nunca. Sin `call` ahi, la matriz da
+       `rc=0` y **nunca llega a `Construyendo...`**: el `.bat` se quedaba
+       parado en el paso 1 y salia con 0. Compilar era un espejismo.
+    2. **`call` ausente en el paso 3.** MEDIDO: sin el, la compilacion si se
+       intenta, pero el `rc` que sale es el del **shim**, no el propagado por
+       la etiqueta `:fallo`: el `.bat` nunca imprime su mensaje de fallo. Con
+       los dos `call` la matriz da 7 / 7 / 0 / 0 / 0 con los mensajes
+       correctos; sin ellos, el 0 era un accidente del shim.
+
+    El cierre era ademas un `exit /b 0` incondicional, sin propagar nada. Con
+    los dos `call` y la etiqueta `:fallo`, las celdas de esta camara dan lo
+    que tienen que dar. Un `.exe` roto salia por aqui y **no por CI**:
+    `release.yml` si propaga, porque el runner anade `exit $LASTEXITCODE` al
+    `pwsh`. O sea que **el build local mentia y el de GitHub no**.
+
+    La camara ejecuta el `.bat` REAL de este repo con un stub de `python` que
+    decide el resultado, y afirma sobre el **codigo de salida**, no sobre su
+    texto: un `.bat` que propagase `errorlevel` pero cerrara con `exit /b 0`
+    seguiria dando 0 y esta asercion lo mata.
+
+    **Por que discrimina:** el mutante `S1` (volver a `exit /b 0`
+    incondicional) deja la camara en 0 donde se exige 7. Y el mutante `S3`
+    (borrar el `if errorlevel 1` del paso 1) hace que un PyInstaller ausente
+    llegue hasta el final con 0.
+    """
+    print("Probando que build.bat propaga el codigo de salida de force_build...")
+    import shutil
+
+    raiz = os.path.dirname(os.path.abspath(__file__))
+
+    # Celda A: PyInstaller presente, compilacion que sale con 7. Sujeto.
+    tmp_a = tempfile.mkdtemp(prefix="wopt_t077_build_falla_")
+    try:
+        stub = _dibujar_build_bat(tmp_a, exit_code=7, crea_exe=False)
+        r = _correr_build_bat(tmp_a, stub, falla=True, crea_exe=False)
+        assert r.returncode == 7, (
+            f"`force_build.py` sale con 7 y `build.bat` tiene que devolver 7; "
+            f"devolvio {r.returncode}. Un `.bat` que devuelve 0 cuando la "
+            "compilacion fallo es exactamente el bug (S3 de STATUS.md): el "
+            f".exe roto sale por aqui.\n--- stdout ---\n{r.stdout}\n"
+            f"--- stderr ---\n{r.stderr}")
+        assert "EXITO" not in r.stdout, (
+            "`build.bat` ha anunciado EXITO con la compilacion fallida:\n"
+            f"{r.stdout}")
+    finally:
+        shutil.rmtree(tmp_a, ignore_errors=True)
+
+    # Celda B: compilacion que sale con 0 pero NO crea el `.exe`. Sin esta,
+    # un `build.bat` que devolviera != 0 SIEMPRE pasaria la celda A sin medir
+    # nada: es el CONTROL, y no repite el sujeto.
+    tmp_b = tempfile.mkdtemp(prefix="wopt_t077_build_sin_exe_")
+    try:
+        stub = _dibujar_build_bat(tmp_b, exit_code=7, crea_exe=False)
+        r = _correr_build_bat(tmp_b, stub, falla=False, crea_exe=False)
+        assert r.returncode != 0, (
+            "`force_build.py` sale con 0 pero no deja `dist\\woptimizer.exe`, y "
+            "`build.bat` tiene que fallar tambien: devolver 0 aqui es la misma "
+            "mentira por el otro lado (el `.exe` no existe y el `.bat` dice que "
+            f"si). Devolvio {r.returncode}.\n--- stdout ---\n{r.stdout}")
+    finally:
+        shutil.rmtree(tmp_b, ignore_errors=True)
+
+    # Celda C: compilacion correcta con `.exe`. La otra celda del control: sin
+    # ella, un `build.bat` que propagase el fallo pero no supiera decir "ya
+    # esta bien" seria indistinguible de uno correcto.
+    tmp_c = tempfile.mkdtemp(prefix="wopt_t077_build_ok_")
+    try:
+        stub = _dibujar_build_bat(tmp_c, exit_code=7, crea_exe=True)
+        r = _correr_build_bat(tmp_c, stub, falla=False, crea_exe=True)
+        assert r.returncode == 0, (
+            "una compilacion correcta tiene que salir con 0 y salio con "
+            f"{r.returncode}. Un `.bat` que propagase tambien el EXITO seria "
+            f"inviable.\n--- stdout ---\n{r.stdout}")
+    finally:
+        shutil.rmtree(tmp_c, ignore_errors=True)
+
+    # Celda D (mutante S3): PyInstaller AUSENTE tiene que dar != 0. El stub sale
+    # con 1 SIEMPRE, o sea que falla la IMPORTACION del paso 1 y no la
+    # compilacion: es la otra mitad del contrato, la que el paso 1 existe para
+    # proteger y la que el `if errorlevel 1` de la linea 14 sigue protegiendo.
+    tmp_d = tempfile.mkdtemp(prefix="wopt_t077_build_sin_pyinstaller_")
+    try:
+        stub_otro = os.path.join(tmp_d, "stub")
+        os.makedirs(stub_otro, exist_ok=True)
+        shutil.copyfile(os.path.join(raiz, "build.bat"),
+                        os.path.join(tmp_d, "build.bat"))
+        with open(os.path.join(stub_otro, "python.cmd"), "wb") as fh:
+            fh.write(b"@echo off\r\nREM PyInstaller ausente.\r\nexit /b 1\r\n")
+        env = os.environ.copy()
+        env["PATH"] = stub_otro + os.pathsep + env.get("PATH", "")
+        import subprocess as _sp
+        r = _sp.run(["cmd", "/c", "build.bat"], cwd=tmp_d, env=env,
+                    stdin=_sp.DEVNULL, capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=180)
+        assert r.returncode != 0, (
+            "sin PyInstaller, `build.bat` tiene que salir con != 0 y salio con "
+            f"{r.returncode}: el `if errorlevel 1` del paso 1 no esta propagando "
+            f"(mutante S3).\n--- stdout ---\n{r.stdout}")
+    finally:
+        shutil.rmtree(tmp_d, ignore_errors=True)
+
+    # Celda E: los DOS `call`. MEDIDO el 2026-10-18 con una matriz de 5 celdas:
+    # `call` NO es cosmetico, y cada uno se mide por su cuenta porque los dos
+    # fallan de forma DISTINTA y solo uno de los dos se ve en el codigo.
+    #
+    # * quitar el `call` del PASO 1 secuestra el control: el `.bat` no llega
+    #   nunca a `Construyendo...` y sale con 0. Se mide por la AUSENCIA de esa
+    #   linea en la salida, porque el rc 0 tambien lo daria un `.bat` sano.
+    # * quitar el `call` del PASO 3 deja que la compilacion se intente, pero el
+    #   rc es el del SHIM y el `.bat` nunca imprime su mensaje de fallo. Se mide
+    #   por la AUSENCIA del mensaje, porque el rc 7 coincide con el sano.
+    #
+    # Las dos se miden por AUSENCIA y no por codigo de salida, y esa es la
+    # parte que no es obvia: quitar el `call` NO cambia el rc del paso 3 (sigue
+    # dando 7, el del shim), luego un guard que solo mirase el rc dejaria
+    # pasar ese mutante. Lo que cambia es QUE SE IMPRIME.
+    for etiqueta, patron, ausente in (
+            ("paso 1", b"call python -c ", "Construyendo..."),
+            ("paso 3", b"call python force_build.py", "Fallo la compilacion")):
+        tmp_e = tempfile.mkdtemp(prefix=f"wopt_t077_build_sin_call_{etiqueta[-1]}_")
+        try:
+            with open(os.path.join(raiz, "build.bat"), "rb") as fh:
+                bat_real = fh.read()
+            sin_call = bat_real.replace(patron, patron.replace(b"call ", b""), 1)
+            assert sin_call != bat_real, (
+                f"`build.bat` no tiene `{patron.decode()}`: la celda del `call` "
+                "del " + etiqueta + " no mediria el `call` sino otra cosa. Si esa "
+                "invocacion cambia de forma, esta afirmacion hay que rehacerla")
+            with open(os.path.join(tmp_e, "build.bat"), "wb") as fh:
+                fh.write(sin_call)
+            # SOLO el stub: `_dibujar_build_bat` volveria a copiar el `build.bat`
+            # REAL encima del mutante y esta celda mediria el fichero sano.
+            stub_e = _dibujar_stub_de_python(tmp_e, exit_code=7, crea_exe=False)
+            r = _correr_build_bat(tmp_e, stub_e, falla=True, crea_exe=False)
+            assert ausente not in r.stdout, (
+                f"sin el `call` del {etiqueta}, `{ausente}` SE IMPRIME y eso "
+                "significa que el shim NO secuestro el control como deberia. Con "
+                "este `call` quitado, la linea no puede aparecer: lo que se mide "
+                f"es que el rc del shim ({r.returncode}) se cuela como si fuera "
+                f"el del `.bat`.\n--- stdout ---\n{r.stdout}")
+        finally:
+            shutil.rmtree(tmp_e, ignore_errors=True)
+
+
+def test_la_camara_de_build_bat_detecta_la_regresion():
+    """TASK-077 AC-4: CONTRAPRUESTA de la camara de `build.bat`.
+
+    Sin este test, `test_build_bat_propaga_...` pasaria con CUALQUIER variante
+    de `build.bat`: una camara que acepta cualquier codigo de salida mide
+    exactamente lo mismo que no medir. Se comprueba sobre una COPIA en `%TEMP%`
+    a la que se le repone el cierre original, `exit /b 0` incondicional: tiene
+    que VOLVER a dar 0.
+
+    **Y lleva su propio CONTROL POSITIVO**, que es lo que la hace morir al
+    mutante `S2` (mutada, esta contraprueba daba verde: una camara que
+    devuelve SIEMPRE 0 cumple "tiene que volver a dar 0" sin medir nada).
+    MEDIDO: sin la celda de al lado, `S2` **sobrevivio**. Con ella, el `.bat`
+    SANO en la MISMA camara y con el MISMO stub tiene que dar 7, y una camara
+    que devuelve 0 siempre muere aqui antes de llegar a la regresion.
+
+    El repositorio no se toca: el mutante vive solo en la camara, se ejecuta ahi
+    y desaparece con ella. Es el mismo motivo por el que el primer test no abre
+    el `build.bat` del repo: la camara es lo que permite mutar en serio.
+    """
+    print("Probando que la camara de build.bat detecta la regresion...")
+    import shutil
+
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(raiz, "build.bat"), "rb") as fh:
+        original = fh.read()
+
+    # La regresion que se repone es el **mutante S1**: el cierre vuelve a ser un
+    # `exit /b 0` incondicional. Se repone sobre el texto REAL del repo, no
+    # reimplementando el `.bat`.
+    #
+    # ⚠️ **Por que NO se quita tambien el `call`** (MEDIDO el 2026-10-18 con la
+    # matriz de 5 celdas): sin `call` en el paso 3 el rc que sale es el del
+    # **shim**, no el del `.bat`, y aqui da 7, no 0. Reponer los dos a la vez
+    # haria que esta contraprueba midiera el secuestro de control en lugar del
+    # cierre. El `call` mide su propia celda (la E del otro test) y esta mide la
+    # del cierre: un mutante por test, que es como se distingue cual de los dos
+    # Falls.
+    regresion = original.replace(
+        b"if not \"%RC%\"==\"0\" exit /b %RC%", b"exit /b 0")
+    assert regresion != original, (
+        "no se encontro la linea `if not \"%RC%\"==\"0\" exit /b %RC%` en el "
+        "`build.bat` REAL: la camara no podria reponer la regresion y este test "
+        "estaria midiendo una reimplementacion, no el fichero del repo")
+
+    # CONTROL POSITIVO, y va PRIMERO. Sin esta celda, el mutante `S2`-- una
+    # camara que devuelve `returncode = 0` SIEMPRE-- sobrevive: cumpliria "la
+    # regresion vuelve a dar 0" sin haber medido nada. Se mide con el `.bat`
+    # SANO, en la misma camara y con el mismo stub, y tiene que dar 7.
+    tmp = tempfile.mkdtemp(prefix="wopt_t077_build_control_")
+    try:
+        with open(os.path.join(tmp, "build.bat"), "wb") as fh:
+            fh.write(original)
+        stub_dir = _dibujar_stub_de_python(tmp, exit_code=7, crea_exe=False)
+        r = _correr_build_bat(tmp, stub_dir, falla=True, crea_exe=False)
+        assert r.returncode == 7, (
+            "el `.bat` SANO, con el mismo stub y en la misma camara, tiene que dar "
+            f"7 y dio {r.returncode}. Sin esta celda una camara que devuelve 0 "
+            "SIEMPRE pasaria la contraprueba de abajo sin medir nada (mutante "
+            f"S2).\n--- stdout ---\n{r.stdout}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t077_build_regresion_")
+    try:
+        with open(os.path.join(tmp, "build.bat"), "wb") as fh:
+            fh.write(regresion)
+        # SOLO el stub: el `.bat` mutado de arriba NO se vuelve a copiar. La
+        # primera version llamaba a `_dibujar_build_bat`, que copiaba el
+        # `build.bat` real encima del mutante y hacia pasar la contraprueba
+        # por el motivo equivocado.
+        stub_dir = _dibujar_stub_de_python(tmp, exit_code=7, crea_exe=False)
+        r = _correr_build_bat(tmp, stub_dir, falla=True, crea_exe=False)
+        assert r.returncode == 0, (
+            "con el cierre de antes (`exit /b 0` incondicional) y la compilacion "
+            f"fallando con 7, `build.bat` tiene que VOLVER a dar 0; dio "
+            f"{r.returncode}. Si no vuelve a 0, la camara del otro test no esta "
+            "midiendo el cierre sino otra cosa, y su verde no significa nada")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_la_puerta_de_paridad_va_despues_de_validar_repo_por_estructura():
     """TASK-074 AC-5: la POSICION de la puerta de paridad, medida con `ast`.
 
@@ -27372,7 +27983,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
 
     **POR QUE ESTE GUARD EXISTE Y POR QUE NO SE PONE EN ROJO.** Cuatro sitios
     citan esas dos lineas POR NUMERO: `validate_docs.py:1429`,
-    `validate_docs.py:1924`, `run_tests.py:22264` y
+    `validate_docs.py:1924`, `run_tests.py:22875` y
     `docs/ai/sandbox-rules.md:1133`, y las cuatro dicen que son las dos filas del
     `0` de la tabla de codigos de salida. MEDIDO: `_declara_el_codigo_sobrecargado`
     (`validate_docs.py:1935`) compila el patron con `re.MULTILINE` sobre el
@@ -27415,7 +28026,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     # numero de una y olvidar las otras tres deja tres mentiras nuevas.
     cita = "sandbox-rules.md:55-56"
     for relativo, numeros in (("validate_docs.py", ("1429", "1924")),
-                              ("run_tests.py", ("22264",)),
+                              ("run_tests.py", ("22875",)),
                               ("docs/ai/sandbox-rules.md", ("1133",))):
         texto = _texto_de(os.path.join(raiz, *relativo.split("/"))).splitlines()
         for numero in numeros:
@@ -28082,4 +28693,23 @@ if __name__ == "__main__":
     # contraprueba no es una comprobacion", ciclos 60 y 62).
     test_la_paridad_gana_al_repo_invalido_en_los_dos_modos()
     test_la_puerta_de_paridad_va_despues_de_validar_repo_por_estructura()
+    # TASK-077: la POLITICA EOL y el CODIGO DE SALIDA de `build.bat`. Suite:
+    # 220 -> 224. Las CUATRO DETRAS del marcador (dos leen BYTES con `rglob` y
+    # `open(..., "wb")`, dos ejecutan `cmd /c` con una camara de `%TEMP%` y un
+    # stub de `python`; ninguna abre ventana), luego el reparto DERIVADO queda en
+    # 155 backend + 69 headless = 224. La cifra es la que midio
+    # `validate_docs.py` con `ast`, no la que se pidio.
+    #
+    # Las dos primeras fijan la politica EOL sobre BYTES y NO sobre
+    # `git ls-files --eol`, que en el checkout de CI daria `w/crlf` este sano o
+    # no el repo: un verde falso. La segunda es la CONTRAPRUESTA de la primera:
+    # sin ella, un evaluador que devolviera la lista de fallos vacia SIEMPRE
+    # pasaria las tres celdas de la camara y el guard no mediria nada.
+    # Las dos ultimas fijan el `exit /b` de `build.bat` (S3 de STATUS.md, el
+    # unico bug real que tenia) y la cuarta es su contraprueba: sin ella, la
+    # camara aceptaria cualquier codigo de salida y mediria lo mismo que nada.
+    test_la_politica_eol_cubre_todo_script_de_consola_que_existe()          # AC-1
+    test_el_guard_de_eol_rechaza_lo_mismo_que_acepta()                      # AC-2
+    test_build_bat_propaga_el_codigo_de_salida_de_force_build()             # AC-3
+    test_la_camara_de_build_bat_detecta_la_regresion()                      # AC-4
     print("\nALL TESTS PASSED.")

@@ -16,13 +16,39 @@
 # hubiera politica, y con este fichero dejan de hacerlo.
 #
 # `eol=lf` es la parte que importa en Windows: el indice guarda LF y el arbol de
-# trabajo tambien, sin depender de la maquina. Los ficheros que Windows NO
-# tolera en LF se declaran al reves, y son los unicos que deben llevar CRLF.
+# trabajo tambien, sin depender de la maquina. Los scripts de consola se declaran
+# al reves y son los unicos que deben llevar CRLF en el arbol de trabajo.
+#
+# POR QUE ESTAS TRES REGLAS EXISTEN, MEDIDO (TASK-077, ciclo 66): NO porque
+# `cmd.exe` se rompa con LF. Ejecutado de verdad, no supuesto: el `build.bat` de
+# este repo en LF y en CRLF da SALIDA y CODIGO DE SALIDA IDENTICOS byte a byte en
+# 6 escenarios, incluidos `if errorlevel 1 (` multilinea, `if exist (...) else
+# (...)`, `goto :label` y el caso duro de la ULTIMA LINEA SIN salto terminador --
+# `build.bat` no acaba en `0x0A`, su ultimo byte es `0x30`. Un `.bat` en LF en
+# este host funciona.
+#
+# Se declaran CRLF por CONVENCION NATIVA y por DETERMINISMO DEL ARBOL: asi el
+# arbol de trabajo de Windows es siempre el nativo, sin depender de como lo hizo
+# el checkout del runner. No es una regla decorativa que se pueda borrar por
+# falta de fe: la CRONICA DE ESTAS LINEAS es la medida de arriba.
+# Un guard la vigila sobre BYTES (no sobre `git ls-files --eol`, que en un
+# checkout de CI ya aplico los atributos y daria `w/crlf` este sano o no el repo:
+# un verde falso), en `run_tests.py`.
 * text=auto eol=lf
 
 *.bat text eol=crlf
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
+
+# Y POR QUE NO SE ARREGLA CON `git add --renormalize .` (TASK-077, medido):
+# porque `eol=crlf` actua en el CHECKOUT, y `git add` NUNCA escribe en el arbol
+# de trabajo. MEDIDO en un clon desechable con el incumplimiento real presente:
+# `--renormalize` deja 0 ficheros staged y el fichero sigue en LF. Lo que SI
+# re-materializa el arbol es un `git checkout-index` -- y OJO, medido tambien en
+# esta maquina: `-f` a secas NO reescribe un fichero que git considera limpio
+# (el filtro `clean` normaliza CRLF->LF, el resultado coincide con el indice y
+# git no lo toca). La via que funciona es `git checkout-index -f --temp -- <f>`,
+# que deja el contenido exacto en un temporal para sustituirlo encima.
 
 # Binarios, explicitos para que `text=auto` no los pueda tocar.
 *.png binary

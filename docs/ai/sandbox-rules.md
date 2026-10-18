@@ -1600,3 +1600,102 @@ Activarlo exige primero **empujar esos 25 commits** o cambiar el contrato del an
 ambas cosas son **decisión de producto, no de tooling**. Está escrito como **TASK-080**
 y está **BLOQUEADA** por el punto 2.
 
+## Normalizar el EOL del árbol: `checkout-index`, no `--renormalize` (TASK-077)
+
+**MEDIDO el 2026-10-18 en esta máquina, y contradice el encargo original de TASK-077.**
+cuando el árbol de trabajo tiene ficheros que incumplen `.gitattributes`, la forma
+correcta de re-materializarlos tiene **dos trampas**, y las dos se midieron aquí.
+
+**Trampa 1 — `git add --renormalize .` es un no-op absoluto.** `eol=crlf` actúa en el
+**checkout**, y `git add` **nunca escribe en el árbol de trabajo**. En un clon desechable
+con el incumplimiento real presente: **0 ficheros staged** y el fichero sigue en LF
+después del comando. Y el riesgo real es el **opuesto** al temido: el `add -A` del
+wrapper **no puede colar** 37 ficheros de normalización en un commit (el filtro *clean*
+devuelve el mismo objeto que ya está en el índice), y por tanto **el fix correcto no
+genera ningún commit**. Es normalización del árbol, no edición: hay que decirlo antes de
+cerrar el ciclo, no después.
+
+**Trampa 2 — `git checkout-index -f -- <f>` NO reescribe un fichero "limpio".** El
+`-f` fuerza el modo pero **no** la escritura: si git considera el fichero limpio, no lo
+toca. Y aquí es donde está la trampa, porque el filtro `clean` normaliza CRLF→LF, luego
+**el contenido de un `.bat` en CRLF coincide con el blob del índice y git lo da por
+limpio** — precisamente el fichero que hay que arreglar. Medido: pasar la lista
+explícita de los 37 con `-f` a secas los aplicó a **cero** ficheros.
+
+**Lo que sí funciona**, medido en los 38 ficheros de esta máquina:
+
+```python
+# `git checkout-index -f --temp -- <f>` deja el contenido EXACTO que git quiere
+# en un temporal (`<tmp>\t<destino>` en stdout) y devuelve 0. Se sustituye
+# encima con `os.replace`: nunca se borra nada antes de tener el reemplazo.
+r = subprocess.run(["git", "checkout-index", "-f", "--temp", "--", rel],
+                   capture_output=True, text=True)
+temporal, _, destino = r.stdout.strip().splitlines()[-1].partition("\t")
+os.replace(temporal.strip(), destino.strip())
+```
+
+Resultado: de `w/crlf` = 34 y `w/mixed` = 3 a **cero de los dos**, con `build.bat` a
+39 CRLF. `git status --porcelain` y `git diff --cached --stat` **vacíos**: ni el índice
+ni el historial se mueven.
+
+> ⚠️ **Lo que sale es contenido del índice, no una edición.** Cuatro de los ficheros
+> re-materializados están bajo `src/woptimizer/**`, y eso **no es tocar el código**: para
+> ellos `i/lf` significa que lo versionado es LF puro y el checkout reescribe
+> exactamente eso. **Cero commits.** Si un ciclo se planifica como "un commit que
+> normaliza", ese commit no va a existir.
+
+**Y el guard no puede apoyarse en `git ls-files --eol`.** En CI, `actions/checkout`
+hace un checkout fresco que **aplica los atributos**, así que ese comando reportaría
+`w/crlf` **esté sano o no el repo**. No es un falso rojo: es un **verde falso**, que es
+la dirección peligrosa. El guard de EOL (`test_la_politica_eol_cubre_todo_script_de_
+consola_que_existe`) lee **bytes** con `rglob` y `open(..., "rb")`, y **sin PyYAML**
+(`pyproject.toml:15-19` solo trae `pytest` y `pyinstaller`).
+
+**Y `cmd.exe` en este host NO se rompe con LF.** Ejecutado, no supuesto: el `build.bat`
+real en LF y en CRLF da salida y código de salida **idénticos byte a byte** en 6
+escenarios, incluidos `if errorlevel 1 (` multilínea, `if exist (…) else (…)`,
+`goto :label` y la última línea **sin** salto terminador (`build.bat` no acaba en
+`0x0A`: su último byte es `0x30`). Las tres reglas `eol=crlf` se conservan **por
+convención nativa y determinismo del árbol**, no porque el parser falle — y esa frase
+es la que evita que el siguiente las borre por falta de fe.
+
+> ⚠️ **El guard EXCLUYE `basura/`, y lo hace anclado al `.gitignore`.**
+> MEDIDO el 2026-10-18: ahí hay un `commit_version.bat` en **LF puro** y está
+> **bien** que lo esté. `basura/` es la cuarentena del dueño y `.gitignore:75-79` la
+> declara fuera del índice *a propósito*. Un guard que mira el árbol entero se pone
+> rojo por un fichero que nadie ha pedido versionar jamás, y **un guard que grita por
+> eso deja de que lo escuchen**. La exclusión se contrasta contra el `.gitignore` real
+> dentro del propio test: si `basura/` deja de estar ignorado, el test dice que se
+> añada o se saque de la lista, pero nunca deja de mirar en silencio.
+
+### Sin `call`, un `python` shim secuestra `build.bat` (MEDIDO 2026-10-18)
+
+Al escribir la cámara de `build.bat` se midió un **segundo** fallo de `build.bat`, además
+del `exit /b 0` incondicional que ya estaba declarado como S3. Con una matriz de 5
+celdas ejecutando `cmd.exe` de verdad:
+
+| `call` en paso 1 | `call` en paso 3 | rc | ¿llega a `Construyendo...`? |
+|---|---|---|---|
+| sí | sí | **7** | sí |
+| sí | **no** | 7 | sí |
+| **no** | sí | **0** | **no** |
+| **no** | **no** | **0** | **no** |
+
+**Sin `call`, si `python` resuelve a un `.cmd`/`.bat` —un shim en `%PATH%`, o el
+`python.bat` de una instalación vieja— ese `.cmd` SECUESTRA el control** y todo lo que
+viene debajo no se ejecuta nunca: el `.bat` se quedaba parado en el paso 1 y salía con
+**0**. Compilar era un espejismo, y por eso el rojo llegaba tan tarde.
+
+⚠️ **Los dos `call` se miden por qué línea se imprime, no por el rc**, y esa es la parte
+que no es obvia: quitar el `call` del paso 3 **no cambia el rc** (sigue dando 7, el del
+shim), así que un guard que solo mirase el código dejaría pasar ese mutante. Lo que
+cambia es que el `.bat` **nunca imprime su mensaje de fallo**.
+
+> ⚠️ **Y una cámara puede medir el fichero equivocado.** El helper que dibuja la cámara
+> copiaba también el `build.bat` real, así que al reutilizarlo desde la contraprueba
+> **pisaba el mutante con el fichero sano** y la contraprueba pasaba por el motivo
+> equivocado. Por eso el helper está partido en dos: uno copia el `.bat` y otro solo
+> dibuja el shim. Y por eso la contraprueba lleva **control positivo** (el `.bat` sano
+> tiene que dar 7): sin él, una cámara que devuelve `0` **siempre** sobrevive, y eso se
+> midió.
+
