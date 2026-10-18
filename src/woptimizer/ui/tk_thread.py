@@ -9,13 +9,26 @@ desaparecer la ventana (navegacion, cierre) esa llamada puede reventar con
 diez veces es la deuda que este modulo deja de existir: aqui vive UNA vez.
 
 POR QUE NO HAY SONDA DE EXISTENCIA (medido el 2026-10-18, contra Tk real)
-El guard que se propuso para esto era `try: if self.winfo_exists(): ...`, y es
-CODIGO MUERTO: `winfo_exists()` es una llamada Tcl, y desde un hilo que no es el
-principal se encola igual que `after`. MEDIDO, 1 de 1, **incluso con la ventana
-perfectamente viva**: `RuntimeError: main thread is not in main loop`. El `if` no
-pregunta si existe la vista; lanza la misma excepcion que el guard dice evitar,
-un paso antes. Funciona por accidente (lo traga el `except` de la propia
-comprobacion) y por eso no se puede auditar ni mutar.
+El guard que se propuso para esto era `try: if self.winfo_exists(): ...`, y no
+aporta nada. MEDIDO, 1 de 1: el `RuntimeError: main thread is not in main
+loop` de una llamada Tcl hecha desde un hilo que no es el principal ocurre en
+el mundo SIN bucle principal --root + `update()`, que es el caso de los tests
+headless--; con `mainloop()` vivo NO lanza, y `winfo_exists()` hasta
+discrimina: devuelve 1 con la vista viva y 0 con el widget ya destruido. Una
+version anterior de este docstring afirmaba "incluso con la ventana
+perfectamente viva"; era FALSA, lo reprodujo el `mutation-auditor` del ciclo 62
+contra Tk real, y TASK-078 lo corrigio.
+
+La sonda sigue sin ser la solucion por tres razones, y las tres estan medidas:
+donde el probe pareceria util --el mundo sin bucle-- la consulta lanza
+tambien, luego no decide nada; donde la consulta funciona --`mainloop()` vivo--
+Tk descarta igual el callback si el widget muere despues, asi que no hay
+carrera posterior que cerrar; y con el probe en medio, un fallo de la propia
+consulta lo traga el `except` de la comprobacion y el callback no se publica
+nunca, en silencio. Preguntar el estado de una llamada Tcl para decidir si se
+hace esa misma llamada Tcl es consultar al sistema por una respuesta que el
+sistema no tiene. El `try/except` alrededor de la PROGRAMACION cubre los dos
+casos con el mismo codigo, y ademas se puede auditar y mutar.
 
 Y la sonda tampoco hacia falta: con `mainloop()` vivo, `after(400)` programado y
 la ventana destruida 150 ms despues, el callback **nunca se ejecuta**. Tk lo
@@ -44,13 +57,21 @@ def publicar_en_bucle(widget: Any, delay_ms: int, callback: Callable[..., Any],
     (`test_los_workers_de_pack_solo_publican_por_after`) puede nombrar.
 
     Sin bucle principal --el caso headless de `run_tests.py`, que usa `update()`
-    y nunca `mainloop()`-- o con la vista ya destruida, `widget.after` lanza y
-    se devuelve `None`. El retorno se distingue de un handle real porque `None`
-    no es un id de Tcl. Las DOS razones del `except`:
+    y nunca `mainloop()`-- `widget.after` lanza y se devuelve `None`. El
+    retorno se distingue de un handle real porque `None` no es un id de Tcl.
+    Las DOS razones del `except`:
 
       * `RuntimeError: main thread is not in main loop`, cuando no hay bucle
         principal: es lo que hacia aparecer el fallo intermitente;
       * `tk.TclError`, si la vista murio entre la decision y la llamada.
+
+    TASK-078: de las dos, la segunda la declara el docstring y ningun test la
+    provoca, asi que `except Exception` y `except RuntimeError` son
+    INDISTINGUIBLES para la suite hoy. Se deja `except Exception` (es lo
+    correcto) y el hueco queda anotado como mutante EQUIVALENTE en
+    `openspec/changes/2026-10-18-tkinter-after-guard/mutation-report.md`, no
+    como un fallo: "arreglar" el codigo para matar ese mutante seria cambiar
+    produccion para tapar una falta de prueba.
 
     NO registra el handle en `Confirmable._timers_ui` a proposito: ese `set` lo
     itera `cancel_on_destroy` en el hilo principal, y mutarlo desde un worker

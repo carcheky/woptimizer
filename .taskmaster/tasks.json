@@ -1657,6 +1657,28 @@
         "build.bat ejecuta correctamente en PowerShell/CMD de Windows."
       ],
       "notes": "Documentado en STATUS.md:161."
+    },
+    {
+      "id": "TASK-078",
+      "title": "Reparar los tres huecos de verificacion de TASK-073 (SV1, SV2, SV3) y el typo del guard",
+      "description": "Reparacion de TESTS, no de codigo: el mutation-auditor del ciclo 62 dio FAIL sobre TASK-073 con 19 mutantes, 14 killed y 5 survived, y verificó por separado que el codigo de PRODUCCION es correcto en todo lo medible. Los tres supervivientes sin cobertura son huecos de GUARD. Informe: openspec/changes/2026-10-18-tkinter-after-guard/mutation-report.md. SV1 (A2a): la puerta de las vistas puede volver a `self.after` sin que nadie lo note; el caso E del test 204 usa un doble vivo donde ambas rutas son identicas y el guard 205 solo abre `views/`, dejando `ui/confirmation.py` sin vigilar. SV2 (D1b): `VISTAS = ()` deja el guard sin observar nada y la suite verde; la contraprueba D1a solo prueba que el detector funciona, no que se le PIDAN ficheros. SV3 (M8a): la rama nueva del guard AST no llega a 4 de los 10 call sites migrados (dashboard_view.py:283, process_manager_view.py:181, :196, :204): publicar a 3000 ms y a un callback inventado pasa los dos guards en verde. Ademas el mensaje del guard de la frontera de `tk_thread.py` (run_tests.py:25543) escribe `proibido_tk` y muere por NameError en vez de AssertionError.",
+      "complexity": "medium",
+      "priority": "high",
+      "status": "completed",
+      "dependencies": [
+        "TASK-073"
+      ],
+      "module": "run_tests.py",
+      "acceptance_criteria": [
+        "SV1: el conjunto que abre el guard incluye `ui/confirmation.py` y comprueba por NOMBRE que `Confirmable._publicar_en_el_bucle` no llama a `self.after` (sin relajar `test_double_tap_guard`, que prohibe cualquier import `woptimizer.*` en ese fichero: `tk_thread.py` se mira LEYENDOLO, no importando).",
+        "SV1: el caso E del test 204 deja de ser un doble vivo y usa un doble que REGISTRA de donde se llama `after`, de modo que una reimplementacion que programe por su cuenta muera por asercion y no por 'no revienta'; con contraprueba del propio predicado.",
+        "SV2: el guard exige que el conjunto de ficheros vigilados NO este vacio y que sea exactamente el esperado (las tres vistas mas `confirmation.py`), de modo que 'cero infracciones sobre cero ficheros' sea distinguible de 'cero infracciones de verdad'.",
+        "SV3: la red del guard AST es EXHAUSTIVA sobre las tres vistas (los 10 call sites migrados entran por la rama de `_publicar_en_el_bucle` con las dos reglas: 0 ms y callback en lista blanca), incluido el inventario de workers de `load_db_async`; NO se resuelve metiendo la puerta en `PERMITIDOS`, que degradaria el guard.",
+        "El mensaje del guard de la frontera de `ui/tk_thread.py` se puede imprimir: el rojo muere por AssertionError nombrando el infractor.",
+        "Documentacion corregida con lo MEDIDO: `winfo_exists()` lanza en el mundo SIN bucle principal y no con `mainloop()` vivo; `llamadas == []` se dice lo que mide de verdad; `README.md` cuadra sus dos cifras; y `ui/app.py:244` queda como excepcion consciente documentada o entra en vigilancia.",
+        "`python verify_ui_syntax.py`, `python run_tests.py` (terminando en `ALL TESTS PASSED.`) y `python validate_docs.py` en verde; el reparto 142 backend + 63 headless se mantiene."
+      ],
+      "notes": "Reparacion de guard, no de produccion: no se toco el comportamiento de src/woptimizer/** (solo docstrings de tk_thread.py). Los mutantes S2 y S3 son EQUIVALENTES y siguen sobreviviendo a proposito. Verificacion: verify_ui_syntax OK, run_tests.py termina en 'ALL TESTS PASSED.' (rc=0, 26404 B) y validate_docs.py 143 OK / 0 FAIL (rc=0). La camara de mutantes de %TEMP% midio que A2a, D1b, M8a y F1 mueren por AssertionError. Detalle en openspec/changes/2026-10-18-tkinter-after-guard/mutation-report.md seccion 8."
     }
   ]
 }
