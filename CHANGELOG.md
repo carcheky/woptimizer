@@ -1,3 +1,18 @@
+## CYCLE-062 - 2026-10-18
+
+### 🛡️ Corregido — El error que salía al cerrar la ventana durante un escaneo
+
+**Estado**: **PARTIAL**. El defecto está corregido y verificado por mutación en tres rondas. Tests: **205** (142 backend + 63 headless UI). Commits: `df294dc`, `bbcc472`, `b326031`, `eaf5ae2`.
+
+- 🔴 **Qué se rompía**: al cerrar la ventana del Gestor de Procesos mientras un escaneo seguía trabajando, el hilo secundario intentaba entregar su resultado a una ventana que ya no existía y la aplicación imprimía `RuntimeError: main thread is not in main loop`. Además, el mismo fallo estaba **en las tres ventanas**, no solo en una: 10 puntos de entrega desde hilo en total.
+- 🛡️ **Qué se hizo**: ahora **todas** las entregas desde un hilo pasan por un único punto seguro (`ui/tk_thread.py`) que absorbe el fallo en vez de propagarlo. No hay ni un `self.after(...)` a mano en las tres ventanas, y un guard automático lo comprueba.
+- 🔴 **Y la solución que parecía correcta no lo era**: el plan original pedía comprobar "si la ventana existe" antes de entregar. **Medido: esa comprobación lanza el mismo error que pretendía evitar**, un paso antes. La solución real es capturar el fallo, no preguntar antes. Esa medición quedó escrita en la documentación para que nadie vuelva a proponer el camino equivocado.
+- 🧪 **Tres rondas de auditoría, porque un test en verde no dice que el test compruebe algo**: la primera dejó 5 problemas, la segunda otros 3, y la tercera confirmó que los tres anteriores están **cerrados de verdad** (cada uno muere por la aserción que nombra el defecto). En el camino se cazaron dos errores propios de las propias guardas: una que comparaba solo el primer trozo del nombre del módulo y por eso no veía una importación prohibida con prefijo, y una cuyo mensaje de fallo tenía una errata y moría con `NameError` en vez de decir qué estaba mal.
+
+### ⚠️ Pendiente — Una comprobación sin contraprueba
+
+Queda una línea de la que nadie ha demostrado que haga falta: es la que excluye del invariante de hilo a las publicaciones que además se llaman. Quitarla deja el proyecto entero en verde. **Con el código actual no se puede llegar a ese caso**, así que no es un riesgo hoy, pero es una afirmación sin medir y queda anotada como deuda para el ciclo siguiente.
+
 ## CYCLE-061 - 2026-10-11
 
 ### ✨ Añadido — Aplicaciones protegidas (pack no ejecutable e indestructible)

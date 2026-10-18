@@ -19,10 +19,10 @@
 
 ## 🔄 Estado de la Ejecución
 
-- **Ciclos completados:** 61 (`rd_journal.json`)
+- **Ciclos completados:** 62 (`rd_journal.json`)
 - **Rama de trabajo:** `beta` (nunca commitear a `main` directamente)
-- **Último ciclo (#61):** TASK-071 — Aplicaciones protegidas (pack indestructible e inejecutable)
-- **Tarea activa (`active_task_id`):** `TASK-073` (`completed`, 2026-10-18) · siguiente del backlog: `TASK-074`
+- **Último ciclo (#62):** TASK-073 → TASK-078 → TASK-079 — publicación segura en el bucle de Tk. Veredicto de auditoría: **PARTIAL**
+- **Tarea activa (`active_task_id`):** `TASK-074` (siguiente del backlog; la deuda A11 del ciclo 62 es candidata aFormalizarse)
 
 ---
 
@@ -64,6 +64,7 @@
 
 ### 🟡 Media
 
+- **A11 · `exentos = publicados - llamados` sin contraprueba (CYCLE-062, `TASK-079`):** Quitar el ` - llamados` de `_cuerpos_a_medir` (`run_tests.py`) deja el proyecto entero en verde: `ALL TESTS PASSED.`, 26 400 B. **No es alcanzable con el código real** — los únicos nombres publicados son `_handle_ok` y `_handle_err`, únicos y nunca llamados — así que no es un riesgo vivo, pero es una afirmación que la suite no somete a prueba. Es la **tercera** vez en este repo que aparece el patrón "una comprobación sin contraprueba no es una comprobación". Fix: control sintético en el test 205 que exija que esa resta cambie el resultado. Evidencia: `openspec/changes/2026-10-18-tkinter-after-guard/mutation-report.md` §11.
 - **`build.bat` en LF (`TASK-077`, `pending`):** Tiene 39 LF y 0 CRLF pese a `.gitattributes eol=crlf`. Fix: `git add --renormalize .`. Verificable con `git ls-files --eol -- build.bat`.
 - **11 ficheros `test_*.py` heredados:** **🔴 CERRADA en CYCLE-045 (TASK-055).** Archivados en `docs/archive/legacy-root-tests/`. Guard en `run_tests.py` impide que vuelvan a la raíz.
 - **`validate_docs.py` no corre en CI (`TASK-075`, `pending`):** Depende de `%LOCALAPPDATA%`. Detallado en `docs/ai/sandbox-rules.md`.
@@ -102,6 +103,7 @@
 
 | Ciclo | Área | Qué se hizo |
 |---|---|---|
+| #62 | UI / Testing | Publicación segura en el bucle de Tk desde hilos (TASK-073/078/079) |
 | #61 | Core / UI | Aplicaciones protegidas no ejecutables e indestructibles (TASK-071) |
 | #60 | Tooling | Hang stdin git fixture solucionado (TASK-072) |
 | #59 | Tooling | `validate_docs.py` una vez por fichero (TASK-070) |

@@ -1,3 +1,59 @@
+## [CYCLE-062] 2026-10-18 - task-073-tkinter-after-guard
+
+### TASK-073 -> TASK-078 -> TASK-079: publicacion segura en el bucle de Tk
+
+**Area**: UI / Testing & Calidad. **Change**: `openspec/changes/2026-10-18-tkinter-after-guard/`
+**Estado**: **PARTIAL**. La correccion de produccion esta cerrada y verificada; queda una comprobacion de test sin contraprueba (A11).
+**Tests**: 203 -> **205 = 142 + 63**. `verify_ui_syntax.py` EXITO (10 modulos). `validate_docs.py` 143 OK / 0 FAIL.
+**Commits**: `df294dc` (arquitectura), `bbcc472` (TASK-073), `b326031` (TASK-078), `eaf5ae2` (TASK-079).
+
+**Models**
+- Paso 1 (Buscar): `inherit` — el backlog dio TASK-073 (activo) y deuda de STATUS.md:122.
+- Paso 2 (Planear): `pro` (override de la matriz) — el area era Testing & Calidad y la tarea tocaba invariante de hilos.
+- Paso 3 (Ejecutar): `inherit` x3 (TASK-073, TASK-078, TASK-079).
+- Paso 4 (Auditar): `inherit` x3 -> **FAIL, FAIL, PARTIAL**.
+
+**Diseno**: funcion pura `publicar_en_bucle` en `src/woptimizer/ui/tk_thread.py` (solo `typing`, sin estado) + delegacion de una linea `_publicar_en_el_bucle` en el mixin `Confirmable`. 10 call sites migrados en 3 vistas. Se descarto reutilizar `_schedule_ui` porque registra el handle en `self._timers_ui` y `cancel_on_destroy` lo itera en el hilo principal: mutacion de `set` entre hilos.
+
+**Medicion que cambio el diseno (arquitecto)**: `winfo_exists()` desde un hilo secundario **tambien** lanza `RuntimeError`, incluso con la ventana viva. El acceptance criterion original ("`try: if self.winfo_exists(): self.after(...)`") era **codigo muerto**: el `if` lanza la excepcion que el guard decia evitar. Ademas eran **10** puntos en **3** vistas, no 5 en una.
+
+**Refutada en la tercera auditoria**: con `mainloop()` vivo, `winfo_exists()` **no lanza** y devuelve 1/0; el `RuntimeError` es del mundo sin bucle principal (tests headless con `update()`). El docstring de `ui-design-system.md` se contradia a 8 lineas de distancia. Corregido en TASK-078.
+
+### Mutaciones auditadas (Paso 4)
+
+| Fix | Mutacion | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Guard de `after` desde worker | S1 · quitar el `try/except RuntimeError` | killed | `RuntimeError` propagada (asercion anadida en TASK-078 para convertirlo en `AssertionError`) |
+| Guard de `after` | S2 · `except BaseException` | survived | **equivalente**: el codigo real captura `Exception` |
+| Guard de `after` | S3 · `except RuntimeError` / `tk.TclError` | survived | **equivalente**: `TclError` declarado en el docstring, sin test que lo provoque |
+| SV1 puerta de `confirmation.py` | A2a · la puerta vuelve a `self.after` | survived -> **killed (R1)** | `la puerta tiene que DELEGAR en ui/tk_thread.py::publicar_en_bucle ... el after lo llamo [..., ('confirmation.py','_publicar_en_el_bucle'), ...]` |
+| SV2 guard que no mira ficheros | D1b · `VISTAS = ()` | survived -> **killed (R2a/R2c)** | `el guard tiene que abrir los cuatro ficheros vigilados y ha abierto [...]: todo lo que este test afirme se cumple sobre cero ficheros` |
+| SV3 rama AST fuera de call sites | M8a · 3000 ms + callback inventado en `process_manager_view:196` | survived -> **killed (R3c)** | `ProcessManagerView._force_update_db:L196 self._publicar_en_el_bucle debe ser de 0 ms` |
+| Frontera de capas de `tk_thread.py` | F1b · `from woptimizer.services import ...` | survived 3 rondas -> **killed (R4b)** | `importa ['woptimizer.services', 'woptimizer.services.process_service']` |
+| Invariante de worker en callbacks | R5f · callback de `load_db_async` toca `status_label` | survived -> **killed (Q2)** | `_force_update_db:L199 ... desde el hilo secundario` |
+| Derivacion de vistas vigiladas | R2b · borrar el `glob` | survived -> **killed (Q3)** | `hay vistas en el disco que este guard no vigila: ['dashboard_view.py', ...]` |
+| Regla de prefijo del detector | `q1_r4b_sin_prefijo` *(auditor)* | killed | `... y solo ve ['woptimizer.services']` |
+| Exencion de publicadas+llamadas | A11 · `exentos = publicados - llamados` -> `= publicados` | **SURVIVED** | ninguna: `ALL TESTS PASSED.`, 26 400 B |
+
+**Recuento de la tercera ronda**: 15 mutantes, 9 killed, 3 sobreviven por equivalencia, 1 sobrevive **sin contraprueba** (A11), 1 descartado por mal diseno, 1 `control` cortado = NO MEDIDO.
+
+**Decidir PARTIAL y no FAIL**: ningun superviviente se manifestaria con el codigo real. A11 no es alcanzable: los unicos nombres publicados son `_handle_ok` y `_handle_err`, unicos y nunca llamados. No toca seguridad ni datos, asi que el ciclo se cierra y A11 pasa a deuda.
+
+### Hallazgos que no estaban en el encargo
+
+- **El "killed" de F1b en la primera auditoria era FALSO**: murio por el `NameError` del typo `proibido_tk`, no por la asercion. El agujero (`module.split(".")[0]` no ve `woptimizer.services`) nunca estuvo cerrado, y una auditoria dio por buena una guarda que no miraba. **Una guarda reparada que nadie ha mutado desde fuera no es una guarda reparada.**
+- **La asercion que el informe llamaba "LA QUE DISCRIMINA"** (`assert muerta.llamadas == []`) es **tautologica**: mutante X1 (el doble registra antes de lanzar) falla **con produccion sin tocar**, o sea que mide al doble, no al guard. Documentado como tal.
+- **`test_dead_code_ast_guard` va ~310 lineas antes** que los guards de TASK-073: una mutacion que deja una referencia huerfana muere por el guard equivocado. Dio dos falsos veredictos en la re-auditoria.
+
+### Contaminacion del repo: 4 rondas sin incidente
+
+`HEAD` anclado antes de cada ronda y comparado al final; el **reflog** es el tercer testigo. Las 4 auditorias dejaron `eaf5ae2` sin entradas nuevas. En la ronda perdida (la sesion murio sin veredicto) el informe no recibio su seccion: eso es *no medido*, no verde.
+
+### Outcome
+- Commits: `df294dc`, `bbcc472`, `b326031`, `eaf5ae2`
+- Tests: 205/205 PASS (142 backend + 63 headless)
+- Docs: `docs/ai/ui-design-system.md`, `docs/ai/testing-guide.md`, `docs/ai/architecture.md`, `README.md`, `llms-full.txt`, `STATUS.md`, `AGENTS.md`
+
 ## [CYCLE-061] 2026-10-11 - task-071-protected-apps
 
 ### Implementación de TASK-071: Aplicaciones Protegidas

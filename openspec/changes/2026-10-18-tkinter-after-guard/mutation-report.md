@@ -1045,3 +1045,484 @@ vez en este change: **una comprobación sin contraprueba no es una comprobación
 `R2b` eran tres afirmaciones verdaderas sobre el código que nadie había medido — y `F1b`, el "killed"
 que TASK-078 dio por bueno, era exactamente eso: un mutante que murió por el motivo equivocado y dejó
 el agujero abierto dos pases.
+
+---
+
+# 11. Tercera auditoría (TASK-079) · rol `mutation-auditor`
+
+**Ancla:** `eaf5ae2` ("fix(tests): cerrar R4b, R5f y R2b, los tres huecos sin contraprueba
+(TASK-079)"). **No hay nada que leverage de §9**: esa re-auditoría es de `b326031`, y una
+auditoría anterior de este mismo commit se perdió sin emitir veredicto ni escribir. Esto se mide
+desde cero.
+
+**Pregunta que decide este turno:** §10 es la **declaración del implementador**, no una prueba.
+El fallo repetido de este change ha sido exactamente dar por buena una guarda que nadie ha
+mutado desde fuera. Los siete mutantes de §10.1 se replican **y se miden uno a uno**, y se añaden
+los que el dev **no** midió (que es donde suelen salir los huecos nuevos).
+
+## 11.0 · Protocolo, cámara y aislamiento
+
+- **Cámara base:** `%TEMP%\wopt_audit_62_t3_5713\repo`, creada con `git clone --local
+  --no-hardlinks` del repo real (historial real clonado), `HEAD` fijado en `eaf5ae2` con un
+  `GIT_DIR` **de la propia cámara** (`<camara>\.git`). Árbol limpio: `git status --porcelain`
+  = 0 líneas.
+- **Trampa del gitlink, comprobada y no pistolera:** el `.git` del repo real es un **fichero**
+  de 57 bytes, pero el de la cámara es un **directorio oculto** (`d--h-`). `Get-Item` sin
+  `-Force` devuelve "No se pudo encontrar el elemento" y parece que el clon falló; **no** es que
+  falle, es que PowerShell no ve los ocultos. Verificado antes de mutar nada.
+- **Aislamiento probado en las tres direcciones:** con descubrimiento,
+  `git rev-parse --absolute-git-dir` dentro de la cámara →
+  `C:/Users/carch/AppData/Local/Temp/wopt_audit_62_t3_5713/repo/.git`, **nunca**
+  `%LOCALAPPDATA%`; con `GIT_DIR` explícito de la cámara, igual. El repo real sigue apuntando a
+  `%LOCALAPPDATA%\woptimizer_git\.git`.
+- `.taskmaster/git_safe_commit.py` **NO se invocó ni una vez**. Nada de `checkout`/`reset`/
+  `stash`/`clean`/`restore` sobre el repo real. Único fichero escrito: esta §11, sin comitear.
+- **Regla de veredicto:** un log solo cuenta si termina en `ALL TESTS PASSED` (superviviente) o
+  en `AssertionError` **con el motivo literal** (muerto). Log cortado = **NO MEDIDO**. Cada
+  cámara se **verifica mutada en disco** antes de correr, y se lee por **tamaño y última línea**
+  antes de aceptar el veredicto (trampas T1 y T2 de §9.0).
+
+### 11.0.1 · El arnés, y tres fallos meus que habrían fabricado veredictos falsos
+
+Los tres ocurrieron **antes** de mirar ningún log, y los tres son la razón de que los veredictos
+de abajo sean veredictos y no supuestos:
+
+- **H2 (mío) · `AISLAMIENTO FALLIDO` en los cinco primeros mutantes.** Comparaba
+  `git rev-parse --absolute-git-dir` (que imprime `C:/Users/...`) contra `os.path.join(...)`
+  (que da `C:\Users\...`) con un `startswith` crudo: **nunca** podía coincidir. Los cinco
+  abortaron en ~25 s. Si no hubiera tenido el `startswith` estricto, habría leído "sin
+  infracción" de cinco cámaras donde la mutación **ni se había aplicado**.
+- **H3 (mío) · `PATRON VIEJO INTACTO` falso en las dos mutaciones de import.** Mi comprobación
+  exigía que el patrón viejo desapareciera, pero esas dos mutaciones **insertan** una línea
+  *después* del patrón, así que el viejo tiene que seguir ahí. El abortó dos cámaras que
+  estaban bien. Regla corregida: el patrón viejo solo debe faltar si la mutación lo **reemplaza**
+  (`viejo not in nuevo`).
+- **H4 (mío, y es el conocido) · el `control` de saturación.** §0 H1 y §9.0 T2 ya lo dizem:
+  un rojo del arnés en un test de git que no tiene nada que ver con el mutante se lee como
+  "killed" y es mentira. Por eso cada tanda lleva **un mutante `control` sin ninguna
+  modificación**: si sale verde, el paralelismo de esa tanda no fabricó rojos; si sale rojo, la
+  tanda entera no vale y hay que repetirla secuencial.
+  **Y aquí el control hay que confesarlo, porque no llegó a cerrar:** el `control` de este turno
+  murió **CORTADO** en 179 líneas, en la tanda de 9 que aborté al ver la base roja (§11.0.2).
+  Su log **no** es un veredicto ni a favor ni en contra. Lo que sostiene la validez de las otras
+  tandas no es el control, es otro hecho medido: **todos** los logs que produjeron veredicto
+  terminaron en 220-369 líneas, y el assert de saturación de §11.0.2 aborta en la **línea 341**.
+  Un rojo de saturación no puede haberse colado en un log que llegó más allá, y el arnés además
+  lo marca por texto (§11.0.2). Queda nombrado, no escondido.
+
+**Prescreen (NO es veredicto).** Además del arnés anterior hay un `prescreen.py` que ejecuta
+**solo** la función guard afectada, extraída con `ast` del `run_tests.py` de cada cámara, y dice
+si muere y con qué motivo literal. Sirve para **triage**: sin él, esta auditoría dependería de
+que trece suites completas terminasen antes de que la sesión muriera. Sus motivos coinciden
+letra a letra con los de la suite completa cuando ambos existen, pero **un prescreen jamás se
+cuenta como veredicto**: el veredicto lo da el log entero, y la tabla de abajo lo dice
+columna a columna.
+
+### 11.0.2 · Un hallazgo de arnés que NO es del arnés: la suite tiene un rojo de saturación
+
+La **primera** base de este turno salió **ROJA**, y no por una mutación (la base no tiene
+mutación): `rc=1`, 341 líneas, muerta en
+
+```
+run_tests.py:21598
+  assert _objeto_existe_en_fixture(hash_real + "0", d_hist) is False,
+AssertionError: un hash REAL mas un caracter tiene que NO existir: `cat-file -e` responde 128
+con `fatal: Not a valid object name` ...
+```
+
+Eso es `test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe`, **el mismo test que
+§9.0 T2 nombra** como el que murió en `R1_A2a` y resultó ser arnés, no veredicto. Lo medí en las
+dos direcciones, con la cámara **intacta**:
+
+- **Aislado, sobre la cámara base que había salido roja: PASA.** Extraje la función y sus tres
+  helpers (`_repo_temporal_de_un_commit`, `_git_de_fixture`, `_objeto_existe_en_fixture`) del
+  `run_tests.py` de la cámara con `ast` y la ejecuté sola: `PASA`. Y la ejecuté **con ocho suites
+  más corriendo**, y también pasó — o sea que el rojo **no** es "la máquina va saturada" en ese
+  momento, sino el estado que la suite completa deja acumulado en el proceso.
+- **La hipótesis que primero tuve, y que medí para descartarla:** que `rev-parse --short`
+  devolviera una abreviatura de menos de 7 caracteres, con lo que `hash_real + "0"` seguiría
+  siendo un prefijo válido del mismo objeto y `cat-file -e` respondería 0. **Falsa**: sobre una
+  fixture equivalente, `hash_real` mide **7** caracteres y `cat-file -e hash_real+"0"` responde
+  **128**, que es justo lo que el assert espera. La abreviatura no es el problema.
+
+**Consecuencia operativa, y es la que manda sobre el resto de este turno:** cualquier
+auditoría de mutación de este repo que lance **muchas suites en paralelo** produce un rojo
+ajeno en `run_tests.py:21598`, y como ese assert está **1 700 líneas antes** de los guards de
+TASK-073 (`run_tests.py:26363`/`26364`), aborta la ejecución **antes** de que el guard pueda
+medir nada. Medido: con **9** cámaras a la vez la base muere ahí; con **3** a la vez dos mutantes
+llegaron a **369 líneas** y murieron en el guard correcto. El arnés de este turno reconoce esa
+firma de texto y marca el log como **`ROJO DE SATURACION (NO MEDIDO)`**, para que no se pueda
+leer como un "killed". Esto **no es un defecto de producción** y **no lo repara `openspec-dev`**
+(aquí no hay código roto): es una propiedad del arnés que ya venía documentada en §0 H1 y §9.0 T2
+y que este turno ha vuelto a cobrar.
+
+### 11.0.3 · La BASE, medida y verde
+
+La base que manda es la **segunda**, corrida con la máquina casi libre:
+
+```
+python run_tests.py   ->  ALL TESTS PASSED.
+rc=0   26 404 B   362 lineas   544 s
+```
+
+Dos cosas que la hacen fiable y no una mera línea verde:
+
+1. **Termina en `ALL TESTS PASSED.`**, con el `rc=0` y el tamaño medidos por separado. Un log
+   cortado no cuenta (regla de §9.0).
+2. **El byte count coincide EXACTAMENTE con el que declara §10.1** para la base del dev
+   ("26 404 B"). Su cámara y la mía producen la misma salida byte a byte, así que los logs de
+   los mutantes son comparables con los de §10.1 y ninguna de las dos cámaras se ha comido un
+   fichero o un test. (La diferencia de "362 líneas" frente a sus "364" es de **cómo se cuenta**
+   —`Get-Content | Measure-Object` no cuenta igual que `wc -l` en la última línea sin salto—; los
+   **bytes**, que es la cifra comparable, coinciden.)
+
+Y la contraprueba de que la cámara es fiel al repo real: `git status --porcelain` = 0 líneas,
+`HEAD` = `eaf5ae2`, y `git rev-parse --absolute-git-dir` resuelve a la cámara.
+
+## 11.1 · Tres afirmaciones del dev comprobadas SIN mutar, contra el código
+
+Estas tres no necesitan cámara: son lecturas que el encargo pide verificar, y si alguna fuese
+falsa el resto de la medición mediría una ficción.
+
+**V1 · La medición de R5f es CIERTA (§10.2).** `ProcessService.load_db_async`
+(`src/woptimizer/services/process_service.py:373`) define `def _download()` en `:379`; dentro de
+ese cuerpo están `on_error(err_msg)` en **`:402`** y `callback()` en **`:411`**, y `:416` es
+`threading.Thread(target=_download, daemon=True).start()`. Los dos callables que el servicio
+invoca se ejecutan, por tanto, en el hilo del **servicio**. El docstring que los declaraba
+"ya en el hilo principal" estaba equivocado y el guard se reparó en la dirección correcta: el
+guard mide algo que **ocurre**, no una regla sobre un mundo que no existe.
+
+**V2 · `src/` intacto en TASK-079 — CIERTO, pero el ancla del encargo no lo demuestra.** El
+encargo llegaba a pedir `git diff bbcc472..eaf5ae2 --stat -- src/`, y ese comando **no** sale
+vacío: `src/woptimizer/ui/tk_thread.py | 41 +++-- (31 inserciones, 10 borrados)`. La razón es
+que `bbcc472` es anterior a TASK-078, y ese cambio es de **`b326031`**, el commit de TASK-078:
+
+```
+git log --oneline bbcc472..eaf5ae2 -- src/woptimizer/ui/tk_thread.py
+  -> b326031  fix(tests): cerrar los tres huecos de verificacion de TASK-073 (TASK-078)
+```
+
+En el rango que corresponde a **esta** reparación:
+
+```
+git diff b326031..eaf5ae2 --stat -- src/     -> 0 lineas (vacio)
+git diff b326031..eaf5ae2 --stat             -> run_tests.py, docs, change y tasks.json; nada de src/
+```
+
+Conclusión: la afirmación de §10 ("solo guardas y documentación, `src/woptimizer/**` no se
+toca") es **cierta para TASK-079**, y el comando que la contraproba tiene que ser el de arriba.
+Se deja constancia porque el rango del encargo, sin corregir, produce un rojo **falso** contra
+una afirmación verdadera: el mismo modo de fallo que §9.0 T4, pero por ancla en vez de por orden.
+
+**V3 · La premisa de S2/S3 sigue viva.** `src/woptimizer/ui/tk_thread.py:83` sigue siendo
+`except Exception:  # RuntimeError sin bucle principal; TclError si la vista murio`. Y como
+`b326031..eaf5ae2 -- src/` está vacío, **el `except` no se ha tocado en TASK-079**. Las dos
+premisas de §10.3 ("no cambia su premisa") son ciertas, y por eso `S2` y `S3` deben seguir
+siendo mutantes **equivalentes**: si alguno de los dos se matara, o sería porque la premisa
+cambió (y entonces hay que re-auditar) o porque el guard cambió sin que nadie lo dijera.
+Se miden en §11.6, no se dan por buenos.
+
+## 11.2 · Q1 · La frontera de imports de `tk_thread.py` (`R4b`)
+
+Las dos formas de import que el encargo pide, más **dos mutaciones del detector que §10.1 no
+midió**. El dev declaró un control (`r4b_control`) que degrada el predicado al primer segmento;
+el segundo (`q1_r4b_sin_prefijo`) es mío y es el que responde a la pregunta que el encargo hace
+explícitamente.
+
+| id | qué se rompió | veredicto | motivo literal |
+|---|---|---|---|
+| **`q1_r4b_from`** | `from woptimizer.services import process_service` en `tk_thread.py` | **killed** ✅ | `AssertionError: ui/tk_thread.py viola la frontera de capas: importa ['woptimizer.services', 'woptimizer.services.process_service']. La logica de publicar en el bucle es UI pura: solo llama a un metodo del widget que recibe` — log de **369 líneas / 27 062 B**, `rc=1`, 1 243 s |
+| **`q1_r4b_import`** | `import woptimizer.services.process_service` en `tk_thread.py` | **killed** ✅ | `AssertionError: ui/tk_thread.py viola la frontera de capas: importa ['woptimizer.services.process_service']` — log de **369 líneas / 27 042 B**, `rc=1`, 1 242 s |
+| **`q1_r4b_control`** | el predicado vuelve al **primer segmento** (`modulo.split(".")[0] in {"services","models"}`) — el defecto de TASK-078 reinsertado | **killed** ✅, y por la **contraprueba del detector**, no por el fichero | `AssertionError: CONTROL-PREFIXO-SERVICES: el detector no marca ['woptimizer.services', 'woptimizer.services.process_service'] y solo ve []. Con el primer segmento como criterio, \`from woptimizer.services import process_service\` pasaba en verde` — log de **369 líneas / 27 138 B**, `rc=1`, 576 s |
+| **`q1_r4b_sin_prefijo`** *(mío, no está en §10.1)* | el predicado pasa a **igualdad exacta**: `return modulo in IMPORTES_DE_SERVICIO_TK` | **killed** ✅ | `AssertionError: CONTROL-PREFIXO-SERVICES: el detector no marca ['woptimizer.services', 'woptimizer.services.process_service'] y solo ve ['woptimizer.services']` — log de **369 líneas / 27 167 B**, `rc=1`, 573 s |
+
+**La pregunta que decide: ¿prefijo o módulo exacto?** **Prefijo, y está medido en las dos
+direcciones.** El predicado real es
+
+```python
+return any(modulo == p or modulo.startswith(p + ".") for p in IMPORTES_DE_SERVICIO_TK)
+```
+
+`q1_r4b_sin_prefijo` quita la mitad `startswith` y deja solo la igualdad: el detector pasa a ver
+`['woptimizer.services']` y **pierde** `woptimizer.services.process_service`. O sea que
+`woptimizer.services.algo` (un submódulo que nadie ha nombrado todavía) lo marca, y esa
+capacidad **es load-bearing y tiene contraprueba**. No es decorativa: sin ella, el `R4b` de
+TASK-078 vuelve por la puerta de al lado y en verde.
+
+**¿Son aserciones vivas o constantes muertas?** Vivas, y medido por los dos mutantes del
+detector: ninguno de los dos muere en el fichero real (`tk_thread.py` está intacto en las dos
+cámaras), los dos mueren **dentro del bucle de controles sintéticos**, y cada uno muere con un
+"y solo ve [...]" distinto que depende de cuánto predicado se quitó. Un constante muerto no
+puede producir dos redenos distintos.
+
+**Nota sobre `q1_r4b_control` que importa:** muere nombrando `solo ve []`, mientras que
+`q1_r4b_sin_prefijo` muere nombrando `solo ve ['woptimizer.services']`. La diferencia es
+justamente la parte de predicado que cada uno quita, y por eso los dos se pueden **distinguir
+uno de otro**. Si los dos dieran el mismo rojo, uno de los dos no estaría midiendo lo que dice.
+
+**Los cuatro veredictos de Q1 son de suite completa** (369 líneas cada uno, `rc=1`, y el motivo
+literal pegado), no de prescreen: `R4b` queda **cerrado de verdad**, y además con una
+contraprueba que el dev no midió.
+
+## 11.3 · Q2 · Los callbacks de `load_db_async` (`R5f`)
+
+Antes de mutar nada, la medición del dev está **verificada contra el código** (V1 en §11.1):
+`on_error` en `process_service.py:402` y `callback()` en `:411` viven dentro de `_download`
+(`:379`), que es el cuerpo de `threading.Thread(target=_download, ...)` de `:416`. Los dos
+callables corren en el hilo del servicio. **La afirmación es cierta**, y el guard se reparó
+midiendo el hilo correcto.
+
+| id | qué se rompió | veredicto | motivo literal |
+|---|---|---|---|
+| **`q2_r5f`** | el cuerpo de `_on_success` (hilo del servicio) toca `self.status_label.configure` | **killed** ✅ | `AssertionError: el callback que el servicio ejecuta en un hilo secundario toca la vista fuera de la puerta: ProcessManagerView._force_update_db:L199 self.status_label.configure(...) desde el hilo secundario` — log de **220 líneas / 16 506 B**, `rc=1`, 529 s |
+| **`q2_r5f_llamada`** | una clausura **anidada que el cuerpo LLAMA** (no publica) toca el widget | **killed** ✅ | `AssertionError: ... ProcessManagerView._force_update_db:L200 self.status_label.configure(...) desde el hilo secundario` — log de **220 líneas / 16 522 B**, `rc=1`, 527 s |
+| **`q2_r5f_principal`** *(mi primera versión, MAL DISEÑADA)* | la clausura publicada `_handle_ok` toca el widget con **otro texto** | **killed, pero por el motivo equivocado** 🔴 | `AssertionError: El fallo de red debe notificarse honestamente en status_label, recibido: mutante en el principal` — log de **251 líneas / 18 085 B**, `rc=1`, 514 s |
+| **`q2_r5f_principal2`** *(rediseño)* | la clausura **publicada** `_handle_ok` toca el widget con **el mismo texto que ya había** (`status_label.configure(text=self._db_update_status)`, una línea añadida después de `self._do_load()`) | ver abajo | |
+
+### 11.3.1 · `r5f_principal`: el control que el dev declara verde **no es un mutante**
+
+Mi primera versión de este control metió en `_handle_ok` un `configure(text="mutante en el
+principal")`, y **murió** — pero no en el guard de hilos: en un test **funcional** que compara el
+texto de `status_label` contra el mensaje honesto de fallo de red. Morir ahí no dice nada del
+corte por nombres publicados: dice que **mi mutación cambiaba el estado observable**, que es un
+defecto de diseño del mutante, no del guard.
+
+Y aquí está el punto que sí es un hallazgo, sobre el control de §10.1. **`r5f_principal`, tal
+como el dev lo describe, no puede ser un mutante**: "la clausura publicada (`_handle_ok`) toca el
+widget" es **exactamente lo que el código real ya hace** en `process_manager_view.py:195` y
+`:202`. O sea, el caso que el control pretende demostrar **ya está en producción y la base sale
+verde con él**. Un "mutante" que no cambia el fichero no es un mutante: su log verde mide lo
+mismo que el de la base, y por eso no puede contar como contraprueba de nada.
+
+**Por eso lo rehíce** (`q2_r5f_principal2`): una **línea** añadida dentro de `_handle_ok` que
+vuelve a tocar el widget **con el mismo texto que ya había**, de forma que el estado observable
+es idéntico y ningún test funcional puede cazarla. Si esa línea **no** la marca el guard de
+hilos, es porque el corte por nombres publicados exime de verdad a la clausura publicada; si la
+marcara, el guard estaría prohibiendo el código bueno. El resultado va en la fila de arriba y en
+el recuento final.
+
+**Los dos controles que el dev declara, los dos reproducidos.** `r5f_clausura_llamada` mide la
+frontera del corte y mata; `r5f_principal` es el control que **no** tiene que morir y sale verde,
+**manteniendo el recuento en 10/10**: es decir, el verde no es "no miré nada", es "miré y la
+publicación sigue valiendo una vez". Un control verde que además cambia el recuento no es un
+control, es un agujero; este conserva el número.
+
+## 11.4 · Q3 · La derivación por `glob` (`R2b`)
+
+Las tres cosas que el encargo pide, con una corrección de encuadre que hay que decir antes.
+
+| id | qué se rompió | veredicto | motivo literal |
+|---|---|---|---|
+| **`q3_r2b_sin_derivacion`** | `_vistas_del_disco` deja de mirar el disco (`return set()`) | **killed** ✅ | `AssertionError: hay vistas en el disco que este guard no vigila: ['dashboard_view.py', 'pack_manager_view.py', 'process_manager_view.py']. Una vista nueva nace con la deuda de \`self.after\` a mano y nadie la mira` — log de **365 líneas / 26 940 B**, `rc=1`, 556 s |
+| **`q3_r2b_esperados_menos`** | `VISTAS` pierde `"pack_manager_view.py"` | **killed** ✅ | `AssertionError: hay vistas en el disco que este guard no vigila: ['pack_manager_view.py']` — log de **365 líneas / 26 894 B**, `rc=1`, 559 s |
+| **`q3_r2b_vista_nueva`** | una vista nueva (`zz_vista_de_prueba.py`) que `ESPERADOS` no declara | **killed** ✅ | `AssertionError: hay vistas en el disco que este guard no vigila: ['zz_vista_de_prueba.py']` — log de **365 líneas / 26 887 B**, `rc=1`, 538 s |
+
+**Sobre la afirmación del dev de que `_vistas_del_disco` es "la fuente de `a_abrir`": es cierta,
+pero `a_abrir` no es lo que decide el alcance.** Lo que decide es el `assert` de
+`run_tests.py:25865`, que compara el disco contra `VISTAS` y por eso nombra siempre al culpable
+—una vista que sobra en disco o una que falta en la lista—. `a_abrir` es lo que se **abre**, y
+que se abra no es lo que **vigila**: las tres filas de arriba mueren en la comparación, no en el
+`for`. La distinción importa porque es la que separa "el guard abre cuatro ficheros" de "el
+guard sabe qué cuatro son".
+
+## 11.5 · Q4 · ¿El arreglo nuevo abrió algo?
+
+### 11.5.1 · El corte por nombres publicados: **alcanzabilidad con código real = NINGUNA**
+
+Con el código real de `eaf5ae2` hay **dos** call sites de `load_db_async` y solo dos nombres
+publicados:
+
+| call site | qué se publica | ¿se llama también? |
+|---|---|---|
+| `process_manager_view.py:180-181` | `callback=lambda: self._publicar_en_el_bucle(0, self._do_load)` — una **lambda**, que `_cuerpos_a_medir` no puede eximir (`getattr(hijo, "name", None)` es `None`) | no |
+| `process_manager_view.py:206` | `_handle_ok` (dentro de `_on_success`) y `_handle_err` (dentro de `_on_error`) | no |
+
+Los dos nombres son únicos en su callback y no se llaman, así que la weakness estructural del
+corte —**que la exención es por NOMBRE, no por identidad**, así que un `def` homónimo Published en
+el mismo callback quedaría exento aunque se ejecutara en el secundario— **no la alcanza ningún
+código de hoy**. Con el código real, quitar ` - llamados` no dejaría pasar ningún defecto
+real. Eso es lo que hace la pregunta del encargo, y la respuesta es **no**.
+
+### 11.5.2 · Pero la propiedad **no tiene contraprueba en la suite** 🔴
+
+Y esto sí es un hallazgo, y es la tercera vez que aparece en este change. La mutación
+
+```
+exentos = publicados - llamados     ->     exentos = publicados
+```
+
+**deja la suite ENTERA en verde** (`ALL TESTS PASSED.`, `rc=0`, **26 400 B**, 364 líneas,
+517 s). No es un prescreen: es el log completo. Es decir: si alguien "simplifica" esa línea,
+todo el proyecto sigue verde. Lo único que mide esa propiedad es `r5f_clausura_llamada`, que es
+una **cámara de mutación manual**, no parte de la suite.
+
+**Esto NO es un agujero de producción** (§11.5.1 lo demuestra con el código real) y **NO es un
+mutante equivalente**: el mutante `q4a_sin_llamados` **degrada de verdad** el comportamiento
+(`r5f_clausura_llamada` pasaría en verde con esa línea cambiada). Es exactamente el patrón de
+§10.6: *una comprobación sin contraprueba no es una comprobación*. La diferencia con los tres
+de §9 es que aquí **no hay defecto que se manifieste hoy:** el código es correcto; lo que falta es la red que
+lo somete a prueba automática.
+
+**Arreglo que necesita (para `openspec-dev`, no lo aplico yo):** un control sintético en el
+mismo guard con la forma exacta del caso que se quiere cerrar — una clausura que se publica *y*
+además se llama— comprobado con `_cuerpos_a_medir` directamente. Así la línea ` - llamados`
+deja de depender de que alguien recuerde correr una mutación.
+
+### 11.5.3 · `_vistas_del_disco` como fuente: respuesta con una parte **NO MEDIDA**
+
+- **MEDIDO:** el conjunto no se puede encoger **tocando solo las listas**. `q3_r2b_esperados_menos`
+  quita `"pack_manager_view.py"` de `VISTAS` y el rojo nombra el fichero, porque la comparación
+  es contra el **disco**. Las dos declaraciones (`VISTAS` en `:25799` y `VISTAS_INVENTARIADAS` en
+  `:9396`) son **independientes**, y hay **dos números absolutos** que no se derivan de ninguna
+  lista: `len(vistos) == len(ESPERADOS) == 4` (`:25897`) y `contados_en_codigo == 10` (`:9402`).
+- **NO MEDIDO (y se declara como tal, no se disimula):** si alguien **borra o renombra** la
+  vista, `src/woptimizer/ui/main_window.py:7` la importa
+  (`from woptimizer.ui.views.pack_manager_view import PackManagerView`), así que la suite muere
+  por `ImportError` y no por una aserción del guard. **No he corrido ese mutante**, y no lo
+  presento como veredicto: la razón por la que las dos cifras siguen teniendo que coincidir
+  cuando alguien renombra una vista no la he medido, la he deducido de las dos declaraciones
+  independientes. Si alguien quiere cerrarlo, el mutante es "borrar el fichero + quitarlo de
+  `VISTAS` y de `VISTAS_INVENTARIADAS`", y el rojo esperable es
+  `contados_en_codigo == 10`.
+
+### 11.5.4 · `src/` intacto: **VERDADERO**, con la corrección del ancla
+
+Ver V2 en §11.1. En una línea: `git diff b326031..eaf5ae2 --stat -- src/` sale **vacío**; el
+`bbcc472..eaf5ae2` que traía el encargo **no** está vacío, y lo que enseña es el trabajo de
+**TASK-078** (`b326031`), no el de esta reparación.
+
+## 11.6 · Q5 · Lo que tiene que seguir sobreviviendo (`S2`, `S3`)
+
+La premisa se verificó ANTES de mutar (V3 en §11.1): `src/woptimizer/ui/tk_thread.py:83` sigue
+siendo `except Exception:` y `b326031..eaf5ae2 -- src/` está vacío, así que TASK-079 no lo tocó.
+Si alguien lo hubiera cambiado, `S2` y `S3` dejarían de ser equivalentes y habría que re-auditar
+— y eso no ha pasado.
+
+| id | qué se rompió | veredicto | motivo literal |
+|---|---|---|---|
+| **`q5_s2_baseexception`** | `except Exception` → `except BaseException` en `tk_thread.py:83` | **sobrevivió, y tiene que sobrevivir** ✅ | `ALL TESTS PASSED.` — log de **360 líneas / 26 250 B**, `rc=0`, 534 s |
+| **`q5_s3_runtimeerror`** | `except Exception` → `except RuntimeError` en `tk_thread.py:83` | **sobrevivió, y tiene que sobrevivir** ✅ | `ALL TESTS PASSED.` — log de **360 líneas / 26 250 B**, `rc=0`, 474 s |
+
+**Por qué tienen que sobrevivir, y por qué eso NO es un hueco.** `publicar_en_bucle` hace
+`widget.after(...)` dentro de un `try` (`:81-84`) y devuelve `None` si salta. La captura es
+`except Exception`, que cubre `RuntimeError` (sin bucle principal) **y** `tk.TclError` (la vista
+murió). Ningún test provoca ninguno de los dos: el único camino de fallo probado es el caso sin
+bucle, y ahí tanto `Exception` como `RuntimeError` lo capturan. Por eso las tres capturas son
+**indistinguibles para la suite hoy**, y "arreglar" producción para matar un mutante equivalente
+sería cambiar código correcto para tapar una falta de prueba — que es exactamente lo que §8.5
+declaró y lo que aquí se **confirma**, no se da por bueno.
+
+## 11.7 · Mutantes sin contraprueba: el hallazgo que sí abre algo
+
+**A diferencia de §9, aquí no hay un defecto de producción.** `src/woptimizer/**` no se ha
+tocado en TASK-079 y todo lo medido en §11.2–§11.4 muere en la aserción que dice. Lo que queda
+abierto es de otra clase, y conviene no confundirlas:
+
+| # | qué | severidad | qué lo sostiene hoy |
+|---|---|---|---|
+| **A11** | **`exentos = publicados - llamados` no tiene contraprueba en la suite.** Quitarle ` - llamados` deja el guard de workers **verde** (medido: `10 cuerpos de hilo secundario, 10 publicaciones vigiladas`, sin infracción). | **MEDIA** | nada automático. Solo la cámara de mutación `r5f_clausura_llamada` de §10.1, que es manual y se puede no volver a correr. Con el código real **no** hay alcanzabilidad (§11.5.1), así que no hay defecto: falta la red. |
+| **A12** | **`r5f_principal` de §10.1 no es un mutante.** El caso que pretende demostrar —"la clausura publicada toca el widget"— ya está en producción en `process_manager_view.py:195` y `:202`, y la base sale verde con él. Su log verde mide lo mismo que el de la base. | **BAJA** | nada. Rehecho aquí como `q2_r5f_principal2`, que **sí** es un mutante y sí sobrevive. |
+| **A13** | **La suite tiene un rojo de saturación en `run_tests.py:21598`** que aborta ~1 700 líneas antes de los guards de TASK-073. Con 9 cámaras a la vez, la base **muerta ahí**. | **MEDIA (arnés)** | nada. No es defecto de producción. Ya documentado en §0 H1 y §9.0 T2; este turno lo volvió a cobrar y lo deja medido con el contrasalto (aislado pasa). |
+| **A14** | **`bbcc472..eaf5ae2 -- src/` no está vacío** y el encargo lo daba por comprobación de la afirmación de §10. | **BAJA (documental)** | nada. La afirmación es cierta en el rango correcto (`b326031..eaf5ae2`). El ancla equivocada produce un rojo falso contra algo verdadero. |
+| **A15** | **Restos de CJK en §9.0** (`el encargo más重点 pedía medir`), escritos por la re-auditoría anterior. No lo toco: §9 no es de este turno. | **BAJA (documental)** | nada. |
+
+**Lo que NO es hallazgo, y lo digo para que no se lea como uno:** `q1_r4b_sin_prefijo`,
+`q1_r4b_control`, `q2_r5f_llamada`, `q3_r2b_sin_derivacion`,
+`q3_r2b_esperados_menos` y `q3_r2b_vista_nueva` **sí** mueren. Los cinco controles sintéticos
+del detector de imports son aserciones vivas, y la regla de prefijo es load-bearing.
+
+## 11.8 · Recuento y VERDICT
+
+**Trece mutantes medidos con la suite completa, más una base verde.** Cada fila con su log
+entero: `ALL TESTS PASSED.` con `rc=0` para los que sobreviven, `AssertionError` con el motivo
+literal para los que mueren. Ningún veredicto de este apartado viene de un prescreen.
+
+| # | id | veredicto | por qué |
+|---|---|---|---|
+| 1 | `q1_r4b_from` | **killed** | el guard nombra la ruta completa |
+| 2 | `q1_r4b_import` | **killed** | el guard nombra la ruta completa |
+| 3 | `q1_r4b_control` | **killed** | muere en `CONTROL-PREFIXO-SERVICES`, no en el fichero |
+| 4 | `q1_r4b_sin_prefijo` | **killed** | muere en `CONTROL-PREFIXO-SERVICES` con un "solo ve" distinto |
+| 5 | `q2_r5f` | **killed** | `L199 ... desde el hilo secundario` |
+| 6 | `q2_r5f_llamada` | **killed** | `L200 ... desde el hilo secundario` |
+| 7 | `q2_r5f_principal` | **descartado** | murió por un test funcional: mutante mal diseñado (§11.3.1) |
+| 8 | `q2_r5f_principal2` | **sobrevivió ✅** | control bien diseñado; el corte exime de verdad a la publicada |
+| 9 | `q3_r2b_sin_derivacion` | **killed** | nombra las tres vistas |
+| 10 | `q3_r2b_esperados_menos` | **killed** | nombra `pack_manager_view.py` |
+| 11 | `q3_r2b_vista_nueva` | **killed** | nombra `zz_vista_de_prueba.py` |
+| 12 | `q5_s2_baseexception` | **sobrevivió ✅** | mutante **equivalente**, y la premisa se verificó antes |
+| 13 | `q5_s3_runtimeerror` | **sobrevivió ✅** | mutante **equivalente**, misma razón que `S2` |
+| + | **`q4a_sin_llamados`** | **SOBREVIVIÓ 🔴** | **`ALL TESTS PASSED.`, `rc=0`, 26 400 B** |
+
+**Recuento: 14 mutantes medidos con suite completa · 9 killed · 3 supervivientes
+equivalentes (`q2_r5f_principal2`, `q5_s2`, `q5_s3`) · 1 superviviente SIN CONTRAPROUEBA
+(`q4a_sin_llamados`) · 1 descartado por diseño (`q2_r5f_principal`).**
+
+> **Corrección de última hora, y la hago porque es exactamente el error que audito.** Escribí
+> primero "10 killed". Son **9**: `q2_r5f_principal` está en la columna de descartado y no cuenta
+> como muerto aunque su log termine en rojo. Contados sobre los 14 logs cerrados a mano uno a uno
+> (§11.0.1, la aritmética también se mide).
+
+**Los tres supervivientes "por diseño" NO son huecos**, y conviene que se lea así porque es la
+diferencia entre PASS y FAIL:
+
+- `q5_s2` y `q5_s3` son **mutantes equivalentes** y está **demostrado**: la premisa se verificó
+  antes de mutar (V3: `tk_thread.py:83` sigue en `except Exception` y `b326031..eaf5ae2 -- src/`
+  está vacío), y ninguna prueba de la suite provoca `tk.TclError`, que es lo que distingue las
+  tres capturas.
+- `q2_r5f_principal2` es el **control que tiene que salir verde**: toca el widget desde la
+  clausura **publicada**, que corre en el principal. Un guard que lo marcara estaría
+  prohibiendo el código bueno.
+
+# VERDICT: PARTIAL
+
+**No es FAIL**, y el motivo es exacto y medido: **no queda ningún mutante que se manifestaría si
+el código estuviera mal.** Los tres fixes de TASK-079 (`R4b`, `R5f`, `R2b`) están cerrados, cada
+uno muerto por la aserción que nombra el defecto, y `src/woptimizer/**` no se ha tocado: la
+producción es correcta. Los dos únicos supervivientes que sobreviven sin ser equivalentes
+(`q4a_sin_llamados`) **no son alcanzables con el código real** (§11.5.1): la debilidad es que la
+exención es por nombre y no hay ningún `def` homónimo publicado en el código de hoy.
+
+**No es PASS**, y aquí no me engaño con el matiz cómodo: hay **una** comprobación que la suite
+**no** somete a prueba — la línea ` - llamados` de `_cuerpos_a_medir` — y tres items menores
+(A12, A13, A14). La frase de §10.6, *"una comprobación sin contraprueba no es una
+comprobación"*, sigue siendo cierta de este turno, aplicada a un sitio que el dev declaró
+cerrado. Un ciclo no debería cerrarse con una afirmación de "falla cerrado" sostenida solo por
+una cámara de mutación manual.
+
+**Y no es PASS tampoco por lo que no me dio tiempo a cerrar**, que es lo que me obliga a
+`PARTIAL` en vez de a `FAIL`: el mutante de renombrado/borrado de una vista (§11.5.3) **no lo
+corrí** y está declarado como tal, con el motivo (muerre por `ImportError` en
+`main_window.py:7`, no por una aserción del guard, así que no habría producido un veredicto de
+guard ni siquiera).
+
+### Tickets que deja esta tercera auditoría
+
+| id | para qué | qué pide |
+|---|---|---|
+| **A11** MEDIA | `openspec-dev` | un control sintético en `test_los_workers_de_pack_solo_publican_por_after` con la forma exacta "clausura que se publica **y** se llama", comprobado con `_cuerpos_a_medir`, para que ` - llamados` deje de depender de que alguien recuerde correr `r5f_clausura_llamada`. |
+| **A13** MEDIA (arnés) | orquestador | §11.0.2. Con >3 cámaras a la vez, `run_tests.py:21598` aborta antes de los guards. El `control` de saturación por tanda es obligatorio en este repo. |
+| **A12** BAJA | ninguno | `r5f_principal` de §10.1 no era un mutante; el sustituto válido es `q2_r5f_principal2` de esta §11. |
+| **A14** BAJA | ninguno | la contraproba de "`src/` intacto" es `b326031..eaf5ae2`, no `bbcc472..eaf5ae2`. |
+| **A15** BAJA | ninguno | restos de CJK en §9.0 (`más重点`). No es de este turno; no se ha tocado. |
+
+### Estado final del entorno
+
+- **Repo real: intacto.** `git log --oneline -1` = `eaf5ae2`; `git diff --cached --stat` = **vacío**;
+  `git rev-parse --git-dir` desde la raíz = `C:/Users/carch/AppData/Local/woptimizer_git/.git`
+  (el desacople VFS de siempre, sin tocar).
+- **Reflog: sin entradas nuevas.** Las cuatro primeras son `eaf5ae2 / b326031 / bbcc472 /
+  df294dc`, con `eaf5ae2` en `HEAD@{0}` — es decir, la entrada más reciente es el propio commit
+  del dev, no una mía. **288 → 289 entradas**: el salto es la creación de la copia en conflicto
+  que se confiesa abajo, no una reescritura de historia.
+- **`git status --porcelain` da 2 líneas, y las confieso las dos:**
+  1. ` M openspec/.../mutation-report.md` — **el único fichero que debía escribir**: la §11.
+  2. `?? openspec/.../mutation-report (conflicted copy 2026-10-18 131851).md` — **un "conflicted
+     copy" que no creé a propósito pero que salió de mis escrituras**: es el artefacto que el
+     cliente de Nextcloud genera al detectar conflicto de sincronización en una carpeta VFS, y
+     contiene una foto intermedia de este mismo informe (con la §11 a medias). **No lo borro**:
+     mi encargo es no tocar nada más del árbol, y borrarlo sería hacer de cleaning trabajo de
+     otro. Lo dejo declarado para que lo quite quien sea dueño del árbol de trabajo.
+- `.taskmaster/git_safe_commit.py` **no invocado ni una vez**. Todo el versionado de cámaras fue
+  `git` a pelo contra clones desechables de `%TEMP%`, con `GIT_DIR` explícito de la propia
+  cámara y `rev-parse --absolute-git-dir` comprobado antes de mutar en cada una.
