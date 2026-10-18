@@ -2254,7 +2254,7 @@ def _run_kill(p):
     # La puerta comun: consulta keepers, apps y categorias, para cualquier pack,
     # y las barreras (nombres protegidos, categoria roja) viven DENTRO de ella.
     killed, failed, skipped, freed_mb = self.gaming_service.execute_pack(p)
-    self.after(0, self._show_banner, killed, freed_mb, p.is_gaming, failed, skipped)
+    self._publicar_en_el_bucle(0, self._show_banner, killed, freed_mb, p.is_gaming, failed, skipped)
 
 threading.Thread(target=_run_kill, args=(pack,), daemon=True).start()
 
@@ -2267,7 +2267,7 @@ def _run_start(p):
         )
         launched += launched_cats
         failed += failed_cats
-    self.after(0, self._show_start_banner, launched, failed, p.name)
+    self._publicar_en_el_bucle(0, self._show_start_banner, launched, failed, p.name)
 
 # En el hilo principal (after callback):
 def _show_banner(self, killed: int, freed_mb: float, is_gaming: bool):
@@ -2276,8 +2276,32 @@ def _show_banner(self, killed: int, freed_mb: float, is_gaming: bool):
 ```
 
 Este es **el** patrón del proyecto y no es solo un ejemplo: el hilo secundario no lee ni
-escribe estado de la vista, y `self.after` (nunca `self.master.after`, que sobrevive a la
-destrucción de la vista en cada navegación) es el único publicador.
+escribe estado de la vista, y la publicación pasa por `self._publicar_en_el_bucle(0, ...)`
+(nunca `self.master.after`, que sobrevive a la destrucción de la vista en cada navegación).
+
+#### El contrato de publicación worker → main (TASK-073)
+
+| Regla | Por qué |
+|---|---|
+| **`self.after` a mano está PROHIBIDO en `ui/views/`.** | Copiado a mano, el `try/except` que hace falta se multiplica por diez call sites de tres vistas y la deuda vuelve por el mismo método. Lo vigila `test_ninguna_vista_programa_after_a_mano`. |
+| **La única puerta es `self._publicar_en_el_bucle(0, callback, *args)`.** | Delegación de una línea a `ui/tk_thread.py::publicar_en_bucle`, que es donde vive la lógica. `Confirmable` sigue siendo "dos capas": su método no decide nada. |
+| **Devuelve el handle, o `None`.** | `None` no es un id de Tcl, así que "no se agendó nada" y "se agendó" no se confunden. Quien llama casi siempre lo ignora: una publicación de 0 ms que se pierde solo pierde un callback. |
+| **No usa `_schedule_ui` a propósito.** | `_schedule_ui` registra el handle en `_timers_ui`, que `cancel_on_destroy` itera **en el hilo principal**: hacerlo desde un worker sería mutar un `set` entre dos hilos. Además son contratos distintos (timer cancelable con `scheduler` inyectable, siempre desde el principal, frente a publicación de 0 ms que no se cancela). |
+| **`winfo_exists()` NO se consulta, y está medido que no puede.** | Desde un hilo secundario lanza `RuntimeError: main thread is not in main loop` **también con la ventana viva**, 1 de 1: es una llamada Tcl y se encola igual que `after`. El guard `if self.winfo_exists(): ...` no pregunta si la vista existe, lanza la excepción que dice evitar. |
+| **No hace falta sonda después.** | Con `mainloop()` vivo, `after(400)` programado y la ventana destruida 150 ms después, el callback **nunca se ejecuta**: Tk lo descarta con el widget. No hay carrera posterior que cerrar. |
+
+Los diez call sites migrados viven en `views/process_manager_view.py` (5),
+`views/dashboard_view.py` (3) y `views/pack_manager_view.py` (2). Los cuatro de la vista de
+procesos que no son `threading.Thread` (los callbacks de `load_db_async`) también son
+publicación desde hilo secundario, y por eso también pasan por la puerta.
+
+> **Lo que hace la puerta y lo que no.** Con la app corriendo, un `after` desde un worker **se
+> atiende**: el defecto solo se manifiesta en el mundo sin bucle principal, que es lo que
+> hacen los tests headless (`update()`, nunca `mainloop()`). Ahí la puerta devuelve `None` y el
+> callback **no se ejecuta nunca**. Por eso un test que necesite el efecto sustituye
+> `vista.after` por un doble (`v.after = lambda ms, func, *a: cola.append(...)`) y luego
+> corre la cola a mano: la puerta delega en `widget.after`, así que el doble de instancia
+> sigue interceptando.
 
 **Gestor de Procesos, TASK-026 (FIX-007).** `ProcessManagerView._do_load` lo cumple con un
 `_apply` explícito porque publica **dos** atributos a la vez:
@@ -2293,7 +2317,7 @@ def _load():
         self._render_list()
         self._update_pack_dropdown()
 
-    self.after(0, _apply)
+    self._publicar_en_el_bucle(0, _apply)
 ```
 
 El REBIND es lo que hace seguro el resto: el hilo principal itera `grouped_processes` en cada
@@ -2303,13 +2327,9 @@ solapados, dejaba el set de PIDs de `on_kill_selected` desalineado respecto de l
 usuario ve. Cuando dos cargas se solapan, el que llegue último al mainloop gana **entero**;
 `processes` y `grouped_processes` nunca describen snapshots distintos.
 
-> `tkinter` exige que el hilo principal esté **dentro** del bucle de eventos cuando otro hilo
-> llama a `after` (`RuntimeError: main thread is not in main loop`). En la app es el caso
-> normal; en los tests hay que entrar en el mainloop real, no en un bucle con `update()`.
-
 ### Invariantes a Respetar
 - La UI **nunca** llama a `psutil` directamente; `freed_mb` llega exclusivamente como argumento del callback.
-- Toda manipulación de widgets ocurre en el hilo principal vía `self.after(0, ...)`.
+- Toda manipulación de widgets ocurre en el hilo principal, publicada con `self._publicar_en_el_bucle(0, ...)` desde un worker (`self.after` a mano, prohibido en `views/`; dentro de un callback del principal, `self.after` sí, para los temporizadores cancelables).
 - El pack gaming (`is_gaming=True`) puede activarse (acción kill/start) pero **no** puede borrarse.
 
 ## Las CUATRO guardas, y por qué cada una mira las listas de SU puerta (TASK-063)
@@ -2788,8 +2808,8 @@ La portada **no** usa `theme.DANGER` en el desenlace "fallo" a propósito: `#c22
 distingue por el texto (`⛔`), no inventándose un par de color que no cumple.
 
 ### Invariantes de Hilos y Red de Seguridad
-- **Cero mutaciones directas de widgets desde hilos secundarios:** Todo worker de fondo (`_run`, `_run_kill`, `_run_start`, `_load`, `_kill`) delega las mutaciones exclusivamente a través de `self.after(0, callback, *args)`. El worker **no arma callbacks anidados**: publica siempre en un método de la vista, que es lo que permite que la guarda AST lo verifique por nombre.
-- **Análisis AST, con la lista de lo permitido como PARES `(raiz, metodo)`, no de raíces:** la sonda `test_los_workers_de_pack_solo_publican_por_after` analiza el **objetivo real de cada `threading.Thread(target=...)`** de cinco métodos de tres clases de vista: `DashboardView.execute_pack`, `PackManagerView.kill_pack`, `PackManagerView.start_pack`, `ProcessManagerView._do_load` y `ProcessManagerView.on_kill_selected`. Esa lista es **explícita y está en el bucle de aplicación del test**, a la vista: añadir un worker nuevo sin añadirlo ahí es un hueco, y el docstring de la sonda lo dice. Lo que la guarda marca como infracción, dicho con sus límites, es **toda llamada o escritura que se resuelva sobre `self` por `Attribute`, por `Subscript`, por `getattr`/`setattr`/`delattr`, por `del`, o pasada como argumento de una llamada permitida**. Se exige que **cada** `self.after` del worker lleve `0` ms y un callback de la lista blanca, no solo el primero que aparece. `self.master.after` cae solo por la regla (par `("master", "after")`, no permitido).
+- **Cero mutaciones directas de widgets desde hilos secundarios:** Todo worker de fondo (`_run`, `_run_kill`, `_run_start`, `_load`, `_kill`) delega las mutaciones exclusivamente a través de `self._publicar_en_el_bucle(0, callback, *args)` (TASK-073; antes `self.after(0, ...)` a mano, que es **PROHIBIDO** en `views/`). El worker **no arma callbacks anidados**: publica siempre en un método de la vista, que es lo que permite que la guarda AST lo verifique por nombre.
+- **Análisis AST, con la lista de lo permitido como PARES `(raiz, metodo)`, no de raíces:** la sonda `test_los_workers_de_pack_solo_publican_por_after` analiza el **objetivo real de cada `threading.Thread(target=...)`** de cinco métodos de tres clases de vista: `DashboardView.execute_pack`, `PackManagerView.kill_pack`, `PackManagerView.start_pack`, `ProcessManagerView._do_load` y `ProcessManagerView.on_kill_selected`. Esa lista es **explícita y está en el bucle de aplicación del test**, a la vista: añadir un worker nuevo sin añadirlo ahí es un hueco, y el docstring de la sonda lo dice. Lo que la guarda marca como infracción, dicho con sus límites, es **toda llamada o escritura que se resuelva sobre `self` por `Attribute`, por `Subscript`, por `getattr`/`setattr`/`delattr`, por `del`, o pasada como argumento de una llamada permitida**. Se exige que **cada** publicación del worker —`self.after` **y** `self._publicar_en_el_bucle`, TASK-073— lleve `0` ms y un callback de la lista blanca, no solo la primera que aparece. `self.master.after` cae solo por la regla (par `("master", "after")`, no permitido).
   - **Comparar solo la raíz NO alcanza** (medido en la iteración 3 del ciclo 26): con una lista de raíces, `self.pack_service.get_all_packs()` y `self.process_service.get_process_exe_path(1)` pasaban. El par es la unidad de comparación.
   - **Comparar solo `call.func` tampoco** (medido en la iteración 4): `getattr(self, 'status_label').configure(...)` —la misma llamada de widget de siempre, con el `Attribute` partido en dos—, `setattr(self, '_last_gaming_summary', 'x')`, `del self._last_gaming_summary` y `self.process_service.kill_pack_apps(self.status_label)` pasaban las cuatro. La guarda bajaba por `Attribute` y por `Subscript`, y eso son dos de las cinco formas de llegar a `self`.
   - La guarda se prueba **contra sí misma** con código sintáctico en las dos direcciones: ocho infracciones que tiene que ver (método de widget, `self.master.after`, escritura en `self`, `del self.<attr>`, `getattr`/`setattr` sobre la vista, `self.<attr>` como argumento de una llamada permitida, tres métodos prohibidos de raíces permitidas y dos de la puerta de atrás por `__dict__`), un worker conforme que no puede marcar, y un worker de dos ramas en el que tiene que ver *las dos*.

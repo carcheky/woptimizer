@@ -676,7 +676,7 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
             # (nombres protegidos y categoria roja) y el filtro de keepers.
             killed, failed, skipped, freed_mb = self.gaming_service.execute_pack(pack)
             texto, color = mensaje_cierre_pack(nombre, killed, failed, skipped, freed_mb)
-            self.after(0, self._inline_status, texto, color)
+            self._publicar_en_el_bucle(0, self._inline_status, texto, color)
             self.notification_service.notify_pack_activated(nombre, killed, freed_mb)
         threading.Thread(target=_run, daemon=True).start()
 
@@ -719,7 +719,7 @@ class PackManagerView(Confirmable, ctk.CTkFrame):
             # el usuario marco cuando no arranco nada de ellas. `categorias` es
             # la lista que la vista YA tiene (`:658`): ni una consulta mas a la DB.
             texto, color = mensaje_arranque_pack(nombre, started, failed, categorias)
-            self.after(0, self._inline_status, texto, color)
+            self._publicar_en_el_bucle(0, self._inline_status, texto, color)
             self.notification_service.notify_apps_launched(nombre, started, failed)
         threading.Thread(target=_run, daemon=True).start()
 

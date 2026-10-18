@@ -2111,8 +2111,11 @@ def test_do_load_publica_sin_tk():
 
     publicadores = set()
     for nodo in ast.walk(arbol):
+        # TASK-073: las DOS puertas autorizadas al bucle de Tk. La deteccion
+        # mira las dos porque la muda de puerta no puede cambiar lo que se
+        # exige: 0 ms y un destino en la vista.
         if (isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Attribute)
-                and nodo.func.attr == "after"
+                and nodo.func.attr in ("after", "_publicar_en_el_bucle")
                 and isinstance(nodo.func.value, ast.Name)
                 and nodo.func.value.id == "self"
                 and nodo.args and isinstance(nodo.args[0], ast.Constant)
@@ -2121,14 +2124,18 @@ def test_do_load_publica_sin_tk():
             # TASK-035 iter 3: el destino puede ser un `def` anidado (nombre) o un
             # metodo de la vista ligado por atributo (`self._apply_load`). Lo que
             # se exige es lo mismo en los dos casos: que se publique por
-            # `self.after(0, ...)` y no escribiendo el estado desde el secundario.
+            # `self.after(0, ...)` o `self._publicar_en_el_bucle(0, ...)` y no
+            # escribiendo el estado desde el secundario.
             destino = nodo.args[1]
             if isinstance(destino, ast.Name):
                 publicadores.add(destino.id)
             elif isinstance(destino, ast.Attribute) and isinstance(destino.value, ast.Name) \
                     and destino.value.id == "self":
                 publicadores.add(destino.attr)
-    assert publicadores, "no hay ninguna funcion destino de self.after(0, ...)"
+    assert publicadores, (
+        "no hay ninguna funcion destino de self.after(0, ...) ni de "
+        "self._publicar_en_el_bucle(0, ...)"
+    )
 
     padres = {}
     for padre in ast.walk(arbol):
@@ -2159,7 +2166,8 @@ def test_do_load_publica_sin_tk():
                     continue
                 assert publicadores.intersection(cadena), (
                     f"{ruta}:{nodo.lineno} asigna self.{t.attr} dentro de {cadena}, "
-                    f"que no es destino de ningun self.after(0, ...); el estado de "
+                    f"que no es destino de ningun self.after(0, ...) ni "
+                    f"self._publicar_en_el_bucle(0, ...); el estado de "
                     "una vista solo se publica desde el hilo principal"
                 )
 
@@ -8760,8 +8768,10 @@ def test_los_workers_de_pack_solo_publican_por_after():
     escribio en la lista y las ESCRITURAS en `self.<attr>`. Se aplica al
     **objetivo real** de cada `threading.Thread(target=...)` de `execute_pack`,
     `kill_pack`, `start_pack`, `ProcessManagerView._do_load` y
-    `ProcessManagerView.on_kill_selected`, y exige que CADA `self.after` del
-    worker lleve 0 ms y un callback de la lista blanca, no solo el primero.
+    `ProcessManagerView.on_kill_selected`, y exige que CADA publicacion del
+    worker (las dos puertas autorizadas: `self.after` y, desde TASK-073,
+    `self._publicar_en_el_bucle`) lleve 0 ms y un callback de la lista blanca,
+    no solo el primero.
 
     LO QUE LA GUARDA CUBRE, DICHO CON SUS LIMITES (iter 4, correccion de una
     promesa que era falsa): toda llamada o escritura que se resuelva sobre `self`
@@ -8828,7 +8838,24 @@ def test_los_workers_de_pack_solo_publican_por_after():
     # `_show_banner` (mismo patron que perdio el ciclo 22): nadie lo llamaba y lo
     # unico que lo sostenia era su propia presencia en esta lista.
     CALLBACKS = {"_inline_status", "_show_banner", "_show_start_banner",
-                 "_publicar_cierre", "_apply_load"}
+                 "_publicar_cierre", "_apply_load",
+                 # TASK-073: los otros tres callbacks a los que publican los
+                 # call sites migrados a `_publicar_en_el_bucle`. No hacen falta
+                 # para el verde de HOY (los workers que cubre esta guarda
+                 # publican a los cinco de arriba), y se listan para que la
+                 # lista blanca sea la verdad cuando la guarda crezca.
+                 "_on_restore_finished", "_do_load"}
+    # TASK-073: la puerta UNICA de las vistas al bucle de Tk desde un hilo
+    # secundario. Vive en `ui/tk_thread.py` y las vistas la llaman por el mixin
+    # `Confirmable._publicar_en_el_bucle`.
+    #
+    # POR QUE ES UNA RAMA NUEVA Y NO UN PAR NUEVO EN `PERMITIDOS`: las
+    # comprobaciones de 0 ms y de callback en lista blanca solo se aplican a la
+    # rama de abajo (`raiz == "after"`). Meterla en `PERMITIDOS` seria el
+    # arreglo de una linea que DEGRADA la guarda: a partir de ese momento un
+    # worker podria publicar a 3000 ms y a un callback cualquiera sin que nadie
+    # lo viera. Un guard que no mide es peor que no tener guard.
+    PUBLICADOR = "_publicar_en_el_bucle"
 
     #: Accesos a la vista que NO son ni `Attribute` ni `Subscript`. Con esta
     #: lista, `getattr(self, 'status_label').configure(...)` y
@@ -8894,7 +8921,7 @@ def test_los_workers_de_pack_solo_publican_por_after():
             raiz, camino = _raiz_de_self(call.func)
             if raiz is None:
                 continue
-            if raiz != "after":
+            if raiz != "after" and raiz != PUBLICADOR:
                 if (raiz, camino[-1]) in PERMITIDOS:
                     # `self` como ARGUMENTO de una llamada permitida tambien es
                     # tocar la vista: el widget no se escribe aqui, pero se saca
@@ -8913,11 +8940,27 @@ def test_los_workers_de_pack_solo_publican_por_after():
                     f"desde el hilo secundario"
                 )
                 continue
+            # TASK-073: `self.after` y `self._publicar_en_el_bucle` son las DOS
+            # puertas autorizadas al bucle de Tk, y se exigen CON LAS MISMAS
+            # DOS REGLAS: 0 ms y un callback de la lista blanca. Una sola rama
+            # para las dos, para que la segunda no pueda ser mas laxa que la
+            # primera.
+            puerta = "self.after" if raiz == "after" else f"self.{PUBLICADOR}"
             if not call.args or not (isinstance(call.args[0], ast.Constant) and call.args[0].value == 0):
-                malos.append(f"{etiqueta}:L{call.lineno} self.after debe ser de 0 ms")
+                malos.append(f"{etiqueta}:L{call.lineno} {puerta} debe ser de 0 ms")
             elif (len(call.args) < 2 or not isinstance(call.args[1], ast.Attribute)
                     or call.args[1].attr not in CALLBACKS):
-                malos.append(f"{etiqueta}:L{call.lineno} self.after debe publicar en {sorted(CALLBACKS)}")
+                # El nombre del infractor va en el mensaje a proposito: un
+                # "debe publicar en [...]" sin decir QUE publica obliga a abrir
+                # el fichero para entender el rojo (y es lo que hacia que la
+                # contraprueba de TASK-073 no pudiera afirmar sobre el sintoma).
+                destino_malo = (call.args[1].attr if len(call.args) >= 2
+                                and isinstance(call.args[1], ast.Attribute)
+                                else "un callback que no es un metodo de la vista")
+                malos.append(
+                    f"{etiqueta}:L{call.lineno} {puerta} publica en "
+                    f"{destino_malo}, y tiene que publicar en {sorted(CALLBACKS)}"
+                )
         for nodo in ast.walk(worker):
             if isinstance(nodo, ast.Assign):
                 objetivos = nodo.targets
@@ -9082,6 +9125,45 @@ def test_los_workers_de_pack_solo_publican_por_after():
         f"un argumento que NO cuelga de self no puede marcarse: {malos_arg}"
     )
 
+    # Control 9 (TASK-073): la RAMA NUEVA de `_publicar_en_el_bucle` tiene que
+    # exigir LO MISMO que la de `self.after`, y eso no se cree: se mide. Con la
+    # rama degradada a "permitido sin comprobar" (que es lo que pasaria si
+    # `_publicar_en_el_bucle` se metiera en `PERMITIDOS`), estas tres llamadas
+    # pasarian las tres y un worker podria publicar a 3000 ms y a un callback
+    # cualquiera sin que nadie lo viera.
+    codigo_publicador_malo = (
+        "def _run(self):\n"
+        "    self._publicar_en_el_bucle(3000, self._show_banner, 1)\n"
+        "    self._publicar_en_el_bucle(0, self._inventado, 1)\n"
+    )
+    malos_publicador = _infracciones(ast.parse(codigo_publicador_malo).body[0],
+                                     "CONTROL-PUBLICADOR")
+    assert len(malos_publicador) == 2, (
+        "la rama de `_publicar_en_el_bucle` esta tan degradada como la de "
+        "`self.after`: tiene que ver el delay que no es 0 ms y el callback que "
+        f"no esta en la lista blanca: {malos_publicador}"
+    )
+    assert any("debe ser de 0 ms" in m for m in malos_publicador), (
+        f"no ve `self._publicar_en_el_bucle(3000, ...)`: {malos_publicador}"
+    )
+    assert any("_inventado" in m for m in malos_publicador), (
+        f"no ve un callback fuera de la lista blanca por la puerta nueva: {malos_publicador}"
+    )
+    # Y la puerta nueva CONFORME no puede marcar: sin esta linea, una guarda
+    # que marcase todo tambien saldria del otro lado en verde.
+    codigo_publicador_bueno = (
+        "def _run(self):\n"
+        "    killed, failed, skipped, freed = self.gaming_service.execute_pack(p)\n"
+        "    texto, color = mensaje_cierre_pack('X', killed, failed, skipped, freed)\n"
+        "    self._publicar_en_el_bucle(0, self._inline_status, texto, color)\n"
+        "    self.notification_service.notify_pack_activated('X', killed, freed)\n"
+    )
+    assert _infracciones(ast.parse(codigo_publicador_bueno).body[0],
+                         "CONTROL-PUBLICADOR-BUENO") == [], (
+        "un worker que publica por la puerta autorizada, a 0 ms y en un "
+        "callback de la lista blanca, es CONFORME"
+    )
+
     # -----------------------------------------------------------------
     # 1. La guarda aplicada al codigo real
     # -----------------------------------------------------------------
@@ -9168,9 +9250,13 @@ def test_los_workers_de_pack_solo_publican_por_after():
                 "el worker toca la vista fuera de self.after(0, ...): " + "; ".join(infracciones)
             )
             publica = [n for n in ast.walk(worker) if isinstance(n, ast.Call)
-                       and isinstance(n.func, ast.Attribute) and n.func.attr == "after"
+                       and isinstance(n.func, ast.Attribute)
+                       and n.func.attr in ("after", PUBLICADOR)
                        and isinstance(n.func.value, ast.Name) and n.func.value.id == "self"]
-            assert publica, f"{etiqueta}: el worker no publica nada por self.after(0, ...)"
+            assert publica, (
+                f"{etiqueta}: el worker no publica nada por self.after(0, ...) "
+                f"ni por self.{PUBLICADOR}(0, ...)"
+            )
 
     print("test_los_workers_de_pack_solo_publican_por_after OK (guarda AST exhaustiva).")
 
@@ -25226,6 +25312,245 @@ def test_pack_manager_view_and_dashboard_protected_pack_ui_contracts():
         root.destroy()
 
 
+def test_publicar_en_el_bucle_no_programa_si_la_vista_ya_murio():
+    """TASK-073: publicar en el bucle de Tk sin propagar `RuntimeError`.
+
+    MEDIDO 2026-10-18 contra Tk real (CustomTkinter 6.0.0), y las dos
+    mediciones son las que decidEN la forma de este test:
+
+      * `winfo_exists()` desde un hilo secundario lanza `RuntimeError: main
+        thread is not in main loop` **tambien con la ventana viva**, 1 de 1.
+        Un guard tipo `if self.winfo_exists(): self.after(...)` no pregunta si
+        existe la vista: lanza la misma excepcion un paso antes. El caso D lo
+        mata.
+      * Con `mainloop()` vivo, `after(400)` programado y la ventana destruida
+        150 ms despues, el callback NUNCA se ejecuta: Tk lo descarta con el
+        widget. No hay carrera posterior que cerrar, luego el `try/except`
+        alrededor de la PROGRAMACION es la solucion completa.
+
+    **El defecto que se caza aqui no es "salta una excepcion", es "se trago la
+    excepcion".** Un test que solo comprueba que no revienta sale VERDE con el
+    guard quitado, porque el `except` hace justo eso. Por eso las aserciones
+    afirman sobre CONTENIDO -- lo que se PROGRAMO y lo que se DEVOLVIO -- y no
+    sobre "no revento":
+
+      A. la vista murio: `llamadas == []` y `handle is None`;
+      B. la vista vive: `llamadas == [(0, cb, (1, 2))]` y el handle es el
+         centinela. Mata el otro extremo, el helper que se traga TODO y nunca
+         programa nada, que con el caso A solo pasaria en verde;
+      C. `after` revienta DESPUES de dejar el intento registrado: una entrada en
+         `llamadas` y `None` de vuelta;
+      D. `winfo_exists()` revienta y `after` funciona: se publica igual. Mata el
+         probe de existencia, que el docstring de `ui/tk_thread.py` descarta;
+      E. la puerta de las vistas (`Confirmable._publicar_en_el_bucle`) delega en
+         la MISMA funcion: no hay una reimplementacion que mutar en silencio.
+    """
+    print("Testing safe Tk-loop publication from a worker (TASK-073)...")
+    from woptimizer.ui.tk_thread import publicar_en_bucle
+    from woptimizer.ui.confirmation import Confirmable
+
+    CENTINELA = "after#1"
+
+    class _VistaFalsa:
+        """Doble de widget: REGISTRA cada `after` y despues decide si revienta.
+
+        `registrar_antes` separa dos puntos de fallo que NO son el mismo hecho:
+        con `True` el intento ya es observable cuando `after` revienta (se
+        intento y fallo); con `False` no lo es (murio antes de que Tcl llegara a
+        agendar nada). Es la diferencia entre los casos A y C.
+        """
+
+        def __init__(self, revienta=False, registrar_antes=False,
+                     handle=CENTINELA, winfo_explota=False):
+            self.llamadas = []
+            self._revienta = revienta
+            self._registrar_antes = registrar_antes
+            self._handle = handle
+            self._winfo_explota = winfo_explota
+
+        def after(self, delay_ms, callback, *args):
+            if self._registrar_antes:
+                self.llamadas.append((delay_ms, callback, args))
+            if self._revienta:
+                raise RuntimeError("main thread is not in main loop")
+            self.llamadas.append((delay_ms, callback, args))
+            return self._handle
+
+        def winfo_exists(self):
+            if self._winfo_explota:
+                raise RuntimeError("main thread is not in main loop")
+            return True
+
+    def _cb():
+        return None
+
+    # -- A: la vista ya no existe ------------------------------------------
+    muerta = _VistaFalsa(revienta=True)
+    handle = publicar_en_bucle(muerta, 0, _cb, 1, 2)
+    assert handle is None, (
+        f"sin bucle principal la programacion falla y no hay handle: {handle!r}"
+    )
+    assert muerta.llamadas == [], (
+        "una vista muerta no puede dejar NADA programado, y la lista de "
+        f"llamadas es lo que lo demuestra: {muerta.llamadas}"
+    )
+
+    # -- B: la vista vive, y aqui el caso POSITIVO --------------------------
+    viva = _VistaFalsa()
+    handle = publicar_en_bucle(viva, 0, _cb, 1, 2)
+    assert handle == CENTINELA, (
+        "con la vista vive se devuelve el handle REAL de `after`, no None: "
+        f"{handle!r}"
+    )
+    assert viva.llamadas == [(0, _cb, (1, 2))], (
+        "la vista viva tiene que recibir la programacion con su delay y sus "
+        f"argumentos intactos: {viva.llamadas}"
+    )
+
+    # -- C: revienta DESPUES de registrar el intento ------------------------
+    a_mitad = _VistaFalsa(revienta=True, registrar_antes=True)
+    handle = publicar_en_bucle(a_mitad, 0, _cb)
+    assert handle is None, "un fallo al agendar no devuelve handle: el None es el aviso"
+    assert len(a_mitad.llamadas) == 1, (
+        "el intento se registro y fallo: una sola entrada, no cero (eso seria el "
+        f"caso A) ni dos: {a_mitad.llamadas}"
+    )
+
+    # -- D: la sonda de existencia es CODIGO MUERTO y no puede volver -------
+    con_sonda = _VistaFalsa(winfo_explota=True)
+    handle = publicar_en_bucle(con_sonda, 0, _cb)
+    assert handle == CENTINELA and con_sonda.llamadas == [(0, _cb, ())], (
+        "`winfo_exists()` revienta desde un hilo secundario incluso con la "
+        "ventana viva (medido 1 de 1), luego NO puede decidir nada: un probe "
+        "que lo consulte se traga el acierto y no publica. "
+        f"handle={handle!r} llamadas={con_sonda.llamadas}"
+    )
+
+    # -- E: la puerta de las vistas delega en la MISMA funcion --------------
+    class _VistaQueEsPuerta(Confirmable):
+        """El mixin ES el widget: `self.after` es el `after` del doble."""
+
+        def __init__(self, doble):
+            self.llamadas = doble.llamadas
+            self._doble = doble
+
+        def after(self, delay_ms, callback, *args):
+            return self._doble.after(delay_ms, callback, *args)
+
+    doble = _VistaFalsa()
+    puerta = _VistaQueEsPuerta(doble)
+    handle = puerta._publicar_en_el_bucle(0, _cb, "x")
+    assert handle == CENTINELA and doble.llamadas == [(0, _cb, ("x",))], (
+        "`Confirmable._publicar_en_el_bucle` tiene que delegar en "
+        f"`tk_thread.publicar_en_bucle`, no reimplementarla: {doble.llamadas}"
+    )
+
+    print("test_publicar_en_el_bucle_no_programa_si_la_vista_ya_murio OK.")
+
+
+def test_ninguna_vista_programa_after_a_mano():
+    """TASK-073: en `ui/views/` no queda ni un `self.after` a mano.
+
+    La deuda que este ciclo cierra no era un bug, era el MODO en que la deuda
+    vuelve: un `try/except` copiado a mano en diez call sites de tres vistas.
+    Este guard es la puerta de vuelta, y por eso trae **contraprueba**: una
+    deteccion de "cero ocurrencias" que no observa nada deja la suite verde
+    para siempre. Es el fallo REAL de
+    `test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input`, donde la
+    deteccion existia, no veia, y `for argumento in []` dejaba todo en verde
+    (seccion del guard de TASK-072 en `docs/ai/testing-guide.md`).
+
+    Por eso la misma deteccion se aplica aqui a tres fragmentos sinteticos y se
+    exige que SEPARTE los dos: marca el `self.after(0, f)`, NO marca el
+    `self._publicar_en_el_bucle(0, f)`, y NO marca un worker conforme con otras
+    llamadas legitimas (el control negativo: un guard que marca todo no
+    guardaba nada).
+    """
+    print("Testing that no view calls self.after by hand (TASK-073)...")
+    VISTAS = ("dashboard_view.py", "pack_manager_view.py", "process_manager_view.py")
+
+    def _after_a_mano(arbol, etiqueta):
+        """`[(fichero, linea)]` de cada `self.after` del arbol. Vacio = limpio."""
+        malos = []
+        for nodo in ast.walk(arbol):
+            if (isinstance(nodo, ast.Attribute) and nodo.attr == "after"
+                    and isinstance(nodo.value, ast.Name) and nodo.value.id == "self"):
+                malos.append(f"{etiqueta}:{nodo.lineno}")
+        return malos
+
+    raiz_repo = os.path.dirname(os.path.abspath(__file__))
+    for nombre in VISTAS:
+        ruta = os.path.join(raiz_repo, "src", "woptimizer", "ui", "views", nombre)
+        with open(ruta, "r", encoding="utf-8") as fh:
+            arbol = ast.parse(fh.read(), nombre)
+        malos = _after_a_mano(arbol, nombre)
+        assert not malos, (
+            "las vistas publican por `self._publicar_en_el_bucle(0, ...)` "
+            "(TASK-073), nunca por `self.after` a mano; este call site "
+            f"vuelve a la puerta de atrás: {malos}"
+        )
+
+    # -- CONTRAPRUESTA 1: la deteccion tiene que ver un `self.after` --------
+    prohibido = ast.parse(
+        "def _run(self):\n"
+        "    self.after(0, self._show_banner, 1)\n"
+    ).body[0]
+    assert _after_a_mano(prohibido, "CONTROL-PROHIBIDO"), (
+        "la deteccion no ve `self.after(0, ...)`: este guard no mira nada y "
+        "dejaria volver la deuda sin enterarse"
+    )
+
+    # -- CONTRAPRUESTA 2: y NO puede marcar la puerta autorizad ------------
+    permitido = ast.parse(
+        "def _run(self):\n"
+        "    self._publicar_en_el_bucle(0, self._show_banner, 1)\n"
+    ).body[0]
+    assert _after_a_mano(permitido, "CONTROL-PERMITIDO") == [], (
+        "la deteccion marca la puerta que este ciclo acaba de autorizar: "
+        "esta en el mismo fichero que las diez vistas migradas"
+    )
+
+    # -- CONTROL NEGATIVO: un worker conforme con lo demas queda limpio -----
+    conforme = ast.parse(
+        "def _run(self):\n"
+        "    killed, failed, skipped, freed = self.process_service.kill_pack_apps([])\n"
+        "    self.notification_service.notify_pack_activated('X', killed, freed)\n"
+        "    self._publicar_en_el_bucle(0, self._inline_status, 'X', 'gray')\n"
+    ).body[0]
+    assert _after_a_mano(conforme, "CONTROL-CONFORME") == [], (
+        "la deteccion marca de mas: un worker que no toca `self.after` es "
+        "conforme, y un guard que marca todo no guarda nada"
+    )
+
+    # -- La CASA de la puerta tambien tiene frontera (TASK-073) -------------
+    # `confirmation.py` la vigila `test_double_tap_guard` desde el ciclo 26, y
+    # por eso importa a su hermano de forma RELATIVA. El fichero nuevo que
+    # aloja la logica no lo vigila nadie, asi que se vigila aqui: si un dia
+    # `tk_thread.py` importa `psutil` o `json` para "mirar si la vista sigue
+    # viva", la puerta deja de ser UI pura y entra por la puerta de atras.
+    ruta_tk = os.path.join(raiz_repo, "src", "woptimizer", "ui", "tk_thread.py")
+    with open(ruta_tk, "r", encoding="utf-8") as fh:
+        arbol_tk = ast.parse(fh.read(), "tk_thread.py")
+    importados = set()
+    for nodo in ast.walk(arbol_tk):
+        if isinstance(nodo, ast.Import):
+            importados.update(a.name.split(".")[0] for a in nodo.names)
+        elif isinstance(nodo, ast.ImportFrom) and nodo.module:
+            importados.add(nodo.module.split(".")[0])
+    prohibido_tk = importados & {"psutil", "json", "subprocess", "services",
+                                 "models", "customtkinter", "tkinter"}
+    assert not prohibido_tk, (
+        f"ui/tk_thread.py viola la frontera de capas: importa {sorted(proibido_tk)}. "
+        "La logica de publicar en el bucle es UI pura: solo llama a un metodo "
+        "del widget que recibe"
+    )
+    assert "typing" in importados, (
+        f"se esperaba `typing` y no aparece; los imports reales son {sorted(importados)}"
+    )
+
+    print("test_ninguna_vista_programa_after_a_mano OK.")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -25673,4 +25998,16 @@ if __name__ == "__main__":
     test_protected_apps_survive_kill_processes_and_gaming_pack()
     test_process_manager_view_hides_protected_apps_and_dropdown()
     test_pack_manager_view_and_dashboard_protected_pack_ui_contracts()
+    # TASK-073: publicacion en el bucle de Tk desde un hilo secundario. Suite:
+    # 203 -> 205. Las DOS DETRAS del marcador (tooling puro: `ast` sobre tres
+    # ficheros y un doble de widget; ninguna abre ventana), luego el reparto se
+    # queda en 142 backend + 63 headless = 205.
+    #
+    # La primera afirma sobre lo que se PROGRAMO y lo que se DEVOLVIO, no sobre
+    # "no revienta": con el guard quitado el `except` se traga el RuntimeError y
+    # un test de no-revento sale verde. La segunda es la puerta de vuelta del
+    # `self.after` a mano en las vistas, y trae CONTRAPRUESTA propia porque una
+    # deteccion de cero ocurrencias que no observa nada deja la suite verde.
+    test_publicar_en_el_bucle_no_programa_si_la_vista_ya_murio()                # AC-1
+    test_ninguna_vista_programa_after_a_mano()                                 # AC-2
     print("\nALL TESTS PASSED.")

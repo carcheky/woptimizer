@@ -10,6 +10,7 @@ files_to_check = [
     'src/woptimizer/ui/app.py',
     'src/woptimizer/ui/main_window.py',
     'src/woptimizer/ui/confirmation.py',
+    'src/woptimizer/ui/tk_thread.py',
     'src/woptimizer/ui/feedback.py',
     'src/woptimizer/ui/views/dashboard_view.py',
     'src/woptimizer/ui/views/pack_manager_view.py',

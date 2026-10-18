@@ -214,7 +214,9 @@ class DashboardView(Confirmable, ctk.CTkFrame):
                             categorias=None):
         """Muestra el banner de feedback tras arrancar apps de un pack.
 
-        Debe llamarse siempre desde el hilo principal (usar self.after(0, ...)).
+        Debe llamarse siempre desde el hilo principal (publicar con
+        `self._publicar_en_el_bucle(0, ...)`; `self.after` a mano esta
+        PROHIBIDO en `ui/views/` desde TASK-073).
 
         TASK-068 (T-3): el literal estaba aqui escrito a mano y el mismo hecho
         se decia de dos maneras segun la puerta (esta y la del Gestor). Ahora el
@@ -237,7 +239,9 @@ class DashboardView(Confirmable, ctk.CTkFrame):
                      failed: int = 0, skipped: int = 0):
         """Muestra el banner de feedback con los datos de RAM liberada.
 
-        Debe llamarse siempre desde el hilo principal (usar self.after(0, ...)).
+        Debe llamarse siempre desde el hilo principal (publicar con
+        `self._publicar_en_el_bucle(0, ...)`; `self.after` a mano esta
+        PROHIBIDO en `ui/views/` desde TASK-073).
 
         TASK-035 / ciclo 26: `failed` y `skipped` ya no se tiran. Con 0 procesos
         cerrados el banner dice lo que paso y baja a `theme.WARNING`: el verde
@@ -276,7 +280,7 @@ class DashboardView(Confirmable, ctk.CTkFrame):
     def _on_restore_clicked(self):
         def _run_restore():
             started, failed = self.gaming_service.restore_gaming_session()
-            self.after(0, self._on_restore_finished, started, failed)
+            self._publicar_en_el_bucle(0, self._on_restore_finished, started, failed)
 
         import threading
         threading.Thread(target=_run_restore, daemon=True).start()
@@ -488,7 +492,7 @@ class DashboardView(Confirmable, ctk.CTkFrame):
                 # Las dos puertas devuelven la misma 4-tupla y el texto se
                 # calcula una sola vez en `ui/feedback.py` (ciclo 26).
                 killed, failed, skipped, freed_mb = self.gaming_service.execute_pack(p)
-                self.after(0, self._show_banner, killed, freed_mb, p.is_gaming, failed, skipped)
+                self._publicar_en_el_bucle(0, self._show_banner, killed, freed_mb, p.is_gaming, failed, skipped)
                 self.notification_service.notify_pack_activated(p.name, killed, freed_mb)
 
             threading.Thread(target=_run_kill, args=(pack,), daemon=True).start()
@@ -519,7 +523,7 @@ class DashboardView(Confirmable, ctk.CTkFrame):
                 # el mensaje pueda nombrarlas cuando no arranco nada de ellas. La
                 # lista es la MISMA que se acaba de ejecutar, no una consulta
                 # nueva a la DB.
-                self.after(0, self._show_start_banner, launched, failed, p.name,
+                self._publicar_en_el_bucle(0, self._show_start_banner, launched, failed, p.name,
                            categorias)
                 self.notification_service.notify_apps_launched(p.name, launched, failed)
 

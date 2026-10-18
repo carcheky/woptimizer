@@ -26,7 +26,8 @@ def _agrupar(procs: List[ProcessInfo]) -> Dict[str, List[ProcessInfo]]:
     Vive fuera de la clase para que el worker de carga (`_do_load`, hilo
     secundario) no tenga que llamar a `self._group`: el invariante de
     `test_los_workers_de_pack_solo_publican_por_after` es que un worker solo
-    publica por `self.after(0, ...)` y no toca la vista de ninguna otra forma.
+    publica por `self._publicar_en_el_bucle(0, ...)` --TASK-073, antes
+    `self.after(0, ...)`-- y no toca la vista de ninguna otra forma.
     `ProcessManagerView._group` se conserva como fachada porque es parte del
     contrato usado por `test_do_load_publica_sin_tk`.
     """
@@ -176,7 +177,8 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
         self.update_idletasks()
         
         if not getattr(self.process_service, 'is_db_loaded', False):
-            self.process_service.load_db_async(callback=lambda: self.after(0, self._do_load))
+            self.process_service.load_db_async(
+                callback=lambda: self._publicar_en_el_bucle(0, self._do_load))
         else:
             self._do_load()
 
@@ -191,7 +193,7 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
             def _handle_err():
                 self._db_update_status = "⚠️ DB no actualizada (sin red o repo no publicado). Se usa la local."
                 self.status_label.configure(text=self._db_update_status)
-            self.after(0, _handle_err)
+            self._publicar_en_el_bucle(0, _handle_err)
 
         def _on_success():
             def _handle_ok():
@@ -199,14 +201,14 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
                     self._db_update_status = "✅ Base de datos actualizada con éxito."
                 self.status_label.configure(text=self._db_update_status)
                 self._do_load()
-            self.after(0, _handle_ok)
+            self._publicar_en_el_bucle(0, _handle_ok)
 
         self.process_service.load_db_async(callback=_on_success, on_error=_on_error)
 
     def _do_load(self):
         def _load():
             procs = self.process_service.get_running_processes()
-            self.after(0, self._apply_load, procs)
+            self._publicar_en_el_bucle(0, self._apply_load, procs)
 
         threading.Thread(target=_load, daemon=True).start()
 
@@ -404,8 +406,8 @@ class ProcessManagerView(Confirmable, ctk.CTkFrame):
             # cada una puede traer varios PIDs. El aviso de confirmacion cuenta
             # casillas, asi que el resultado tiene que contar las mismas, o el
             # usuario ve "3 apps seleccionadas" y luego "4 seleccionadas".
-            self.after(0, self._publicar_cierre, killed, failed, skipped, freed_mb,
-                       len(selected_keys))
+            self._publicar_en_el_bucle(0, self._publicar_cierre, killed, failed, skipped, freed_mb,
+                                       len(selected_keys))
             self.notification_service.notify_kill_result(killed, failed, freed_mb)
 
         threading.Thread(target=_kill, daemon=True).start()

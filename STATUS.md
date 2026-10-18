@@ -8,8 +8,8 @@
 
 | Indicador | Estado | Detalle |
 |---|---|---|
-| Sintaxis UI | 🟢 | `verify_ui_syntax.py` — 9 módulos |
-| Tests headless | 🟢 | `run_tests.py`, **203 tests** (142 backend + 61 headless UI) |
+| Sintaxis UI | 🟢 | `verify_ui_syntax.py` — 10 módulos |
+| Tests headless | 🟢 | `run_tests.py`, **205 tests** (142 backend + 63 headless UI) |
 | Benchmark base | 🟢 | 182 ms init · 4.97 ms escaneo · 0.003 ms cache · 30 MB RSS |
 | Process DB | 🟢 | 96 entradas · 8 categorías · 0 huérfanas · 🛡️ 34 protegidas |
 | Versionado | 🟢 | Rama `beta` · último commit `4349b10` · `main` publicada `v1.1.0` |
@@ -22,7 +22,7 @@
 - **Ciclos completados:** 61 (`rd_journal.json`)
 - **Rama de trabajo:** `beta` (nunca commitear a `main` directamente)
 - **Último ciclo (#61):** TASK-071 — Aplicaciones protegidas (pack indestructible e inejecutable)
-- **Tarea activa (`active_task_id`):** `TASK-073` (`pending`, `high`)
+- **Tarea activa (`active_task_id`):** `TASK-073` (`completed`, 2026-10-18) · siguiente del backlog: `TASK-074`
 
 ---
 
@@ -30,14 +30,14 @@
 
 | ID | Estado | Prioridad | Título | Notas clave |
 |---|---|---|---|---|
-| **TASK-073** | `pending` | **high** | RuntimeError en `ProcessManagerView._load` tras destrucción | Race condition ventana destruida |
+| **TASK-073** | ✅ `completed` | **high** | RuntimeError en `ProcessManagerView._load` tras destrucción | **RESUELTO 2026-10-18:** los 10 `self.after` de `views/` pasan por `self._publicar_en_el_bucle` (`ui/tk_thread.py`); el defecto solo vivía en el mundo headless |
 | **TASK-068** | `in_progress` | high | Arranque por categorías revierte TASK-063 | Código hecho, 189→198 tests. **2 decisiones del dueño bloquean cierre (P-1, P-2b)** |
 | **TASK-074** | `pending` | medium | Blindar paridad git tooling (código 2 asimétrico) | |
 | **TASK-075** | `pending` | medium | Desacoplar `validate_docs.py` de `%LOCALAPPDATA%` para CI | |
 | **TASK-076** | `pending` | medium | Desduplicar flags PyInstaller (`force_build.py` vs `release.yml`) | |
 | **TASK-077** | `pending` | low | Normalizar CRLF en `.bat`/`.ps1` (`git add --renormalize`) | |
 
-> **Prioridad de ejecución:** `TASK-073` (activa) → resto por prioridad.
+> **Prioridad de ejecución:** `TASK-074` (siguiente del backlog) → resto por prioridad.
 > **TASK-068** está bloqueada por decisiones del dueño (P-1 y P-2b, ver más abajo).
 
 ---
@@ -91,7 +91,7 @@
 1. **Leer AGENTS.md** para invariantes (separación capas, kill recursivo, pack gaming protegido).
 2. **Nunca commitear a `main`** — trabajar en `beta`, luego ff-merge.
 3. **Commit solo vía** `python .taskmaster/git_safe_commit.py "mensaje (TASK-NNN)"`.
-4. **Tests:** `python run_tests.py` (203 tests) · `python verify_ui_syntax.py` · `python validate_docs.py`.
+4. **Tests:** `python run_tests.py` (205 tests) · `python verify_ui_syntax.py` · `python validate_docs.py`.
 5. **Docs vivas:** actualizar `docs/ai/` tras cada cambio arquitectónico.
 6. **Carga selectiva:** no leer toda la doc — consultar `llms.txt` como mapa y cargar solo el fichero de `docs/ai/` que necesites.
 7. **Pipeline de 4 pasos:** Buscar → Planear → Ejecutar → Auditar tests (mutation-auditor).

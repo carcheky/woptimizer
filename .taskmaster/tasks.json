@@ -1581,7 +1581,7 @@
       "description": "DEUDA DE STATUS.md (REFERENCIA DESFASADA, ver notes: la Deuda Tecnica Conocida esta en la linea 58 y TASK-073 figuraba en la tabla de backlog, linea 33, no en la 'fila 122'): python run_tests.py imprime intermitentemente RuntimeError: main thread is not in main loop desde los hilos worker de las vistas, al llamar a self.after(0, ...) cuando NO HAY bucle principal en marcha. MEDIDO 2026-10-18: con mainloop vivo, after() desde un hilo secundario seatiende bien (OK -> 'after#12'), luego el defecto vive en el mundo headless de run_tests.py, que usa update() y nunca mainloop().",
       "complexity": "low",
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "ui/tk_thread.py (NUEVO) + ui/confirmation.py + ui/views/{process_manager,dashboard,pack_manager}_view.py",
       "acceptance_criteria": [

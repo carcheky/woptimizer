@@ -11,21 +11,36 @@ NUNCA un dialogo modal en la ventana principal; la seguridad se consigue con la 
 pulsacion, no con un dialogo. Ese patron se perdio en la reescritura v3 y esta es su unica
 copia en el proyecto.
 
-QUE HAY DENTRO (dos capas, y solo dos)
+QUE HAY DENTRO (dos capas, y una tercera que solo DELEGA)
 1. `DoubleTapGuard` -- maquina de estados PURA. No conoce widgets, no importa tkinter ni
    customtkinter y recibe un `scheduler` inyectable, asi que se testea headless con un doble.
    Aqui vive el test que discrimina (`test_double_tap_guard` en `run_tests.py`).
 2. `Confirmable` -- mixin FINO para las vistas. Solo configura widgets (text / fg_color /
    hover_color del boton) y escribe en el `status_label`. No decide nada de negocio.
+Tercera pieza, TASK-073: `_publicar_en_el_bucle`, que NO es una capa -- es una delegacion
+de una linea a `ui/tk_thread.py::publicar_en_bucle`, donde vive la logica de agendar en el
+bucle de Tk desde un hilo secundario. Sigo siendo "dos capas": lo que hay aqui no decide nada,
+solo pasa la llamada. La razon de que la funcion este en otro fichero esta en el docstring de
+`tk_thread.py`: la logica de ahi es `typing`-only y testeable sin Tk, y asi este modulo no
+necesita permiso para importar Tk.
 
 INVARIANTE DE FRONTERA DE CAPAS (AGENTS.md)
 La UI no toca el sistema operativo ni el JSON, y aqui la frontera es doble: este modulo solo
-puede importar `typing`. PROHIBIDO `psutil`, `json`, `woptimizer.services` y
-`woptimizer.models`. `tkinter` tampoco se importa a nivel de modulo, para que la maquina de
-estado se pueda importar en un test sin ninguna dependencia de Tk.
+puede importar `typing` y su HERMANO `tk_thread`. PROHIBIDO `psutil`, `json`,
+`woptimizer.services` y `woptimizer.models`. `tkinter` tampoco se importa a nivel de modulo,
+para que la maquina de estado se pueda importar en un test sin ninguna dependencia de Tk.
+
+TASK-073: el import de `tk_thread` es RELATIVO (`from .tk_thread import ...`) a proposito.
+`test_double_tap_guard` vigila la frontera con `ast` y prohibe cualquier paquete `woptimizer.*`
+en este fichero, para que la maquina de estado se importe arrastrando lo minimo. Un import
+relativo no evade el spiritu de esa guarda: lo que se prohibe es arrastrar `psutil`, `json` o
+Tk, y `tk_thread.py` solo importa `typing`. Un import absoluto seria mas legible y violaria una
+frontera medida; la de `tk_thread` se vigila ahora en `test_ninguna_vista_programa_after_a_mano`.
 """
 
 from typing import Any, Callable, Dict, Optional, Set, Tuple
+
+from .tk_thread import publicar_en_bucle
 
 # ---------------------------------------------------------------------------
 # Literales de estado. Compartidos por las 5 acciones: el mismo aspecto en
@@ -286,3 +301,21 @@ class Confirmable:
         manejador.append(handle)
         self._timers_ui.add(handle)
         return handle
+
+    # -- publicacion desde un hilo secundario -------------------------------
+    def _publicar_en_el_bucle(self, delay_ms: int, callback: Callable[..., Any],
+                              *args: Any) -> Any:
+        """UNICA puerta de las vistas al bucle de Tk desde un hilo secundario.
+
+        Delegacion de una linea a `ui/tk_thread.py::publicar_en_bucle`. No es un
+        `try/except` copiado por vista, y no usa `_schedule_ui` a proposito: aquel
+        registra el handle en `_timers_ui`, que `cancel_on_destroy` itera en el
+        hilo principal, y hacerlo desde un worker seria una mutacion de `set`
+        entre dos hilos. Ademas el contrato es otro: esto no se cancela (0 ms,
+        cuando el bucle lo atienda ya no hay nada que cancelar) y no necesita
+        `scheduler` inyectable.
+
+        `self.after` a mano PROHIBIDO en `ui/views/`: el guard AST
+        (`test_ninguna_vista_programa_after_a_mano`) lo comprueba.
+        """
+        return publicar_en_bucle(self, delay_ms, callback, *args)
