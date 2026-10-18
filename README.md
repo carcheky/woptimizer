@@ -3,7 +3,7 @@
 > Cierra las apps que sobran cuando vas a jugar. Reabre tu setup cuando vuelves.
 > Pensado para que no tengas que pensar en qué procesos te están robando FPS.
 
-![Estado del proyecto](https://img.shields.io/badge/ciclos-61-blue) ![Tests](https://img.shields.io/badge/tests-226%20verdes-brightgreen)
+![Estado del proyecto](https://img.shields.io/badge/ciclos-61-blue) ![Tests](https://img.shields.io/badge/tests-231%20verdes-brightgreen)
 
 **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) · **Tablero:** [`STATUS.md`](STATUS.md) · **Docs técnicas:** [`docs/ai/`](docs/ai/INDEX.md)
 
@@ -60,7 +60,7 @@ Otros comandos:
 
 ```bash
 python -m woptimizer      # equivalente a run.py
-python run_tests.py       # 226 tests headless (no abre ventanas)
+python run_tests.py       # 231 tests headless (no abre ventanas)
 python verify_ui_syntax.py
 ```
 

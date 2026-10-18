@@ -209,7 +209,7 @@ Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
     mensaje sí es largo», y quien lo escribe puede arreglarlo en el mismo turno. La **rama** es
     otra cosa: un rechazo duro sobre `main` solo guardaría el camino guardado —el wrapper— y
     **bloquearía el commit legítimo del dueño en la rama de release**, que es justo el caso para
-    el que `main` existe (`STATUS.md:95(b)`: una puerta que solo existe en el wrapper no puede
+    el que `main` existe (decision P-2b, `STATUS.md:98`: una puerta que solo existe en el wrapper no puede
     cerrar un `commit` escrito a mano). El defecto que se cierra aquí es «el bucle no sabe que
     debería estar en `beta`», y un defecto de instrucción se cierra con instrucción **y con un
     test que lee la instrucción**, no con un `sys.exit` que dejaría al bucle sin salida

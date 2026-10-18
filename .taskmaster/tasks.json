@@ -1749,7 +1749,7 @@
       "description": "verify_ui_syntax.py:9-20 enumera DIEZ rutas escritas a mano en vez de derivar el alcance. MEDIDO en camara con control positivo: theme.py y tray_menu.py (NO listados) rotos -> exit 0 VERDE; app.py (SI listado) roto -> exit 1 (el control que discrimina); un modulo NUEVO roto -> exit 0 VERDE. El arbol real tiene 12 .py bajo src/woptimizer/ui y la lista cubre 10. theme.py (2026-10-01) y tray_menu.py (2026-10-04) se crearon DESPUES del ultimo toque real de la lista (bbcc472, 2026-10-18, que solo anadio tk_thread.py) y nunca entraron: la lista se actualiza a mano cuando alguien se acuerda. Este agujero YA FUE DOCUMENTADO en openspec/changes/2026-09-29-double-tap-confirmation/proposal.md:319-320 y se 'arreglo' ANADIENDO confirmation.py a la lista (:73, :271-272), que es el arreglo que degrada el guard. ADEMAS: verify_ui_syntax no aparece en NINGUN test del repo (su unica mencion en run_tests.py es :13177, dentro de un docstring), y corre en CI (release.yml:87). Se reproduce SIN incidente en 8 segundos.",
       "complexity": 4,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "openspec/changes/2026-10-19-verificacion-ui-alcance-derivado/proposal.md",
       "acceptance_criteria": [

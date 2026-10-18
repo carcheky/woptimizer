@@ -8192,6 +8192,12 @@ def test_no_literal_colors_in_views():
     
     Verifica que todo color en fg_color, hover_color, text_color o border_color
     provenga de tokens de theme.py (o variables semanticas), nunca strings '#RRGGBB'.
+
+    TASK-081 (R4/1.4) -- ENUMERACION JUSTIFICADA, y el guard de forma
+    `test_ningun_guard_enumera_el_arbol_de_src_que_ya_esta_en_el_sistema_de_ficheros`
+    la DELATA cada vez que corre. No la repara: repara es otro ciclo.
+    (a) POR QUE existe la enumeracion: estas cuatro rutas son las vistas y el contenedor que existian cuando TASK-029 escribio el guard, y derivar el alcance con rglob cambia lo que este test MIDE.
+    (b) QUE LA RETIRA: el ciclo que recoja la fila de Deuda de esta clase sustituye la tupla por `views/*.rglob("*.py")` mas `main_window.py`, que es la unica forma de no dejar ninguna vista fuera.
     """
     import ast
 
@@ -8328,6 +8334,14 @@ def test_hit_targets_minimum():
     """TASK-029 (UI-007): todos los botones y controles interactivos tienen dimensiones >= 28x28px.
     
     Verifica mediante AST y configuracion estatica que ningun CTkButton especifique width < 28 o height < 28.
+
+    TASK-081 (R4/1.4) -- ENUMERACION JUSTIFICADA, y el guard de forma
+    `test_ningun_guard_enumera_el_arbol_de_src_que_ya_esta_en_el_sistema_de_ficheros`
+    la DELATA por el nombre y la linea en cada corrida. MEDIDO el 2026-10-19:
+    es la SEGUNDA de las dos tuplas de cuatro rutas que ese guard encuentra; el
+    encargo solo habia nombrado la de `test_no_literal_colors_in_views`.
+    (a) POR QUE existe la enumeracion: es la misma apuesta que la de UI-002a --las vistas de 2026-09-28-- y ampliar su cobertura es un ciclo propio, no un cambio colado aqui.
+    (b) QUE LA RETIRA: el mismo ciclo que derive `test_no_literal_colors_in_views` deriva esta, porque comparten la tupla y hacer una sola deja la otra escribiendose a mano otra vez.
     """
     import ast
 
@@ -13164,7 +13178,7 @@ def _copiar_el_esqueleto_del_validador(destino):
     este docstring manda: que la copia exponga la lectura nueva.
 
     MEDIDO OTRA VEZ el 2026-10-18 (TASK-077, el `mutation-auditor` lo encontró):
-    `build.bat` faltaba, y `STATUS.md:75` --la fila que añadió el ciclo 66-- se
+    `build.bat` faltaba, y `STATUS.md:64` --la fila que añadió el ciclo 66-- se
     ancla en ese fichero. En el árbol real la ruta resuelve y la fila queda
     eximida; en la copia NO resolvia, se quedaba con `fuentes == ["tarea"]` con
     `TASK-077` ya cerrada y saltaba el check de `validate_docs.py:2248`. Firma
@@ -13177,6 +13191,17 @@ def _copiar_el_esqueleto_del_validador(destino):
     `run.py`, `verify_ui_syntax.py`, `pyproject.toml`, `woptimizer.spec`,
     `.gitattributes`, `.gitignore` y `requirements.txt`: 0 errores resueltos, 0
     nuevos). El ensanchado se hizo con esa medida y no con una suposición.
+
+    TASK-081 (R4/1.4) -- ENUMERACION JUSTIFICADA. MEDIDO: esta tupla NO entra
+    en el alcance del guard de forma `test_ningun_guard_enumera_el_arbol_de_src_que_ya_esta_en_el_sistema_de_ficheros`,
+    que prohibe literales de ruta bajo `src/woptimizer/**.py` y aqui no hay
+    ninguno: son ficheros de RAIZ, y el conjunto completo de la raiz no es un
+    dato derivado del arbol sino una eleccion de que necesita este esqueleto.
+    Se deja escrito igual porque el encargo la nombro y porque la forma que
+    degrada un guard --meterla en una lista muda de permitidos-- es peor que
+    no tocarla.
+    (a) POR QUE existe la enumeracion: el validador necesita estos ficheros de raiz concretos y ampliar la lista se midio fichero a fichero para no anadir ruido.
+    (b) QUE LA RETIRA: solo si el validador deja de depender del conjunto, leyendo un esqueleto derivado o una entrada declarativa; no esta medido y no se prejuzga.
     """
     import shutil
 
@@ -16490,8 +16515,8 @@ def test_arranque_por_categoria_toma_los_nombres_de_la_db_real():
     Los tests #4, #6 y #7 NO lo veian porque cada uno sobreescribe
     `_patrones_de_categoria` POR INSTANCIA con nombres que ya traian `.exe`:
     el arnés tapaba justo la linea que decide. MEDIDO el 2026-10-03 con `ast`:
-    los que la sobreescriben son los tres TESTS (`run_tests.py:14742` del #4,
-    `:14848` del #6 y `:14875` del #7), no la clase: `_ServicioDeArranque`
+    los que la sobreescriben son los tres TESTS (`run_tests.py:14767` del #4,
+    `:14873` del #6 y `:14900` del #7), no la clase: `_ServicioDeArranque`
     sobreescribe OTRAS dos cosas (`_resolver_app` y `_lanzar`, que es lo que
     dice su docstring) y esta seccion. Este test NO la sobreescribe --pide los
     nombres a la DB de verdad, cargada por `_load_local_db`-- y ademas usa el
@@ -17682,7 +17707,7 @@ def _head_del_repo_real():
     mismo helper y en el mismo orden de tres pasos, y sigue fallando fuerte si no
     hay ninguno. Un skip aqui seria una guarda que se apaga sola en el unico
     sitio donde nadie la ve, que es la clase de punto ciego que
-    `STATUS.md:95(b)` prohibe. Y sigue mirandose ESTE repo, porque
+    la decision P-2b de `STATUS.md:98` prohibe. Y sigue mirandose ESTE repo, porque
     `_entorno_git_del_repo()` verifica que el `GIT_DIR` candidato sea de verdad
     este arbol: cambiar de ruta no cambia lo que la sonda mide.
     """
@@ -23676,8 +23701,12 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
     # --- EL REGISTRO DE "NO SE HA PODIDO MIRAR" (S3r, mutante B14) ------------
     #
     # MEDIDO el 2026-10-08 con el `ast` sobre este fichero: hay 6448 llamadas de
-    # las que 3898 llevan algun argumento irresoluble, y SOLO 16 son lanzadores de
-    # proceso con el argv indecidible. Estas son esas 16, con la razon por la que
+    # las que 3898 llevan algun argumento irresoluble, y SOLO 16 eran lanzadores de
+    # proceso con el argv indecidible cuando se escribio esta lista. MEDIDO de
+    # nuevo el 2026-10-19 (TASK-081, que registro la camara de
+    # `verify_ui_syntax.py`): hoy el guard deja **20** registradas, que es lo que
+    # imprime el propio test. El numero de arriba se conserva por historico; el
+    # que manda es el que dice la linea del `print`. Estas son esas, con la razon por la que
     # cada una no puede esconder un `cat-file --batch-check`:
     #
     # La comparacion es de igualdad EXACTA y en los dos sentidos. Por un lado
@@ -23732,6 +23761,14 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
                            "'validate_docs.py'), '--sin-ancla-de-git']"): 1,
         ("subprocess.run", "[sys.executable, os.path.join(esqueleto, "
                            "'validate_docs.py')] + extra"): 1,
+        # TASK-081: la UNA de la camara de `verify_ui_syntax.py`. Lanza la puerta
+        # de SINTAXIS --que solo hace `ast.parse` sobre ficheros de
+        # `src/woptimizer/` y no llama a git-- con `cwd` en el arbol sintetico de
+        # `%TEMP%`. `sys.executable` es un `Name` sin enlace estatico, luego el
+        # guard no puede ver el resto del argv; lo que puede es que un
+        # `cat-file` se esconda en el, y aqui no hay: el unico argv es el
+        # interprete y el nombre del script.
+        ("subprocess.run", "[sys.executable, 'verify_ui_syntax.py']"): 1,
     }
     visto = {}
     for funcion, argv, _linea in INDECISAS:
@@ -28205,7 +28242,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     por encima de la 55 desplaza la tabla y este guard muere.
 
     Ademas se comprueba que la seccion "Por que el validador NO corre en CI"
-    sigue por encima de la 61 (`run_tests.py:22262`), que es el suelo que hace
+    sigue por encima de la 61 (`run_tests.py:23105`), que es el suelo que hace
     falta para que esas citas no se pudran.
     """
     print("Probando que las citas por linea de sandbox-rules.md son ciertas...")
@@ -28233,7 +28270,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     # numero de una y olvidar las otras tres deja tres mentiras nuevas.
     cita = "sandbox-rules.md:55-56"
     for relativo, numeros in (("validate_docs.py", ("1429", "1924")),
-                              ("run_tests.py", ("23082",)),
+                              ("run_tests.py", ("23107",)),
                               ("docs/ai/sandbox-rules.md", ("1133",))):
         texto = _texto_de(os.path.join(raiz, *relativo.split("/"))).splitlines()
         for numero in numeros:
@@ -28397,6 +28434,645 @@ def test_la_linea_base_de_flags_se_deriva_del_fichero_real():
         "pasa, y un comparador que no lee no mide la linea base")
     print("test_la_linea_base_de_flags_se_deriva_del_fichero_real OK.")
 
+
+# ============================================================================
+# TASK-081 (ciclo 67): el ALCANCE de un guard se deriva, no se enumera.
+#
+# MEDIDO antes del arreglo: `verify_ui_syntax.py:9-20` enumeraba DIEZ rutas
+# escritas a mano y el arbol de `src/woptimizer/` tenia mas. En camara
+# desechable, con control positivo: `ui/theme.py` roto -> exit 0, `ui/tray_menu.py`
+# roto -> exit 0, `app.py` (SI listado) roto -> exit 1, y un modulo NUEVO roto
+# -> exit 0. El guard discriminaba sobre su lista y no veia nada fuera de ella,
+# y corre en CI sin una sola contraprueba en toda la suite.
+#
+# LA PROPIEDAD (esta es la que se blinda, no el caso): un guard es vaciable
+# cuando el conjunto que mira esta escrito como enumeracion literal DENTRO del
+# propio guard, y ese conjunto es un dato DERIVADO del sistema de ficheros.
+# Enumeracion y conjunto son dos fuentes de verdad que nadie ata: la lista se
+# caduca el dia que se anade un modulo y no hay forma de que se entere.
+#
+# Los detectores viven aqui, a NIVEL DE MODULO y no dentro de un test: lo que
+# vigilan es el PROPIO `run_tests.py`, y un detector definido en la misma
+# funcion que lo usa se puede vaciar en la misma frase que lo deja de medir.
+# ============================================================================
+
+# El prefijo es UN literal suelto (no una lista), y por eso el detector de mas
+# abajo no se dispara contra si mismo: la regla es contra la enumeracion del
+# CONJUNTO, no contra nombrar una ruta.
+_PREFIJO_SRC = "src/woptimizer/"
+
+_ATRIBUTOS_DERIVADORES = frozenset(("rglob", "iglob", "glob", "iterdir", "listdir"))
+
+# Las dos frases que hacen falta en el docstring del propio guard para que su
+# enumeracion sea TOLERADA. No es una lista de permitidos: la tolerancia vive
+# en el DOCSTRING del infractor, y una entrada sin las dos frases -- o con las
+# dos frases vacias -- se rechaza igual que una enumeracion sin justificar.
+_MARCA_POR_QUE = "(a) POR QUE existe la enumeracion:"
+_MARCA_RETIRADA = "(b) QUE LA RETIRA:"
+_LONGITUD_MINIMA_JUSTIFICACION = 30
+
+
+def _dotted(nodo):
+    """`'os.walk'` / `'src_dir.rglob'`: el nombre con puntos de un nodo."""
+    partes = []
+    while isinstance(nodo, ast.Attribute):
+        partes.append(nodo.attr)
+        nodo = nodo.value
+    if isinstance(nodo, ast.Name):
+        partes.append(nodo.id)
+    return ".".join(reversed(partes))
+
+
+def _es_ruta_de_src(nodo):
+    """True si `nodo` es un literal de ruta bajo `src/woptimizer/**.py`."""
+    if not (isinstance(nodo, ast.Constant) and isinstance(nodo.value, str)):
+        return False
+    valor = nodo.value.replace("\\", "/")
+    return valor.startswith(_PREFIJO_SRC) and valor.endswith(".py")
+
+
+def _enumeraciones_de_rutas_de_src(nodo, nombre="<sintetico>"):
+    """`[(linea, [rutas])]`: listas/tuplas con DOS O MAS literales de ruta de `src/`.
+
+    Acepta fuente (texto) o un nodo ya parseado; un texto se parsea con `ast`.
+
+    **DOS o mas, y no una:** una ruta suelta es una apuesta legible, que ademas
+    se ve en la revision, y la regla de este repo es contra la enumeracion del
+    conjunto, que es lo que se caduca en silencio.
+    """
+    try:
+        arbol = nodo if isinstance(nodo, ast.AST) else ast.parse(nodo, nombre)
+    except SyntaxError:
+        return []
+    hallazgos = []
+    for sub in ast.walk(arbol):
+        if isinstance(sub, (ast.List, ast.Tuple)):
+            rutas = [e.value for e in sub.elts if _es_ruta_de_src(e)]
+            if len(rutas) >= 2:
+                hallazgos.append((sub.lineno, rutas))
+    return hallazgos
+
+
+def _deriva_el_alcance_del_arbol(nodo):
+    """True si el ambito RECORRE EL SISTEMA DE FICHEROS para decidir que mira.
+
+    `ast.walk` NO cuenta: recorre el arbol de sintaxis, no el de ficheros.
+    MEDIDO: las dos enumeraciones pre-existentes de `run_tests.py` llevan un
+    `ast.walk` en el cuerpo, y contarlo como derivacion las haria pasar por
+    justificadas sin derivar nada, que es el falso positivo que dejaria el
+    guard sin medir.
+    """
+    for sub in ast.walk(nodo):
+        if isinstance(sub, ast.Attribute):
+            if sub.attr in _ATRIBUTOS_DERIVADORES:
+                return True
+            if sub.attr == "walk" and not _dotted(sub.value).endswith("ast"):
+                return True
+        elif isinstance(sub, ast.ImportFrom) and sub.module in ("os", "glob", "pathlib"):
+            if any(alias.name in _ATRIBUTOS_DERIVADORES or alias.name == "walk"
+                   for alias in sub.names):
+                return True
+    return False
+
+
+def _expresion_deriva(expresion):
+    """True si la expresion contiene una llamada que deriva el alcance."""
+    return any(isinstance(s, ast.Attribute) and s.attr in _ATRIBUTOS_DERIVADORES
+               for s in ast.walk(expresion))
+
+
+def _docstring_de(nodo):
+    """El docstring del ambito, o `None`: solo hay ambitos que lo tienen."""
+    if isinstance(nodo, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
+                         ast.ClassDef)):
+        return ast.get_docstring(nodo)
+    return None
+
+
+def _bucle_sobre_el_alcance_derivado(nodo):
+    """True si hay un `for` que RECORRE lo que la derivacion produce.
+
+    Sin esta segunda mitad, `rglob` escrito y sin usar pasa el primer assert: el
+    mutante `M-R` (dejar la lista de diez rutas y `rglob` escrito y muerto) es
+    justamente eso, y un guard que solo busca la palabra no lo distingue de uno
+    que de verdad deriva el alcance.
+
+    Se sigue UN salto a traves de un helper --`ficheros = modulos_del_arbol()`--
+    porque si no, un refactor legitimo (sacar la derivacion a una funcion) deja
+    el guard en rojo sin que el sujeto haya cambiado. Un salto, y solo uno: mas
+    de uno ya es una cadena de llamadas que este detector no puede seguir sin
+    adivinar.
+    """
+    derivadas = {sub.name for sub in ast.walk(nodo)
+                 if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef))
+                 and _deriva_el_alcance_del_arbol(sub)}
+
+    def _viene_de_una_derivacion(expresion):
+        if _expresion_deriva(expresion):
+            return True
+        return (isinstance(expresion, ast.Call)
+                and isinstance(expresion.func, ast.Name)
+                and expresion.func.id in derivadas)
+
+    nombres = set()
+    for sub in ast.walk(nodo):
+        if isinstance(sub, ast.Assign) and _viene_de_una_derivacion(sub.value):
+            for objetivo in sub.targets:
+                if isinstance(objetivo, ast.Name):
+                    nombres.add(objetivo.id)
+
+    for sub in ast.walk(nodo):
+        if not isinstance(sub, ast.For):
+            continue
+        if _viene_de_una_derivacion(sub.iter):
+            return True
+        if isinstance(sub.iter, ast.Name) and sub.iter.id in nombres:
+            return True
+    return False
+
+
+def _justificacion_de_la_enumeracion(doc):
+    """`(motivo, retirada)` de una enumeracion tolerada, o `(None, None)`.
+
+    Las dos frases tienen que estar en el DOCSTRING DEL PROPIO GUARD y llevar
+    texto de verdad detras (30 caracteres como minimo, en la MISMA linea): un
+    marcador pegado y sin frase es exactamente la lista de permitidos muda que
+    este encargo prohibe, escrita con otra forma.
+    """
+    if not doc:
+        return None, None
+
+    def _tras(marca):
+        posicion = doc.find(marca)
+        if posicion < 0:
+            return None
+        resto = doc[posicion + len(marca):]
+        return resto.split("\n", 1)[0].strip()
+
+    por_que = _tras(_MARCA_POR_QUE)
+    retirada = _tras(_MARCA_RETIRADA)
+    for frase in (por_que, retirada):
+        if not frase or len(frase) < _LONGITUD_MINIMA_JUSTIFICACION:
+            return None, None
+    return por_que, retirada
+
+
+def _nodos_fuera_de_funciones(arbol):
+    """Los nodos del modulo que NO viven en el cuerpo de una clase o funcion.
+
+    El ambito del modulo es un ambito mas: una enumeracion a nivel de fichero
+    es la misma apuesta que a nivel de funcion, y no tiene docstring donde
+    escribir por que existe, luego nunca puede justificarse.
+    """
+    fuera = []
+
+    def _bajar(nodo):
+        for hijo in ast.iter_child_nodes(nodo):
+            if isinstance(hijo, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            fuera.append(hijo)
+            _bajar(hijo)
+
+    _bajar(arbol)
+    return fuera
+
+
+def _ambitos(arbol):
+    """`[(ambito, nodo_docstring, nodos_a_escanear)]`: el modulo y cada ambito.
+
+    El nodo del docstring va aparte porque el ambito del modulo puede no tener
+    NADA fuera de las funciones --entonces su lista de nodos esta vacia-- y
+    porque un `Import` no admite `get_docstring`: la justificacion solo se lee
+    donde hay docstring de verdad, que es donde se puede escribir.
+    """
+    return ([("modulo", arbol, _nodos_fuera_de_funciones(arbol))]
+            + [(sub.name, sub, [sub]) for sub in ast.walk(arbol)
+               if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))])
+
+
+def _delitos_de_enumeracion(arbol):
+    """`[(ambito, linea, rutas)]`: enumeraciones que NADIE ha derivingido ni justificado."""
+    delitos = []
+    for ambito, doc_node, nodos in _ambitos(arbol):
+        justificado = _justificacion_de_la_enumeracion(_docstring_de(doc_node))
+        for nodo in nodos:
+            if _deriva_el_alcance_del_arbol(nodo):
+                continue
+            if justificado != (None, None):
+                continue
+            for linea, rutas in _enumeraciones_de_rutas_de_src(nodo):
+                delitos.append((ambito, linea, rutas))
+    return delitos
+
+
+def _camara_de_sintaxis_ui(prefijo="wopt_t081_"):
+    """`(raiz, ruta_script)`: arbol sintetico con `src/` real y el script real.
+
+    El repo NO se toca: la camara vive en `%TEMP%` y el subproceso corre con
+    `cwd` en ella, luego `Path(__file__).resolve().parent` del script copiado
+    resuelve ahi y no al arbol real. Es lo que permite medir AC-3 y AC-4 sin
+    romper un modulo de producto ni un solo segundo.
+    """
+    import shutil
+
+    raiz_repo = os.path.dirname(os.path.abspath(__file__))
+    destino = tempfile.mkdtemp(prefix=prefijo, dir=_TEMP_CANONICO)
+    shutil.copy2(os.path.join(raiz_repo, "verify_ui_syntax.py"),
+                 os.path.join(destino, "verify_ui_syntax.py"))
+    shutil.copytree(os.path.join(raiz_repo, "src"), os.path.join(destino, "src"),
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    return destino, os.path.join(destino, "verify_ui_syntax.py")
+
+
+def _correr_sintaxis_ui(destino):
+    """`CompletedProcess` de `verify_ui_syntax.py` ejecutado con `cwd=destino`."""
+    import subprocess
+
+    return subprocess.run(
+        [sys.executable, "verify_ui_syntax.py"],
+        cwd=destino,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=180,
+    )
+
+
+def _anadir_modulo(destino, relativo, contenido):
+    """Escribe un modulo en la camara y devuelve su ruta RELATIVA."""
+    ruta = os.path.join(destino, relativo)
+    os.makedirs(os.path.dirname(ruta), exist_ok=True)
+    with open(ruta, "w", encoding="utf-8") as fh:
+        fh.write(contenido)
+    return relativo.replace("\\", "/")
+
+
+def test_la_verificacion_de_sintaxis_deriva_su_alcance_y_no_lo_enumera():
+    """TASK-081 (AC-1): el sujeto se DERIVA y no esta escrito a mano.
+
+    Dos afirmaciones y una contraprueba, en este orden y por este motivo:
+
+    1. `verify_ui_syntax.py` NO contiene ninguna lista o tupla con dos o mas
+       literales de ruta bajo `src/woptimizer/**.py`. Se comprueba con `ast`,
+       no buscando texto: un `rglob` escrito en un COMENTARIO tiene que pasar,
+       y solo el arbol lo distingue de una llamada de verdad.
+    2. La derivacion esta REALMENTE USADA: hay un `for` que recorre lo que
+       `rglob` produce. Sin esta segunda mitad, el mutante `M-R` -- devolver
+       la lista de diez rutas y dejar `rglob` escrito y muerto -- pasaria la
+       primera asercion, porque el `rglob` estari alla. Un `rglob` en el
+       modulo pero sin usarse es SIN COBERTURA y tiene que morir aqui.
+    3. CONTRAPRUEBA del detector: las formas que tienen que dar el veredicto
+       OPUESTO sobre codigo sintetico -- la lista literal se denuncia, la
+       derivacion se calla, y el `rglob` muerto no cuenta como alcance usado.
+       Sin esto, un detector que devolviera `[]` siempre cumpliria (1) y (2)
+       sin mirar nada.
+
+    MATA `M-L` (reintroducir la tupla literal de diez rutas) y `M-R` (la lista
+    de vuelta con `rglob` en codigo muerto).
+    """
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    ruta = os.path.join(raiz, "verify_ui_syntax.py")
+    with open(ruta, encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read(), ruta)
+
+    enumeraciones = _enumeraciones_de_rutas_de_src(arbol)
+    assert not enumeraciones, (
+        "verify_ui_syntax.py vuelve a ENUMERAR su sujeto: "
+        + "; ".join(f"linea {linea}: {rutas}" for linea, rutas in enumeraciones)
+        + ". El alcance es un dato DERIVADO del arbol: se recorre con `rglob` y "
+          "coge el modulo que aparezca, no se escribe una lista que hay que "
+          "recordar (TASK-081, AC-1).")
+    assert _bucle_sobre_el_alcance_derivado(arbol), (
+        "verify_ui_syntax.py NO recorre lo que deriva: no hay ningun `for` "
+        "sobre `rglob(...)` ni sobre el nombre al que se asigna. Un `rglob` "
+        "escrito y sin usar es codigo muerto, y con la lista de vuelta "
+        "cumpliria la asercion de arriba (TASK-081, AC-1, mutante M-R).")
+    assert _deriva_el_alcance_del_arbol(arbol), (
+        "verify_ui_syntax.py no deriva el alcance de ninguna manera reconocible "
+        "(rglob, glob, iterdir u os.walk).")
+
+    # --- CONTRAPRUEBA DEL DETECTOR (sin esto, (1) y (2) no miden nada) -------
+    lista_literal = (
+        "def guarda():\n"
+        '    archivos = ["src/woptimizer/ui/app.py",\n'
+        '               "src/woptimizer/ui/views/dashboard_view.py",\n'
+        '               "src/woptimizer/ui/tray_menu.py"]\n'
+        "    return archivos\n"
+    )
+    derivada = (
+        "def vistas():\n"
+        '    return sorted(Path("src/woptimizer/ui/views").rglob("*.py"))\n'
+        "def main():\n"
+        "    for ruta in vistas():\n"
+        "        print(ruta)\n"
+    )
+    rglob_muerto = (
+        "def main():\n"
+        '    _derivado = SRC.rglob("*.py")\n'
+        '    archivos = ["src/woptimizer/ui/app.py",\n'
+        '               "src/woptimizer/ui/theme.py"]\n'
+        "    return archivos\n"
+    )
+
+    assert len(_enumeraciones_de_rutas_de_src(lista_literal)) == 1, (
+        "el detector tiene que DENUNCIAR una lista literal de tres rutas de "
+        "src/ en codigo sintetico: si no la ve, la asercion de (1) sobre el "
+        "fichero real no mide nada (contraprueba de AC-1)")
+    assert _enumeraciones_de_rutas_de_src(derivada) == [], (
+        "el detector tiene que CALLARSE ante un alcance derivado con `rglob`: "
+        "si no, el guard prohibe tambien la forma correcta (contraprueba de AC-1)")
+    assert len(_enumeraciones_de_rutas_de_src(rglob_muerto)) == 1, (
+        "una lista literal sigue siendo una lista literal aunque el modulo "
+        "tambien tenga un `rglob` muerto: este es el mutante M-R")
+    assert not _bucle_sobre_el_alcance_derivado(ast.parse(rglob_muerto)), (
+        "un `rglob` al que no se le hace `for` NO cuenta como alcance usado: si "
+        "contara, el mutante M-R pasaria tambien por la segunda asercion")
+    assert _bucle_sobre_el_alcance_derivado(ast.parse(derivada)), (
+        "la forma buena (derivar y recorrer en un `for`) tiene que dar True")
+
+    print("verify_ui_syntax.py: alcance DERIVADO, 0 enumeraciones y la "
+          "derivacion usada en un bucle; detector probado en las dos "
+          "direcciones (TASK-081, AC-1).")
+
+
+def test_la_verificacion_de_sintaxis_agrega_un_modulo_nuevo():
+    """TASK-081 (AC-3): un modulo NUEVO, no listado por nadie, se detecta.
+
+    Este es el AC que no puede sobrevivir sin el arreglo, y el que responde a
+    M4: un fichero que aparece HOY no puede estar en ninguna enumeracion,
+    porque ayer no existia. La camara copia `src/` REAL y el script REAL a
+    `%TEMP%` y anade `src/woptimizer/ui/views/ajustes_view.py` con un error de
+    sintaxis.
+
+    Se exigen las DOS mitades del veredicto, no solo el codigo: `exit 1` **y**
+    que la salida NOMBRE el modulo. Un `exit 1` sin nombrar el fichero es un
+    rojo que obliga a ir a buscar a mano, y el criterio de este repo es que un
+    fallo tiene que decir QUE esta mal.
+
+    Y el sujeto es el PRODUCTO -- el subproceso de verdad -- no el texto: por
+    eso no se puede falsear con un comentario ni con un `rglob` sin usar.
+    """
+    import shutil
+
+    destino, _script = _camara_de_sintaxis_ui("wopt_t081_ac3_")
+    try:
+        relativo = _anadir_modulo(destino,
+                                  "src/woptimizer/ui/views/ajustes_view.py",
+                                  "def vista_rota(:\n    return None\n")
+        r = _correr_sintaxis_ui(destino)
+        assert r.returncode == 1, (
+            f"un modulo NUEVO con error de sintaxis tiene que dar exit 1 y dio "
+            f"{r.returncode}. Este es el M4 del encargo, el caso que se va a dar "
+            f"el dia que alguien anada una vista. stdout={r.stdout!r} "
+            f"stderr={r.stderr!r}")
+        assert os.path.basename(relativo) in r.stdout, (
+            f"la salida tiene que NOMBRAR el modulo roto ({relativo}) y no lo "
+            f"nombra: stdout={r.stdout!r}")
+    finally:
+        shutil.rmtree(destino, ignore_errors=True)
+
+    print(f"test_la_verificacion_de_sintaxis_agrega_un_modulo_nuevo OK "
+          f"({relativo} roto -> exit 1 y nombrado en la salida).")
+
+
+def test_la_camara_de_sintaxis_ui_distingue_sano_de_roto():
+    """TASK-081 (AC-4): CONTROL POSITIVO de AC-3. Sin el, AC-3 no significa nada.
+
+    El mismo arbol, sin el modulo roto, tiene que dar **exit 0**; y con un
+    modulo SANO anadido tambien **exit 0**. Es el control que falto en el
+    ciclo 66 y por eso el mutante `S2` sobrevivio alli: una camara que
+    devuelve exit 1 SIEMPRE cumple AC-3 sin mirar nada, que es un rojo que no
+    significa ni "el codigo esta mal" ni "el codigo esta bien".
+
+    La segunda celda lleva aserciones de CONTENIDO y no solo de codigo de
+    salida: el recuento `ALCANCE_DERIVADO` tiene que aparecer UNA vez, tiene
+    que nombrar el modulo sano anadido y tiene que ser coherente con lo que
+    la camara tiene en disco. Sin ellas, un script que imprimiera cualquier
+    numero pasaria las dos celdas por el mismo camino que uno que no mira
+    ficheros nuevos.
+    """
+    import re
+    import shutil
+    from pathlib import Path
+
+    destino, _script = _camara_de_sintaxis_ui("wopt_t081_ac4_")
+    try:
+        relativo = _anadir_modulo(destino,
+                                  "src/woptimizer/ui/views/vista_sana_nueva.py",
+                                  "VALOR = 1\n")
+        r = _correr_sintaxis_ui(destino)
+        assert r.returncode == 0, (
+            f"el arbol SANO (src/ real mas un modulo sano nuevo) tiene que dar "
+            f"exit 0 y dio {r.returncode}. Si esto falla, AC-3 no mide nada: una "
+            f"puerta que siempre sale con 1 tambien cumpliria AC-3. "
+            f"stdout={r.stdout!r} stderr={r.stderr!r}")
+
+        declarados = re.findall(r"ALCANCE_DERIVADO=(\d+)", r.stdout)
+        assert len(declarados) == 1, (
+            f"la linea `ALCANCE_DERIVADO=N` tiene que imprimirse UNA vez y salio "
+            f"{len(declarados)} veces ({declarados!r}): stdout={r.stdout!r}")
+        en_disco = len(list(Path(destino, "src", "woptimizer").rglob("*.py")))
+        assert int(declarados[0]) == en_disco, (
+            f"el script imprime ALCANCE_DERIVADO={declarados[0]} y la camara "
+            f"tiene {en_disco} ficheros `.py` bajo src/woptimizer/: el recuento "
+            f"tiene que ser el DERIVADO, no una constante")
+        assert os.path.basename(relativo) in r.stdout, (
+            f"el modulo sano anadido tiene que aparecer nombrado en la salida: si "
+            f"el recuento sube sin nombrarlo, el guion esta contando otra cosa. "
+            f"stdout={r.stdout!r}")
+    finally:
+        shutil.rmtree(destino, ignore_errors=True)
+
+    print(f"test_la_camara_de_sintaxis_ui_distingue_sano_de_roto OK (arbol sano "
+          f"mas modulo sano nuevo -> exit 0 y ALCANCE_DERIVADO={declarados[0]}).")
+
+
+def test_el_recuento_de_modulos_de_sintaxis_es_derivado():
+    """TASK-081 (AC-2): la cifra que declara `STATUS.md` es la que el script IMPRIME.
+
+    El panel decia «10 modulos» -- escrita a mano -- y el changelog ha dicho
+    «8 de 8», «9 de 9» y «10» en tres ciclos distintos: tres cifras para el
+    mismo conjunto y ninguna atada al conjunto. Aqui la cifra sigue escrita en
+    el documento porque el panel la necesita para ser legible, pero deja de ser
+    una CONSTANTE: se deriva, y este test la ata a lo que el script IMPRIME
+    ejecutandolo de verdad sobre el repo real.
+
+    Las tres mitades que hacen que esto no sea un espejo de si mismo:
+
+    * la cifra del documento se lee con una regex que exige la forma
+      `verify_ui_syntax.py ... N modulos`, y la fila tiene que casar
+      **exactamente una vez** (una fila que declara dos cifras no declara
+      ninguna, y un validador que no encuentra lo que valida no valida);
+    * la fila tiene que declarar una sola cifra de modulos, no dos;
+    * el numero con el que se compara es el que sale de EJECUTAR el script, no
+      una constante del test: por eso `M-S` (volver a «10 modulos») muere.
+
+    **DECISION, y por que la cifra no se borra del documento:** la alternativa
+    -- dejar el panel sin numero -- hacia que `M-S` no tuviera nada contra lo
+    que morir y que el panel se quedara mudo el dia que se anadiera un modulo.
+    Una cifra atada a su derivado es mejor que una cifra ausente: el dia que
+    se caduque, el guard avisa con el numero bueno al lado del malo en vez de
+    no decir nada. Es el mismo patron que `validate_docs.py` ya usa con el
+    recuento de la suite.
+    """
+    import re
+    from pathlib import Path
+
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    r = _correr_sintaxis_ui(raiz)
+    assert r.returncode == 0, (
+        f"verify_ui_syntax.py sobre el repo REAL tiene que dar exit 0 y dio "
+        f"{r.returncode}. stdout={r.stdout!r} stderr={r.stderr!r}")
+
+    declarados = re.findall(r"ALCANCE_DERIVADO=(\d+)", r.stdout)
+    assert len(declarados) == 1, (
+        f"la linea `ALCANCE_DERIVADO=N` tiene que imprimirse UNA vez sobre el "
+        f"repo real y salio {len(declarados)} veces ({declarados!r}): "
+        f"stdout={r.stdout!r}")
+    derivado = int(declarados[0])
+
+    en_disco = len(list(Path(raiz, "src", "woptimizer").rglob("*.py")))
+    assert derivado == en_disco, (
+        f"el script imprime {derivado} y el arbol tiene {en_disco} ficheros "
+        f"`.py` bajo src/woptimizer/: el recuento tiene que ser el DERIVADO y no "
+        f"una constante que el script se limita a repetir")
+
+    with open(os.path.join(raiz, "STATUS.md"), encoding="utf-8") as fh:
+        lineas = fh.read().splitlines()
+    filas = [l for l in lineas
+             if "verify_ui_syntax.py" in l and l.strip().startswith("|")]
+    assert len(filas) == 1, (
+        f"STATUS.md tiene que tener UNA fila de tabla que hable de "
+        f"verify_ui_syntax.py y tiene {len(filas)}: {filas!r}")
+    cifras = re.findall(r"(\d+)\s*m[oó]dulos", filas[0])
+    assert len(cifras) == 1, (
+        f"la fila de STATUS.md tiene que declarar la cifra UNA vez, con la forma "
+        f"`N modulos`, y declara {cifras!r}: {filas[0]!r}")
+    assert int(cifras[0]) == derivado, (
+        f"STATUS.md declara {cifras[0]} modulos y el script imprime {derivado} "
+        f"(derivado de src/woptimizer/ con rglob). Actualiza el numero del "
+        f"panel: es el mismo fallo que el del mutante M-S")
+    assert "DERIVAD" in filas[0].upper(), (
+        f"la fila tiene que declarar que el alcance es DERIVADO, para que nadie "
+        f"lo lea como una constante que se actualiza a mano: {filas[0]!r}")
+
+    print(f"STATUS.md declara {derivado} modulos y verify_ui_syntax.py IMPRIME "
+          f"{derivado}, los dos derivados de src/woptimizer/ (TASK-081, AC-2).")
+
+
+def test_ningun_guard_enumera_el_arbol_de_src_que_ya_esta_en_el_sistema_de_ficheros():
+    """TASK-081 (R4/AC-5): el guard de FORMA cierra la clase, no el caso.
+
+    Con `ast`, en `run_tests.py`, `validate_docs.py` y `verify_ui_syntax.py`:
+    ninguna clase, funcion ni sentencia de modulo puede contener una lista o
+    tupla de **dos o mas** literales de ruta bajo `src/woptimizer/**.py` sin
+    derivar el alcance con `rglob`/`glob`/`iterdir`/`os.walk`. Cada hallazgo se
+    nombra con fichero y linea en el mensaje, que es lo que lo hace deuda
+    visible en vez de agujero invisible.
+
+    **DENUNCIA, NO REPARA.** Las enumeraciones pre-existentes que esto encuentra
+    NO entran en una lista muda de permitidos: la unica tolerancia es el
+    DOCSTRING del propio guard, con las dos frases exigidas -- (a) por que
+    existe la enumeracion y (b) que la retira -- y con texto de verdad detras de
+    cada marcador. Un marcador pegado y vacio se rechaza igual que una
+    enumeracion a pelo: es la lista de permitidos con otra forma, y una lista
+    de permitidos es justo lo que degrada el guard.
+
+    Contraprueba de las cuatro celdas del detector sobre codigo sintetico:
+    lista sin justificar -> se denuncia; alcance derivado -> se calla; lista
+    con justificacion -> se tolera; justificacion con marcador pero SIN texto ->
+    se denuncia. La cuarta es la que impide comprar el verde con dos etiquetas
+    pegadas, y es la contraprueba que hace falta para que un detector que
+    siempre tolera no pueda pasar por verde.
+
+    MATA `M-W` (reintroducir la enumeracion de cuatro rutas en
+    `test_no_literal_colors_in_views` sin la justificacion escrita).
+    """
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    ficheros = ("run_tests.py", "validate_docs.py", "verify_ui_syntax.py")
+
+    violaciones = []
+    toleradas = []
+    for nombre in ficheros:
+        ruta = os.path.join(raiz, nombre)
+        with open(ruta, encoding="utf-8") as fh:
+            arbol = ast.parse(fh.read(), ruta)
+        for ambito, doc_node, nodos in _ambitos(arbol):
+            por_que, retirada = _justificacion_de_la_enumeracion(
+                _docstring_de(doc_node))
+            for nodo in nodos:
+                if _deriva_el_alcance_del_arbol(nodo):
+                    continue
+                for linea, rutas in _enumeraciones_de_rutas_de_src(nodo):
+                    rotulo = f"{nombre}:{linea} (en `{ambito}`)"
+                    if por_que and retirada:
+                        toleradas.append((rotulo, por_que, retirada))
+                    elif rotulo not in [v[0] for v in violaciones]:
+                        violaciones.append((rotulo, rutas))
+
+    assert not violaciones, (
+        "Enumeraciones de rutas de `src/woptimizer/**.py` sin derivar el "
+        "alcance y sin justificacion escrita en el docstring del propio guard "
+        "(TASK-081, R4):\n"
+        + "\n".join(f"  - {rotulo}: {rutas}" for rotulo, rutas in violaciones)
+        + "\nEl conjunto de ficheros es un dato DERIVADO del sistema de "
+          "ficheros: se recorre con `rglob`, o se justifica por escrito (a) por "
+          "que existe y (b) que la retira. Una lista de permitidos NO vale: es "
+          "la lista que hay que mantener, escrita en otro sitio.")
+
+    # --- CONTRAPRUEBA DEL DETECTOR: las cuatro celdas -------------------------
+    sin_justificar = (
+        "def guarda():\n"
+        '    archivos = ["src/woptimizer/ui/app.py",\n'
+        '               "src/woptimizer/ui/theme.py"]\n'
+        "    return archivos\n"
+    )
+    derivada = (
+        "def guarda():\n"
+        '    return sorted(Path("src/woptimizer/ui").rglob("*.py"))\n'
+    )
+    justificada = (
+        'def guarda():\n'
+        '    """Un guard.\n\n'
+        f"    {_MARCA_POR_QUE} el conjunto lo eligio alguien y nadie lo revisa.\n"
+        f"    {_MARCA_RETIRADA} el ciclo que recoja esta fila deriva el alcance con rglob.\n"
+        '    """\n'
+        '    archivos = ["src/woptimizer/ui/app.py",\n'
+        '               "src/woptimizer/ui/theme.py"]\n'
+        "    return archivos\n"
+    )
+    justificada_vacia = (
+        'def guarda():\n'
+        '    """Un guard.\n\n'
+        f"    {_MARCA_POR_QUE}\n"
+        f"    {_MARCA_RETIRADA}\n"
+        '    """\n'
+        '    archivos = ["src/woptimizer/ui/app.py",\n'
+        '               "src/woptimizer/ui/theme.py"]\n'
+        "    return archivos\n"
+    )
+
+    assert len(_delitos_de_enumeracion(ast.parse(sin_justificar))) == 1, (
+        "una lista literal SIN justificar tiene que dar un hallazgo: es el "
+        "mutante M-W, y sin esta celda el detector puede no mirar nada y cumplir "
+        "lo de arriba en verde")
+    assert _delitos_de_enumeracion(ast.parse(derivada)) == [], (
+        "un alcance DERIVADO con `rglob` no puede dar hallazgo: el guard que "
+        "prohibe tambien la forma correcta empuja a la lista de permitidos")
+    assert _delitos_de_enumeracion(ast.parse(justificada)) == [], (
+        "una enumeracion JUSTIFICADA por escrito -- las dos frases con texto de "
+        "verdad -- tiene que ser tolerada: es la deuda que R4 deja nombrada, no "
+        "la que R4 repara")
+    assert len(_delitos_de_enumeracion(ast.parse(justificada_vacia))) == 1, (
+        "una justificacion con los MARCADORES pero SIN TEXTO tiene que seguir "
+        "dando hallazgo: dos etiquetas pegadas son una lista de permitidos con "
+        "otra forma, y la lista de permitidos es lo que degrada el guard")
+
+    detalle = "; ".join(f"{rotulo} -> {motivo}" for rotulo, motivo, _ in toleradas)
+    print(f"test_ningun_guard_enumera_el_arbol_de_src OK (0 violaciones en "
+          f"{len(ficheros)} ficheros; {len(toleradas)} enumeracion(es) "
+          f"DENUNCIADA(S) con justificacion escrita: {detalle or 'ninguna'}).")
 
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
@@ -28925,4 +29601,24 @@ if __name__ == "__main__":
     test_la_camara_de_build_bat_detecta_la_regresion()                      # AC-4
     test_el_guard_de_eol_no_deja_que_un_homonimo_tape_a_otro()              # AC-5
     test_la_cita_del_ultimo_byte_de_build_bat_no_se_caduca()                # AC-6
+    # TASK-081: el ALCANCE de la puerta de sintaxis UI se deriva del arbol.
+    # Suite: 226 -> 231. Las CINCO DETRAS del marcador (cuatro `ast` sobre tres
+    # ficheros del repo y tres ejecuciones del script real en camara de
+    # `%TEMP%` con `src/` copiado; ninguna abre ventana ni toca el repo), luego
+    # el reparto DERIVADO queda en 155 backend + 76 headless = 231.
+    #
+    # La primera mira la FORMA (ninguna enumeracion de rutas de `src/` en el
+    # propio guard) y la segunda que la derivacion este USADA, que es lo que
+    # separa un `rglob` vivo de un `rglob` decorativo con la lista de vuelta
+    # (mutante M-R). Las dos siguientes son PRODUCTO: la tercera ejecuta
+    # `verify_ui_syntax.py` de verdad contra un modulo NUEVO roto y exige el
+    # rojo nombrando el fichero, y la cuarta es su CONTROL POSITIVO, sin el
+    # cual la tercera la cumple un script que sale siempre con 1 (mutante M-C,
+    # el patron que hizo sobrevivir a `S2` en el ciclo 66). La quinta ata la
+    # cifra de `STATUS.md` a la que el script IMPRIME, no a una constante.
+    test_ningun_guard_enumera_el_arbol_de_src_que_ya_esta_en_el_sistema_de_ficheros()  # R4/AC-5
+    test_la_verificacion_de_sintaxis_deriva_su_alcance_y_no_lo_enumera()  # AC-1
+    test_la_verificacion_de_sintaxis_agrega_un_modulo_nuevo()            # AC-3
+    test_la_camara_de_sintaxis_ui_distingue_sano_de_roto()               # AC-4
+    test_el_recuento_de_modulos_de_sintaxis_es_derivado()                # AC-2
     print("\nALL TESTS PASSED.")
