@@ -1521,3 +1521,82 @@ Se escriben, no se omiten. Todas medidas el 2026-10-02.
     como cobertura ausente **con su número de filas**, que es lo que hace que un
     re-lector no lo descubra como novedad.
 
+---
+
+## Por que el validador NO corre en CI (TASK-075, medido el 2026-10-18)
+
+`validate_docs.py` no se ejecuta en el job `verify` de `.github/workflows/release.yml`
+y **la exclusión es correcta**. Lo que estaba mal era el motivo escrito, y esta
+sección existe porque `STATUS.md` remitía a ella y **no existía**: hasta el 2026-10-18
+este documento no mencionaba el CI en ninguna de sus 1339 líneas. Una remisión a un
+documento que no está es una mentira útil — el que la lee deja de buscar.
+
+> ⚠️ **Va al FINAL y no se toca nada por encima de la línea 61.** `validate_docs.py`
+> cita las líneas **55-56** de este fichero **por número** (son las dos filas del `0`
+> de la tabla de códigos de salida). Cualquier fila insertada por encima las desplaza
+> sin avisar y rompe el validador en silencio. `test_el_motivo_de_la_exclusion_de_ci_
+> esta_medido_y_escrito` mide esta posición.
+
+### Lo que se midió, y cómo
+
+Cámaras desechables en `%TEMP%` con `GIT_DIR` propio, y el validador **real** invocado
+por subproceso, sin tocar `validate_docs.py`:
+
+| Escenario | Resultado medido |
+|---|---|
+| Derivar el default y que no exista (lo que encuentra el runner) | `145 OK, 1 FAIL`, exit 1 |
+| Repo de **un solo commit** (el clon shallow que da el checkout actual) | `145 OK, 154 FAIL`, exit 1 |
+| Solo `GIT_DIR`, sin `GIT_WORK_TREE` | `145 OK, 154 FAIL`, exit 1 |
+| Solo `GIT_WORK_TREE`, sin `GIT_DIR` | `145 OK, 0 FAIL` |
+
+**La premisa de que el validador daría un FALSO VERDE sin repositorio es FALSA, y está
+medida en las dos direcciones.** Hoy no puede dar verde por repo ausente: da un **falso
+ROJO** (`1 FAIL` con el motivo literal de git, exit 1). Es mejor que un verde
+fabricado, pero sigue siendo un rojo que **no significa «el repo está mal»**.
+
+### Las dos ataduras, y cuál pesa más
+
+1. **El clon shallow.** El `actions/checkout@v7` del job `verify` **no** lleva
+   `fetch-depth: 0`, a diferencia de los jobs `commits` y `release`, que sí lo llevan.
+   El runner se queda con un repo de **un commit** y R2 acusa uno a uno los hashes del
+   journal: **154 FAIL**.
+2. **El historial que el ancla certifica no está en el remoto, y esta es la que
+   DECIDE.** Medidos los ~150 hashes de `rd_journal.json` contra
+   `origin/main`+`origin/beta` (235 objetos, lo que traería `fetch-depth: 0`): **28 no
+   resuelven**, de los cuales **25 existen en el ODB del host pero no son alcanzables
+   desde ninguna rama del remoto** (los otros 3 son los `VFS_CORRUPTO`, ya declarados
+   como perdidos con causa). Con `fetch-depth: 0` seguirían dando **25 FAIL** de R2.
+
+Los 25 **no están perdidos: están sin pushear.** Declararlos en `commits_perdidos`
+sería escribir una mentira en el registro que el ancla existe para certificar, y el
+vocabulario cerrado `CAUSAS_DE_PERDIDA` de `validate_docs.py` no tiene un valor para eso
+ni debe añadirse: un valor nuevo se inventaría una causalidad que nadie ha medido.
+
+### Lo que TASK-075 sí cambió
+
+La **ruta** dejó de estar atada. El repositorio del anclaje se resuelve en **UN solo
+punto** (`_resolver_el_repositorio`), con la precedencia
+
+```
+--git-dir  >  WOPTIMIZER_GIT_DIR  >  GIT_DIR  >  %LOCALAPPDATA%\woptimizer_git\.git
+```
+
+y los **dos** consumidores que necesitan git (el check 5b y el check 9) reciben ese
+mismo repositorio. Antes la derivación estaba **duplicada, con código idéntico**, que
+era el motivo de que desacoplar la ruta sin extraer la función hubiera dejado el flag
+«funcionando» y el validador con 154 FAIL: el check 5b leía el repo bueno y el 9 el
+default.
+
+Y existe `--sin-ancla-de-git`: corre los checks que **no** necesitan git, salta los que
+sí, los imprime como `[SKIP]` (nunca como `[OK]`) y cuenta los saltados en el resumen.
+Es el camino para correr **sin repo sin fabricar un verde**, y por eso no es un
+default: un validador que no puede fallar no debe poder pasar solo.
+
+### Lo que NO habilita
+
+Desacoplar la ruta **no habilita el CI**, y esa es la razón de que el paso siga fuera:
+con la ruta desacoplada **y** con `fetch-depth: 0` seguirían dando 25 FAIL de R2.
+Activarlo exige primero **empujar esos 25 commits** o cambiar el contrato del ancla, y
+ambas cosas son **decisión de producto, no de tooling**. Está escrito como **TASK-080**
+y está **BLOQUEADA** por el punto 2.
+

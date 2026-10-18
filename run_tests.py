@@ -12854,7 +12854,13 @@ def test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal():
         """(errors, ok) del check 5b, con las excepciones convertidas en asercion."""
         errors, ok = [], []
         try:
-            vd._comprobar_ancla_del_changelog(root, errors, ok)
+            # TASK-075: el repositorio lo resuelve el UNICO punto y viaja como
+            # objeto, y `saltados` es la tercera lista. El test pone `GIT_DIR` a
+            # mano en el entorno y NO lo pasa, para que lo que mide siga siendo
+            # el hook del entorno y no una ruta que el test se inventa.
+            vd._comprobar_ancla_del_changelog(root, errors, ok, [],
+                                              vd._resolver_el_repositorio(root),
+                                              False)
         except Exception as exc:                       # pragma: no cover
             raise AssertionError(
                 "el check 5b debia devolver un INFORME y tiro "
@@ -12991,7 +12997,19 @@ def test_el_ancla_de_commits_no_depende_del_que_escribe_el_journal():
         os.makedirs(falso_git)
         os.environ["GIT_DIR"] = falso_git
         errors4, ok4 = [], []
-        assert vd._comprobar_ancla_de_commits(raiz_s, errors4, ok4, [46]) == set(), (
+        # TASK-075: el repositorio lo resuelve `_resolver_el_repositorio` (el
+        # UNICO punto) y viaja como objeto. La fila pone `GIT_DIR` a mano en el
+        # entorno y pide el repositorio SIN pasarlo, para que lo que se mide siga
+        # siendo "el `GIT_DIR` suelto cae al repo que dice el entorno" y no
+        # "el test sabe que repo quiere".
+        repo_s = vd._resolver_el_repositorio(raiz_s)
+        assert repo_s.ruta == falso_git, (
+            "el repositorio tiene que ser el que el entorno declara; con la "
+            f"derivacion duplicada que se acaba de quitar, ruta={repo_s.ruta!r} y "
+            f"falso_git={falso_git!r}"
+        )
+        assert vd._comprobar_ancla_de_commits(raiz_s, errors4, ok4, [46], [],
+                                              repo_s, False) == set(), (
             "un GIT_DIR que no es un repo NO puede aportar ciclos: si devuelve "
             "algo, el parser esta leyendo de otro sitio"
         )
@@ -13166,19 +13184,37 @@ def _copiar_el_esqueleto_del_validador(destino):
         shutil.copy2(os.path.join(raiz_repo, relativa), d)
 
 
-def _informe_del_validador_real(root):
+def _informe_del_validador_real(root, **opciones):
     """`(errors, ok)` de `validar(root)`, con las excepciones en asercion.
 
     Este es el UNICO camino contractual del validador para los tests (D3):
     asentar por la funcion que el producto llama, no por una privada a la que se
     le pasan los argumentos a mano. `validar` no imprime y no sale, asi que un
     test puede leer su veredicto sin lanzar un subproceso.
+
+    TASK-075: `validar` devuelve TRES listas (`errors`, `ok`, `saltados`) porque
+    lo saltado a proposito no puede entrar en `ok` -- un `[SKIP]` impreso como
+    `[OK]` seria el verde indistinguible del verde real. Este helper sigue
+    devolviendo DOS para no tocar las ~30 sondas que ya lo usan; el tercer canal
+    se lee con `_informe_completo_del_validador_real`, y el muro se comprueba
+    tambien sobre el INFORME IMPRESO, que es donde un `[OK]` falso se veria.
+    """
+    errors, ok, _saltados = _informe_completo_del_validador_real(root, **opciones)
+    return errors, ok
+
+
+def _informe_completo_del_validador_real(root, **opciones):
+    """`(errors, ok, saltados)` de `validar(root)`, con las excepciones en asercion.
+
+    El gemelo de `_informe_del_validador_real` que NO tira el canal de saltados.
+    Las dos leen el MISMO `validar(root)`; la que descarta existe solo para no
+    reescribir las sondas que ya leen dos valores, y no es una segunda ruta de
+    validacion (D1): el producto llama a la misma funcion que las dos.
     """
     import validate_docs as vd
 
-    errors, ok = [], []
     try:
-        errors, ok = vd.validar(root)
+        return vd.validar(root, **opciones)
     except Exception as exc:                           # pragma: no cover
         raise AssertionError(
             "validar(root) debia devolver un INFORME y tiro "
@@ -13186,7 +13222,6 @@ def _informe_del_validador_real(root):
             "revienta el validador muere por traceback y no se puede distinguir de "
             "un test que detecta el fallo"
         )
-    return errors, ok
 
 
 def test_el_ancla_se_cablea_en_el_camino_real_del_validador():
@@ -13301,11 +13336,15 @@ def test_el_ancla_se_cablea_en_el_camino_real_del_validador():
         ruta_validador = os.path.join(tmp, "validate_docs.py")
         with open(ruta_validador, encoding="utf-8") as fh:
             fuente = fh.read()
-        cableado = "    _comprobar_ancla_del_changelog(root, errors, ok)"
+        cableado = ("    _comprobar_ancla_del_changelog(root, errors, ok, saltados, repo,"
+                    " sin_ancla_de_git)")
         assert fuente.count(cableado) == 1, (
             "el cableado del ancla tiene que aparecer EXACTAMENTE una vez en el cuerpo "
             f"de validar(); aparece {fuente.count(cableado)} veces. Con dos, este test "
-            "seguiria verde aunque se borrara el cableado que de verdad se ejecuta"
+            "seguiria verde aunque se borrara el cableado que de verdad se ejecuta. "
+            "TASK-075 anadio `saltados`, `repo` y `sin_ancla_de_git` a este cableado: "
+            "el mutante de abajo sustituye la LLAMADA entera por `pass`, luego sigue "
+            "midiendo lo mismo con el literal mas largo"
         )
         with open(ruta_validador, "w", encoding="utf-8") as fh:
             fh.write(fuente.replace(cableado, "    pass  # ANCLA DESCABLEADA (mutante)"))
@@ -13333,14 +13372,15 @@ def test_el_ancla_se_cablea_en_el_camino_real_del_validador():
         # una podia ser la que el producto no ejecuta. Se escribe desde la
         # fuente INTACTA, no encadenando sobre el mutante anterior, para que cada
         # mitad se pruebe sola.
-        llamada = "    errors, ok = validar(root)"
+        llamada = ("    errors, ok, saltados = validar(root, git_dir=args.git_dir,"
+                    " sin_ancla_de_git=args.sin_ancla_de_git)")
         assert fuente.count(llamada) == 1, (
             "`main()` tiene que llamar a `validar(root)` EXACTAMENTE una vez: aparece "
             f"{fuente.count(llamada)} veces. Sin esta cuenta, el segundo mutante podria "
             "estar borrando una llamada que no es la que se ejecuta"
         )
         sin_validar = (
-            "    errors, ok = [], []\n"
+            "    errors, ok, saltados = [], [], []\n"
             "    # MUTANTE S2b: main() imprime su informe sin\n"
             "    # haber validado NADA. El codigo de salida sale 0\n"
             "    # y el validador declara el repo entero en verde."
@@ -21327,7 +21367,8 @@ def test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico():
     # misma, y no confiar en que la siguiente lo encuentre.
     os.environ["GIT_DIR"] = os.path.join(d_hist, ".git")
     resolver, motivo_resolver = vd._hashes_que_existen(
-        esqueleto, [f"{HASH_REAL} (architect)", HASH_REAL])
+        esqueleto, [f"{HASH_REAL} (architect)", HASH_REAL],
+        vd._resolver_el_repositorio(esqueleto))
     assert motivo_resolver is None, (
         f"la lectura tiene que ser buena: motivo={motivo_resolver!r}")
     assert HASH_REAL in resolver, (
@@ -21640,6 +21681,656 @@ def test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real()
         shutil.rmtree(tmp, ignore_errors=True)
     print("Journal ilegible OK: un solo [FAIL] en las dos formas, la verificacion no "
           "hecha queda escrita, y el mutante lo devuelve a dos.")
+
+
+# ---------------------------------------------------------------------------
+# TASK-075: el repositorio del anclaje se resuelve en UN punto y la degradacion
+# sin repositorio se pide a mano y no se puede parecer a un verde.
+#
+# LOS CINCO TESTS Y EL MUTANTE QUE CADA UNO MATA (esta tabla es el contrato):
+#
+#   1. `test_la_resolucion_del_repositorio_tiene_un_solo_punto`: con
+#      `WOPTIMIZER_GIT_DIR` a un repo y `GIT_DIR` a otro, el check 9 tiene que
+#      leer el PRIMERO. Mata A3/AC-3: `--git-dir` (o su equivalente de entorno)
+#      honrado en `_comprobar_ancla_de_commits` y NO en `_hashes_que_existen` --
+#      el flag se acepta, el check 5b lee el repo bueno y el 9 el default, que no
+#      tiene los hashes: 154 FAIL con el flag PUESTO. La fila (e) de la tabla del
+#      ancla no lo caza porque esa mide solo el fallback del check 5b.
+#      Y con `ast`: los dos consumidores no pueden llamar a `expandvars`, que es
+#      la duplicacion por forma.
+#   2. `test_el_flag_git_dir_cambia_el_veredicto`: el validador REAL como
+#      SUBPROCESO, conmutando `--git-dir` entre dos repos que se diferencian solo
+#      en el commit que ancla el ciclo. Mata T-2/AC-3: flag parseado y no
+#      propagado a `validar()` -- el producto lo acepta y usa el default, luego los
+#      dos repos dan el MISMO veredicto y cambiar el flag no cambia nada.
+#   3. `test_un_git_dir_que_no_sirve_falla_con_su_ruta_literal`: inexistente,
+#      directorio VACIO y repo SIN COMMITS, los tres con `[FAIL]` y la ruta
+#      LITERAL en el mensaje. Mata T-3/AC-4 (`motivo = None`, `except: return
+#      set()`: el error desaparece y sale `0 FAIL`, el falso verde) y AC-5
+#      (`os.path.exists()` en vez de `rev-parse --verify HEAD`: el directorio
+#      vacio y el repo sin commits dan verde).
+#   4. `test_sin_ancla_de_git_no_se_parece_a_un_verde`: sobre el INFORME
+#      IMPRESO. Mata T-4/AC-6: imprimir `[SKIP]` con el formato de `[OK]`, o
+#      reusar el `ok.append("SIN COMPROBAR...")` que ya existe para el caso
+#      saltado A PROPOSITO. Sin ese muro el flag da un verde indistinguible del
+#      verde real, que es el peor desenlace posible de este cambio.
+#   5. `test_el_informe_nombra_el_repositorio_del_anclaje`: asercion sobre la
+#      CADENA de `ok`. Mata T-5: borrar la linea de `ok`. El veredicto no cambia,
+#      y por eso es el unico criterio que necesita su propia asercion de texto.
+#
+# NINGUN test toca el repo real: cameras en `tempfile.mkdtemp()`, `GIT_DIR`,
+# `GIT_WORK_TREE`, `WOPTIMIZER_GIT_DIR` y `LOCALAPPDATA` restaurados en el
+# `finally`. Sin ese `finally` una sonda deja el entorno envenenado y el fallo
+# aparece dos tests mas tarde, que es el modo de fallo mas caro de esta suite.
+# ---------------------------------------------------------------------------
+
+
+def _camara_de_repos_de_un_commit(tmp, nombre, asunto):
+    """`(ruta_del_git_dir, hash_corto)` de un repo NUEVO de un solo commit.
+
+    Se usa `_repo_temporal_de_un_commit`, que ya devuelve la ruta del `.git`, y se
+    anade el hash porque las filas necesitan un objeto que SOLO exista en ese
+    repo: es lo que separa "el check 9 leyo el repo que se le dijo" de "el check
+    9 leyo el que le(ptr)n por su cuenta".
+    """
+    d = os.path.join(tmp, nombre)
+    git_dir = _repo_temporal_de_un_commit(d, asunto)
+    return git_dir, _git_de_fixture(["rev-parse", "--short", "HEAD"], d).strip()
+
+
+def _restaurar_el_entorno(previos):
+    """Deja `GIT_DIR`/`GIT_WORK_TREE`/`WOPTIMIZER_GIT_DIR`/`LOCALAPPDATA` como estaban."""
+    for clave, valor in previos.items():
+        if valor is None:
+            os.environ.pop(clave, None)
+        else:
+            os.environ[clave] = valor
+
+
+def test_la_resolucion_del_repositorio_tiene_un_solo_punto():
+    """TASK-075 AC-1 y AC-3: UN punto de resolucion para LOS DOS consumidores.
+
+    MEDIDO, el defecto que este test ata: la derivacion del repositorio estaba
+    DUPLICADA, con codigo identico, en `_comprobar_ancla_de_commits` y en
+    `_hashes_que_existen`. El encargo que pidio desacoplarla citaba una linea que
+    no existe, luego nadie habia mirado donde estaba la atadura de verdad.
+
+    POR QUE UNA FILA COMPORTA DOS COSAS ASI Y NO UNA DE CADA:
+
+    - La primera mitad es COMPORTAMENTAL y mide el fallo real: con
+      `WOPTIMIZER_GIT_DIR` al repo que tiene el commit y `GIT_DIR` al que no, si
+      el check 9 no honra la precedencia, R2 acusa el hash que el repo nombrado si
+      tiene. El mutante de AC-3 muere aqui, y muere por CONTENIDO ("NO resuelve")
+      y no por un `returncode`.
+    - La segunda mitad es ESTRUCTURAL, con `ast`, y mide que la duplicacion no
+      vuelve: los dos consumidores reciben un `Repositorio` y ninguno puede
+      derivar el suyo. Sin ella, reintroducir la derivacion en uno de los dos
+      seria un cambio EQUIVALENTE hoy y una bomba de reloj manana, que es
+      exactamente como se colaron los 154 FAIL que traia el encargo.
+    """
+    import ast
+    import inspect
+    import json
+    import shutil
+    import tempfile
+    import textwrap
+
+    import validate_docs as vd
+
+    # --- SEGUNDA MITAD, primero: es barata y no necesita git --------------
+    def _cuerpo(fn):
+        return ast.parse(textwrap.dedent(inspect.getsource(fn)))
+
+    def _llamadas_de_derivacion(fn):
+        """Los `(attr, nombre)` de las llamadas a `expandvars`/`environ.copy` de `fn`.
+
+        `ast` y no un `in` sobre el fuente: un comentario no es un nodo `Call`, y
+        un guard que se puede satisfacer con prosa es decorativo.
+        """
+        encontradas = set()
+        for nodo in ast.walk(_cuerpo(fn)):
+            if (isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Attribute)
+                    and nodo.func.attr in ("expandvars", "expanduser")):
+                encontradas.add(nodo.func.attr)
+        return encontradas
+
+    def _argumentos(fn):
+        return [a.arg for a in _cuerpo(fn).body[0].args.args]
+
+    for nombre in ("_comprobar_ancla_de_commits", "_hashes_que_existen"):
+        fn = getattr(vd, nombre)
+        derivaciones = _llamadas_de_derivacion(fn)
+        assert not derivaciones, (
+            f"{nombre} vuelve a DERIVAR el repositorio ({sorted(derivaciones)}): "
+            "TASK-075 existe para que no haya dos puntos de resolucion. Un "
+            "`--git-dir` honrado en uno solo deja al otro con el default, y el "
+            "validador da 154 FAIL con el flag puesto"
+        )
+        assert "repo" in _argumentos(fn), (
+            f"{nombre} tiene que RECIBIR el `Repositorio` que resuelve "
+            f"`_resolver_el_repositorio`; sus argumentos son {_argumentos(fn)}. Sin "
+            "ese parametro el consumidor tiene que derivar el suyo, que es la "
+            "duplicacion que se acaba de quitar"
+        )
+    # Y el punto de resolucion es UNO y se llama desde los dos.
+    assert sum(1 for nodo in ast.walk(ast.parse(inspect.getsource(vd.validar)))
+               if isinstance(nodo, ast.Call)
+               and isinstance(nodo.func, ast.Name)
+               and nodo.func.id == "_resolver_el_repositorio") == 1, (
+        "`validar()` tiene que resolver el repositorio UNA vez. Con dos, cada "
+        "consumidor podria volver a resolver el suyo y la precedencia dejaria de "
+        "ser una sola"
+    )
+
+    # --- PRIMERA MITAD: el comportamiento, con git de verdad ---------------
+    tmp = tempfile.mkdtemp(prefix="wopt_t075_punto_")
+    previos = {c: os.environ.get(c) for c in
+               ("GIT_DIR", "GIT_WORK_TREE", "WOPTIMIZER_GIT_DIR", "LOCALAPPDATA")}
+    try:
+        esqueleto = os.path.join(tmp, "esqueleto")
+        os.makedirs(esqueleto, exist_ok=True)
+        _copiar_el_esqueleto_del_validador(esqueleto)
+
+        git_bueno, hash_bueno = _camara_de_repos_de_un_commit(
+            tmp, "repo_bueno", "chore(release): cerrar ciclo #46 (TASK-056)")
+        git_malo, _hash_malo = _camara_de_repos_de_un_commit(
+            tmp, "repo_malo", "chore(release): cerrar ciclo #77 (TASK-077)")
+
+        # El journal declara el ciclo 46 CON el hash que solo existe en el repo
+        # bueno, y el changelog tiene su entrada. Asi el unico FAIL posible es el
+        # del repo que se este leyendo, y se lee por que hash.
+        with open(os.path.join(esqueleto, ".taskmaster", "rd_journal.json"),
+                  "w", encoding="utf-8") as fh:
+            fh.write(json.dumps([{"cycle": 46, "commits": [hash_bueno]}]))
+        with open(os.path.join(esqueleto, "CHANGELOG.md"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("# Changelog\n\n### Corregido\n\n## CYCLE-046\n\nEntrada del 46.\n")
+
+        # EL DEFAULT (AC-2), y va PRIMERO porque las variables que lo anulan se
+        # ponen despues. Sin flag y sin las dos del entorno, la ruta tiene que ser
+        # la del host: con el `expandvars` borrado `ruta` queda `None` y el primer
+        # `git` revienta con `TypeError`, y con el default cambiado a cualquier
+        # otra cosa esta asercion lo delata por la ruta, no por un traceback.
+        localappdata_previo = os.environ.get("LOCALAPPDATA")
+        os.environ["LOCALAPPDATA"] = os.path.join(tmp, "localappdata")
+        try:
+            por_defecto = vd._resolver_el_repositorio(esqueleto)
+        finally:
+            if localappdata_previo is None:
+                os.environ.pop("LOCALAPPDATA", None)
+            else:
+                os.environ["LOCALAPPDATA"] = localappdata_previo
+        esperado = os.path.join(tmp, "localappdata", "woptimizer_git", ".git")
+        assert por_defecto.ruta == esperado, (
+            "sin `--git-dir` y sin `WOPTIMIZER_GIT_DIR`/`GIT_DIR` la resolucion tiene "
+            f"que caer al repo del host; la ruta resuelta es {por_defecto.ruta!r} y el "
+            f"default del host es {esperado!r}. Con el `expandvars` borrado esto no "
+            "llega a compararse: `None` en el entorno de `subprocess` es un TypeError"
+        )
+        assert por_defecto.origen == "default del host", (
+            f"y el informe tiene que poder decir DE DONDE salio: {por_defecto.origen!r}"
+        )
+
+        # `GIT_DIR` apunta al repo que NO tiene el commit, y la variable nueva al
+        # que SI. La precedencia es lo que se mide: si el check 9 leyera el
+        # entorno, acusaria el hash.
+        os.environ["GIT_DIR"] = git_malo
+        os.environ["GIT_WORK_TREE"] = esqueleto
+        os.environ["WOPTIMIZER_GIT_DIR"] = git_bueno
+
+        repo = vd._resolver_el_repositorio(esqueleto)
+        assert repo.ruta == git_bueno and repo.origen == "WOPTIMIZER_GIT_DIR", (
+            "`WOPTIMIZER_GIT_DIR` tiene que GANAR a `GIT_DIR`: es lo que exige la "
+            f"precedencia de `proposal.md` 7.1. Resuelto: ruta={repo.ruta!r}, "
+            f"origen={repo.origen!r}, git_bueno={git_bueno!r}"
+        )
+        assert repo.env["GIT_DIR"] == git_bueno and repo.env["GIT_WORK_TREE"] == esqueleto, (
+            f"los dos consumidores tienen que recibir el MISMO entorno: {repo.env['GIT_DIR']!r}"
+        )
+
+        errors, _ok, _saltados = _informe_completo_del_validador_real(esqueleto)
+        assert not any("NO resuelve" in e for e in errors), (
+            "el check 9 ha leido un repo que NO es el que dice WOPTIMIZER_GIT_DIR: "
+            f"acusa el hash {hash_bueno} que SI existe en {git_bueno}. Con la "
+            "derivacion duplicada, el check 5b honraba la precedencia y el check 9 "
+            "no. Errores: " + repr(errors)[:800]
+        )
+        # Y el control: con el repo equivocado el MISMO arbol accuse, o sea que la
+        # fila de arriba no pasa poraccidente con un journal que nadie comprueba.
+        errors_malos, _ok_m, _saltados_m = _informe_completo_del_validador_real(
+            esqueleto, git_dir=git_malo)
+        assert any("NO resuelve" in e for e in errors_malos), (
+            "CONTROL: con `--git-dir` al repo que no tiene el hash, R2 tiene que "
+            f"acusar. Si esto no acusa, la fila anterior no mide nada: {errors_malos!r}"
+        )
+    finally:
+        _restaurar_el_entorno(previos)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print("Resolucion del repositorio en un solo punto: con WOPTIMIZER_GIT_DIR al repo "
+          "que tiene el commit y GIT_DIR al que no, el check 9 lee el primero (y con "
+          "el otro acusa), y con ast los dos consumidores no pueden derivar el suyo.")
+
+
+def test_el_flag_git_dir_cambia_el_veredicto():
+    """TASK-075 T-2 y AC-3: `--git-dir` LLEGA a `validar()`, no solo al parser.
+
+    El validador REAL como SUBPROCESO, que es la unica forma de medir el camino
+    completo (`main()` -> `argparse` -> `validar` -> los dos checks de git): un
+    test que llamara a `_leer_los_argumentos` probaria el parser y nada mas, y un
+    mutante que acepte el flag y no lo pase a `validar()` lo dejaria en verde.
+
+    Los dos repos se diferencian SOLO en el commit que ancla el ciclo, y el
+    entorno viene limpio (`GIT_DIR` y `LOCALAPPDATA` fuera): con el flag puesto
+    no queda de donde caer al default, luego si el veredicto cambia es porque el
+    flag se ha usado.
+    """
+    import json
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t075_flag_")
+    previos = {c: os.environ.get(c) for c in
+               ("GIT_DIR", "GIT_WORK_TREE", "WOPTIMIZER_GIT_DIR", "LOCALAPPDATA")}
+    try:
+        esqueleto = os.path.join(tmp, "esqueleto")
+        os.makedirs(esqueleto, exist_ok=True)
+        _copiar_el_esqueleto_del_validador(esqueleto)
+        with open(os.path.join(esqueleto, ".taskmaster", "rd_journal.json"),
+                  "w", encoding="utf-8") as fh:
+            fh.write(json.dumps([{"cycle": 46, "commits": []}]))
+        with open(os.path.join(esqueleto, "CHANGELOG.md"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("# Changelog\n\n### Corregido\n\n## CYCLE-046\n\nEntrada del 46.\n")
+
+        git_46, _ = _camara_de_repos_de_un_commit(
+            tmp, "repo_46", "chore(release): cerrar ciclo #46 (TASK-056)")
+        git_77, _ = _camara_de_repos_de_un_commit(
+            tmp, "repo_77", "chore(release): cerrar ciclo #77 (TASK-077)")
+
+        # `LOCALAPPDATA` de este test NO tiene repos: el default, si se usara, daria
+        # el falso rojo que el encargo queria evitar. Asi el unico camino verde es
+        # el flag.
+        os.environ["LOCALAPPDATA"] = os.path.join(tmp, "localappdata_vacio")
+
+        def ejecutar(extra):
+            env = os.environ.copy()
+            for clave in ("GIT_DIR", "GIT_WORK_TREE", "WOPTIMIZER_GIT_DIR"):
+                env.pop(clave, None)
+            env["PYTHONIOENCODING"] = "utf-8"
+            ultimo = (None, "(no llego a ejecutarse)")
+            for _intento in (1, 2, 3):
+                r = subprocess.run(
+                    [sys.executable, os.path.join(esqueleto, "validate_docs.py")] + extra,
+                    cwd=esqueleto, env=env, capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=300,
+                )
+                ultimo = (r.returncode, (r.stdout or "") + (r.stderr or ""))
+                if "Resumen:" in ultimo[1]:
+                    return ultimo
+            return ultimo
+
+        rc_46, informe_46 = ejecutar(["--git-dir", git_46])
+        rc_77, informe_77 = ejecutar(["--git-dir", git_77])
+        assert "Resumen:" in informe_46 and "Resumen:" in informe_77, (
+            "los dos tienen que llegar al final del informe; si no, esto esta "
+            "midiendo una excepcion y no el flag.\n46:\n" + informe_46[-1500:]
+            + "\n77:\n" + informe_77[-1500:])
+        assert "origen: --git-dir" in informe_46, (
+            "el informe tiene que decir que el repositorio vino del flag: es la "
+            "prueba de que la ruta llego hasta la resolucion y no se quedo en el "
+            f"parser. Informe:\n{informe_46[-1500:]}")
+        assert rc_46 == 0, (
+            f"el repo que ancla el ciclo 46 tiene que dar 0 FAIL; salio con {rc_46}. "
+            f"Informe:\n{informe_46[-2500:]}")
+        assert rc_77 == 1 and "ciclo/s 077" in informe_77, (
+            "el repo que ancla el ciclo 77 tiene que ACUSAR el residuo: con el "
+            f"journal en 46 y el historial en 77, el 77 es comiteado y no "
+            f"registrado. rc={rc_77}. Informe:\n{informe_77[-2500:]}")
+    finally:
+        _restaurar_el_entorno(previos)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print("Flag --git-dir a traves del camino real: el repo del ciclo 46 sale con 0 y "
+          "el del 77 con el residuo acusado, asi que conmutar el flag cambia el "
+          "veredicto (el mutante que lo parsea y no lo usa, no).")
+
+
+def test_un_git_dir_que_no_sirve_falla_con_su_ruta_literal():
+    """TASK-075 T-3, AC-4 y AC-5: lo que se dice a mano tiene que servir o FALLAR.
+
+    TRES estados, y los tres son la misma clase de error con distincion importante:
+
+    - ruta INEXISTENTE: `exists()` la distingue, `rev-parse` tambien.
+    - directorio que EXISTE y NO es repo: `exists()` da verde. Es el mutante de
+      AC-5.
+    - repo SIN COMMITS: existe, es repo, y `rev-parse --verify HEAD` responde 128
+      ("Needed a single revision"), luego tampoco sirve. MEDIDO en
+      `validate_docs.py` (tabla de los tres returncodes): `cat-file --batch-check`
+      responderia `missing` para TODO y acusaria ~100 hashes muertos de mentira.
+
+    Y el criterio de repo es `rev-parse --verify HEAD` porque es el MISMO que usa
+    `git_safe_commit.validar_repo`: dos componentes que pueden discrepar sobre que
+    es un repositorio son dos componentes que acaban discrepando en el commit.
+    """
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t075_malo_")
+    previos = {c: os.environ.get(c) for c in
+               ("GIT_DIR", "GIT_WORK_TREE", "WOPTIMIZER_GIT_DIR", "LOCALAPPDATA")}
+    try:
+        esqueleto = os.path.join(tmp, "esqueleto")
+        os.makedirs(esqueleto, exist_ok=True)
+        _copiar_el_esqueleto_del_validador(esqueleto)
+
+        vacio = os.path.join(tmp, "directorio_vacio")
+        os.makedirs(vacio)
+        sin_commits = os.path.join(tmp, "repo_sin_commits")
+        os.makedirs(sin_commits)
+        _git_de_fixture(["init", "-q", sin_commits], os.path.dirname(sin_commits))
+        inexistente = os.path.join(tmp, "no_existe_ni_de_casualidad")
+
+        for nombre, ruta in (("inexistente", inexistente),
+                             ("directorio vacio", vacio),
+                             ("repo sin commits", os.path.join(sin_commits, ".git"))):
+            env = os.environ.copy()
+            for clave in ("GIT_DIR", "GIT_WORK_TREE", "WOPTIMIZER_GIT_DIR"):
+                env.pop(clave, None)
+            env["PYTHONIOENCODING"] = "utf-8"
+            ultimo = (None, "(no llego a ejecutarse)")
+            for _intento in (1, 2, 3):
+                r = subprocess.run(
+                    [sys.executable, os.path.join(esqueleto, "validate_docs.py"),
+                     "--git-dir", ruta],
+                    cwd=esqueleto, env=env, capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=300,
+                )
+                ultimo = (r.returncode, (r.stdout or "") + (r.stderr or ""))
+                if "Resumen:" in ultimo[1]:
+                    break
+            rc, informe = ultimo
+            fallos = [l for l in informe.splitlines() if l.strip().startswith("[FAIL]")]
+            assert rc == 1 and fallos, (
+                f"un `--git-dir` {nombre} tiene que dar al menos un [FAIL] y salir "
+                f"con 1; rc={rc}, fallos={fallos!r}. Un repositorio nombrado a mano "
+                "que no sirve no puede producir un veredicto, y sin este fallo el "
+                "validador sale con 0 FAIL: el falso verde que este cambio cierra. "
+                f"Informe:\n{informe[-2000:]}")
+            con_ruta = [f for f in fallos if ruta in f]
+            assert con_ruta, (
+                f"el fallo tiene que NOMBRAR la ruta literal que se dio ({nombre}): "
+                f"ninguno de los {len(fallos)} fallos la menciona: {fallos!r}")
+            # Y tiene que ser el FAIL EXPLICITO del repositorio nombrado, no el
+            # del historial. El motivo de exigirlo: con la guarda cambiada por
+            # `motivo = None` el historial sigue fallando con `git devolvio 128`
+            # y su mensaje TAMBIEN lleva la ruta, luego `con_ruta` no lo
+            # distinguiria. Lo que distingue los dos fallos es QUIEN acusa.
+            explicito = [f for f in fallos
+                         if f"--git-dir {ruta}:" in f and "NO es un repositorio" in f]
+            assert explicito, (
+                f"un `--git-dir` {nombre} tiene que producir el FAIL PROPIO de "
+                f"\"lo que se dijo a mano no es un repo\", y no solo el del historial: "
+                f"los {len(fallos)} fallos son {fallos!r}. Con la guarda en `motivo = "
+                "None` (o con `exists()` en vez de `rev-parse`) desaparece el "
+                "acompaniante y el motivo real queda atribuido al historial, que es "
+                "otro check y otra causa"
+            )
+            assert not any(l.strip().startswith("[OK]") and "repositorio del anclaje:" in l
+                           for l in informe.splitlines()), (
+                "la linea de `ok` que NOMBRA el repositorio no puede salir cuando "
+                "ese repositorio no ha servido: seria declarar comprobado lo que no "
+                "se ha podido comprobar. La linea `SIN COMPROBAR la resolubilidad` "
+                "si puede citar la ruta --esa cita es el motivo literal del fallo--, "
+                f"pero no puede decir que el repositorio sirve. Informe:\n{informe[-2000:]}")
+    finally:
+        _restaurar_el_entorno(previos)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print("Un --git-dir que no sirve (inexistente, directorio vacio, repo sin commits) "
+          "da [FAIL] con la ruta literal y rc 1: el criterio es rev-parse --verify "
+          "HEAD, no os.path.exists().")
+
+
+def test_sin_ancla_de_git_no_se_parece_a_un_verde():
+    """TASK-075 T-4 y AC-6: lo SALTADO se imprime como `[SKIP]` o no vale nada.
+
+    El muro es ESTRUCTURAL: `validar()` devuelve TRES listas y lo saltado a
+    proposito solo puede entrar en una. Aqui se mide sobre el INFORME IMPRESO,
+    porque un `[SKIP]` que se imprime con el formato de `[OK]` se ve en la
+    pantalla, no en el tipo de retorno.
+
+    Y hay un segundo muro, el de la SALIDA: con `--sin-ancla-de-git` el codigo es
+    0, y por eso el informe tiene que llevar el recuento de saltados en la
+    ultima linea. Sin el, `0 OK, 0 FAIL` a secas seria indistinguible de un verde
+    entero por el camino corto.
+    """
+    import shutil
+    import re
+    import subprocess
+    import sys
+    import tempfile
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t075_skip_")
+    previos = {c: os.environ.get(c) for c in
+               ("GIT_DIR", "GIT_WORK_TREE", "WOPTIMIZER_GIT_DIR", "LOCALAPPDATA")}
+    try:
+        esqueleto = os.path.join(tmp, "esqueleto")
+        os.makedirs(esqueleto, exist_ok=True)
+        _copiar_el_esqueleto_del_validador(esqueleto)
+
+        env = os.environ.copy()
+        for clave in ("GIT_DIR", "GIT_WORK_TREE", "WOPTIMIZER_GIT_DIR"):
+            env.pop(clave, None)
+        # `LOCALAPPDATA` vacio: sin repos, que es justo el estado para el que
+        # existe el flag. Con repo, saltarlo no probaria nada.
+        env["LOCALAPPDATA"] = os.path.join(tmp, "localappdata_vacio")
+        env["PYTHONIOENCODING"] = "utf-8"
+        ultimo = (None, "(no llego a ejecutarse)")
+        for _intento in (1, 2, 3):
+            r = subprocess.run(
+                [sys.executable, os.path.join(esqueleto, "validate_docs.py"),
+                 "--sin-ancla-de-git"],
+                cwd=esqueleto, env=env, capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=300,
+            )
+            ultimo = (r.returncode, (r.stdout or "") + (r.stderr or ""))
+            if "Resumen:" in ultimo[1]:
+                break
+        rc, informe = ultimo
+        lineas = informe.splitlines()
+        skips = [l for l in lineas if l.strip().startswith("[SKIP]")]
+        oks = [l for l in lineas if l.strip().startswith("[OK]")]
+        resumen = next((l for l in lineas if l.startswith("Resumen:")), "")
+
+        assert "Resumen:" in informe, (
+            "el validador tiene que llegar al final; si no, esto mide una "
+            f"excepcion. Informe:\n{informe[-2000:]}")
+        assert skips, (
+            "con `--sin-ancla-de-git` tiene que haber lineas `[SKIP]`: si lo saltado "
+            "no se imprime, el flag es un silencio y el informe entero parece "
+            f"comprobado. Informe:\n{informe[-2000:]}")
+        assert len(skips) == 3, (
+            "los TRES puntos que se saltan son la comprobacion del repositorio, el "
+            f"historial y las reglas R2/R4 del journal; hay {len(skips)}: {skips!r}")
+        assert not any("SALTAD" in l for l in oks), (
+            "NINGUN `[OK]` puede ser una comprobacion saltada a proposito: ese es el "
+            f"verde indistinguible del verde real. Saltados dentro de [OK]: "
+            f"{[l for l in oks if 'SALTAD' in l]!r}")
+        assert not any("[SKIP]" in l for l in oks), (
+            f"una linea `[SKIP]` no puede venir marcada como `[OK]`: {oks!r}")
+        assert re.search(r"Resumen: \d+ OK, \d+ FAIL, (\d+) SKIP", resumen), (
+            f"el resumen tiene que CONTAR los saltados y no solo los OK: {resumen!r}. "
+            "Sin ese numero, un `0 OK, 0 FAIL` con el flag puesto se lee como un "
+            "verde entero")
+        assert resumen.endswith(f"{len(skips)} SKIP"), (
+            f"el recuento de saltados tiene que cuadrar con las lineas [SKIP]: "
+            f"{resumen!r} frente a {len(skips)} lineas")
+        # Y el resto de los checks SIGUE corriendo: saltar el anclaje no puede
+        # ser una excusa para no validar nada.
+        assert any("llms.txt" in l for l in oks), (
+            f"los checks que NO necesitan git tienen que correr igual: {oks[:3]!r}")
+        assert "SIN COMPROBAR" not in informe, (
+            "el caso SALTADO A PROPOSITO no puede reusar la linea `SIN COMPROBAR` "
+            "del caso DEGRADADO: uno es un fallo del entorno ya acusado y el otro "
+            "es una orden del operador, y mezclarlos deja el segundo como si "
+            f"algo se hubiera roto. Informe:\n{informe[-2000:]}")
+        assert rc == 0, (
+            "con el flag el codigo de salida es 0 -- es lo que permite correr los "
+            f"otros checks -- y por eso el informe tiene que ser inequivoco. rc={rc}")
+    finally:
+        _restaurar_el_entorno(previos)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print("Salto declarado: --sin-ancla-de-git imprime 3 lineas [SKIP], ninguna como "
+          "[OK], las cuenta en el resumen y deja correr los checks que no usan git.")
+
+
+def test_el_motivo_de_la_exclusion_de_ci_esta_medido_y_escrito():
+    """TASK-075 AC-8: la exclusion es correcta y el MOTIVO escrito es el medido.
+
+    MEDIDO, y por que esto necesita un test: hasta el 2026-10-18 el motivo escrito
+    en `.github/workflows/release.yml` era `%LOCALAPPDATA%`, que es la atadura
+    **menor** de las dos, y la fila de `STATUS.md` que lo resumia remitia a
+    `docs/ai/sandbox-rules.md`, que **no mencionaba el CI en ninguna de sus 1339
+    lineas**. Una remision a un documento que no existe es una mentira util: el
+    que la lee deja de buscar. Sin esta sonda, borrar el motivo medido y volver al
+    viejo no rompe nada.
+
+    CUATRO cosas y las cuatro importan:
+
+    1. La exclusion **sigue** (mata el mutante de TASK-080, que anadiria el paso):
+       el cuerpo del job `verify`, con los comentarios fuera, no puede mencionar
+       `validate_docs.py`. La exclusion es correcta por medicion, no por costumbre.
+    2. El motivo viejo esta **fuera**: `%LOCALAPPDATA%` no puede seguir siendo la
+       justificacion, porque la ruta ya no esta atada.
+    3. El motivo nuevo trae el **numero medido y la fecha**, no una sensacion: 25
+       hashes no alcanzables desde el remoto, y `fetch-depth: 0` solo no arregla
+       nada.
+    4. La seccion de `sandbox-rules.md` existe y esta **AL FINAL**, por encima de
+       la linea 61 no se puede insertar nada: `validate_docs.py` cita sus lineas
+       55-56 POR NUMERO (las dos filas del `0` de la tabla de codigos), luego una
+       fila insertada por encima las desplaza sin avisar. Este test mide la
+       POSICION de la seccion y no su presencia, y de paso hace que la remision de
+       `STATUS.md` sea verdad por contenido y no solo por fichero existente.
+    """
+    import re
+
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(raiz, ".github", "workflows", "release.yml"),
+              encoding="utf-8") as fh:
+        release = fh.read()
+
+    cuerpo = release[release.index("\n  verify:"):]
+    fin = re.search(r"\n  [a-z_]+:\s*\n", cuerpo[len("\n  verify:"):])
+    if fin:
+        cuerpo = cuerpo[:len("\n  verify:") + fin.start()]
+    sin_comentarios = "\n".join(l for l in cuerpo.splitlines()
+                                if not l.strip().startswith("#"))
+    assert "validate_docs.py" not in sin_comentarios, (
+        "el validador NO se ejecuta en el job `verify` y es DELIBERADO: "
+        "MEDIDO el 2026-10-18 que 25 de los ~150 hashes de rd_journal.json no "
+        "son alcanzables desde origin/main+origin/beta, luego activarlo aqui "
+        "daria un rojo que no significa \"el repo esta mal\". Activarlo es "
+        "TASK-080 y esta bloqueada por esa medicion:\n" + sin_comentarios)
+    assert "deriva GIT_DIR de %LOCALAPPDATA%" not in release, (
+        "el motivo VIEJO se ha retirado porque es el mas pequeno de los dos y "
+        "ya no es la atadura: la ruta del anclaje se resuelve con `--git-dir` / "
+        "`WOPTIMIZER_GIT_DIR` / `GIT_DIR` desde UN solo punto. Un motivo falso "
+        "es peor que ningun motivo, porque manda a buscar la causa donde no esta")
+    assert "25" in release and "no son alcanzables desde ninguna rama del remoto" in release, (
+        "el motivo nuevo tiene que traer la MEDICION y la fecha, no una sensacion: "
+        "el numero de hashes que el remoto no trae y la frase que dice que estan "
+        "sin pushear")
+    assert "TASK-080" in release and "BLOQUEADA" in release, (
+        "hay que dejar escrito que activar el paso esta bloqueado y por que, "
+        "para que nadie lo active creyendo que solo falta el `fetch-depth`")
+
+    with open(os.path.join(raiz, "docs", "ai", "sandbox-rules.md"),
+              encoding="utf-8") as fh:
+        lineas = fh.read().splitlines()
+    cabecera = "Por que el validador NO corre en CI"
+    posiciones = [i for i, l in enumerate(lineas, start=1) if cabecera in l]
+    assert posiciones, (
+        f"`docs/ai/sandbox-rules.md` tiene que traer la seccion que `STATUS.md` dice "
+        f"que ya existe y no existia. No hay ninguna linea con {cabecera!r} en sus "
+        f"{len(lineas)} lineas")
+    assert min(posiciones) > 61, (
+        f"la seccion tiene que estar AL FINAL (linea {min(posiciones)}): "
+        "`validate_docs.py` cita `sandbox-rules.md:55-56` POR NUMERO DE LINEA "
+        "(las dos filas del `0` de la tabla de codigos) y cualquier fila insertada "
+        "por encima de la 61 las desplaza sin avisar")
+    cuerpo_doc = "\n".join(lineas)
+    assert "154 FAIL" in cuerpo_doc and "25 FAIL" in cuerpo_doc, (
+        "la seccion tiene que traer las DOS cifras medidas -- el rojo del clon "
+        "shallow (154 FAIL) y el que queda con `fetch-depth: 0` (25 FAIL) -- "
+        "porque la segunda es la que explica por que la exclusion es correcta")
+
+    print("Motivo de la exclusion de CI: el paso sigue fuera del job verify, el "
+          "motivo viejo de %LOCALAPPDATA% esta retirado y el nuevo trae las dos "
+          "cifras medidas; la seccion de sandbox-rules.md existe y esta al final.")
+
+
+def test_el_informe_nombra_el_repositorio_del_anclaje():
+    """TASK-075 T-5: el informe dice DE QUE repositorio leyo, con la ruta literal.
+
+    El unico criterio de este bloque que necesita asercion sobre la CADENA: el
+    veredicto no cambia al borrar la linea, luego `errors == []` lo dejaria
+    verde. Lo que se rompe es la AUDITABILIDAD -- MEDIDO, con `GIT_DIR` puesto a
+    mano dos informes identicos podian venir de dos repositorios distintos, y con
+    un `GIT_WORK_TREE` ajeno el informe no decia ni eso.
+
+    Y el `GIT_WORK_TREE` que se respeta viene en la MISMA linea, porque es la
+    otra mitad de "de donde leyo": `root` sale de `__file__` y no cambia por
+    poner la variable, luego es informacion pura y por eso tiene que estar
+    escrita.
+    """
+    import json
+    import shutil
+    import tempfile
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t075_nombre_")
+    previos = {c: os.environ.get(c) for c in
+               ("GIT_DIR", "GIT_WORK_TREE", "WOPTIMIZER_GIT_DIR", "LOCALAPPDATA")}
+    try:
+        esqueleto = os.path.join(tmp, "esqueleto")
+        os.makedirs(esqueleto, exist_ok=True)
+        _copiar_el_esqueleto_del_validador(esqueleto)
+        git_dir, _ = _camara_de_repos_de_un_commit(
+            tmp, "repo_nombrado", "chore(release): cerrar ciclo #46 (TASK-056)")
+        os.environ["GIT_DIR"] = git_dir
+        os.environ["GIT_WORK_TREE"] = os.path.join(tmp, "arbol_ajeno")
+
+        _errors, ok, saltados = _informe_completo_del_validador_real(esqueleto)
+        lineas = [o for o in ok if o.startswith("repositorio del anclaje:")]
+        assert lineas, (
+            "el informe tiene que NOMBRAR el repositorio del anclaje. Sin esta "
+            f"linea, con `GIT_DIR` a mano no se puede saber de que repo salio el "
+            f"veredicto. Lineas de ok: {ok[:4]!r}")
+        assert git_dir in lineas[0], (
+            f"la linea tiene que llevar la RUTA LITERAL del repositorio; la que sale "
+            f"es {lineas[0]!r} y el repositorio es {git_dir!r}")
+        assert "origen: GIT_DIR" in lineas[0], (
+            "y tambien de donde salio la ruta, para que un informe sea "
+            f"reproducible: {lineas[0]!r}")
+        assert os.path.join(tmp, "arbol_ajeno") in lineas[0], (
+            "el `GIT_WORK_TREE` que se respeta va en la misma linea: es la otra "
+            f"mitad de 'de donde leyo' y no se deduce del resto. Linea: {lineas[0]!r}")
+        assert not any("SALTAD" in o for o in ok), (
+            f"una comprobacion saltada no puede salir en la lista de [OK]: {ok!r}")
+        assert not saltados, (
+            f"sin el flag no hay nada saltado y `saltados` tiene que ir vacio: "
+            f"{saltados!r}")
+    finally:
+        _restaurar_el_entorno(previos)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print("El informe nombra el repositorio del anclaje con su ruta literal y su "
+          "origen, incluido el GIT_WORK_TREE ajeno que se respeta.")
 
 
 # ---------------------------------------------------------------------------
@@ -22208,6 +22899,21 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
         ("subprocess.Popen", "[sys.executable, ruta_hijo, raiz_repo, d_hist]"): 1,
         ("subprocess.Popen", "[sys.executable, '-c', parent_code]"): 1,
         ("subprocess.run", "[sys.executable, ruta_validador]"): 1,
+        # TASK-075: las TRES de los flags del validador. Son el MISMO componente
+        # que la entrada de `os.path.join(tmp, 'validate_docs.py')` de arriba --
+        # el validador real, con su `--batch-check` legitimo y con `input=`-- y se
+        # declaran aparte porque el argv literal es distinto, y una entrada que se
+        # cumple por parecido es una entrada que no se cumple. `esqueleto`, `ruta`
+        # y `extra` son `Name` sin enlace estatico, luego el guard no puede ver el
+        # resto del argv; lo que puede es que un `cat-file` se esconda en un flag
+        # sin dejar rastro, y los tres son flags del VALIDADOR, no subcomandos de
+        # git.
+        ("subprocess.run", "[sys.executable, os.path.join(esqueleto, "
+                           "'validate_docs.py'), '--git-dir', ruta]"): 1,
+        ("subprocess.run", "[sys.executable, os.path.join(esqueleto, "
+                           "'validate_docs.py'), '--sin-ancla-de-git']"): 1,
+        ("subprocess.run", "[sys.executable, os.path.join(esqueleto, "
+                           "'validate_docs.py')] + extra"): 1,
     }
     visto = {}
     for funcion, argv, _linea in INDECISAS:
@@ -26526,6 +27232,18 @@ if __name__ == "__main__":
     # `len(errors) == 1` lo cazo. Este fija "una causa, un mensaje" en el camino
     # REAL del validador, con su mitad mutante. Suite: 130 -> 131.
     test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real()
+    # TASK-075: el repositorio del anclaje se resuelve en UN punto (la derivacion
+    # estaba duplicada en los dos consumidores de git, identica), `--git-dir` llega
+    # de verdad a `validar()`, lo que no sirve FALLA con su ruta literal, y lo
+    # saltado a proposito sale como `[SKIP]` en su propia lista. Suite: 207 -> 213.
+    # Los cinco van ANTES del marcador headless porque ninguno abre una ventana: son
+    # tooling puro con subprocess y arboles temporales.
+    test_la_resolucion_del_repositorio_tiene_un_solo_punto()
+    test_el_flag_git_dir_cambia_el_veredicto()
+    test_un_git_dir_que_no_sirve_falla_con_su_ruta_literal()
+    test_sin_ancla_de_git_no_se_parece_a_un_verde()
+    test_el_informe_nombra_el_repositorio_del_anclaje()
+    test_el_motivo_de_la_exclusion_de_ci_esta_medido_y_escrito()
     # TASK-065: los packs FAVORITOS en el menu de la BANDEJA. Suite: 132 -> 136.
     # Las cuatro van ANTES del marcador headless porque ninguna abre una ventana: son
     # estado puro + texto, sin Tk y sin pystray, que es justo lo que hace testeable el

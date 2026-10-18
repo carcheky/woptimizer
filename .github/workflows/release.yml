@@ -86,11 +86,32 @@ jobs:
       - name: Sintaxis estatica de la UI
         run: python verify_ui_syntax.py
 
-      # `validate_docs.py` NO se ejecuta aqui, y es deliberado: su ancla de
-      # commits deriva GIT_DIR de %LOCALAPPDATA%\woptimizer_git\.git, que solo
-      # existe en el host del dueno. En el runner no esta, `git log` falla y el
-      # validador reporta FAIL aunque el repo este impecable. Verificarlo aqui
-      # seria un rojo que no significa nada.
+      # `validate_docs.py` NO se ejecuta aqui, y la exclusion es CORRECTA. Lo que
+      # era incorrecto era el MOTIVO escrito, y se reescribio con la medicion el
+      # 2026-10-18 (TASK-075); el motivo viejo decia `%LOCALAPPDATA%`, que ya no
+      # es la atadura: la ruta se resuelve con `--git-dir` /
+      # `WOPTIMIZER_GIT_DIR` / `GIT_DIR` desde UN solo punto.
+      #
+      # Las DOS ataduras que quedan, y las dos MEDIDAS con camaras desechables en
+      # `%TEMP%` y el validador real por subproceso:
+      #
+      #   1. Este `actions/checkout@v7` NO lleva `fetch-depth: 0` (a diferencia de
+      #      los jobs `commits` y `release`, que si lo llevan), luego el runner
+      #      tiene un clon SHALLOW de profundidad 1 y R2 acusa uno a uno los hashes
+      #      del journal: **154 FAIL**, exit 1.
+      #   2. Aun con `fetch-depth: 0` (235 objetos de `origin/main`+`origin/beta`),
+      #      **25 de los ~150 hashes de `rd_journal.json` NO resuelven**: existen en
+      #      el ODB del host pero no son alcanzables desde ninguna rama del remoto.
+      #      Son commits SIN PUSHEAR, no perdidos, y no se pueden declarar en
+      #      `commits_perdidos` sin escribir una mentira en el registro que el ancla
+      #      existe para certificar (el vocabulario `CAUSAS_DE_PERDIDA` no tiene un
+      #      valor para eso y no se anade).
+      #
+      # O sea que este paso no se activa DESACOPLANDO la ruta: se activa cuando se
+      # empujen esos 25 o cambie el contrato del ancla, y ambas cosas son decision
+      # de producto, no de tooling. Queda escrito como TASK-080 y esta BLOQUEADA
+      # por el punto 2. Hasta entonces, verificarlo aqui seria un rojo que no
+      # significa "el repo esta mal".
       - name: Suite headless
         run: python run_tests.py
 

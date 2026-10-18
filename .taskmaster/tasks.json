@@ -1623,7 +1623,7 @@
       "description": "DEUDA DE STATUS.md (fila REAL 81, no 121; la seccion es 🟡 Media): validate_docs.py deriva el repositorio desacoplado desde %LOCALAPPDATA%\\woptimizer_git\\.git, y esa derivacion esta DUPLICADA en validate_docs.py:306-308 (_comprobar_ancla_de_commits) y :481-483 (_hashes_que_existen), con codigo identico. MEDIDO: la exclusion en CI ya es explicita y deliberada (.github/workflows/release.yml:89-93) y no hace falta desacoplar la ruta para activarlo —con fetch-depth:0 seguiran dando 25 FAIL de R2 porque 25 de los 150 hashes de rd_journal.json no son alcanzables desde origin/main+origin/beta—. Alcance real: (a) extraer UNA funcion de resolucion que usen los dos consumidores, (b) --git-dir / WOPTIMIZER_GIT_DIR con precedencia sobre el GIT_DIR del entorno y sobre el default, (c) fail-loud cuando el repo dicho no es repo, (d) --sin-ancla-de-git con [SKIP] que no pueda confundirse con [OK]. Activar el validador en el job verify es TASK-080 y queda BLOQUEADA.",
       "complexity": "medium",
       "priority": "medium",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "validate_docs.py",
       "acceptance_criteria": [
@@ -1647,7 +1647,9 @@
       "complexity": "medium",
       "priority": "low",
       "status": "pending",
-      "dependencies": ["TASK-075"],
+      "dependencies": [
+        "TASK-075"
+      ],
       "module": ".github/workflows/release.yml",
       "acceptance_criteria": [
         "PRECONDICION MEDIDA Y ESCRITA: los 150 hashes de rd_journal.json resuelven contra `origin/main`+`origin/beta`, con el numero de los que no resuelven y la fecha. Sin esta medicion el paso no se anade: un rojo que no significa nada es peor que no correr el validador.",

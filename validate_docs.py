@@ -8,6 +8,8 @@ import ast
 import json
 import sys
 import subprocess
+import argparse
+from collections import namedtuple
 
 
 # Tope de problemas del guard de contenido del agregado que se reportan.
@@ -270,7 +272,117 @@ def _ciclos_de_commits(asuntos):
     return ciclos, con_marcador, len(asuntos) - con_marcador
 
 
-def _comprobar_ancla_de_commits(root, errors, ok, journal_cycles):
+# --- TASK-075 (T-1): UNA sola resolucion del repositorio del anclaje ---------
+#
+# MEDIDO, y es lo que hace que esto sea el cambio y no un detalle: la derivacion
+# del repositorio desacoplado estaba DUPLICADA, con codigo IDENTICO caracter por
+# caracter, en los DOS consumidores que necesitan git -- `_comprobar_ancla_de_
+# commits` (check 5b, el del historial) y `_hashes_que_existen` (check 9, el de
+# los hashes del journal). El encargo que pedia desacoplarla citaba la linea
+# 300-302, que NO EXISTE: las reales eran la 306-308 y la 481-483.
+#
+# Con la duplicacion, un `--git-dir` implementado en UNO de los dos deja al otro
+# leyendo el default: el flag "funciona" y el validador da 154 FAIL (medido con
+# un repo de un commit). Por eso aqui hay UNA funcion y los dos la llaman.
+#
+# LA PRECEDENCIA es una sola y esta escrita, de mas fuerte a mas debil:
+#
+#   1. `--git-dir`            CLI; gana sobre todo y es el UNICO que se EXIGE
+#                              como repositorio (T-3), porque es el unico que ha
+#                              dicho una persona en esta invocacion.
+#   2. `WOPTIMIZER_GIT_DIR`   entorno; el mismo contrato, dicho por el pipeline.
+#   3. `GIT_DIR`              entorno; la precedencia ya documentada en AGENTS.md
+#                              y YA ATADA por la fila (e) de la tabla del ancla
+#                              (`run_tests.py`), que tiene que seguir verde.
+#   4. el default del host, `%LOCALAPPDATA%\woptimizer_git\.git`.
+#
+# Los niveles 3 y 4 NO se mueven ni se borran: borrar el `expandvars` deja `None`
+# en el entorno de `subprocess` y un `TypeError` (mutante S3, ya medido), asi que
+# el default se toma FUERA del bucle que lo busca y no dentro.
+REPO_DESACOPLADO_POR_DEFECTO = r"%LOCALAPPDATA%\woptimizer_git\.git"
+ORIGEN_EXPLICITO = "--git-dir"
+
+# Un `namedtuple` y no tres valores sueltos: `env`, `ruta` y `origen` viajan
+# JUNTOS y es lo que se pasa a los dos consumidores, de modo que "leer otro
+# repositorio" ya no se puede escribir sin pasar por aqui.
+Repositorio = namedtuple("Repositorio", ("env", "ruta", "origen"))
+
+
+def _resolver_el_repositorio(root, git_dir=None):
+    """`Repositorio` del anclaje, resuelto UNA vez. -> `Repositorio`
+
+    `root` se usa SOLO para `GIT_WORK_TREE` cuando el entorno no trae uno, y el
+    entorno se copia entero: los dos consumidores reciben el MISMO `env`, luego no
+    pueden discrepar sobre de que repositorio estan leyendo.
+    """
+    env = os.environ.copy()
+    candidatos = (
+        (ORIGEN_EXPLICITO, git_dir),
+        ("WOPTIMIZER_GIT_DIR", env.get("WOPTIMIZER_GIT_DIR")),
+        ("GIT_DIR", env.get("GIT_DIR")),
+        ("default del host", os.path.expandvars(REPO_DESACOPLADO_POR_DEFECTO)),
+    )
+    # El default es el ULTIMO y se toma primero. LA FORMA importa: si el fallback
+    # fuera una entrada mas del bucle, borrarlo dejaria `ruta` sin valor y el
+    # `None` en el entorno de `subprocess` seria un `TypeError` en el primer git;
+    # asi el mismo mutante es un `IndexError` AQUI, antes de comprobar nada, que
+    # es un ruido al que se puede atribuir la causa.
+    origen, ruta = candidatos[-1]
+    for nombre, valor in candidatos[:-1]:
+        if valor:
+            origen, ruta = nombre, valor
+            break
+    env["GIT_DIR"] = ruta
+    # `GIT_WORK_TREE` se RESPETA si viene en el entorno y solo se impone `root`
+    # cuando no viene. MEDIDO: cambiarlo NO cambia que ficheros se validan
+    # (`root` sale de `__file__`), luego es benigno para el veredicto y solo
+    # informacion; lo que faltaba era que quedara REGISTRADO en alguna parte, y
+    # eso lo da la linea de `ok` de `_comprobar_el_repositorio_del_anclaje`.
+    if not env.get("GIT_WORK_TREE"):
+        env["GIT_WORK_TREE"] = root
+    return Repositorio(env=env, ruta=ruta, origen=origen)
+
+
+def _comprobar_el_repositorio_del_anclaje(root, errors, ok, repo):
+    """El repositorio del anclaje, DICHO en el informe y validado si lo dijo alguien.
+
+    T-5: el informe NOMBRA el repositorio y de donde salio la ruta. Un informe
+    que no dice de que repositorio leyo no es auditable, y hoy esa ruta no
+    aparecia en ninguna parte: con `GIT_DIR` puesto a mano, dos informes
+    identicos podian venir de dos repositorios distintos.
+
+    T-3: un `--git-dir` que NO es repositorio FALLA, con la ruta LITERAL. El
+    criterio es `rev-parse --verify HEAD` y NO `os.path.exists()`: MEDIDO que un
+    directorio VACIO responde 128 y un repo sin commits responde 0, y un
+    `exists()` no los distingue -- daria verde sobre un directorio que no es un
+    repo. Es el MISMO criterio que `git_safe_commit.validar_repo`, y por el mismo
+    motivo: que los dos componentes no puedan discrepar sobre que es un repo.
+
+    Y lo que NO se cambia: el FAIL del default o de `GIT_DIR` ausente. MEDIDO que
+    sin repositorio el validador sale con `1 FAIL` y el motivo literal de git, no
+    con `0 FAIL`: produce un FALSO ROJO, que es mejor que un verde fabricado pero
+    sigue siendo un rojo que no significa "el repo esta mal". Convertirlo en
+    silencio seria fabricar el verde que este cambio viene a cerrar; por eso el
+    camino sin repositorio se pide EXPRESAMENTE con `--sin-ancla-de-git`.
+    """
+    if repo.origen == ORIGEN_EXPLICITO:
+        motivo = _leer_el_repo_si_lo_hay(root, repo.env)
+        if motivo is not None:
+            errors.append(
+                f"{ORIGEN_EXPLICITO} {repo.ruta}: NO es un repositorio del que se pueda "
+                "leer el anclaje, y un repositorio nombrado a mano que no sirve no puede "
+                f"producir un veredicto. Motivo literal: {motivo}"
+            )
+            return
+    ok.append(
+        f"repositorio del anclaje: {repo.ruta} (origen: {repo.origen}; GIT_WORK_TREE: "
+        f"{repo.env.get('GIT_WORK_TREE')}). Un informe que no dice de que repositorio "
+        "leyo no es auditable"
+    )
+
+
+def _comprobar_ancla_de_commits(root, errors, ok, journal_cycles, saltados,
+                                repo, sin_ancla_de_git):
     """Historial de commits como TERCER testigo. -> `set[int]` de ciclos.
 
     `journal_cycles` es POSICIONAL OBLIGATORIO, y no es estilo. Medido, el
@@ -290,6 +402,14 @@ def _comprobar_ancla_de_commits(root, errors, ok, journal_cycles):
     El `GIT_DIR` del entorno se respeta A PROPOSITO: es el hook que permite tests
     hermeticos y es la precedencia documentada en AGENTS.md.
 
+    `repo` es lo que resuelve `_resolver_el_repositorio` (TASK-075, T-1) y es lo
+    que hace que este consumidor y `_hashes_que_existen` no puedan estar leyendo
+    repositorios distintos: antes los dos se derivaban el suyo con el MISMO codigo
+    duplicado, y un `--git-dir` aplicado a uno solo dejaba al otro con el default
+    (154 FAIL medidos). Mismo motivo para `sin_ancla_de_git`: lo saltado va a
+    `saltados` y JAMAS a `ok`, porque un SALTADO impreso como `[OK]` es el verde
+    indistinguible del verde real, que es el peor desenlace posible de este cambio.
+
     `journal_cycles` no es adorno: es lo que permite distinguir "el historial no
     aporta ningun ciclo" (un parser ROTO, que no puede pasar por verde) de "el
     historial tampoco dice nada porque el journal tampoco" (fallo que ya reporta
@@ -302,11 +422,15 @@ def _comprobar_ancla_de_commits(root, errors, ok, journal_cycles):
     ciclo 27: una guarda que se salta sola cuando no puede comprobar ya no
     guarda nada.
     """
-    env = os.environ.copy()
-    env["GIT_DIR"] = env.get("GIT_DIR") or os.path.expandvars(
-        r"%LOCALAPPDATA%\woptimizer_git\.git"
-    )
-    env["GIT_WORK_TREE"] = root
+    if sin_ancla_de_git:
+        saltados.append(
+            "historial de commits (tercer testigo del ancla del changelog): SALTADO "
+            f"por --sin-ancla-de-git. No se ha leido {repo.ruta} (origen: "
+            f"{repo.origen}), luego los ciclos que el historial corrobora NO se "
+            "exigen y este SALTADO no se imprime como un [OK]"
+        )
+        return set()
+    env = repo.env
     # `--all`: un ciclo cerrado en una rama tambien cuenta. Sin limite: son ~157
     # subjects, y truncar dejaria ciclos sin exigir, que es el fallo que esto
     # viene a cerrar. La cifra viva la reimprime el informe, en la linea de
@@ -458,7 +582,7 @@ def _leer_el_repo_si_lo_hay(root, env):
     )
 
 
-def _hashes_que_existen(root, hashes):
+def _hashes_que_existen(root, hashes, repo):
     """`(resueltos, motivo)` de un LOTE de hashes cortos, en una sola llamada.
 
     `git cat-file --batch-check` lee los nombres por stdin y responde una linea
@@ -472,16 +596,18 @@ def _hashes_que_existen(root, hashes):
     cuando no. Un `except: return set()` devolveria "nada resuelve", que es
     justo la entrada que empuja al check a declarar perdidas de mentira: lo que
     no se puede comprobar se INFORMA, no se convierte en veredicto.
+
+    `repo` es el MISMO objeto que recibe `_comprobar_ancla_de_commits` y lo trae
+    `_resolver_el_repositorio` (TASK-075, T-1). Antes esta funcion se derivaba
+    el repositorio con el mismo codigo que aquella, DUPLICADO: un `--git-dir`
+    Honrado en una sola de las dos dejaba el check 5b leyendo un repo y el check
+    9 otro, y el flag "funcionaba" mientras el validador daba 154 FAIL.
     """
     pedidos = sorted({str(h) for h in hashes})
     if not pedidos:
         return set(), None
 
-    env = os.environ.copy()
-    env["GIT_DIR"] = env.get("GIT_DIR") or os.path.expandvars(
-        r"%LOCALAPPDATA%\woptimizer_git\.git"
-    )
-    env["GIT_WORK_TREE"] = root
+    env = repo.env
 
     # PRE-VUELO, y no es decorativo. MEDIDO el 2026-10-04 con las TRES cifras
     # reales (la primera redaccion de este comentario afirmaba una FALSA, y una
@@ -550,7 +676,8 @@ def _hashes_que_existen(root, hashes):
     return set(), motivo
 
 
-def _comprobar_hashes_del_journal(root, errors, ok):
+def _comprobar_hashes_del_journal(root, errors, ok, saltados, repo,
+                                   sin_ancla_de_git):
     """Check 9: los hashes que el journal declara, y las perdidas que declara.
 
     CINCO reglas, cada una por un fallo distinto (mezclarlas daria numeros
@@ -592,6 +719,12 @@ def _comprobar_hashes_del_journal(root, errors, ok):
     hashes perdidos cuando no se ha podido mirar el repo seria fabricar un
     veredicto, y fabricarlo en la direccion de "todo bien" es el peor de los dos
     lados.
+
+    Con `--sin-ancla-de-git` esa division se USA, y por eso R2 y R4 no se degradan
+    a "declarado perdido lo que no se ha mirado": sin `resueltos` no se puede
+    acusar a NADIE, y acusar a todos seria un rojo que parece un repo con 150
+    hashes muertos. Lo que se degrada es el VEREDICTO de esas dos reglas, y sale
+    como `[SKIP]` en su propia lista, jamas como una linea de `ok`.
     """
     ruta = os.path.join(root, ".taskmaster", "rd_journal.json")
     try:
@@ -637,23 +770,39 @@ def _comprobar_hashes_del_journal(root, errors, ok):
         for item in (entrada.get("commits") or []):
             if isinstance(item, str) and RE_HASH_CORTO.fullmatch(item):
                 pedidos.append(item)
-    resueltos, motivo_git = _hashes_que_existen(root, pedidos)
-    if motivo_git is not None:
-        # MISMA REGLA que la del journal ilegible, y por el mismo motivo: el
-        # historial ilegible lo acusa `_comprobar_ancla_de_commits` (que corre
-        # antes, dentro del ancla del changelog) con "historial de commits: NO SE
-        # PUEDE LEER", luego acusar aqui era una segunda voz sobre la misma causa.
-        # Lo que no se degrada es la verificacion: R2 y R4 no se pueden comprobar,
-        # asi que se registra el motivo literal y NO se cuenta ningun hash. Sin
-        # esto, un repo caido y un repo con 3 hashes muertos darian el mismo
-        # informe, que es la confusion que el techo de R5 tiene que evitar.
-        ok.append(
-            "campo 'commits' del journal: SIN COMPROBAR la resolubilidad porque el "
-            f"repo no se puede leer (motivo literal: {motivo_git}). Este check no "
-            "acusa de nuevo: el ancla del historial ya ha acusado este hecho, y una "
-            "causa produce un mensaje. R1 y R3 (que no necesitan git) si se han "
-            "comprobado"
+    resueltos, motivo_git = set(), None
+    if sin_ancla_de_git:
+        # TERCER estado, y no es el de `motivo_git is not None`: ahi el repo se
+        # intento leer y fallo, y el informe lo dice con el motivo LITERAL de git;
+        # aqui no se ha INTENTADO, porque el operador lo pidio. Confundir los dos
+        # haria que un SALTADO a proposito se lea como un fallo de contenido.
+        comprobado_git = False
+        saltados.append(
+            "campo 'commits' del journal: R2 (resolubilidad) y R4 (antidolar) "
+            f"SALTADOS por --sin-ancla-de-git; no se ha mirado {repo.ruta} (origen: "
+            f"{repo.origen}). R1, R3 y R5 (que no necesitan git) SI se han "
+            "comprobado, y sin el repo no se declara ni un hash perdido: acusar a "
+            "los 150 seria un rojo que parece un repo con 150 hashes muertos"
         )
+    else:
+        resueltos, motivo_git = _hashes_que_existen(root, pedidos, repo)
+        comprobado_git = motivo_git is None
+        if motivo_git is not None:
+            # MISMA REGLA que la del journal ilegible, y por el mismo motivo: el
+            # historial ilegible lo acusa `_comprobar_ancla_de_commits` (que corre
+            # antes, dentro del ancla del changelog) con "historial de commits: NO SE
+            # PUEDE LEER", luego acusar aqui era una segunda voz sobre la misma causa.
+            # Lo que no se degrada es la verificacion: R2 y R4 no se pueden comprobar,
+            # asi que se registra el motivo literal y NO se cuenta ningun hash. Sin
+            # esto, un repo caido y un repo con 3 hashes muertos darian el mismo
+            # informe, que es la confusion que el techo de R5 tiene que evitar.
+            ok.append(
+                "campo 'commits' del journal: SIN COMPROBAR la resolubilidad porque el "
+                f"repo no se puede leer (motivo literal: {motivo_git}). Este check no "
+                "acusa de nuevo: el ancla del historial ya ha acusado este hecho, y una "
+                "causa produce un mensaje. R1 y R3 (que no necesitan git) si se han "
+                "comprobado"
+            )
 
     conformes = con_lista = sin_hash = 0
     no_declarados = 0
@@ -771,7 +920,7 @@ def _comprobar_hashes_del_journal(root, errors, ok):
             perdidos_por_causa[causa] = perdidos_por_causa.get(causa, 0) + 1
 
         # --- R2 y R4: resolubilidad, en direcciones opuestas ----------------
-        if motivo_git is None:
+        if comprobado_git:
             for hash_propio in sorted(hashes_de_la_entrada - perdidos_de_aqui):
                 if hash_propio not in resueltos:
                     no_declarados += 1
@@ -836,7 +985,8 @@ def _comprobar_hashes_del_journal(root, errors, ok):
     )
 
 
-def _comprobar_ancla_del_changelog(root, errors, ok):
+def _comprobar_ancla_del_changelog(root, errors, ok, saltados, repo,
+                                   sin_ancla_de_git):
     """Check 5b, su parte de ANCLA: cobertura de entradas de ciclo del changelog.
 
     El requisito es la UNION de las dos fuentes:
@@ -911,7 +1061,8 @@ def _comprobar_ancla_del_changelog(root, errors, ok):
 
     # TERCER testigo. Va DESPUES de la politica del journal, que no se toca:
     # son dos fallos distintos y mezclarlos haria mas dificil leer el informe.
-    ciclos_historial = _comprobar_ancla_de_commits(root, errors, ok, journal_cycles)
+    ciclos_historial = _comprobar_ancla_de_commits(
+        root, errors, ok, journal_cycles, saltados, repo, sin_ancla_de_git)
 
     ciclos_journal = set(journal_cycles)
     ciclos_requeridos = ciclos_journal | ciclos_historial
@@ -2194,8 +2345,8 @@ commit, que es la leccion de T54-6.
                   f"(build_llms_full.py --check)")
 
 
-def validar(root):
-    """Los checks 1-8 enteros. -> `(errors, ok)`. Sin imprimir y sin salir.
+def validar(root, git_dir=None, sin_ancla_de_git=False):
+    """Los checks 1-10 enteros. -> `(errors, ok, saltados)`. Sin imprimir y sin salir.
 
     D1 (TASK-057, ciclo 47, intento 3). Por que existe, medido: durante dos
     iteraciones la suite llamo a las funciones PRIVADAS pasandoles a mano los
@@ -2211,9 +2362,33 @@ def validar(root):
     posibles que puedan divergir. `root` es parametro -- y no se deriva de
     `__file__` -- precisamente para que un test pueda apuntar el validador real
     a un arbol sintetico.
+
+    TASK-075 (T-2) mete los DOS parametros que hacen falta para no atar la ruta a
+    la maquina: `git_dir` (lo que dijo `--git-dir`) y `sin_ancla_de_git`. Los dos
+    son SIN default en el sentido de que no se pueden confundir con "no se ha
+    dicho nada": `git_dir=None` es exactamente lo que significa no haber dicho el
+    flag, y el validador SIN flags se comporta byte a byte como antes. Lo que NO
+    se admite es un default que esconda un cableado roto, y por eso el
+    repositorio resuelto viaja como OBJETO a los dos consumidores que lo necesitan
+    en vez de derivarse dentro de cada uno.
     """
     errors = []
     ok = []
+    saltados = []
+
+    # EL REPOSITORIO, resuelto una vez (TASK-075, T-1) y dicho en el informe. Va
+    # el PRIMERO porque su veredicto condiciona a los dos checks de git: si el
+    # repositorio nombrado a mano no sirve, hay que decirlo antes de contar los
+    # checks que no se han hecho.
+    repo = _resolver_el_repositorio(root, git_dir)
+    if sin_ancla_de_git:
+        saltados.append(
+            "comprobacion del repositorio del anclaje: SALTADA por "
+            "--sin-ancla-de-git. El repositorio que se habria exigido es "
+            f"{repo.ruta} (origen: {repo.origen}) y NO se ha mirado"
+        )
+    else:
+        _comprobar_el_repositorio_del_anclaje(root, errors, ok, repo)
 
     # 1. llms.txt format
     with open(os.path.join(root, "llms.txt"), encoding="utf-8") as f:
@@ -2384,8 +2559,10 @@ def validar(root):
         # el residuo que se persigue aqui (ciclo COMITEADO y NO registrado) no
         # se puede construir en un test. El cuerpo vive una sola vez, aqui
         # dentro: el camino real y el del test ejecutan el MISMO codigo, que es
-        # lo contrario de un `--verify` con ruta propia.
-        _comprobar_ancla_del_changelog(root, errors, ok)
+        # lo contrario de un `--verify` con ruta propia. `repo` y `sin_ancla_de_git`
+        # viajan desde `validar()` (TASK-075) para que el check 5b y el check 9
+        # lean el MISMO repositorio, que era lo que la duplicacion impedia.
+        _comprobar_ancla_del_changelog(root, errors, ok, saltados, repo, sin_ancla_de_git)
 
     # 6. mkdocs.yml existe y tiene nav
     if os.path.exists(os.path.join(root, "mkdocs.yml")):
@@ -2419,7 +2596,7 @@ def validar(root):
     # por el motivo de D2: un default convierte un cableado roto en un `None`
     # silencioso, y un `None` en esta posicion se lee como "no hay hashes que
     # comprobar", que es el falso verde que el check viene a cerrar.
-    _comprobar_hashes_del_journal(root, errors, ok)
+    _comprobar_hashes_del_journal(root, errors, ok, saltados, repo, sin_ancla_de_git)
     # 10. El CONTRATO DE PERSISTENCIA de TASK-069, en los dos documentos que lo
     # declaran. Delegado a `_comprobar_contrato_de_persistencia(root, errors, ok)`,
     # con raiz y SIN defaults por D3, y con el predicado en
@@ -2428,7 +2605,7 @@ def validar(root):
     # vive en la suite se queda en verde mientras no corra, que es al reves de
     # como funciona una guarda.
     _comprobar_contrato_de_persistencia(root, errors, ok)
-    return errors, ok
+    return errors, ok, saltados
 
 
 # --- TASK-069 (cierre del Paso 4): el contrato de persistencia como PREDICADO,
@@ -2536,15 +2713,54 @@ def _comprobar_contrato_de_persistencia(root, errors, ok):
                       "junto al ejecutable) en una sola unidad de texto")
 
 
-def main():
+def _leer_los_argumentos(argv=None):
+    """Los DOS flags del validador. -> `argparse.Namespace`
+
+    Son MUTUAMENTE EXCLUYENTES, y no por elegancia: `--git-dir` dice que repo se
+    usa y `--sin-ancla-de-git` dice que no se usa ninguno. Pedir los dos es una
+    contradiccion, y una contradiccion admitida es una forma de fabricar el
+    verde que el segundo flag viene a cerrar: con los dos, el check 5b se
+    saltaria y el repositorio nombrado tampoco se comprobaria. `argparse` la
+    rechaza con su `error()` y codigo 2, que es lo unico que se le puede pedir.
+
+    Sin flags el comportamiento es IDENTICO al de antes del cambio: no leer
+    `sys.argv` aqui es lo que permite que la suite lo invoque como modulo y que
+    `main()` siga siendo la unica ruta de impresion.
+    """
+    parser = argparse.ArgumentParser(
+        prog="validate_docs.py",
+        description="Valida llms.txt, openspec/, STATUS.md y el anclaje de commits.",
+    )
+    grupo = parser.add_mutually_exclusive_group()
+    grupo.add_argument(
+        "--git-dir", metavar="RUTA", default=None,
+        help="Repositorio git del que leer el anclaje. Gana sobre "
+             "WOPTIMIZER_GIT_DIR y GIT_DIR, y si no es un repositorio FALLA.",
+    )
+    grupo.add_argument(
+        "--sin-ancla-de-git", action="store_true",
+        help="Corre los checks que NO necesitan git y salta los que si, "
+             "imprimiendolos como [SKIP] y contandolos aparte. Nunca como [OK].",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
     """Imprime el informe de `validar(root)` y sale con su codigo. Nada mas.
 
-    Todo lo que decide ocurre en `validar`; aqui no hay ni una condicion. Un
-    `main()` con logica propia es una segunda ruta de validacion posible, que es
-    justo lo que D1 viene a hacer desaparecer.
+    Todo lo que DECIDE ocurre en `validar`; aqui lo unico que hay es cableado:
+    leer los flags y pasarlos. Un `main()` con logica propia es una segunda ruta
+    de validacion posible, que es justo lo que D1 vino a hacer desaparecer.
+
+    Los TRES canales del informe son listas DISTINTAS y por eso un SALTADO no
+    puede parecerse a un comprobado: `[OK]` cuenta en el resumen, `[SKIP]` se
+    cuenta aparte y `[FAIL]` sale con 1. El muro es estructural (tres listas), no
+    un prefijo de texto: un validador que no puede fallar no debe poder pasar, y
+    `--sin-ancla-de-git` es el camino para correr SIN repo sin fabricar ese verde.
     """
+    args = _leer_los_argumentos(argv)
     root = os.path.dirname(os.path.abspath(__file__))
-    errors, ok = validar(root)
+    errors, ok, saltados = validar(root, git_dir=args.git_dir, sin_ancla_de_git=args.sin_ancla_de_git)
 
     # Reporte
     print("=" * 60)
@@ -2553,12 +2769,14 @@ def main():
     print()
     for line in ok:
         print(f"  [OK]   {line}")
+    for line in saltados:
+        print(f"  [SKIP] {line}")
     if errors:
         print()
         for line in errors:
             print(f"  [FAIL] {line}")
     print()
-    print(f"Resumen: {len(ok)} OK, {len(errors)} FAIL")
+    print(f"Resumen: {len(ok)} OK, {len(errors)} FAIL, {len(saltados)} SKIP")
     sys.exit(0 if not errors else 1)
 
 
