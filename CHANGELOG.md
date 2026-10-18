@@ -1,3 +1,19 @@
+## CYCLE-064 - 2026-10-18
+
+### 🛡️ Corregido — El validador de documentación ya no lee dos repositorios distintos
+
+**Estado**: **PASS** en auditoría de mutación (10 mutantes, 10 muertos, 0 supervivientes). Tests: **213** (142 backend + 71 headless). Commits: `1dcf7eb`, `a577158`.
+
+- 🔴 **Qué se rompía**: el programa que revisa si la documentación del proyecto está al día tenía **la misma búsqueda escrita dos veces**, en dos sitios distintos. Cualquier forma de decirle dónde está el repositorio se aplicaba solo a uno de los dos: el testigo de los commits leía un sitio y el resto de comprobaciones leían otro. El resultado: la opción nueva parecía funcionar mientras el validador se llegaba a ir al repositorio equivocado.
+- 🛡️ **Qué se hizo**: ahora hay **un único punto** donde se decide qué repositorio se mira, y las dos comprobaciones lo usan. Además se añadió una forma de ejecutar el validador **sin repositorio**, que **no se disfraza de éxito**: lo que no se comprueba se imprime como omitido, con su recuento aparte, y el resumen lo enseña.
+- 🔴 **Y la tarea venía mal planteada, en tres puntos**: decía que el validador daba un falso "todo bien" cuando no encontraba el repo — en realidad da un **falso rojo**, que es mejor. Y apuntaba a una cita de código que **no existe**. Todo eso se midió antes de tocar nada.
+- 🔴 **Lo más importante, y es una buena noticia**: la tarea estabaorientada para que el validador corriera en la 자동ización, pero se comprobó que **eso seguiría fallando** aunque se arreglara la ruta, porque el repositorio de la automatización se descarga incompleto y parte del historial no está ni en el servidor. El motivo escrito antes era el más pequeño de los tres; ahora dice la verdad, con la cifra dentro.
+- 🧪 **La prueba de fuego**: se rompió el código a propósito de forma que **el sitio donde se duplicaba ya no se pareciera**, y aun así el fallo se detectó igual. Es decir, que las dos mitades lean el mismo repositorio no es una casualidad de que el código esté escrito así: está **comprobado por su comportamiento**.
+
+### ⚠️ Pendiente — Tres desajustes de documentación
+
+En el recuento de tests y en un comentario del propio validador hay tres cifras y una frase que ya no dicen la verdad. No hacen que nada falle — por eso el validador las dejó pasar: solo mira una línea por fichero —, pero están anotadas para que no se arrastren. Una cuarta comprobación quedó **sin medir** por falta de margen, no por fallo.
+
 ## CYCLE-063 - 2026-10-18
 
 ### 🛡️ Corregido — La puerta que protege los commits ya no se contradice a sí misma

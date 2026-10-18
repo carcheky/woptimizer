@@ -1,3 +1,70 @@
+## [CYCLE-064] 2026-10-18 - task-075-validate-docs-ruta-y-degradacion
+
+### TASK-075: una sola resolucion del repositorio del anclaje, y honestidad en la degradacion
+
+**Area**: Tooling / Testing. **Change**: `openspec/changes/2026-10-18-validate-docs-ruta-y-degradacion/`
+**Estado**: **COMPLETED** — auditoria **PASS** (10 mutantes, 10 muertos, 0 supervivientes). **Tests**: 207 -> **213 = 142 + 71**. `src/woptimizer/**` intacto.
+**Commits**: `1dcf7eb` (arquitectura), `a577158` (implementacion).
+
+**Models**
+- Paso 1 (Buscar): `flash` — el backlog dio TASK-075 como activa.
+- Paso 2 (Planear): `pro` (override) — tooling/Testing y la tarea toca el validador que gobierna el panel.
+- Paso 3 (Ejecutar): `inherit`.
+- Paso 4 (Auditar): `inherit` -> **PASS**.
+
+**El cambio**: `_resolver_el_repositorio()` (`validate_docs.py:311`) es el **unico** punto de resolucion, con precedencia `--git-dir` > `WOPTIMIZER_GIT_DIR` > `GIT_DIR` > default `%LOCALAPPDATA%\woptimizer_git\.git`, y lo usan los **dos** consumidores (`:384` y `:585`) que antes lo duplicaban (`:306-308` y `:481-483`). Nuevo `--sin-ancla-de-git` con `[SKIP]` y `validar()` devolviendo **tres** listas. Motivo de la exclusion de CI en `release.yml` reescrito con la medicion.
+
+### Las tres premisas del encargo, refutadas antes de escribir codigo
+
+1. **"Desacoplar la ruta habilita CI": falso.** El checkout de `release.yml:75` es **shallow** (los de `:32` y `:110` llevan `fetch-depth: 0`) -> repo de 1 commit -> **154 FAIL**, no 1. Y con `fetch-depth: 0` seguirian fallando: **25 hashes del journal son inalcanzables desde `origin/main`+`origin/beta`**.
+2. **"El validador puede dar falso verde por repo ausente": falso.** Medido: sale **1 FAIL** con el motivo literal de git y exit 1. Produce un **falso ROJO**, que es mejor que verde pero tampoco sirve.
+3. **La cita `validate_docs.py:300-302` no existe.** La derivacion estaba **duplicada** en `:306-308` y `:481-483`. Y `STATUS.md:81` (no "fila 121") remitia a un `sandbox-rules.md` que no mencionaba el CI en ninguna de sus 1339 lineas.
+
+**Decision**: la exclusion de CI es correcta; lo que estaba mal era su **motivo escrito**. Se desacopla la ruta y se hace honesta la degradacion; **activar el validador en CI queda en TASK-080, bloqueada** (`dependencies: ["TASK-075"]`).
+
+### Mutaciones auditadas (Paso 4) — 10 mutantes, 10 muertos
+
+| Fix | Mutacion | Veredicto | Motivo del fallo |
+|---|---|---|---|
+| Resolucion unificada (T-1) | M1 · `_hashes_que_existen` re-resuelve el repo | **killed** | `el check 9 ha leido un repo que NO es el que dice WOPTIMIZER_GIT_DIR: acusa el hash 7c109e6 que SI existe` (`run_tests.py:21892`) |
+| Precedencia | M2 · `GIT_DIR` sobre `WOPTIMIZER_GIT_DIR` | **killed** | `WOPTIMIZER_GIT_DIR tiene que GANAR a GIT_DIR ... Resuelto: origen='GIT_DIR'` (`:21882`) |
+| Precedencia | M3 · el peldaño `GIT_DIR` a `None` | **killed** | `el residuo son los ciclos que EL HISTORIAL TIENE Y EL JOURNAL NO` (`:12952`) |
+| Muro `[SKIP]` (AC-6) | M4 · `[SKIP]` impreso como `[OK]` | **killed** | `con --sin-ancla-de-git tiene que haber lineas [SKIP]: si lo saltado no se imprime, el flag es un silencio` (`:22153`) |
+| Recuento del resumen | M5 · `Resumen` sin los saltados | **killed** | `el resumen tiene que CONTAR los saltados y no solo los OK` (`:22166`) |
+| Fail-loud (T-3) | M6 · `os.path.exists()` en vez de `rev-parse --verify HEAD` | **killed** | `un --git-dir directorio vacio tiene que producir el FAIL PROPIO` (`:22075`) |
+| Motivo real | M7 · el motivo literal se pierde (`return None`) | **killed** | `un repo SIN COMMITS responde 'missing' para todo y eso NO puede acabar en 'el hash no resuelve y no lo declara'` (`:21345`) |
+| Informe que nombra el repo | M8 · se borra la linea `ok` | **killed** | `el informe tiene que decir que el repositorio vino del flag` (`:21981`) |
+| Motivo de CI | M9 · vuelve el motivo viejo `%LOCALAPPDATA%` | **killed** | `el motivo VIEJO se ha retirado porque es el mas pequeño de los dos` (`:22240`) |
+| `GIT_WORK_TREE` respetado | M10 · se impone siempre | **killed** | `el GIT_WORK_TREE que se respeta va en la misma linea` (`:22320`) |
+
+**M1 es el que importa**: se escribio adrede para que el guard estructural de `ast` **no lo viera** (sin `expandvars`, `repo` de argumento, una sola llamada a `_resolver_el_repositorio`) y aun asi murio en la mitad **conductual**. La unificacion esta atada **por comportamiento**, no por forma del codigo. Baseline sin mutar: `ALL TESTS PASSED.`
+
+### Verificaciones de los dos incidentes que el dev se reporto a si mismo
+
+- **Emojis destruidos y restaurados**: 0 `U+FFFD` y 0 mojibake en `STATUS.md`, `AGENTS.md`, `README.md`. (El auditor aviso de un falso positivo suyo: `o»` de un texto espanol correcto.)
+- **Arnes roto que dejo `validate_docs.py` mutado**: sin marcadores, parsea, `_resolver_el_repositorio` aparece 1 vez. Los 4 `original(` de `run_tests.py` son monkeypatches preexistentes.
+- **EOL**: la diferencia disco/commit de `validate_docs.py` (148173 B vs 145390 B) son exactamente **2783 B = lineas - 1**, osea los CR: es **normalizacion** de `* text=auto eol=lf`, no finales distintos.
+
+### La cifra documentada, medida por el auditor
+
+Clon real + sonda con **solo** `origin/main`+`origin/beta`: de los **150** hashes del journal, **28 no resuelven**, 3 son los `VFS_CORRUPTO` declarados -> **exactamente 25**, los que R2 acusaria. El motivo nuevo de `release.yml` **no miente**.
+
+### Deuda que sale de este ciclo
+
+- **D1** (media, doc): `validate_docs.py:293` afirma que `WOPTIMIZER_GIT_DIR` tiene "el mismo contrato" que `--git-dir`. Medido: solo `--git-dir` se exige; los otros tres caen en el FAIL del historial.
+- **D2** (media, doc): tres **"207" caducados** (`STATUS.md:106`, `testing-guide.md:57`, badge de `README.md:6`) **invisibles** para el check del recuento, que lee una sola linea por fichero. `testing-guide.md:57` se contradice ademas con `STATUS.md:12` (142+65 vs 148+65).
+- **D3** (baja, doc): `release.yml` declarado con 193 lineas; hay 214.
+- **P1** (no medido **por presupuesto**): el guard de llamadas indecisas crecio 3 entradas documentadas; falta el mutante que lo compruebe.
+
+### El bucle, no el codigo
+
+El **primer intento de esta auditoria murio por limite de credito de la plataforma (error 2067) sin escribir nada**: eso es *no medido*, no verde. Se relanzo desde cero con instruccion de escribir el informe en disco en cuanto hubiera cada veredicto. Repo real intacto en las dos rondas (`HEAD a577158`, reflog sin entradas ajenas).
+
+### Outcome
+- Commits: `1dcf7eb`, `a577158`
+- Tests: 213/213 PASS (142 backend + 71 headless)
+- Docs: `docs/ai/sandbox-rules.md` (+79 al **final**, lineas 55-56 intactas), `.github/workflows/release.yml:89-118`, `STATUS.md:81`, `docs/ai/testing-guide.md`, `AGENTS.md`, `README.md`
+
 ## [CYCLE-063] 2026-10-18 - task-074-paridad-antes-del-repo-invalido
 
 ### TASK-074: el `2` de la paridad precede al `3` del repo, en los dos modos

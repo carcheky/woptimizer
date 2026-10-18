@@ -1148,5 +1148,19 @@
   ],
   "tests": "207 tests = 142 backend + 65 headless (run_tests.py, derivado con ast; la spec pedia 208 y el dev escribio el numero real). verify_ui_syntax.py rc=0. validate_docs.py 145 OK / 0 FAIL. Suite completa en camara con historial real: 366 lineas, ALL TESTS PASSED.",
   "notes": "PREMISA DE LA TAREA REFUTADA por el arquitecto antes de escribir codigo: el camino de commit YA devolvia 2; lo que caia a 3 era el mutante. Y la contradiccion real estaba en --verify, no en commit. Ademas la sonda que la tarea mandaba tocar mide --verify, o sea que su AC original era insatisfacible por el motivo OPUESTO al que se suponia. Auditoria: 11 mutantes, 9 killed, 1 equivalente (M5', muerto solo por la sonda AST, equivalencia demostrada contra las 207 sondas) y 2 NO MEDIDO por fallos de arnes propios, rehechos. Tres deudas nuevas H1/H2/H3, todas bajas: el doc es mas estricto que el codigo sobre la ultima linea canonica; la sonda AST exige 'verify' como primer operando del and; y el nombre de la sonda reescrita ya no describe lo que mide. Repo real intacto."
+ },
+ {
+  "cycle": 64,
+  "date": "2026-10-18",
+  "slug": "task-075-validate-docs-ruta-y-degradacion",
+  "task": "TASK-075",
+  "area": "Tooling / Testing",
+  "status": "COMPLETED + PASS. validate_docs.py pasa a tener UNA sola resolucion del repositorio del anclaje (_resolver_el_repositorio,validate_docs.py:311), usada por los dos consumidores que antes la duplicaban (:306-308 y :481-483). Precedencia --git-dir > WOPTIMIZER_GIT_DIR > GIT_DIR > default. Nuevo --sin-ancla-de-git con [SKIP] imposible de confundir con [OK] y validar() devolviendo TRES listas. Motivo de la exclusion de CI en release.yml reescrito con la medicion real. Auditoria: PASS, 10 mutantes, 10 muertos, 0 supervivientes. Sin cambios en src/woptimizer. NO se activo el validador en CI: eso es TASK-080, bloqueada.",
+  "commits": [
+   "1dcf7eb",
+   "a577158"
+  ],
+  "tests": "213 tests = 142 backend + 71 headless (run_tests.py, derivado con ast; eran 207). validate_docs.py -> 148 OK, 0 FAIL, 0 SKIP. verify_ui_syntax.py EXITO. Baseline en camara con repo propio: ALL TESTS PASSED.",
+  "notes": "LA PREMISA DEL ENCARGO ERA FALSA y el arquitecto la midi antes de escribir codigo: desacoplar la ruta NO habilita CI. Motivo real: el checkout de release.yml:75 es shallow (154 FAIL, no 1) y 25 hashes del journal son inalcanzables desde origin/main+origin/beta. Ademas el validador no puede dar falso verde por repo ausente: produce un FALSO ROJO. Y la derivacion estaba DUPLICADA, cita validate_docs.py:300-302 inexistente. La cita 'STATUS.md fila 121' era falsa: la real es :81, y remitia a un sandbox-rules.md que no mencionaba el CI. M1, el mutante central, se escribio adrede para esquivar el guard estructural AST y murio igual en la mitad conductual: la unificacion esta atada por comportamiento. Primer intento de auditoria murio por limite de credito (2067) SIN escribir nada; relanzado desde cero con escritura incremental. Repo real intacto en las dos rondas."
  }
 ]

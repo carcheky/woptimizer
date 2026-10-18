@@ -19,10 +19,10 @@
 
 ## 🔄 Estado de la Ejecución
 
-- **Ciclos completados:** 63 (`rd_journal.json`)
+- **Ciclos completados:** 64 (`rd_journal.json`)
 - **Rama de trabajo:** `beta` (nunca commitear a `main` directamente)
-- **Último ciclo (#63):** TASK-074 — precedencia de la puerta de paridad (2) sobre la de repo inválido (3) en ambos modos. Veredicto de auditoría: **PASS**
-- **Tarea activa (`active_task_id`):** `TASK-075` (siguiente del backlog; la deuda A11 del ciclo 62 y las bajas H1-H3 son candidatas a formalizarse)
+- **Último ciclo (#64):** TASK-075 — precedencia de la puerta de paridad (2) sobre la de repo inválido (3) en ambos modos. Veredicto de auditoría: **PASS**
+- **Tarea activa (`active_task_id`):** `TASK-076` (siguiente del backlog; la deuda A11 del ciclo 62 y las bajas H1-H3 son candidatas a formalizarse)
 
 ---
 
@@ -80,6 +80,13 @@
 - **11 ficheros `test_*.py` heredados:** **🔴 CERRADA en CYCLE-045 (TASK-055).** Archivados en `docs/archive/legacy-root-tests/`. Guard en `run_tests.py` impide que vuelvan a la raíz.
 - **`validate_docs.py` no corre en CI (`TASK-080`, `pending`):** No es `%LOCALAPPDATA%`: MEDIDO el 2026-10-18 que el clon shallow del job `verify` da **154 FAIL** y que, aun con `fetch-depth: 0`, **25 de los ~150 hashes de `rd_journal.json` no son alcanzables desde ninguna rama del remoto** (están sin pushear, no perdidos). La exclusión es correcta; lo que faltaba era el motivo escrito. Detallado en `docs/ai/sandbox-rules.md Por que el validador NO corre en CI`.
 
+### 🔵 Abiertas en CYCLE-064 (documentales, no tocan seguridad ni datos)
+
+- **D1** (media): `validate_docs.py:293` afirma que `WOPTIMIZER_GIT_DIR` tiene "el mismo contrato" que `--git-dir`. MEDIDO: solo `--git-dir` se exige (repo inválido → FAIL propio); los otros tres peldaños caen en el FAIL del historial. Fix: reescribir el comentario con la asimetría real.
+- **D2** (media): tres **"207" caducados** en `STATUS.md:106`, `docs/ai/testing-guide.md:57` y el badge de `README.md:6`; `testing-guide.md:57` se contradice además con `STATUS.md:12`. Son **invisibles** al check del recuento porque lee **una sola línea por fichero**. Fix: las tres cifras, y hacer que el check derive de varias líneas o de un marcador único.
+- **D3** (baja): `release.yml` declarado con 193 líneas; tiene 214. Evidencia: `openspec/changes/2026-10-18-validate-docs-ruta-y-degradacion/mutation-report.md`.
+- **P1** (no medido **por presupuesto**): el registro de llamadas indecisas de `test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input` (`run_tests.py`) creció 3 entradas documentadas (los `subprocess.run` de los flags del validador). Falta el mutante que compruebe que ese registro no se puede vaciar sin ponerse rojo. Evidencia: `openspec/changes/2026-10-18-validate-docs-ruta-y-degradacion/mutation-report.md`.
+
 ---
 
 ## ❓ Decisiones pendientes del dueño (TASK-068, bloqueante)
@@ -114,6 +121,7 @@
 
 | Ciclo | Área | Qué se hizo |
 |---|---|---|
+| #64 | Tooling | Una sola resolucion del repositorio del anclaje en el validador (TASK-075) |
 | #63 | Tooling | Precedencia paridad (2) antes que repo invalido (3) en ambos modos (TASK-074) |
 | #62 | UI / Testing | Publicación segura en el bucle de Tk desde hilos (TASK-073/078/079) |
 | #61 | Core / UI | Aplicaciones protegidas no ejecutables e indestructibles (TASK-071) |
