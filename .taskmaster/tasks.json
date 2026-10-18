@@ -1601,7 +1601,7 @@
       "description": "MEDIDO 2026-10-18: es un problema de ORDEN y de DOCUMENTO, no de test que falte. main() comprueba not ok DOS veces (866 en --verify, 941 en commit) y la puerta de paridad (880) ha caído entre las dos, así que el mismo defecto da 3 en --verify y 2 en commit. sandbox-rules.md:83-85 promete el 2 también en --verify sin mencionar al 3. Ojo: la celda del encargo (commit + par roto + repo no verificable) YA sale con 2 hoy; la que promete 2 y sale 3 es la de --verify.",
       "complexity": "medium",
       "priority": "medium",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "module": "git_safe_commit.py + run_tests.py + docs/ai/sandbox-rules.md",
       "acceptance_criteria": [

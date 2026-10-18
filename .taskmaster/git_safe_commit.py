@@ -859,18 +859,29 @@ def main():
     env, paridad_rota = get_env()
     ok, fallo_repo, git_dir = validar_repo(env)
 
-    # El repo se comprueba ANTES que la invocacion, y con la precedencia que fijo
-    # D2 de TASK-059: si el repo no se puede comprobar, "no pude ni comprobar" (3)
-    # gana a "tu invocacion esta mal" (2), porque si no el 3 describiria un
-    # problema del repo que en realidad nunca llego a mirarse.
-    if verify and not ok:
-        print(f"WOPT_REPO_INVALIDO {detalle(fallo_repo)}")
-        sys.exit(CODE_REPO)
-
-    # 0. PUERTA DE PARIDAD (TASK-061). Va DESPUES de `validar_repo` y ANTES del
-    #    NOOP, de `add -A` y del `WOPT_REPO_OK` de `--verify`. Los tres sitios
-    #    importan y estan medidos:
-    #    - despues de `validar_repo`: un repo no comprobable sale con 3, no con 2;
+    # 0. PUERTA DE PARIDAD (TASK-061), y desde TASK-074 la PRIMERA puerta que
+    #    puede rechazar. Va DESPUES de `validar_repo` (que no imprime: ver el
+    #    test AST `...va_despues_de_validar_repo_por_estructura`) y ANTES de todo
+    #    lo demas: del NOOP, de `add -A`, del `WOPT_REPO_OK` de `--verify` y del
+    #    `3` del repo. Los cuatro sitios importan y estan medidos:
+    #    - despues de `validar_repo`: MEDIDO, es la UNICA diferencia de este
+    #      bucle que ninguna sonda de comportamiento puede ver, porque
+    #      `validar_repo` no imprime ni escribe: el mutante M5 es EQUIVALENTE
+    #      y por eso la posicion se ata con `ast` y no con un codigo de salida;
+    #    - ANTES del `if verify and not ok` (TASK-074): con par asimetrico y repo
+    #      no verificable el 3 describiria un problema del repo que nadie ha
+    #      mirado de verdad, porque `validar_repo` miraria un par IMPUESTO
+    #      (`work_tree = env.get("GIT_WORK_TREE") or REPO_ROOT`), no el del
+    #      llamante, que es justamente la situacion que la alarma de ancla
+    #      (`ancla_del_arbol`, TASK-072) declara rota. MEDIDO el 2026-10-18 en
+    #      las ocho celdas (commit | `--verify`) x (paridad rota | entera) x
+    #      (repo verificable | no): este orden cambia UNA sola celda, la de
+    #      `--verify` + par roto + repo roto, que pasa de 3 a 2, y 2 es el
+    #      remedio correcto ("pon las dos variables") porque el par es la causa
+    #      primaria. Ademas el 2 no depende de git: `paridad_rota` se calcula
+    #      leyendo `os.environ` (`get_env()`), luego una precondicion que se
+    #      comprueba sin salir del proceso no puede ir detras de una que
+    #      necesita salir;
     #    - antes del NOOP: es de SOLO LECTURA, luego un arbol limpio con el par
     #      asimetrico sale con 2 sin haber stageado nada (rechazar despues de
     #      `add -A` seria mutar el arbol para luego decir que no);
@@ -880,6 +891,21 @@ def main():
     if paridad_rota:
         print(f"WOPT_USAGE paridad-git {detalle(MOTIVO_PARIDAD_ROTA)}")
         sys.exit(CODE_USAGE)
+
+    # El repo no verificable se juzga DESPUES de la invocacion (TASK-074), con
+    # la precedencia que fijo D2 de TASK-059 y ahora CON UNA CONDICION que el
+    # propio D2 no tenia: el 3 ("no pude ni comprobar") gana al 2 ("tu
+    # invocacion esta mal") solo CUANDO EL PAR ES ENTERO. Con media pareja ya
+    # ha salido el 2 de la puerta de paridad, y sin esa condicion el 3
+    # describiria un problema del repo que en realidad nunca llego a mirarse:
+    # `validar_repo` habria mirado el par IMPUESTO por `get_env()` (repo y
+    # arbol por defecto), no el que pidio el llamante, luego su veredicto
+    # hablaria de un repositorio que nadie eligio. MEDIDO el 2026-10-18: con el
+    # par entero las cuatro celdas de repo no verificable siguen dando 3, que
+    # es lo que prometen `run_tests.py:1600` y este mismo docstring.
+    if verify and not ok:
+        print(f"WOPT_REPO_INVALIDO {detalle(fallo_repo)}")
+        sys.exit(CODE_REPO)
 
     # 0bis. ALARMA DE UBICACION, LA DEL CWD (TASK-072 ronda 3). Va al lado de
     #      la de paridad y por el mismo motivo: es de SOLO LECTURA, ocurre antes

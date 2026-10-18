@@ -9,7 +9,7 @@
 | Indicador | Estado | Detalle |
 |---|---|---|
 | Sintaxis UI | 🟢 | `verify_ui_syntax.py` — 10 módulos |
-| Tests headless | 🟢 | `run_tests.py`, **205 tests** (142 backend + 63 headless UI) |
+| Tests headless | 🟢 | `run_tests.py`, **207 tests** (142 backend + 65 headless UI) |
 | Benchmark base | 🟢 | 182 ms init · 4.97 ms escaneo · 0.003 ms cache · 30 MB RSS |
 | Process DB | 🟢 | 96 entradas · 8 categorías · 0 huérfanas · 🛡️ 34 protegidas |
 | Versionado | 🟢 | Rama `beta` · último commit `4349b10` · `main` publicada `v1.1.0` |
@@ -32,12 +32,12 @@
 |---|---|---|---|---|
 | **TASK-073** | ✅ `completed` | **high** | RuntimeError en `ProcessManagerView._load` tras destrucción | **RESUELTO 2026-10-18:** los 10 `self.after` de `views/` pasan por `self._publicar_en_el_bucle` (`ui/tk_thread.py`); el defecto solo vivía en el mundo headless |
 | **TASK-068** | `in_progress` | high | Arranque por categorías revierte TASK-063 | Código hecho, 189→198 tests. **2 decisiones del dueño bloquean cierre (P-1, P-2b)** |
-| **TASK-074** | `pending` | medium | Blindar paridad git tooling (código 2 asimétrico) | |
+| **TASK-074** | ✅ `completed` | medium | Blindar paridad git tooling (código 2 asimétrico) | **RESUELTO 2026-10-18:** el `2` de `paridad-git` precede al `3` del repo **en los dos modos**. MEDIDO en las ocho celdas: cambia **una**, `--verify` + par roto + repo roto, de 3 a 2. La posición respecto a `validar_repo` era inobservable (no imprime) y ahora la ata una sonda AST |
 | **TASK-075** | `pending` | medium | Desacoplar `validate_docs.py` de `%LOCALAPPDATA%` para CI | |
 | **TASK-076** | `pending` | medium | Desduplicar flags PyInstaller (`force_build.py` vs `release.yml`) | |
 | **TASK-077** | `pending` | low | Normalizar CRLF en `.bat`/`.ps1` (`git add --renormalize`) | |
 
-> **Prioridad de ejecución:** `TASK-074` (siguiente del backlog) → resto por prioridad.
+> **Prioridad de ejecución:** `TASK-074` cerrado el 2026-10-18; siguiente del backlog, `TASK-075` (desacoplar `validate_docs.py` de `%LOCALAPPDATA%`, que hoy impide que corra en CI) → resto por prioridad.
 > **TASK-068** está bloqueada por decisiones del dueño (P-1 y P-2b, ver más abajo).
 
 ---
@@ -92,7 +92,7 @@
 1. **Leer AGENTS.md** para invariantes (separación capas, kill recursivo, pack gaming protegido).
 2. **Nunca commitear a `main`** — trabajar en `beta`, luego ff-merge.
 3. **Commit solo vía** `python .taskmaster/git_safe_commit.py "mensaje (TASK-NNN)"`.
-4. **Tests:** `python run_tests.py` (205 tests) · `python verify_ui_syntax.py` · `python validate_docs.py`.
+4. **Tests:** `python run_tests.py` (207 tests) · `python verify_ui_syntax.py` · `python validate_docs.py`.
 5. **Docs vivas:** actualizar `docs/ai/` tras cada cambio arquitectónico.
 6. **Carga selectiva:** no leer toda la doc — consultar `llms.txt` como mapa y cargar solo el fichero de `docs/ai/` que necesites.
 7. **Pipeline de 4 pasos:** Buscar → Planear → Ejecutar → Auditar tests (mutation-auditor).

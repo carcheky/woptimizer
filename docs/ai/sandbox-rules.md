@@ -56,8 +56,8 @@ ciclo se da por versionado sin haberlo estado.
 | `0` | Nada que comitear (benigno) | `git diff --cached --quiet` == 0 tras `add -A` | `WOPT_NOOP <motivo>` (**sin hash**) |
 | `0` | Repo sano (solo diagnóstico) | `--verify` y el par `GIT_DIR`/`GIT_WORK_TREE` es utilizable | `WOPT_REPO_OK <git_dir>` |
 | `1` | Fallo de una operación de git | `git status`, `git add -A` o `git commit` con rc != 0, o excepción al lanzarlos | `WOPT_FAIL <operacion> <detalle>` |
-| `2` | Uso incorrecto | sin mensaje, mensaje vacío, más de un posicional, flag desconocido, **mensaje sin identificador de ciclo ni de tarea**, **o llega una sola de las dos variables `GIT_DIR`/`GIT_WORK_TREE`**, **o el `cwd` no esta dentro de la raiz del proyecto (TASK-072)**, **o la cabecera pasa de 120 caracteres**, **o la cabecera incumple `type-empty`/`type-enum`/`type-case`/`subject-empty`/`subject-case`** | `WOPT_USAGE <detalle>` / `WOPT_USAGE ancla-mensaje <detalle>` / `WOPT_USAGE paridad-git <detalle>` / `WOPT_USAGE cwd-fuera-de-raiz <detalle>` / `WOPT_USAGE cabecera-larga <que se espera> <medicion>` / `WOPT_USAGE cabecera-regla <regla> <detalle>` |
-| `3` | Repositorio no verificable | `GIT_DIR` inexistente, no es un git dir, `GIT_WORK_TREE` que no es un directorio, `HEAD` no resuelve, `is-inside-work-tree` != `true`, `git` no ejecutable, **o el repositorio declara un arbol y la invocacion pretende versionar otro (TASK-072)** | `WOPT_REPO_INVALIDO <detalle>` |
+| `2` | Uso incorrecto | sin mensaje, mensaje vacío, más de un posicional, flag desconocido, **mensaje sin identificador de ciclo ni de tarea**, **o llega una sola de las dos variables `GIT_DIR`/`GIT_WORK_TREE`**, caso en el que `WOPT_USAGE paridad-git` **PRECEDE** a `WOPT_REPO_INVALIDO` aunque el repositorio tampoco se pueda comprobar (TASK-074), **o el `cwd` no esta dentro de la raiz del proyecto (TASK-072)**, **o la cabecera pasa de 120 caracteres**, **o la cabecera incumple `type-empty`/`type-enum`/`type-case`/`subject-empty`/`subject-case`** | `WOPT_USAGE <detalle>` / `WOPT_USAGE ancla-mensaje <detalle>` / `WOPT_USAGE paridad-git <detalle>` / `WOPT_USAGE cwd-fuera-de-raiz <detalle>` / `WOPT_USAGE cabecera-larga <que se espera> <medicion>` / `WOPT_USAGE cabecera-regla <regla> <detalle>` |
+| `3` | Repositorio no verificable **con el par entero** (con media pareja sale antes el `2 WOPT_USAGE paridad-git`, TASK-074) | `GIT_DIR` inexistente, no es un git dir, `GIT_WORK_TREE` que no es un directorio, `HEAD` no resuelve, `is-inside-work-tree` != `true`, `git` no ejecutable, **o el repositorio declara un arbol y la invocacion pretende versionar otro (TASK-072)** | `WOPT_REPO_INVALIDO <detalle>` |
 
 Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
 
@@ -82,7 +82,7 @@ Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
    `%LOCALAPPDATA%\woptimizer_git\.git` + el árbol del proyecto. La validación se aplica igual en
    ambos casos. **Y el par llega entero o no llega:** si llega **una sola** de las dos —`GIT_DIR`
    sin `GIT_WORK_TREE`, o al revés— se rechaza con el **código 2** y `WOPT_USAGE paridad-git`, sin
-   escribir nada, también en `--verify`.
+   escribir nada, también en `--verify`. Ese `2` **no se condiciona al repositorio**: precede al `3`.
 
    *Por qué la hermeticidad es de repo **y** de árbol.* Medido el 2026-10-02 (ciclo #48) y corregido
    el 2026-10-04: «tests herméticos» era media verdad, porque `get_env()` respetaba el `GIT_DIR`
@@ -117,6 +117,46 @@ Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
    work tree temporal, `rev-parse --is-inside-work-tree` responde `false` —el directorio de trabajo
    no está dentro del work tree efectivo— y `validar_repo` rechazaba con el `3` la propia
    invocación que se le acababa de pedir. En el camino normal el valor es el de siempre, byte a byte.
+
+   *MEDIDO el 2026-10-18 (TASK-074): antes de este cambio esta promesa era CONDICIONAL, y el
+   documento no lo decía.* La precedencia de `main()` no era una política sino un accidente
+   topológico: el wrapper comprobaba «el repositorio no se puede comprobar» **dos** veces —al
+   abrir `--verify` y en el camino de commit— y la puerta de paridad se había quedado **entre
+   las dos**. El mismo defecto devolvía dos códigos según el modo: `commit` con media pareja y
+   repositorio no comprobable salía con `2` (correcto), y `--verify` con la misma combinación
+   salía con `3 WOPT_REPO_INVALIDO` (incorrecto), mientras este documento prometía el `2`
+   «también en `--verify`» sin mencionar que el `3` le ganaba. MEDIDO sobre las **ocho** celdas
+   (commit | `--verify`) × (paridad rota | entera) × (repositorio verificable | no), el arreglo
+   cambia **una sola** de las ocho: `--verify` + par roto + repositorio no comprobable, de `3`
+   a `2`. Todo lo demás se queda donde estaba, y `test_git_safe_commit_fail_safe` (que usa par
+   entero en sus cuatro invocaciones) sigue dando `3, 3, 2, 0`.
+
+   *La precedencia, y por qué en este orden:*
+
+   | # | Puerta | Código | Cómo se comprueba |
+   |---|---|---|---|
+   | 1 | sintaxis del mensaje, flags desconocidos | `2` | sin salir del proceso |
+   | 2 | **paridad del par `GIT_DIR`/`GIT_WORK_TREE`** | `2` | leyendo `os.environ`, **sin preguntar a git** |
+   | 3 | `validar_repo()` | — | solo lectura: **no imprime y no sale** |
+   | 4 | `--verify` + repositorio no comprobable | `3` | pregunta a git (`rev-parse`) |
+   | 5 | alarma de `cwd` | `2` | `os.getcwd()` |
+   | 6 | alarma repositorio/árbol (TASK-072) | `3` | `git config` |
+   | 7 | NOOP / puerta del mensaje / puerta de la cabecera | `0` / `2` / `2` | — |
+
+   *La regla que resume la tabla:* una precondición que se comprueba **sin salir del proceso** no
+   puede ir detrás de una que necesita salir. `paridad_rota` se calcula leyendo `os.environ`
+   (`get_env()`) y no necesita git; `validar_repo` sí. Y con media pareja el `3` además hablaría
+   de un repositorio que nadie eligió: `validar_repo` miraría el par **impuesto** por `get_env()`
+   (`work_tree = env.get("GIT_WORK_TREE") or REPO_ROOT`), no el del llamante, que es exactamente
+   la situación que la alarma del par repositorio/árbol declara rota.
+
+   *Y una consecuencia de método, porque es la tercera vez:* con este orden, la posición de la
+   puerta respecto a `validar_repo` es **inobservable por comportamiento** —esa función no
+   imprime—, así que moverla por encima no cambia ni `stdout` ni el código de salida y el mutante
+   es EQUIVALENTE. Esa posición la ata `test_la_puerta_de_paridad_va_despues_de_validar_repo_por_estructura`,
+   con `ast`; la precedencia del `2` sobre el `3`, con ejecución, la atan
+   `test_la_paridad_gana_al_repo_invalido_en_los_dos_modos` y
+   `test_la_puerta_de_paridad_va_despues_de_validar_repo`.
 8. **Todas las cadenas de `print()` del wrapper son ASCII puro** (trampa #16: la consola es
    cp1252). Los comentarios y docstrings sí llevan acentos. La puerta del mensaje (sección
    siguiente) vive bajo esta misma regla: su motivo de rechazo es el texto que más urge y el que
@@ -193,6 +233,22 @@ exactamente la mentira que un diagnóstico no debe contar. Con el par entero sal
 de las dos variables sale `2` con `WOPT_USAGE paridad-git`. MEDIDO el 2026-10-05: el mutante que
 se salta la puerta en `--verify` sobrevivía a las 139 pruebas, y ahora muere en
 `test_la_puerta_de_paridad_tambien_cubre_el_modo_verify`.
+
+**Y con el repositorio NO comprobable, el `2` sigue ganando (TASK-074).** MEDIDO el 2026-10-18 en
+cámaras desechables de `%TEMP%`, con el wrapper real invocado por subproceso:
+
+| `--verify`, `GIT_DIR` sin `GIT_WORK_TREE` | Antes | Ahora |
+|---|---|---|
+| repositorio **no verificable** (`GIT_DIR` inexistente) | `3 WOPT_REPO_INVALIDO` | **`2 WOPT_USAGE paridad-git`** |
+| repositorio **verificable** | `2 WOPT_USAGE paridad-git` | `2 WOPT_USAGE paridad-git` |
+
+*Por qué «pon las dos variables» es el diagnóstico correcto y no una pérdida de información:* con
+media pareja, `validar_repo` no podría mirar el par del llamante —`get_env()` impone
+`GIT_WORK_TREE = REPO_ROOT`—, luego su veredicto hablaría de un repositorio que nadie eligió. El
+`2` se comprueba sin preguntar a git y su remedio es único y accionable; y es la misma razón por la
+que la puerta de paridad va **después** de `validar_repo` y **antes** de este bloque (regla 7). Lo
+que cambia es **una celda de las ocho** medidas, y queda guardado por
+`test_la_paridad_gana_al_repo_invalido_en_los_dos_modos` con sus controles de par entero.
 
 ### Las dos alarmas de ubicación (TASK-072): por qué el wrapper se vigila a sí mismo
 

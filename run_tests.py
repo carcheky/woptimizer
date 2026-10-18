@@ -19984,66 +19984,323 @@ def test_el_cero_esta_sobrecargado_por_dos_desenlaces_y_solo_por_esos_dos():
           "paridad con 2 y cero escrituras.")
 
 
-def test_la_puerta_de_paridad_va_despues_de_validar_repo():
-    """TASK-061 iteracion 2 (mata a M5): la POSICION de la puerta de paridad.
+def test_la_paridad_gana_al_repo_invalido_en_los_dos_modos():
+    """TASK-074 AC-4: el 2 de la PARIDAD precede al 3 del REPO en los DOS modos.
 
-    MEDIDO por el `mutation-auditor` el 2026-10-05: mover el bloque `if
-    paridad_rota:` ANTES de `validar_repo` deja la suite ENTERA en verde,
-    porque la unica combinacion que distingue una posicion de la otra (par
-    asimetrico + repo NO verificable a la vez) no la hacia NADIE.
+    MEDIDO el 2026-10-18 por el arquitecto sobre las ocho celdas (commit |
+    `--verify`) x (paridad rota | entera) x (repo verificable | no), y repetido
+    aqui con el wrapper REAL. ANTES de TASK-074 el orden no era el mismo en los
+    dos modos, y eso era un ACCIDENTE topologico, no una politica: `main()`
+    comprobaba `not ok` DOS veces --al abrir `--verify` y en el camino de commit
+    -- y la puerta de paridad se habia quedado ENTRE LAS DOS. Consecuencia
+    medida: el camino de commit ya daba 2 y `--verify` daba 3, el mismo defecto
+    con dos codigos.
 
-    El criterio es la PRECEDENCIA, y por eso las dos cosas van juntas:
+    Las cuatro celdas de esta sonda, y por que las cuatro:
 
-    * **`--verify` con `GIT_DIR` inexistente y SIN `GIT_WORK_TREE`** tiene que
-      salir con **3** (`WOPT_REPO_INVALIDO`). El par esta asimetrico a proposito
-      para que la puerta de paridad PUDIERA dispararse; con la posicion
-      correcta no lo hace, porque el 3 (no pude ni comprobar) gana al 2 (tu
-      invocacion esta mal) segun D2. Con M5 puesto sale con **2**.
-    * El mismo par asimetrico con un repo SANO sale con **2**: es la otra mitad
-      (`test_la_puerta_de_paridad_tambien_cubre_el_modo_verify`).
+    | modo | paridad | repo | rc |
+    |---|---|---|---|
+    | commit | rota | no verificable | `2` |
+    | `--verify` | rota | no verificable | `2` |
+    | commit | entera | no verificable | `3` |
+    | `--verify` | entera | no verificable | `3` |
 
-    **Por que el test existente NO lo caza** (medido): `test_git_safe_commit_
-    fail_safe` pone `GIT_WORK_TREE = root` en TODAS sus invocaciones, luego el
-    par nunca esta roto ahi y la puerta nunca dispara. Por eso la
-    justificacion de `docs/ai/sandbox-rules.md` que decia que mover la puerta
-    rompia los dos caminos de commit que esperan 3 era FALSA: no se puede
-    reproducir. Aqui esta la combinacion que SI lo distingue.
+    Las dos primeras son el sujeto; las dos ultimas son el CONTROL, y sin ellas
+    un wrapper que devolviera `2` SIEMPRE pasaria las dos primeras sin medir
+    nada. Por eso el control mira el otro par de celdas y no repite el sujeto.
 
-    Camara en `%TEMP%` (T-5): `GIT_DIR` es una ruta temporal y el wrapper sale
-    en `validar_repo`, antes de `add -A`, luego no escribe nada.
+    **Por que discrimina:**
+    * el mutante `R4-k` (`if paridad_rota and ok:`) hunde las DOS celdas del par
+      roto a `3` y muere en el primer `assert`;
+    * el mutante `R4-n` (`if paridad_rota and not verify:`) mata la columna de
+      `--verify` (con el par roto y el repo roto sale `3`). `R4-k` y `R4-n`
+      juntos demuestran que la sonda mira LAS DOS columnas de modo: si mirase
+      una sola, uno de los dos sobrevivia.
+
+    Camara en `%TEMP%`: el `GIT_DIR` es una ruta INEXISTENTE y el
+    `GIT_WORK_TREE` (solo en las celdas de par entero) es el arbol desechable,
+    luego no hay nada que stagear ni donde. `_head_del_repo_real()` intacto
+    antes y despues.
     """
-    print("Probando que la puerta de paridad va DESPUES de validar_repo...")
+    print("Probando que la paridad gana al repo invalido en los DOS modos...")
     import shutil
     import tempfile
 
     gsc = _cargar_el_wrapper()
     wrapper = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
 
-    tmp = tempfile.mkdtemp(prefix="wopt_t061_posicion_")
+    tmp = tempfile.mkdtemp(prefix="wopt_t074_precedencia_")
+    arbol = os.path.join(tmp, "arbol")
+    os.makedirs(arbol, exist_ok=True)
     git_dir_inexistente = os.path.join(tmp, "no_existe_este_git_dir")
+    mensaje = "chore(release): fixture de la precedencia TASK-074"
     head_antes = _head_del_repo_real()
+
+    # (modo, paridad rota, rc esperado, linea canonica esperada, linea prohibida)
+    celdas = (
+        ("commit", True, 2, "WOPT_USAGE paridad-git", "WOPT_REPO_INVALIDO"),
+        ("--verify", True, 2, "WOPT_USAGE paridad-git", "WOPT_REPO_INVALIDO"),
+        ("commit", False, 3, "WOPT_REPO_INVALIDO", "WOPT_USAGE paridad-git"),
+        ("--verify", False, 3, "WOPT_REPO_INVALIDO", "WOPT_USAGE paridad-git"),
+    )
     try:
-        r = _invocar_el_wrapper(wrapper, gsc.REPO_ROOT, git_dir_inexistente, None,
-                                "--verify")
-        assert r.returncode == 3, (
-            f"con un par ASIMETRICO y un repo NO verificable tiene que ganar el 3 "
-            f"(no pude ni comprobar) sobre el 2 (tu invocacion esta mal), y salio "
-            f"con {r.returncode}. Con la puerta de paridad antes de `validar_repo` "
-            f"(o antes del `if verify and not ok`) sale con 2: es el mutante M5, "
-            f"medido superviviente antes de este test. stdout={r.stdout!r} "
-            f"stderr={r.stderr!r}")
-        assert "WOPT_REPO_INVALIDO" in (r.stdout or ""), (
-            f"el 3 tiene que decir POR QUE no pudo comprobar: {r.stdout!r}")
-        assert "WOPT_USAGE paridad-git" not in (r.stdout or ""), (
-            f"con el repo no verificable la asimetria NO se nombra: el 3 ya lo "
-            f"explica y un 2 aqui seria el diagnostico equivocado. Salida: "
-            f"{r.stdout!r}")
+        for modo, par_rot, rc_esperado, canonica, prohibida in celdas:
+            work_tree = None if par_rot else arbol
+            etiqueta = (f"{modo} + par {'ROTO' if par_rot else 'ENTERO'} + repo NO "
+                        f"verificable")
+            r = _invocar_el_wrapper(
+                wrapper, gsc.REPO_ROOT, git_dir_inexistente, work_tree,
+                "--verify" if modo == "--verify" else mensaje)
+
+            assert r.returncode == rc_esperado, (
+                f"[{etiqueta}] tiene que salir con {rc_esperado} y salio con "
+                f"{r.returncode}. Con el par ROTO gana el 2 (pon las dos "
+                f"variables) porque la asimetria es la causa primaria y se "
+                f"comprueba SIN preguntar a git; con el par ENTERO gana el 3 "
+                f"(no pude ni comprobar). Matar esta celda es lo que distingue "
+                f"R4-k (`and ok`, hunde el par roto a 3) y R4-n (`and not "
+                f"verify`, mata la columna de `--verify`). "
+                f"stdout={r.stdout!r} stderr={r.stderr!r}")
+
+            # La ULTIMA linea `WOPT_*`, y no la ultima linea no vacia: MEDIDO que
+            # el camino de commit imprime `INFO no se intenta el .git del arbol
+            # de trabajo` DESPUES de su `WOPT_REPO_INVALIDO`, luego exigir que la
+            # linea canonica sea la ultima del todo haria fallar la celda buena
+            # por un `INFO` que no contradice nada. Lo que se exige es que la
+            # ultima linea CANONICA sea la del codigo esperado.
+            canonicas = [l for l in (r.stdout or "").splitlines()
+                         if l.strip().startswith("WOPT_")]
+            ultima = canonicas[-1] if canonicas else "(sin linea WOPT_)"
+            assert ultima.startswith(canonica), (
+                f"[{etiqueta}] la ultima linea WOPT_* tiene que empezar por "
+                f"{canonica!r}; fue {ultima!r}. stdout={r.stdout!r}")
+
+            assert prohibida not in (r.stdout or ""), (
+                f"[{etiqueta}] {prohibida!r} no puede aparecer en la salida: las "
+                f"dos celdas son excluyentes y decir las dos seria un diagnostico "
+                f"que se contradice. Salida: {r.stdout!r}")
+
+        # Testigo de no-contaminacion del conjunto: las cuatro celdas van con el
+        # par entero apuntando a un arbol de `%TEMP%`, luego ninguna puede haber
+        # escrito en el historial real.
         assert _head_del_repo_real() == head_antes, (
             "una sonda de tooling no mueve el HEAD del repo real")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    print("Puerta de paridad OK: par asimetrico + repo no verificable da 3; la "
-          "posicion despues de validar_repo queda guardada por este test.")
+    print("Precedencia OK: par roto + repo roto da 2 en commit y en --verify; par "
+          "entero + repo roto da 3 en los dos.")
+
+
+def test_la_puerta_de_paridad_va_despues_de_validar_repo_por_estructura():
+    """TASK-074 AC-5: la POSICION de la puerta de paridad, medida con `ast`.
+
+    MEDIDO el 2026-10-18: con el reordenamiento de `main()`, el mutante `M5'`
+    (mover el bloque `if paridad_rota:` POR ENCIMA de `validar_repo`) pasa a ser
+    un mutante **EQUIVALENTE**: `validar_repo` (`git_safe_commit.py:441-486`) no
+    imprime ni escribe nada, luego ni `stdout` ni el codigo de salida cambian, y
+    NINGUNA sonda de comportamiento puede cazarlo. Antes de TASK-074 `M5` era
+    visible solo de rebote, porque la sonda que se llamaba
+    `...va_despues_de_validar_repo` media en realidad la posicion respecto al
+    `if verify and not ok`, no respecto a `validar_repo`: su nombre y lo que
+    median no coincidian. Es la TERCERA vez en este repo que aparece el patron
+    "una comprobacion sin contraprueba no es una comprobacion" (ciclos 60 y 62).
+
+    Sin subproceso, sin escritura y sin ventana: se lee el arbol de `main()` y se
+    comparan numeros de linea de TRES nodos, que es lo unico que distingue las
+    dos ordenaciones posibles:
+
+    1. el `if paridad_rota:` esta DESPUES del nodo que asigna
+       `ok, fallo_repo, git_dir = validar_repo(env)` (mata `M5'`);
+    2. el `if paridad_rota:` esta ANTES del `if verify and not ok:` (mata el
+       mutante historico `M5`, que es el ARRREGLO de TASK-074: si alguien
+       devuelve el bloque a su sitio, esta sonda muere aunque la de
+       comportamiento se hubiera debilitado);
+    3. el cuerpo del bloque dice `paridad-git` (una puerta muda con
+       `if paridad_rota: pass` no cumple el contrato aunque este en el orden
+       correcto).
+
+    **Contraprueba:** si el bloque no aparece, el `if` de `verify` no aparece, el
+    `validar_repo` no se asigna o el cuerpo no dice `paridad-git`, el test
+    FALLA con el motivo literal. No puede quedarse verde sin mirar: no hay rama
+    que devuelva exito por no haber encontrado nada.
+    """
+    print("Probando que la puerta de paridad va DESPUES de validar_repo (ast)...")
+    gsc = _cargar_el_wrapper()
+    ruta = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+    with open(ruta, encoding="utf-8") as f:
+        fuente = f.read()
+    arbol = ast.parse(fuente, filename=ruta)
+    main = next((n for n in arbol.body
+                 if isinstance(n, ast.FunctionDef) and n.name == "main"), None)
+    assert main is not None, "el wrapper tiene que seguir teniendo `main()`"
+
+    def nodo_de_la_puerta():
+        return next((n for n in main.body
+                     if isinstance(n, ast.If) and isinstance(n.test, ast.Name)
+                     and n.test.id == "paridad_rota"), None)
+
+    def nodo_de_validar_repo():
+        for n in main.body:
+            if (isinstance(n, ast.Assign) and isinstance(n.value, ast.Call)
+                    and isinstance(n.value.func, ast.Name)
+                    and n.value.func.id == "validar_repo"):
+                return n
+        return None
+
+    def nodo_del_verdictos_de_repo():
+        # Estructural y NO por texto: MEDIDO que `ast.unparse` escribe esta
+        # condicion como `verify and (not ok)`, con parentesis, luego comparar
+        # contra la cadena `"verify and not ok"` no la encuentra NUNCA y deja la
+        # sonda en rojo por un motivo que no es el suyo. La forma se mira por
+        # sus nodos: un `and` de dos valores, `verify` y `not ok`.
+        for n in main.body:
+            if (isinstance(n, ast.If) and isinstance(n.test, ast.BoolOp)
+                    and isinstance(n.test.op, ast.And)
+                    and len(n.test.values) == 2
+                    and isinstance(n.test.values[0], ast.Name)
+                    and n.test.values[0].id == "verify"
+                    and isinstance(n.test.values[1], ast.UnaryOp)
+                    and isinstance(n.test.values[1].op, ast.Not)
+                    and isinstance(n.test.values[1].operand, ast.Name)
+                    and n.test.values[1].operand.id == "ok"):
+                return n
+        return None
+
+    puerta = nodo_de_la_puerta()
+    validar = nodo_de_validar_repo()
+    veredicto = nodo_del_verdictos_de_repo()
+    assert puerta is not None, (
+        "NO se ha encontrado en el CUERPO de `main()` ningun `if paridad_rota:`. "
+        "Esta sonda mira el arbol, no la salida: si el bloque desaparece o se "
+        "mueve a otro ambito (un `if` anidado, un helper), el fallo es de esta "
+        "sonda y hay que reescribirla. Sin este assert, una sonda que no "
+        "encuentra el bloque podria quedarse en verde sin mirar (STATUS.md:67)")
+    assert validar is not None, (
+        "NO se ha encontrado en el CUERPO de `main()` la asignacion "
+        "`ok, fallo_repo, git_dir = validar_repo(env)`, que es el nodo con el "
+        "que se compara la posicion. Sin el, esta sonda no mide nada")
+    assert veredicto is not None, (
+        "NO se ha encontrado en el CUERPO de `main()` el `if verify and not "
+        "ok:` (el veredicto del repo en modo diagnostico). Sin el, esta sonda "
+        "no mide la precedencia que TASK-074 cambia")
+
+    cuerpo_puerta = "\n".join(ast.unparse(s) for s in puerta.body)
+    assert "paridad-git" in cuerpo_puerta, (
+        f"el bloque `if paridad_rota:` (linea {puerta.lineno}) no dice "
+        f"`paridad-git` en su cuerpo, luego no es la puerta de paridad del "
+        f"contrato: esta seria una puerta muda que pasa el orden y no rechaza "
+        f"nada. Cuerpo: {cuerpo_puerta!r}")
+
+    assert puerta.lineno > validar.lineno, (
+        f"la puerta de paridad (linea {puerta.lineno}) tiene que ir DESPUES de "
+        f"`validar_repo` (linea {validar.lineno}): la asimetria se comprueba "
+        f"contra el par que REALMENTE llego, luego sin `validar_repo` el par "
+        f"imposto seria el veredicto. Este es el mutante `M5'`, y es "
+        f"equivalente (no se ve en la salida porque `validar_repo` no imprime)")
+
+    assert puerta.lineno < veredicto.lineno, (
+        f"la puerta de paridad (linea {puerta.lineno}) tiene que ir ANTES del "
+        f"`if verify and not ok:` (linea {veredicto.lineno}). Este es el "
+        f"mutante historico `M5` y el arreglo de TASK-074 es justo lo "
+        f"contrario: con par asimetrico y repo no verificable, el 3 "
+        f"describiria un repositorio que nadie eligio, porque `validar_repo` "
+        f"mira el par IMPUESTO por `get_env()` y no el del llamante")
+
+    print(f"Estructura OK: validar_repo en {validar.lineno}, puerta de paridad en "
+          f"{puerta.lineno} y veredicto del repo en {veredicto.lineno}.")
+
+
+def test_la_puerta_de_paridad_va_despues_de_validar_repo():
+    """TASK-061, reescrita por TASK-074: la PRECEDENCIA del 2 sobre el 3.
+
+    **Lo que este test AFIRMABA antes y ya no es cierto.** Su docstring
+    antiguo (TASK-061 iteracion 2) decia que `--verify` con par ASIMETRICO y
+    repo NO verificable tiene que salir con **3**, porque "el 3 (no pude ni
+    comprobar) gana al 2 (tu invocacion esta mal) segun D2". MEDIDO el
+    2026-10-18: eso era verdad y es una FALSA DE FONDO, porque el 3 no describia
+    un repositorio que nadie hubiera mirado --`validar_repo` habria mirado el par
+    IMPUESTO por `get_env()`: `work_tree = env.get("GIT_WORK_TREE") or
+    REPO_ROOT`-- sino un par que el llamante nunca dio. Y la misma combinacion
+    en el camino de commit ya daba 2 desde TASK-061: el mismo defecto, dos
+    codigos, por un accidente topologico (`main()` comprueba `not ok` dos veces
+    y la puerta se habia quedado entre las dos).
+
+    Lo que afirma AHORA, y por que:
+
+    * **`--verify` con `GIT_DIR` inexistente y SIN `GIT_WORK_TREE`** sale con
+      **2** y `WOPT_USAGE paridad-git`: el par asimetrico es la causa primaria y
+      el remedio es "pon las dos variables". Con el orden viejo sale con **3**, y
+      ese 3 es el mutante `M5` (medido antes de TASK-074). Con `R4-k` (`and ok`)
+      vuelve a salir 3, y con `R4-n` (`and not verify`) tambien: los dos matan
+      aqui.
+    * El CONTROL va en la misma sonda: **`--verify` con el par ENTERO y el repo
+      no verificable** sale con **3** y `WOPT_REPO_INVALIDO`. Sin el, el 2 de
+      arriba seria "el wrapper esta roto" y no "la asimetria se rechaza", que es
+      exactamente el falso verde de una guarda sin contraprueba.
+
+    **Y lo que este test NO puede medir, dicho aqui para que no se le pida:**
+    la posicion de la puerta respecto a `validar_repo` es INOBSERVABLE por
+    comportamiento (`validar_repo` no imprime ni escribe). La mide
+    `test_la_puerta_de_paridad_va_despues_de_validar_repo_por_estructura`, con
+    `ast`. El nombre de este test se conserva por Continuity, y lo que afirma es
+    la precedencia del 2 sobre el 3 del repo.
+
+    Camara en `%TEMP%` (T-5): `GIT_DIR` es una ruta temporal y el wrapper sale
+    en la puerta de paridad o en `validar_repo`, antes de `add -A`, luego no
+    escribe nada.
+    """
+    print("Probando que la paridad gana al repo invalido en --verify...")
+    import shutil
+    import tempfile
+
+    gsc = _cargar_el_wrapper()
+    wrapper = os.path.join(gsc.REPO_ROOT, ".taskmaster", "git_safe_commit.py")
+
+    tmp = tempfile.mkdtemp(prefix="wopt_t074_posicion_")
+    git_dir_inexistente = os.path.join(tmp, "no_existe_este_git_dir")
+    arbol = os.path.join(tmp, "arbol")
+    os.makedirs(arbol, exist_ok=True)
+    head_antes = _head_del_repo_real()
+    try:
+        # --- sujeto: par ROTO, repo NO verificable -> 2 ----------------------
+        r = _invocar_el_wrapper(wrapper, gsc.REPO_ROOT, git_dir_inexistente, None,
+                                "--verify")
+        assert r.returncode == 2, (
+            f"con un par ASIMETRICO y un repo NO verificable tiene que ganar el 2 "
+            f"(pon las dos variables) y salio con {r.returncode}. Con el orden "
+            f"viejo --la puerta de paridad despues del `if verify and not ok`-- "
+            f"sale con 3: es el mutante M5, y ese 3 describe un repositorio que "
+            f"`validar_repo` miro IMPUESTO, no el que pidio el llamante. Con "
+            f"R4-k (`and ok`) o con R4-n (`and not verify`) tambien sale 3. "
+            f"stdout={r.stdout!r} stderr={r.stderr!r}")
+        assert "WOPT_USAGE paridad-git" in (r.stdout or ""), (
+            f"el 2 tiene que decir POR QUE: sin `WOPT_USAGE paridad-git` el "
+            f"codigo es correcto y el diagnostico no. Salida: {r.stdout!r}")
+        assert "WOPT_REPO_INVALIDO" not in (r.stdout or ""), (
+            f"el 2 y el 3 son excluyentes y la salida dice las dos, luego el "
+            f"diagnostico se contradice: el par asimetrico se nombra antes de "
+            f"juzgar el repo. Salida: {r.stdout!r}")
+
+        # --- CONTROL: par ENTERO, repo NO verificable -> 3 --------------------
+        r_ok = _invocar_el_wrapper(wrapper, gsc.REPO_ROOT, git_dir_inexistente,
+                                  arbol, "--verify")
+        assert r_ok.returncode == 3, (
+            f"CONTROL: con el par ENTERO y el repo NO verificable tiene que "
+            f"ganar el 3 (WOPT_REPO_INVALIDO) y salio con {r_ok.returncode}. Sin "
+            f"este control, un wrapper que devolviera 2 siempre pasaria el 2 de "
+            f"arriba sin medir la asimetria. stdout={r_ok.stdout!r}")
+        assert "WOPT_REPO_INVALIDO" in (r_ok.stdout or ""), (
+            f"el 3 tiene que decir POR QUE no pudo comprobar: {r_ok.stdout!r}")
+        assert "WOPT_USAGE paridad-git" not in (r_ok.stdout or ""), (
+            f"con el par entero la asimetria no existe y no puede aparecer en la "
+            f"salida. Salida: {r_ok.stdout!r}")
+
+        assert _head_del_repo_real() == head_antes, (
+            "una sonda de tooling no mueve el HEAD del repo real")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("Puerta de paridad OK: par asimetrico + repo no verificable da 2 en "
+          "--verify, y el par entero + repo no verificable sigue dando 3.")
 
 
 def test_la_puerta_de_paridad_tambien_cubre_el_modo_verify():
@@ -26531,4 +26788,18 @@ if __name__ == "__main__":
     # deteccion de cero ocurrencias que no observa nada deja la suite verde.
     test_publicar_en_el_bucle_no_programa_si_la_vista_ya_murio()                # AC-1
     test_ninguna_vista_programa_after_a_mano()                                 # AC-2
+    # TASK-074: la precedencia del 2 de la paridad sobre el 3 del repo, y la
+    # posicion de esa puerta MEDIDA CON `ast`. Suite: 205 -> 207. Las DOS van
+    # detras del marcador (ninguna abre ventana: subproceso con camara de
+    # `%TEMP%` y `ast` sobre el wrapper), luego el reparto se queda en
+    # 142 backend + 65 headless = 207.
+    #
+    # La primera mira las DOS columnas de modo (commit y `--verify`) con sus dos
+    # controles de par entero, y es la que mata `R4-k` y `R4-n`. La segunda
+    # existe porque la posicion respecto a `validar_repo` es INOBSERVABLE por
+    # comportamiento --`validar_repo` no imprime--: sin ella el mutante `M5'`
+    # sobreviria en verde (tercera vez del patron "una comprobacion sin
+    # contraprueba no es una comprobacion", ciclos 60 y 62).
+    test_la_paridad_gana_al_repo_invalido_en_los_dos_modos()
+    test_la_puerta_de_paridad_va_despues_de_validar_repo_por_estructura()
     print("\nALL TESTS PASSED.")
