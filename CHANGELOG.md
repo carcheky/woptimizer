@@ -1,3 +1,19 @@
+## CYCLE-065 - 2026-10-18
+
+### 🔴 Corregido — El `.exe` que compilabas en casa salía sin base de datos ni icono
+
+**Estado**: **PASS** en auditoría de mutación (13 mutantes, 13 muertos, 0 supervivientes). Tests: **220** (155 backend + 65 headless). Commits: `123cc25`, `bb33b51`.
+
+- 🔴 **Qué se rompía**: el ejecutable que se compilaba en tu PC **no llevaba dentro la lista de procesos ni el icono**. Arrancaba, y al pedirle que reconociera tus apps no tenía con qué. El que publica la automatización sí los llevaba: era **tu copia local** la que estaba rota, y no había forma de verlo hasta que lo ejecutabas.
+- 🛡️ **Qué se hizo**: los dos caminos de compilación —el tuyo y el del servidor— **ahora ejecutan exactamente lo mismo**, así que ya no hay dos listas de opciones que puedan separarse sin que nadie se entere. Un fallo en la compilación se verá en los dos sitios a la vez.
+- 🧪 **Comprobado de verdad, no sobre el papel**: por primera vez en este proyecto se compiló de verdad y se miró el resultado. El `.exe` pesa 26 MB y **lleva dentro** la base de datos y el icono. Ese era el punto de todo el cambio.
+- 🔴 **Y la tarea venía mal escrita**: decía que las dos compilaciones usaban opciones distintas. Medido antes de tocar nada: **eran idénticas**. El problema estaba en el archivo que nadie miraba.
+- 🔴 **⚠️ Y queda una cosa por arreglar**: el archivo de compilación de tu PC **avisa por pantalla si algo falla, pero devuelve el código de error de "todo bien"**. Puede imprimir un fallo y seguir como si nada. En la automatización esto sí está bien. Está anotado como prioridad.
+
+### 🛡️ El guard que de verdad discriminate
+
+La comprobación automática **no compara los dos archivos entre sí**: busca en el programa qué ficheros necesita leer de dentro del ejecutable, y exige que la compilación los incluya. Por eso no puede pasar por verde por casualidad: si mañana el programa empieza a leer un fichero nuevo y nadie lo añade a la compilación, se rompe. Está comprobado que **esa comprobación no se puede vaciar** y seguir dando verde.
+
 ## CYCLE-064 - 2026-10-18
 
 ### 🛡️ Corregido — El validador de documentación ya no lee dos repositorios distintos

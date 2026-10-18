@@ -14102,7 +14102,7 @@ def test_la_deuda_exige_un_ancla_resoluble_en_toda_fila_viva():
     - (x4) el id de la fila tiene que existir COMO ID, no como PREFIJO de otro:
       la MISMA puerta que (x) pero con un `CYCLE` que no es un ciclo de este
       repo. Mata: que `_ciclos_cerrados` resuelva un `CYCLE` por SUBCADENA
-      (`if any(c in registro ...)`), que es el agujero central que midi�� el
+      (`if any(c in registro ...)`), que es el agujero central que midio el
       mutation-auditor en la ronda 5. MEDIDO: los dos changelogs publican
       `CYCLE-001`..`CYCLE-049`, luego `"CYCLE-04" in changelog` es `True` porque
       esta DENTRO de `CYCLE-045`, y la fila 88 se eximia con `8 exenta(s) /

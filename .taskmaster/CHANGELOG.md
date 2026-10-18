@@ -1,3 +1,77 @@
+## [CYCLE-065] 2026-10-18 - task-076-paridad-flags-pyinstaller
+
+### TASK-076: fuente unica de los flags de PyInstaller, y guard derivado de `src/`
+
+**Area**: Tooling / Build. **Change**: `openspec/changes/2026-10-18-paridad-flags-pyinstaller/`
+**Estado**: **COMPLETED** — auditoria **PASS** (13 mutantes, 13 muertos, 0 supervivientes). **Tests**: 207 -> **220 = 155 + 65**. `src/woptimizer/**` intacto.
+**Commits**: `123cc25` (arquitectura), `bb33b51` (implementacion).
+**Checkpoint de empaquetado: CUMPLIDO** (estaba vencido desde antes del ciclo 62).
+
+**Models**
+- Paso 1 (Buscar): `flash` — el backlog dio TASK-076 como activa.
+- Paso 2 (Planear): `pro` (override) — tooling/Build y toca el binario que el dueno descarga.
+- Paso 3 (Ejecutar): `inherit`.
+- Paso 4 (Auditar): `inherit` -> **PASS**.
+
+**El cambio**: `build.bat:25-27` y el job `build` de `release.yml` invocan ahora `python force_build.py`, y la segunda lista de flags desaparece. Siete guards nuevos en `run_tests.py`, uno por AC, registrados antes del marcador headless (155 backend + 65 headless).
+
+### LA PREMISA DEL ENCARGO ERA FALSA
+
+`force_build.py` y `release.yml` **ya eran identicos**, byte a byte y en el mismo orden. No habia ninguna asimetria entre los dos lados del encargo.
+
+**La asimetria real estaba en dos sitios que la tarea no miraba**, y uno produce un `.exe` roto:
+- `build.bat:27` — **sin `--add-data assets;assets`**.
+- `docs/ai/sandbox-rules.md:19-27` (el ejemplo) — **tambien sin**.
+
+Medido por que: `_data_dir()` (`src/woptimizer/config.py:11-14`) devuelve `sys._MEIPASS` en frozen, `services/process_service.py:347` lee `_MEIPASS/assets/process_db.json` (49 517 B, 73 entradas) y `ui/app.py:23`/`:269` leen `_MEIPASS/assets/woptimizer.ico`. **El `.exe` local arrancaba sin base de datos de procesos y sin icono. El de CI si los lleva. El producto roto era el local.**
+
+### El `.spec` existe y NO es fuente de verdad
+
+`woptimizer.spec:8` tiene `datas=[('assets','assets')]`, pero esta en `.gitignore:29` y **no aparece en `git ls-files`**. El job `build` hace checkout de un repo donde ese fichero no esta -> un `--spec woptimizer.spec` **rompe el build de produccion**. De ahi que la estrategia sea **borrar la segunda lista**, no compararla.
+
+### Mutaciones auditadas (Paso 4) — 13 mutantes, 13 muertos
+
+| id | mutacion | guard | veredicto | Motivo literal |
+|---|---|---|---|---|
+| **M1N1** | **escaneo de `src/` vaciado** | AC-2 (cero-sobre-cero) | **killed** | `assert leidas` — **el guard NO se puede vaciar y quedar verde** |
+| M1d | `_cubre` → `return True` | AC-2 (contraprueba) | **killed** | el predicado no se puede volver tautologico |
+| M1a | `force_build.py` sin `--add-data` | AC-2 | **killed** | `la app lee ['assets/process_db.json', 'assets/woptimizer.ico'] ... y sus --add-data son []` |
+| M1b | `assets;data` | AC-2 | **killed** | idem (`:27290`) |
+| M1c | `--add-data assets` sin `;` | AC-2 | **killed** | idem (`:27290`) |
+| M2a | `import yaml` en un guard | AC-6 | **killed** | `importa yaml: MEDIDO, las dev deps son 'pytest' y 'pyinstaller'` (`:27527`) |
+| M3a | `build.bat` re-declara flags | AC-1 | **killed** | `:27212` |
+| M3c | sin `python` delante | AC-1 | **killed** | `en Windows 'force_build.py' a secas no se ejecuta` (`:27224`) |
+| M3d | el doc vuelve a la lista corta | AC-3 | **killed** | `:27342` |
+| M4a | fila `\| 0 \|` insertada sobre la 55 | AC-4 | **killed** | `:27407` |
+| M6a | `.gitignore` sin `*.spec` | AC-5 | **killed** | `:27456` |
+| M6b | `release.yml` compila por `--spec` | AC-1 (*no* AC-5) | **killed** | `:27212` |
+| M7 | el derivador ignora la ruta | AC-7 | **killed** | `:27578` |
+
+Los 13 con `tracebacks=1` y el ultimo frame en una linea de `assert` del guard que toca: **ninguno por `NameError`, `ImportError` ni sintaxis**. Ningun log truncado. Linea base previa: `ALL TESTS PASSED`, 28 671 B, exit 0.
+
+**Lo que hacia discriminante AC-2 y por que**: la expectativa sale de `src/` —las rutas que la app **lee**— y no de `force_build.py`. Un test que comparase los dos ficheros del encargo pasaria en verde **sin medir nada**, porque ya son iguales; y con un modulo `FLAGS` que ambos importen seguirian existiendo dos listas, luego la igualdad se cumpliria sola. **M1N1 y M1d cierran los dos extremos.**
+
+### CHECKPOINT DE EMPAQUETADO (estaba vencido desde antes del ciclo 62)
+
+Ejecutado por el orquestador: `python force_build.py` → **exit 0**, `Build complete!`.
+`dist/woptimizer.exe` = **26 MB**. Verificado **buscando el literal ASCII dentro de los bytes del binario**:
+- `process_db.json` → **True**
+- `woptimizer.ico` → **True**
+- `fallback.csv` → **False**, y es correcto: ya no existe (migró a JSON en TASK-008).
+
+Es la primera vez que el checkpoint corre con veredicto de contenido: el fix de TASK-076 esta comprobado **sobre el producto**, no solo sobre el codigo.
+
+### Lo que el PASS NO cubre — y uno tiene el producto en juego
+
+- **S3 (media, MEDIDO, pre-existente pero ahora en el camino critico)**: **`build.bat` sale con 0 aunque `force_build.py` falle.** Ejecutado de extremo a extremo con el `.bat` real y un stub que hace `sys.exit(1)`. El mismo `.bat` **si sabe salir con 1** en el paso 1, luego no lo hace en el paso 3. No hay guard: `errorlevel`, `exit /b` y `LASTEXITCODE` tienen **0 coincidencias** en `run_tests.py`. El `.bat` puede **imprimir un fallo y seguir como si nada**.
+  Contraste medido: **`release.yml` si propaga** — shell por defecto `pwsh` en Windows y el runner *añade* `exit $LASTEXITCODE` (`actions/runner`, `ScriptHandlerHelpers.cs`) —, siendo una sola sentencia, nada lo resetea. **El `.exe` roto llega por `build.bat`, no por CI.**
+- **S1 (baja)**: 2 x `U+FFFD` en `run_tests.py:14105`, docstring de TASK-075, donde debía ir "midio". **CORREGIDO en este ciclo** (verificado: 0 antes, 0 despues, sintaxis intacta).
+
+### Integridad del repo, con confesion
+
+HEAD `bb33b51` antes y despues, reflog sin entradas ajenas, `count_objects` y ambos `diff --stat` identicos. El mtime del **directorio** `.git` cambia porque un `git status` de solo lectura crea y borra `index.lock`, reproducido en repo espejo: **no es historial**.
+**Confesion del auditor**: un `Set-Content` suyo se quedo antes de un `cd` y creo `probe_og2.py` en la raiz del repo real; lo vio en el `git status` siguiente y lo borro con la via recuperable. Verificado: el fichero no existe.
+
 ## [CYCLE-064] 2026-10-18 - task-075-validate-docs-ruta-y-degradacion
 
 ### TASK-075: una sola resolucion del repositorio del anclaje, y honestidad en la degradacion

@@ -1162,5 +1162,19 @@
   ],
   "tests": "213 tests = 142 backend + 71 headless (run_tests.py, derivado con ast; eran 207). validate_docs.py -> 148 OK, 0 FAIL, 0 SKIP. verify_ui_syntax.py EXITO. Baseline en camara con repo propio: ALL TESTS PASSED.",
   "notes": "LA PREMISA DEL ENCARGO ERA FALSA y el arquitecto la midi antes de escribir codigo: desacoplar la ruta NO habilita CI. Motivo real: el checkout de release.yml:75 es shallow (154 FAIL, no 1) y 25 hashes del journal son inalcanzables desde origin/main+origin/beta. Ademas el validador no puede dar falso verde por repo ausente: produce un FALSO ROJO. Y la derivacion estaba DUPLICADA, cita validate_docs.py:300-302 inexistente. La cita 'STATUS.md fila 121' era falsa: la real es :81, y remitia a un sandbox-rules.md que no mencionaba el CI. M1, el mutante central, se escribio adrede para esquivar el guard estructural AST y murio igual en la mitad conductual: la unificacion esta atada por comportamiento. Primer intento de auditoria murio por limite de credito (2067) SIN escribir nada; relanzado desde cero con escritura incremental. Repo real intacto en las dos rondas."
+ },
+ {
+  "cycle": 65,
+  "date": "2026-10-18",
+  "slug": "task-076-paridad-flags-pyinstaller",
+  "task": "TASK-076",
+  "area": "Tooling / Build",
+  "status": "COMPLETED + PASS. Fuente unica de los flags de PyInstaller: build.bat y el job build de release.yml invocan 'python force_build.py' y se borro la segunda lista. El encargo era FALSO en su premisa central (los dos ficheros ya eran identicos); la asimetria real estaba en build.bat, sin --add-data assets;assets, que producia un .exe SIN base de datos de procesos ni icono. 7 guards nuevos en run_tests.py, uno por AC, con la expectativa derivada de src/ y no de force_build.py. Auditoria: PASS, 13 mutantes, 13 muertos, 0 supervivientes. CHECKPOINT DE EMPAQUETADO CUMPLIDO: force_build.py compila (exit 0), dist/woptimizer.exe de 26 MB con process_db.json y woptimizer.ico embebidos (verificados buscando el literal ASCII en los bytes del binario). Sin cambios en src/woptimizer.",
+  "commits": [
+   "123cc25",
+   "bb33b51"
+  ],
+  "tests": "220 tests = 155 backend + 65 headless (run_tests.py, derivado con ast; eran 207). validate_docs.py -> 150 OK, 0 FAIL, 0 SKIP. verify_ui_syntax.py EXITO. Linea base en camara autocontenida: ALL TESTS PASSED, 28671 B, exit 0.",
+  "notes": "HALLAZGO MEDIDO QUE ABRE UN AGUJERO, no introducido por el ciclo: S3 (media) - build.bat sale con 0 aunque force_build.py falle, ejecutado de extremo a extremo con el .bat real; el mismo .bat SI sabe salir con 1 en el paso 1, luego no lo hace en el paso 3. El .bat puede decir 'compilado' y no haber compilado. No hay guard (errorlevel/exit /b/LASTEXITCODE: 0 coincidencias en run_tests.py). release.yml SI propaga (pwsh + exit $LASTEXITCODE anadido por el runner), asi que el .exe roto llega por build.bat, no por CI. S1 (baja) - 2 U+FFFD en run_tests.py:14105 (docstring de TASK-075), CORREGIDO en este ciclo. El .spec sigue siendo residuo ignorado (.gitignore:29): centralizar en el rompia el build de produccion porque actions/checkout no lo trae. PRIMERA VEZ QUE EL CHECKPOINT DE EMPAQUETADO CORRE CON VEREDICTO: se ejecuto force_build.py y el .exe salio con los assets dentro, lo que convierte el fix de TASK-076 en algo comprobado sobre el producto y no solo sobre el codigo."
  }
 ]

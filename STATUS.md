@@ -19,10 +19,10 @@
 
 ## 🔄 Estado de la Ejecución
 
-- **Ciclos completados:** 64 (`rd_journal.json`)
+- **Ciclos completados:** 65 (`rd_journal.json`)
 - **Rama de trabajo:** `beta` (nunca commitear a `main` directamente)
-- **Último ciclo (#64):** TASK-075 — precedencia de la puerta de paridad (2) sobre la de repo inválido (3) en ambos modos. Veredicto de auditoría: **PASS**
-- **Tarea activa (`active_task_id`):** `TASK-076` (siguiente del backlog; la deuda A11 del ciclo 62 y las bajas H1-H3 son candidatas a formalizarse)
+- **Último ciclo (#65):** TASK-076 — precedencia de la puerta de paridad (2) sobre la de repo inválido (3) en ambos modos. Veredicto de auditoría: **PASS**
+- **Tarea activa (`active_task_id`):** `TASK-077` (siguiente del backlog; la deuda A11 del ciclo 62 y las bajas H1-H3 son candidatas a formalizarse)
 
 ---
 
@@ -59,11 +59,7 @@
 
 ### 🔴 Crítica
 
-- **Shell intermitente (`spawn EPERM`):** El entorno de agentes bloquea subprocesos vía Node. Afecta a `tm.py` y a veces a `.taskmaster/git_safe_commit.py`. Workaround: reintentar. No tiene fix posible desde el repo. Blindado con el contrato de códigos de salida de `.taskmaster/git_safe_commit.py` (`docs/ai/sandbox-rules.md`).
-- **`.git` corrupto (VFS Nextcloud):** El historial vive en `%LOCALAPPDATA%\woptimizer_git\.git`. Se acepta y se blinda con `.taskmaster/git_safe_commit.py --verify` (`docs/ai/sandbox-rules.md`).
-
-### 🔴 Crítica
-
+- **`build.bat` devuelve "todo bien" aunque la compilación falle (CYCLE-065, `S3`):** **MEDIDO de extremo a extremo**: con un `force_build.py` que sale con 1, `build.bat` sale con **0**. El mismo `.bat` **sí sabe salir con 1** en su paso 1, luego no lo hace en el de compilar. `build.bat:27` invoca `python force_build.py` sin propagar el código, y `build.bat:40` tiene un `exit /b 0` incondicional. **No hay guard**: `errorlevel`, `exit /b` y `LASTEXITCODE` tienen 0 coincidencias en `run_tests.py`. El `.exe` roto llega por aquí, **no por CI** (`release.yml` sí propaga: el runner añade `exit $LASTEXITCODE` a `pwsh`). Fix: propagar el código + guard. Evidencia: `openspec/changes/2026-10-18-paridad-flags-pyinstaller/mutation-report.md`.
 - **Shell intermitente (`spawn EPERM`):** El entorno de agentes bloquea subprocesos vía Node. Afecta a `tm.py` y a veces a `.taskmaster/git_safe_commit.py`. Workaround: reintentar. No tiene fix posible desde el repo. Blindado con el contrato de códigos de salida de `.taskmaster/git_safe_commit.py` (`docs/ai/sandbox-rules.md`).
 - **`.git` corrupto (VFS Nextcloud):** El historial vive en `%LOCALAPPDATA%\woptimizer_git\.git`. Se acepta y se blinda con `.taskmaster/git_safe_commit.py --verify` (`docs/ai/sandbox-rules.md`).
 
@@ -121,6 +117,7 @@
 
 | Ciclo | Área | Qué se hizo |
 |---|---|---|
+| #65 | Tooling / Build | Fuente unica de los flags de PyInstaller y guard derivado de src/ (TASK-076) |
 | #64 | Tooling | Una sola resolucion del repositorio del anclaje en el validador (TASK-075) |
 | #63 | Tooling | Precedencia paridad (2) antes que repo invalido (3) en ambos modos (TASK-074) |
 | #62 | UI / Testing | Publicación segura en el bucle de Tk desde hilos (TASK-073/078/079) |
