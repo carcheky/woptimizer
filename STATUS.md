@@ -19,9 +19,9 @@
 
 ## 🔄 Estado de la Ejecución
 
-- **Ciclos completados:** 66 (`rd_journal.json`)
+- **Ciclos completados:** 67 (`rd_journal.json`)
 - **Rama de trabajo:** `beta` (nunca commitear a `main` directamente)
-- **Último ciclo (#66):** TASK-077 — precedencia de la puerta de paridad (2) sobre la de repo inválido (3) en ambos modos. Veredicto de auditoría: **PASS**
+- **Último ciclo (#67):** TASK-081 — el alcance de la puerta de sintaxis UI se deriva del árbol — precedencia de la puerta de paridad (2) sobre la de repo inválido (3) en ambos modos. Veredicto de auditoría: **PASS**
 - **Tarea activa (`active_task_id`):** `TASK-081` — el alcance de `verify_ui_syntax.py` esta **vacio**: verde con el codigo roto (cierra la clase de las enumeraciones escritas a mano). Evidencia: `openspec/changes/2026-10-19-verificacion-ui-alcance-derivado/`.
 - **`TASK-080` NO se activa:** su propia medicion dice que CI no puede dar verde todavia (25 hashes de `rd_journal.json` sin pushear). Activarlo hoy rompe el pipeline.
 
@@ -82,8 +82,12 @@
 - **11 ficheros `test_*.py` heredados:** **🔴 CERRADA en CYCLE-045 (TASK-055).** Archivados en `docs/archive/legacy-root-tests/`. Guard en `run_tests.py` impide que vuelvan a la raíz.
 - **`validate_docs.py` no corre en CI (`TASK-080`, `pending`):** No es `%LOCALAPPDATA%`: MEDIDO el 2026-10-18 que el clon shallow del job `verify` da **154 FAIL** y que, aun con `fetch-depth: 0`, **25 de los ~150 hashes de `rd_journal.json` no son alcanzables desde ninguna rama del remoto** (están sin pushear, no perdidos). La exclusión es correcta; lo que faltaba era el motivo escrito. Detallado en `docs/ai/sandbox-rules.md Por que el validador NO corre en CI`.
 
-### 🔵 Abiertas en CYCLE-064 (documentales, no tocan seguridad ni datos)
+### 🔵 Abiertas en CYCLE-064, CYCLE-066 y CYCLE-067 (documentales, no tocan seguridad ni datos)
 
+- **S7 · un docstring afirma una garantía que NO tiene (CYCLE-067):** la guarda AC-1 (`run_tests.py`, "los ficheros de `src/` no se enumeran a mano") **declara en su docstring que mata `M-R`, y MEDIDO lo pasa**: un `rglob` muerto sobrevive a AC-1. Solo AC-3 lo caza, por producto. El guard **sí** funciona en conjunto, pero su propia documentación miente. Fix: corregir el docstring. Evidencia: `openspec/changes/2026-10-19-verificacion-ui-alcance-derivado/mutation-report.md`.
+- **S4 · cifras caducadas en el changelog de raíz (CYCLE-067):** `CHANGELOG.md:147` y `:189` dicen «9 de 9 módulos» y **nada las vigila** (el check del recuento lee una sola línea por fichero). **DECISIÓN DEL ORQUESTADOR: no se reescriben** — están bajo `## CYCLE-060`, en un apartado `### Verificado`, y eran **ciertos en su momento**; la regla de append-only prohíbe reescribir entradas antiguas. (La excusa del dev de que "son del orquestador" era **falsa**: los escribieron `0864628` y `328237f`.) El patrón hacia adelante ya está cerrado: TASK-081 hace que el recuento sea **derivado**.
+- **S6 · `REGISTRO_INDECISAS` tiene 15 celdas manuales (CYCLE-067):** la **misma clase** que TASK-081 cierra, pero **no el mismo agujero**: añadir una llamada indecisable lo pone en **ROJO** (`de más` confirmado). Deuda baja y consciente. Evidencia: `openspec/changes/2026-10-19-verificacion-ui-alcance-derivado/mutation-report.md`.
+- **S1/S2/S3 · enumeraciones literales fuera del alcance de AC-5 (CYCLE-067):** `run_tests.py:13187-13190` (ficheros de raíz), `validate_docs.py:1860` y `_chk.py:2`. AC-5 solo cubre literales de `src/woptimizer/**.py`. La de `_copiar_el_esqueleto_del_validador` **debe seguir enumerando**: un `rglob` traería 16 ficheros de raíz, incluido `saved_processes.json`. Las tres llevan justificación escrita con *(a) por qué* y *(b) qué la retira* — salvo la (b) de la del esqueleto, que es **aspiracional**: no dice qué hacer.
 - **D1** (media): `validate_docs.py:293` afirma que `WOPTIMIZER_GIT_DIR` tiene "el mismo contrato" que `--git-dir`. MEDIDO: solo `--git-dir` se exige (repo inválido → FAIL propio); los otros tres peldaños caen en el FAIL del historial. Fix: reescribir el comentario con la asimetría real.
 - **D2** (baja, MEDIDO de nuevo en TASK-077 el 2026-10-18): **las tres citas de esta fila ya no son las que están, y hay una cuarta caducada que no nombra.** De los tres sitios que decía, **solo el badge de `README.md:6` seguía caducado** (`tests-207`), y **`corregido en TASK-077` a `tests-224` junto con `STATUS.md:109`, `(207 tests)`**, que era el cuarto caducado que esta fila no nombraba y que se volvía a pisar al mover el contador. `STATUS.md:106` es la instrucción de leer `AGENTS.md` —la cifra vive en `STATUS.md:12`— y `docs/ai/testing-guide.md:57` ya decía la verdadera. ⚠️ **Lo que SIGUE VIVO, y es la parte de fondo:** el check del recuento lee **una sola línea por fichero**, así que cualquier otra línea con una cifra de tests (la instrucción, una tabla, un badge) queda **fuera de su alcance** y se caduca en silencio — es exactamente lo que pasó aquí dos veces. Fix de fondo: que el check derive de **varias líneas** o de un **marcador único**, no de una línea elegida a mano.
 - **D3** (baja): `release.yml` declarado con 193 líneas; tiene **215** (MEDIDO en TASK-076, 2026-10-18; eran 214 y este cambio movió una al reescribir el paso `build`). Cifra corregida, **deuda viva**: es un recuento escrito a mano sobre un fichero que se edita, la misma clase que D2, y se caducara otra vez en el siguiente cambio. Fix de fondo: derivarla o marcarla como "se declara al cierre del ciclo que toque el fichero". Evidencia: `openspec/changes/2026-10-18-validate-docs-ruta-y-degradacion/mutation-report.md`.
@@ -124,6 +128,7 @@
 
 | Ciclo | Área | Qué se hizo |
 |---|---|---|
+| #67 | Tooling | El alcance de la puerta de sintaxis UI se deriva, no se enumera (TASK-081) |
 | #66 | Tooling / Build | El EOL no era un defecto del repo; build.bat deja de morir en silencio (TASK-077) |
 | #65 | Tooling / Build | Fuente unica de los flags de PyInstaller y guard derivado de src/ (TASK-076) |
 | #64 | Tooling | Una sola resolucion del repositorio del anclaje en el validador (TASK-075) |

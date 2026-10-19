@@ -1,3 +1,78 @@
+## [CYCLE-067] 2026-10-19 - task-081-verificacion-ui-alcance-derivado
+
+### TASK-081: el alcance de la puerta de sintaxis UI se deriva, no se enumera
+
+**Area**: Tooling / Testing. **Change**: `openspec/changes/2026-10-19-verificacion-ui-alcance-derivado/`
+**Estado**: **COMPLETED** — auditoria **PASS** (7 mutantes, 7 muertos). **Tests**: 226 -> **231 = 155 + 76**. `src/woptimizer/**` intacto.
+**Commits**: `14ebe4a` (arquitectura), `44fb4e3` (implementacion).
+
+**Models**
+- Paso 1 (Buscar): `flash` — backlog vacio util; por precedencia, Deuda Tecnica Conocida.
+- Paso 2 (Planear): `pro` (override) — **redisenio de una clase**, no de un caso.
+- Paso 3 (Ejecutar): `inherit`.
+- Paso 4 (Auditar): `inherit` -> **PASS**.
+
+### El agujero, medido con control positivo
+
+`verify_ui_syntax.py:9-20` enumeraba **10 rutas a mano** (8 de UI). Con un modulo roto **no listado** salia **exit 0**; con uno listado salia **exit 1**. Corre en CI (`release.yml:87`) y no tiene contraprueba.
+
+**Y ya habia fallado dos veces de hecho**: `theme.py` (`2b81978`, 2026-10-01) y `tray_menu.py` (`a8b2a89`, 2026-10-04) se crearon **despues** del ultimo toque real de la lista. Verificado por el orquestador: ambos siguen fuera.
+
+**Y ya estaba documentado** en `openspec/changes/2026-09-29-double-tap-confirmation/proposal.md:319-320` (§9.7), "arreglado" **anadiendo `confirmation.py` a la lista** (:73). El hallazgo era correcto; **el arreglo lo mato**.
+
+### LA PROPIEDAD ESTRUCTURAL, formalizada
+
+> Un guard es **vaciable** cuando el conjunto de sujetos que mira esta escrito como **enumeracion literal dentro del propio guard**, y ese conjunto es un dato **derivado del sistema de ficheros**. Enumeracion y conjunto son **dos fuentes de verdad que nadie ata**.
+
+El repo tenia la respuesta a 4500 lineas: `run_tests.py:12725` y `:1084` **derivan** con `rglob`; `:8204` y `:13184` **enumeran**.
+
+**Blindaje**: (R1) derivar con `rglob`, sin lista de exentos; (R2) la cifra derivada sustituye a la escrita a mano; (R3) **el guard mira el producto, no la fuente** — comparar `rglob` contra `rglob` seria tautologico, asi que se **ejecuta `verify_ui_syntax.py` de verdad** contra un arbol sintetico; (R4) guard de **forma** con `ast`.
+
+**La tolerancia NO es una lista muda de permitidos**: es el **docstring del propio infractor**, con `(a) POR QUE existe la enumeracion:` y `(b) QUE LA RETIRA:` y **>=30 caracteres de texto real en la misma linea**. Marcador pegado y vacio -> ROJO, medido. Y `ast.walk` **no cuenta como derivacion**: recorre el arbol de sintaxis, no el de ficheros; sin esa exclusion las dos enumeraciones preexistentes habrian pasado por justificadas.
+
+### Mutaciones auditadas (Paso 4) — 7 mutantes, 7 muertos
+
+| id | mutacion | veredicto | Motivo literal |
+|---|---|---|---|
+| M-L | tupla de 10 rutas de vuelta | **MUERTO** | AC-1 `run_tests.py:28740` **y** AC-3 `28824` |
+| M-R2 | `rglob` muerto | **MUERTO por AC-3** | ⚠️ AC-1 **no lo mata** (S7) |
+| M-C | `exit 1` siempre | **MUERTO** | AC-4 `28865` **y tambien AC-2** `28924` (dato que el dev no menciono) |
+| M-S | `STATUS.md` dice «10 modulos» | **MUERTO** | AC-2 `28952` |
+| M-W | tupla sin justificacion | **MUERTO** | AC-5 `29014` |
+| M-J | marcas de justificacion vacias | **MUERTO** | AC-5 `29014` |
+| M-N6b | llamada indecisable de mas | **MUERTO** | P1 `23780` |
+
+**La matriz de PRODUCTO, que es la que decide** (ejecutando `verify_ui_syntax.py` de verdad):
+
+| escenario | exit medido | esperado |
+|---|---|---|
+| A0 sano | 0 | 0 |
+| M1 `theme.py` roto | **1** | 1 |
+| M2 `tray_menu.py` roto | **1** | 1 |
+| M3 `app.py` roto | **1** | 1 |
+| **M4 modulo NUEVO roto** | **1** | 1 |
+
+M4 nombra el fichero y el recuento sube solo de 22 a 23. **El encargo central se cumplia.**
+
+**N2, validado**: M-C **cumple AC-3 y falla AC-4**, luego la pareja **si** mide algo que un script permanentemente roto no cumpliria. El "superviviente" de AC-3 es ruido por construccion, no falta de cobertura.
+
+### Tres hallazgos que no estaban en el encargo
+
+1. **Habia DOS tuplas de cuatro rutas, no una.** El arquitecto vio `test_no_literal_colors_in_views` (`:8204`); el dev encontro `test_hit_targets_minimum` (`:8349`), **invisible en la busqueda del arquitecto** — la que no veia `run_tests.py` (1,5 MB). Barrido AST independiente del auditor: **exactamente 2**, no hay tercera.
+2. **`REGISTRO_INDECISAS` (P1) tiene 15 celdas manuales que CRECEN pero NO SE PUDREN**: anadir una llamada lo pone en ROJO. Es **la misma clase, no el mismo agujero** (S6).
+3. **La excusa del dev sobre `CHANGELOG.md:147/189` era FALSA**: los escribieron commits del bucle (`0864628`, `328237f`), no "el orquestador". **Decision del orquestador: NO se reescriben** — estan bajo `## CYCLE-060`, en un apartado `### Verificado`, y **eran ciertos en su momento**; la regla de append-only prohibe reescribir entradas antiguas. Se registra S4 con ese razonamiento. El patron hacia adelante ya esta corregido: TASK-081 deriva el recuento.
+
+### Supervision
+
+- **S7 (la unica con peso)**: AC-1 **afirma en su docstring que mata M-R y MEDIDO lo pasa**. Solo AC-3 lo caza, por producto. Un docstring que afirma una garantia que no tiene.
+- **S5**: el detector de justificaciones lee la **primera** ocurrencia de las etiquetas.
+- **N5**: la (a) del dev es cierta (un `rglob` traeria 16 ficheros, incluido `saved_processes.json`); su (b) «que la retira» es **aspiracional**, la unica de tres que no dice que hacer.
+- **N9**: 0,13 s y 22 lineas — CI no sufre. La lista vieja **no excluia nada a proposito**.
+
+### Nota de metodo del auditor, que vale mas que su verde
+
+Su primera tanda de **8 suites en paralelo** se atasco y produjo un **rojo falso** en `run_tests.py:23389` (fontaneria git). Lo reprodujo aislado —pasaba— y era contencion. Toda medicion del informe sale o de **ejecucion directa del guard** o de **suite completa en solitario**. Tambien se colaron tres identificadores CJK en su propio script y los corrigio antes de contaminar los clones.
+
 ## [CYCLE-066] 2026-10-19 - task-077-eol-real-y-exit-de-build
 
 ### TASK-077: el EOL no era un defecto del repo, y build.bat moria en silencio

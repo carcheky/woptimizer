@@ -1,3 +1,19 @@
+## CYCLE-067 - 2026-10-19
+
+### 🔴 Corregido — La puerta de sintaxis ya no se ciega a los ficheros nuevos
+
+**Estado**: **PASS** en auditoría de mutación (7 mutantes, 7 muertos). Tests: **231** (155 backend + 76 headless). Commits: `14ebe4a`, `44fb4e3`.
+
+- 🔴 **Qué se rompía**: la comprobación automática que revisa la interfaz **miraba una lista de ficheros escrita a mano**. Cualquier módulo nuevo se le escapaba **sin decir nada**, y salía todo en verde. **Ya había pasado dos veces**: dos ficheros de la interfaz se crearon después de que esa lista se escribiera, y nunca entraron. Nadie se dio cuenta hasta que alguien lo midió.
+- 🔴 **Por qué no loarryó nadie**: el problema ya estaba escrito en los documentos del proyecto desde el 29 de septiembre. Se "arregló" **añadiendo el fichero a la lista**. Eso es **exactamente** el camino que causa el fallo: cuando el siguiente ficheяo aparezca, pasará lo mismo. Esta vez se arregla la **causa**: la lista **ya no existe**, los ficheros se descubren solos.
+- 🛡️ **Qué se hizo**: la comprobación **recorre el árbol** en vez de leer una lista. Comprobado **ejecutándola de verdad** contra un árbol de prueba: un módulo **nuevo** con un error de sintaxis **ahora da error**, que es el caso que antes pasaba desapercibido.
+- 🧪 **El recuento también deja de escribirse a mano.** La puerta imprime cuántos ficheros ha revisado, y todo lo que lo documenta toma ese número del propio programa. Antes esa cifra la escribió una persona, y en tres ciclos dio tres números distintos: 8, 9 y 10.
+- ⚠️ **Un detalle que se deja dicho y no se esconde**: una de las comprobaciones afirma en su documentación que detecta un caso que **medido, no detecta**. Otra la salva una comprobación distinta. Ninguna rompe el resultado, pero es exactamente el patrón que este ciclo vino a cerrar.
+
+### 📌 Lo que queda anotado
+
+Hay enumeraciones escritas a mano en otros sitios del proyecto —las de los colores en las vistas, la de la copia que hace el validador, un registro de llamadas pendientes— que **crecen con el código** pero que **avisan** cuando alguien se olvida de actualizarlas. Ninguna rompe nada hoy. Quedan anotadas para cuando toque, no resueltas a la carrera.
+
 ## CYCLE-066 - 2026-10-19
 
 ### 🔴 Corregido — Compilar ya no dice "todo bien" cuando no compiló
