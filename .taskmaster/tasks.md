@@ -16,6 +16,13 @@
 | **TASK-076** | Desduplicar flags de PyInstaller entre force_build y release.yml | 3/10 | 🟡 Medium | ⏳ PENDING | `force_build.py` / `.github/workflows/` |
 | **TASK-077** | Normalizar finales de línea CRLF en scripts Windows (.bat/.ps1) | 1/10 | 🟢 Low | ⏳ PENDING | `build.bat` / `benchmark.py` |
 | **TASK-068** | Arranque por categorías en el Gestor (T-4 pendiente decisión dueño) | 6/10 | 🟠 High | 🔄 IN_PROGRESS | `openspec/changes/2026-10-05-arranque-por-categorias-en-el-gestor/` |
+| **TASK-082** | El conjunto de vistas del guard de workers se deriva, no se escribe a mano (verde con una vista nueva sin auditar) | 3/10 | 🟠 High | ⏳ **PENDING** (Active) | `openspec/changes/2026-10-21-vistas-del-guard-de-workers-derivadas/` |
+
+> ⚠️ **Esta tabla está CADUCADA**: `TASK-073` a `TASK-077` figuran como PENDING y están
+> `completed` en `tasks.json`, que es la **única fuente de verdad** (ver la cabecera).
+> `TASK-080` sigue `pending` pero **BLOQUEADA por su propia medición** (25 hashes de
+> `rd_journal.json` sin pushear: activarla hoy rompe el pipeline) y `TASK-068` espera una
+> decisión del dueño. No se formalizan aquí.
 
 ---
 
