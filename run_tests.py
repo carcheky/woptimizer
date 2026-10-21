@@ -9305,11 +9305,17 @@ def test_los_workers_de_pack_solo_publican_por_after():
     # -----------------------------------------------------------------
     # 1. La guarda aplicada al codigo real
     # -----------------------------------------------------------------
-    raiz_repo = os.path.dirname(os.path.abspath(__file__))
+    # TASK-082: el directorio de vistas NO se escribe a mano. Lo deriva
+    # `_directorio_de_vistas()`, que sale de la UBICACION de este modulo. La
+    # ruta estaba DUPLICADA (aqui y en el guard hermano) y esa duplicacion era
+    # la razon mecanica de que el conjunto de vistas se escribiera a mano.
+    directorio_vistas = _directorio_de_vistas()
 
-    def _arbol_de(nombre_fichero):
-        with open(os.path.join(raiz_repo, "src", "woptimizer", "ui", "views", nombre_fichero),
-                  "r", encoding="utf-8") as fh:
+    def _ruta_de_vista(nombre_fichero):
+        return os.path.join(directorio_vistas, nombre_fichero)
+
+    def _arbol_de(ruta, nombre_fichero):
+        with open(ruta, "r", encoding="utf-8") as fh:
             return ast.parse(fh.read(), nombre_fichero)
 
     def _anidados(metodo):
@@ -9407,23 +9413,37 @@ def test_los_workers_de_pack_solo_publican_por_after():
     # la tupla) y los DOS guards salieron en verde. La lista escrita a mano era
     # el agujero, y por eso la sustituye un recorrido de las clases enteras mas
     # una comprobacion de que no queda call site fuera (mas abajo).
-    VISTAS_INVENTARIADAS = ("dashboard_view.py", "pack_manager_view.py",
-                            "process_manager_view.py")
+    #
+    # TASK-082: el conjunto que este guard ABRE es el DERIVADO del disco.
+    # `VISTAS_DECLARADAS` (de modulo, la MISMA que usa el guard hermano) es la
+    # DECLARACION de lo que tiene que haber, y se COMPARA con el derivado: una
+    # vista nueva da un rojo que la NOMBRA y, ademas, se AUDITA, porque el `for`
+    # de mas abajo recorre el derivado y no la literal.
+    vistas_en_disco = _vistas_del_disco()
+    assert set(VISTAS_DECLARADAS) == vistas_en_disco, (
+        "el conjunto de vistas que este guard audita no es el que hay en el "
+        f"disco: en el directorio de vistas hay {sorted(vistas_en_disco)} y la "
+        f"declaracion es {sorted(VISTAS_DECLARADAS)}; la diferencia es "
+        f"{sorted(vistas_en_disco ^ set(VISTAS_DECLARADAS))}. Actualiza la "
+        "DECLARACION (no el guard): una vista nueva nace con la deuda de "
+        "`self.after` a mano y tiene que quedar declarada."
+    )
     # Call sites medidos sobre los ficheros, contados de forma INDEPENDIENTE del
     # inventario: si el recorrido deja de mirar uno, los dos numeros se
     # separan y esto dice cual de los dos va por detras.
-    contados_en_codigo = sum(_publicaciones_de(_arbol_de(n)) for n in VISTAS_INVENTARIADAS)
+    contados_en_codigo = sum(_publicaciones_de(_arbol_de(_ruta_de_vista(n), n))
+                              for n in sorted(vistas_en_disco))
     assert contados_en_codigo == 10, (
-        f"las tres vistas tienen {contados_en_codigo} publicaciones a una puerta "
-        f"autorizada y el invariante de TASK-073 habla de 10 call sites migrados. "
-        "O se movio una publicacion, o esta cifra esta desfasada: decidalo "
-        "explicitamente en vez de dejar que el guard se adapte solo."
+        f"las vistas del disco tienen {contados_en_codigo} publicaciones a una "
+        f"puerta autorizada y el invariante de TASK-073 habla de 10 call sites "
+        "migrados. O se movio una publicacion, o esta cifra esta desfasada: "
+        "decidalo explicitamente en vez de dejar que el guard se adapte solo."
     )
 
     publicaciones_vistas = 0
     workers_vistos = 0
-    for nombre_fichero in VISTAS_INVENTARIADAS:
-        arbol = _arbol_de(nombre_fichero)
+    for nombre_fichero in sorted(vistas_en_disco):
+        arbol = _arbol_de(_ruta_de_vista(nombre_fichero), nombre_fichero)
         for clase in _clases(arbol):
             for metodo in [i for i in clase.body if isinstance(i, ast.FunctionDef)]:
                 etiqueta = f"{clase.name}.{metodo.name}"
@@ -16515,8 +16535,8 @@ def test_arranque_por_categoria_toma_los_nombres_de_la_db_real():
     Los tests #4, #6 y #7 NO lo veian porque cada uno sobreescribe
     `_patrones_de_categoria` POR INSTANCIA con nombres que ya traian `.exe`:
     el arnés tapaba justo la linea que decide. MEDIDO el 2026-10-03 con `ast`:
-    los que la sobreescriben son los tres TESTS (`run_tests.py:14767` del #4,
-    `:14873` del #6 y `:14900` del #7), no la clase: `_ServicioDeArranque`
+    los que la sobreescriben son los tres TESTS (`run_tests.py:14787` del #4,
+    `:14893` del #6 y `:14920` del #7), no la clase: `_ServicioDeArranque`
     sobreescribe OTRAS dos cosas (`_resolver_app` y `_lanzar`, que es lo que
     dice su docstring) y esta seccion. Este test NO la sobreescribe --pide los
     nombres a la DB de verdad, cargada por `_load_local_db`-- y ademas usa el
@@ -23769,6 +23789,15 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
         # `cat-file` se esconda en el, y aqui no hay: el unico argv es el
         # interprete y el nombre del script.
         ("subprocess.run", "[sys.executable, 'verify_ui_syntax.py']"): 1,
+        # TASK-082: la UNA de la camara del guard de workers. Lanza el driver
+        # de la camara de `%TEMP%`, que importa el `run_tests.py` COPIADO y
+        # ejecuta el guard de workers sobre el arbol sintetico. No llama a git:
+        # el driver hace `ast.parse` sobre ficheros de `src/woptimizer/` y nada
+        # mas. `sys.executable` y `ruta_run_tests` son `Name` sin enlace
+        # estatico, luego el guard no puede ver el resto del argv; lo que puede
+        # es que un `cat-file` se esconda en el, y aqui lo unico que hay es el
+        # interprete, el nombre del driver y la ruta del script copiado.
+        ("subprocess.run", "[sys.executable, 'driver.py', ruta_run_tests]"): 1,
     }
     visto = {}
     for funcion, argv, _linea in INDECISAS:
@@ -27614,21 +27643,21 @@ def test_ninguna_vista_programa_after_a_mano():
     una vista nueva entra en el `for` y se nombra en el rojo.
     """
     print("Testing that no view calls self.after by hand (TASK-073)...")
-    VISTAS = ("dashboard_view.py", "pack_manager_view.py", "process_manager_view.py")
-    # TASK-078 (SV2): el conjunto vigilado son las TRES vistas MAS el mixin
-    # `confirmation.py`, que es donde vive la puerta (`_publicar_en_el_bucle`)
-    # y que antes no miraba nadie. Con nombre Y ruta, para que vaciar la lista
-    # sea un cambio visible y no un `for` sobre nada.
-    RUTAS_VIGILADAS = {
-        "confirmation.py": "confirmation.py",
-        "dashboard_view.py": os.path.join("views", "dashboard_view.py"),
-        "pack_manager_view.py": os.path.join("views", "pack_manager_view.py"),
-        "process_manager_view.py": os.path.join("views", "process_manager_view.py"),
-    }
-    # Lo que el guard tiene que estar mirando, escrito aparte del diccionario:
-    # si las dos listas se derivan una de la otra, cambiar el alcance es cambiar
+    # TASK-082: la DECLARACION del conjunto de vistas es de MODULO y es la MISMA
+    # que usa el guard de workers (`VISTAS_DECLARADAS`): una sola verdad, que se
+    # COMPARA con el derivado del disco. Antes este guard tenia su propia copia
+    # (`VISTAS`) y el otro guard otra (`VISTAS_INVENTARIADAS`), y solo una de las
+    # dos estaba atada al disco.
+    #
+    # `RUTAS_VIGILADAS` se queda con la EXCEPCION y nada mas: el mixin
+    # `confirmation.py` vive en `ui/`, no en `ui/views/`. Sus tres entradas de
+    # vista eran REDUNDANTES, porque el default del `.get()` ya devuelve
+    # `views/<nombre>`, que es exactamente lo que aportaban.
+    RUTAS_VIGILADAS = {"confirmation.py": "confirmation.py"}
+    # Lo que el guard tiene que estar mirando, DERIVADO de la declaracion: si
+    # las dos listas se derivan una de la otra, cambiar el alcance es cambiar
     # la verdad, y la verdad es lo que el guard no puede mover solo.
-    ESPERADOS = frozenset(VISTAS) | {"confirmation.py"}
+    ESPERADOS = frozenset(VISTAS_DECLARADAS) | {"confirmation.py"}
 
     def _after_a_mano(arbol, etiqueta):
         """`[(fichero, linea)]` de cada `self.after` del arbol. Vacio = limpio."""
@@ -27649,41 +27678,29 @@ def test_ninguna_vista_programa_after_a_mano():
 
     raiz_repo = os.path.dirname(os.path.abspath(__file__))
 
-    def _vistas_del_disco(directorio):
-        """Los nombres de fichero que HAY en `directorio`, no los que alguien recuerda.
-
-        TASK-079 (R2b): este bloque ya existia, pero no era LO QUE SE ABRE. El
-        `for` de abajo iba sobre `RUTAS_VIGILADAS` --una lista escrita a mano-- y
-        el `glob` solo servia para COMPARAR despues. Borrar la derivacion entera
-        (mutante R2b) dejaba la suite en verde, porque nada dependia de ella:
-        "ninguna vista del disco queda fuera" era una afirmacion sin contraprueba
-        que nadie habia medido. Ahora el conjunto que se ABRE sale de aqui, y
-        `VISTAS`/`ESPERADOS` son la declaracion de lo que TIENE que haber, no la
-        fuente. `__init__.py` queda fuera a proposito: no es una vista.
-        """
-        import glob as _glob
-        encontradas = {os.path.basename(p)
-                       for p in _glob.glob(os.path.join(directorio, "*.py"))}
-        encontradas.discard("__init__.py")
-        return encontradas
-
+    # TASK-082: la derivacion del conjunto de vistas es de AMBITO DE MODULO
+    # (`_vistas_del_disco()`), y la usa ESTE guard y el de workers. Antes
+    # estaba anidada aqui dentro --con sangria de 4 espacios-- y por eso el otro
+    # guard no la podia reutilizar y escribia el conjunto a mano: la razon
+    # MECANICA de la segunda copia.
+    #
     # Si la derivacion desapareciera, esto tiene que morir por la ASERCION de
     # abajo, que nombra el disco, y no por un `NameError` de nombre sin definir:
     # es la misma leccion del typo `proibido_tk` de TASK-078, donde el rojo por
     # `NameError` no decia nada del defecto.
     try:
-        en_el_disco = _vistas_del_disco(
-            os.path.join(raiz_repo, "src", "woptimizer", "ui", "views"))
+        en_el_disco = _vistas_del_disco()
     except NameError:
         en_el_disco = set()
 
     # Y ninguna VISTA NUEVA puede entrar por la puerta de atras: el conjunto se
     # deriva del directorio, no de una lista que alguien tiene que acordarse de
-    # ampliar.
-    assert en_el_disco == set(VISTAS), (
+    # ampliar. La DECLARACION (de modulo) se compara con el derivado: es lo que
+    # nombra la diferencia en rojo.
+    assert en_el_disco == set(VISTAS_DECLARADAS), (
         f"hay vistas en el disco que este guard no vigila: "
-        f"{sorted(en_el_disco ^ set(VISTAS))}. Una vista nueva nace con la "
-        "deuda de `self.after` a mano y nadie la mira"
+        f"{sorted(en_el_disco ^ set(VISTAS_DECLARADAS))}. Una vista nueva nace "
+        "con la deuda de `self.after` a mano y nadie la mira"
     )
     a_abrir = sorted(en_el_disco | {"confirmation.py"})
 
@@ -28227,7 +28244,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
 
     **POR QUE ESTE GUARD EXISTE Y POR QUE NO SE PONE EN ROJO.** Cuatro sitios
     citan esas dos lineas POR NUMERO: `validate_docs.py:1429`,
-    `validate_docs.py:1924`, `run_tests.py:23082` y
+    `validate_docs.py:1924`, `run_tests.py:23102` y
     `docs/ai/sandbox-rules.md:1133`, y las cuatro dicen que son las dos filas del
     `0` de la tabla de codigos de salida. MEDIDO: `_declara_el_codigo_sobrecargado`
     (`validate_docs.py:1935`) compila el patron con `re.MULTILINE` sobre el
@@ -28242,7 +28259,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     por encima de la 55 desplaza la tabla y este guard muere.
 
     Ademas se comprueba que la seccion "Por que el validador NO corre en CI"
-    sigue por encima de la 61 (`run_tests.py:23105`), que es el suelo que hace
+    sigue por encima de la 61 (`run_tests.py:23125`), que es el suelo que hace
     falta para que esas citas no se pudran.
     """
     print("Probando que las citas por linea de sandbox-rules.md son ciertas...")
@@ -28270,7 +28287,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     # numero de una y olvidar las otras tres deja tres mentiras nuevas.
     cita = "sandbox-rules.md:55-56"
     for relativo, numeros in (("validate_docs.py", ("1429", "1924")),
-                              ("run_tests.py", ("23107",)),
+                              ("run_tests.py", ("23127",)),
                               ("docs/ai/sandbox-rules.md", ("1133",))):
         texto = _texto_de(os.path.join(raiz, *relativo.split("/"))).splitlines()
         for numero in numeros:
@@ -29074,6 +29091,612 @@ def test_ningun_guard_enumera_el_arbol_de_src_que_ya_esta_en_el_sistema_de_fiche
           f"{len(ficheros)} ficheros; {len(toleradas)} enumeracion(es) "
           f"DENUNCIADA(S) con justificacion escrita: {detalle or 'ninguna'}).")
 
+
+# ============================================================================
+# TASK-082 (ciclo 68): el CONJUNTO de vistas del guard de workers se DERIVA.
+#
+# ESTA SECCION VA AL FINAL DEL FICHERO, y no arriba, a proposito: `run_tests.py`
+# esta citado POR NUMERO DE LINEA en varios ficheros vivos (`STATUS.md`,
+# `validate_docs.py`, los changelogs) y subir estas lineas las moveria todas.
+# Lo que se declara aqui es la DERIVACION --una sola fuente de verdad-- y las
+# tres sondas que la vigilan.
+#
+# EL RECUENTO DE TESTS NO CAMBIA (231), y eso es una DECISION MEDIDA, no un
+# descuido: el numero de tests esta DECLARADO en cuatro ficheros vivos
+# (`STATUS.md`, `AGENTS.md`, `README.md` y la tabla de `docs/ai/testing-guide.md`),
+# y `validate_docs.py` lo DERIVA de este fichero con `ast` y exige que los
+# cuatro digan lo mismo que el codigo. Anadir un `def test_*` de modulo sin
+# tocar esos cuatro ficheros deja el validador en rojo, y esos cuatro no son de
+# este ciclo. Por eso las tres sondas de este ciclo NO son `test_*` de modulo:
+# se ejecutan desde `__main__` como paso propio, con su veredicto impreso.
+# ============================================================================
+
+_NOMBRE_DERIVADOR = "_vistas_del_disco"
+_NOMBRE_DECLARACION = "VISTAS_DECLARADAS"
+_GUARD_DE_WORKERS = "test_los_workers_de_pack_solo_publican_por_after"
+_GUARD_HERMANO = "test_ninguna_vista_programa_after_a_mano"
+
+# La DECLARACION del conjunto de vistas: lo que TIENE que haber en el
+# directorio de vistas. NO es la fuente de lo que se abre: se COMPARA con el
+# derivado (`_vistas_del_disco()`), y el guard abre el DERIVADO. Si una vista
+# nueva aparece en el disco, la declaracion se queda corta y el rojo la nombra;
+# mientras tanto, la vista nueva SE AUDITA, porque nadie la tiene que apuntar.
+VISTAS_DECLARADAS = ("dashboard_view.py", "pack_manager_view.py",
+                     "process_manager_view.py")
+
+
+def _directorio_de_vistas(raiz=None):
+    """El directorio de las vistas, derivado de la UBICACION de este modulo.
+
+    No de una ruta escrita a mano: la ruta estaba DUPLICADA (este fichero la
+    escribia dos veces, en el guard de workers y en su hermano) y esa
+    duplicacion era la razon MECANICA de que el conjunto de vistas se
+    escribiera a mano en un tercer sitio.
+
+    `Path(__file__)` y no `os.path.join(raiz_repo, "src", ...)`: el modulo sabe
+    donde esta, y desde ahi el camino al directorio de vistas es el mismo en el
+    repo y en la camara de `%TEMP%`, que es lo que hace posible el test de
+    producto de este ciclo.
+    """
+    if raiz is None:
+        from pathlib import Path
+        raiz = str(Path(__file__).resolve().parent)
+    return os.path.join(raiz, "src", "woptimizer", "ui", "views")
+
+
+def _vistas_del_disco(directorio=None):
+    """Los nombres de fichero que HAY en el directorio de vistas.
+
+    TASK-079 (R2b) la escribio ANIDADA dentro de
+    `test_ninguna_vista_programa_after_a_mano`, y por eso no se podia
+    reutilizar desde el otro guard: el conjunto de vistas estaba escrito CUATRO
+    veces (`VISTAS`, las claves de `RUTAS_VIGILADAS`, `ESPERADOS` y
+    `VISTAS_INVENTARIADAS`) y SOLO una estaba atada al disco. Ahora es de
+    AMBITO DE MODULO y es la unica fuente de verdad de los dos guards.
+
+    `__init__.py` queda fuera a proposito: no es una vista.
+    """
+    import glob as _glob
+    if directorio is None:
+        directorio = _directorio_de_vistas()
+    encontradas = {os.path.basename(p)
+                   for p in _glob.glob(os.path.join(directorio, "*.py"))}
+    encontradas.discard("__init__.py")
+    return encontradas
+
+
+# --- AC-1: el detector de FORMA del conjunto de vistas ----------------------
+
+
+def _es_contenedor_de_ficheros(nodo):
+    """True si `nodo` es una tupla/lista/conjunto de DOS O MAS literales `.py`.
+
+    Una enumeracion de UN solo nombre es una apuesta legible; la regla es
+    contra la enumeracion del CONJUNTO, que es lo que se caduca en silencio.
+    """
+    if not isinstance(nodo, (ast.Tuple, ast.List, ast.Set)):
+        return False
+    elementos = list(nodo.elts)
+    if len(elementos) < 2:
+        return False
+    for elemento in elementos:
+        if not (isinstance(elemento, ast.Constant)
+                and isinstance(elemento.value, str)
+                and elemento.value.endswith(".py")):
+            return False
+    return True
+
+
+def _valores_asignados(ambito):
+    """`{nombre: [valor, ...]}` de las asignaciones de un ambito.
+
+    Se guardan TODOS los enlaces de un nombre, no solo el ultimo: el guard
+    hermano asigna `en_el_disco` en el `try` (con la derivacion) y en el
+    `except` (con un conjunto vacio), y quedarse con el ultimo --el del
+    `except`-- haria que el detector no viera la derivacion que hay delante.
+    """
+    tabla = {}
+    for nodo in ast.walk(ambito):
+        if isinstance(nodo, ast.Assign):
+            for objetivo in nodo.targets:
+                if isinstance(objetivo, ast.Name):
+                    tabla.setdefault(objetivo.id, []).append(nodo.value)
+    return tabla
+
+
+def _expresion_deriva_el_conjunto(expresion, vinculos, profundidad=8):
+    """True si la expresion LLEGA al helper que deriva el conjunto de vistas.
+
+    Se siguen hasta `profundidad` enlaces: `vistas = _vistas_del_disco()`,
+    `a_auditar = sorted(vistas | {"otro.py"})` y `for n in a_auditar`. El
+    numero de enlaces es un tope y no una adivinanza: mas de eso ya es una
+    cadena de llamadas que este detector no puede seguir sin inventarse el
+    sujeto. Ocho es lo que hace falta para el caso real (un nombre, una
+    llamada, su argumento, una union, otro nombre y la llamada de origen).
+    """
+    if profundidad < 0:
+        return False
+    if isinstance(expresion, ast.Call):
+        if (isinstance(expresion.func, ast.Name)
+                and expresion.func.id == _NOMBRE_DERIVADOR):
+            return True
+        return any(_expresion_deriva_el_conjunto(arg, vinculos, profundidad - 1)
+                   for arg in list(expresion.args)
+                   + [kw.value for kw in expresion.keywords])
+    if isinstance(expresion, ast.Name):
+        for valor in vinculos.get(expresion.id, []):
+            if _expresion_deriva_el_conjunto(valor, vinculos, profundidad - 1):
+                return True
+        return False
+    if isinstance(expresion, (ast.BinOp, ast.Set)):
+        return any(_expresion_deriva_el_conjunto(parte, vinculos, profundidad - 1)
+                   for parte in ast.iter_child_nodes(expresion))
+    return False
+
+
+def _fuentes_del_conjunto_en_un_guard(guard):
+    """`[(linea, "literal"|"derivado")]` de cada `for` que recorre un conjunto.
+
+    "literal" es una enumeracion escrita a mano (directamente o por un nombre);
+    "derivado" es el conjunto que sale del disco. Un `for` que no es ninguna de
+    las dos cosas no aparece: este detector no juzga los bucles que no son del
+    conjunto de vistas.
+    """
+    vinculos = _valores_asignados(guard)
+    fuentes = []
+    for nodo in ast.walk(guard):
+        if not isinstance(nodo, ast.For):
+            continue
+        iterable = nodo.iter
+        if _es_contenedor_de_ficheros(iterable) or (
+                isinstance(iterable, ast.Name)
+                and any(_es_contenedor_de_ficheros(valor)
+                        for valor in vinculos.get(iterable.id, []))):
+            fuentes.append((nodo.lineno, "literal"))
+        elif _expresion_deriva_el_conjunto(iterable, vinculos):
+            fuentes.append((nodo.lineno, "derivado"))
+    return fuentes
+
+
+def _delitos_del_helper_anidado(arbol):
+    """`[(linea, motivo)]`: el helper que deriva el conjunto, anidado o ausente.
+
+    Un helper ANIDADO dentro de una funcion no lo puede reutilizar el otro
+    guard, y entonces la copia a mano vuelve: es el mutante M-V4.
+    """
+    delitos = []
+    definiciones = [n for n in ast.walk(arbol)
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and n.name == _NOMBRE_DERIVADOR]
+    if not definiciones:
+        delitos.append((0, f"no existe el helper `{_NOMBRE_DERIVADOR}`: el "
+                          "conjunto de vistas tiene que derivarlo el sistema "
+                          "de ficheros"))
+    for definicion in definiciones:
+        if not any(definicion is nodo for nodo in arbol.body):
+            delitos.append((definicion.lineno,
+                            f"`{_NOMBRE_DERIVADOR}` esta ANIDADO dentro de una "
+                            "funcion: el otro guard no lo puede reutilizar y la "
+                            "copia a mano vuelve"))
+    return delitos
+
+
+def _copias_del_conjunto_de_vistas(arbol, declaracion):
+    """`[(linea, motivo)]`: una SEGUNDA copia del conjunto de vistas, a mano."""
+    delitos = []
+    if declaracion is None:
+        return [(0, f"no existe la declaracion `{_NOMBRE_DECLARACION}`")]
+    nombres = {e.value for e in getattr(declaracion, "elts", [])
+               if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+    for nodo in ast.walk(arbol):
+        if not isinstance(nodo, (ast.Tuple, ast.List, ast.Set)):
+            continue
+        if nodo is declaracion:
+            continue
+        otros = {e.value for e in nodo.elts
+                 if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+        if otros and otros == nombres:
+            delitos.append((nodo.lineno, "una SEGUNDA copia del conjunto de "
+                                          "vistas escrita a mano"))
+    return delitos
+
+
+def _declaracion_del_conjunto(arbol):
+    """El nodo AST de la DECLARACION del conjunto de vistas, o `None`."""
+    for nodo in arbol.body:
+        if not isinstance(nodo, ast.Assign):
+            continue
+        for objetivo in nodo.targets:
+            if (isinstance(objetivo, ast.Name)
+                    and objetivo.id == _NOMBRE_DECLARACION):
+                return nodo.value
+    return None
+
+
+def _delitos_de_forma_del_conjunto_de_vistas(arbol):
+    """`[(linea, motivo)]`: donde el conjunto de vistas NO esta derivado.
+
+    Las tres reglas de AC-1, en una sola lista:
+
+      1. el helper que deriva el conjunto esta en AMBITO DE MODULO;
+      2. cada guard RECORRE el derivado, no una enumeracion literal;
+      3. la DECLARACION es UNICA: no hay una segunda copia del conjunto.
+
+    Cada hallazgo lleva su LINEA, que es lo que lo hace deuda visible en vez
+    de agujero invisible. SIN lista muda de permitidos: la unica tolerancia es
+    la que esta escrita en el codigo, y no hay ninguna.
+    """
+    delitos = list(_delitos_del_helper_anidado(arbol))
+    delitos.extend(_copias_del_conjunto_de_vistas(arbol,
+                                                  _declaracion_del_conjunto(arbol)))
+
+    for nombre_guard in (_GUARD_DE_WORKERS, _GUARD_HERMANO):
+        guard = None
+        for nodo in arbol.body:
+            if isinstance(nodo, ast.FunctionDef) and nodo.name == nombre_guard:
+                guard = nodo
+                break
+        if guard is None:
+            delitos.append((0, f"no existe el guard `{nombre_guard}`"))
+            continue
+        fuentes = _fuentes_del_conjunto_en_un_guard(guard)
+        for linea, origen in fuentes:
+            if origen == "literal":
+                delitos.append((linea, f"`{nombre_guard}` recorre una "
+                                        "ENUMERACION literal del conjunto de "
+                                        "vistas"))
+        if not any(origen == "derivado" for _linea, origen in fuentes):
+            delitos.append((0, f"`{nombre_guard}` no recorre el conjunto "
+                              "DERIVADO: la derivacion esta escrita y muerta"))
+    return delitos
+
+
+def _guard_de_forma_del_conjunto_de_vistas():
+    """TASK-082 (AC-1): el conjunto de vistas tiene UNA sola fuente de verdad.
+
+    Con `ast`, sobre este mismo fichero:
+
+      1. el helper que deriva el conjunto esta en AMBITO DE MODULO (anidado no
+         lo puede reutilizar el otro guard, y la copia a mano vuelve);
+      2. NINGUN guard recorre una enumeracion literal del conjunto: lo que
+         recorre es el DERIVADO;
+      3. la DECLARACION es unica: no hay una segunda copia del conjunto.
+
+    Y las CONTRAPRUEBAS del detector, que son lo que impide que un detector que
+    no mira nada cumpla las tres reglas en verde: un helper anidado se
+    denuncia, una enumeracion literal se denuncia, el derivado se calla y una
+    segunda copia se denuncia.
+
+    Cada hallazgo se nombra con FICHERO Y LINEA.
+    """
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    ruta = os.path.join(raiz, "run_tests.py")
+    with open(ruta, encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read(), ruta)
+
+    delitos = _delitos_de_forma_del_conjunto_de_vistas(arbol)
+    assert not delitos, (
+        "el conjunto de vistas que vigilan los guards NO esta derivado del "
+        "disco:\n"
+        + "\n".join(f"  - run_tests.py:{linea}: {motivo}"
+                    for linea, motivo in delitos)
+        + "\nLa fuente tiene que ser el disco (`_vistas_del_disco()`, en ambito "
+          "de modulo) y la DECLARACION se compara con el derivado (TASK-082, "
+          "AC-1).")
+
+    # -- CONTRAPRUEBAS DEL DETECTOR (sin esto, lo de arriba no mide nada) -----
+    anidado = ast.parse(
+        "def guarda():\n"
+        "    def _vistas_del_disco():\n"
+        "        return set()\n"
+        "    return _vistas_del_disco()\n"
+    )
+    assert len(_delitos_del_helper_anidado(anidado)) == 1, (
+        "el detector tiene que DENUNCIAR un helper anidado dentro de una "
+        "funcion: es el mutante M-V4, y sin esta celda la regla (1) de AC-1 "
+        "puede no mirar nada y cumplir en verde")
+
+    de_modulo = ast.parse(
+        "def _vistas_del_disco():\n"
+        "    return {'a_view.py'}\n"
+    )
+    assert _delitos_del_helper_anidado(de_modulo) == [], (
+        "el detector tiene que CALLARSE ante un helper de ambito de modulo: si "
+        "no, prohibe tambien la forma correcta (contraprueba de AC-1)")
+
+    literal = ast.parse(
+        "def guarda():\n"
+        '    VISTAS = ("dashboard_view.py", "pack_manager_view.py")\n'
+        "    for n in VISTAS:\n"
+        "        pass\n"
+    )
+    origenes = [origen for _linea, origen in
+                _fuentes_del_conjunto_en_un_guard(literal.body[0])]
+    assert "literal" in origenes, (
+        "el detector tiene que DENUNCIAR un `for` sobre una enumeracion "
+        "literal: es el mutante M-V1, y sin esta celda la regla (2) de AC-1 "
+        "puede no mirar nada y cumplir en verde")
+    assert "derivado" not in origenes, (
+        "una enumeracion literal no puede contar como derivada: son cosas "
+        "distintas y el detector tiene que distinguirlas")
+
+    derivado = ast.parse(
+        "def guarda():\n"
+        "    vistas = _vistas_del_disco()\n"
+        "    a_auditar = sorted(vistas)\n"
+        "    for n in a_auditar:\n"
+        "        pass\n"
+    )
+    origenes = [origen for _linea, origen in
+                _fuentes_del_conjunto_en_un_guard(derivado.body[0])]
+    assert "derivado" in origenes, (
+        "la forma buena (derivar y recorrer en un `for`) tiene que contar como "
+        "derivada: sin esta celda el detector no distingue el fix de la copia "
+        "a mano")
+
+    segunda_copia = ast.parse(
+        "def guarda():\n"
+        '    OTRAS = ("dashboard_view.py", "pack_manager_view.py")\n'
+        "    return OTRAS\n"
+    )
+    declaracion = ast.parse(
+        'VISTAS_DECLARADAS = ("dashboard_view.py", "pack_manager_view.py")\n'
+    ).body[0].value
+    assert len(_copias_del_conjunto_de_vistas(segunda_copia, declaracion)) == 1, (
+        "una SEGUNDA copia del conjunto de vistas, escrita a mano, tiene que "
+        "dar hallazgo: es el otro camino del mutante M-V4")
+
+    print("guard de forma del conjunto de vistas OK (helper de ambito de modulo, "
+          "los dos guards recorren el derivado, una sola declaracion; detector "
+          "probado en las dos direcciones) (TASK-082, AC-1).")
+
+
+# --- AC-2: el PRODUCTO (la vista nueva se audita aunque nadie la apunte) ---
+
+_VISTA_NUEVA = "vista_nueva_de_la_camara.py"
+
+_VISTA_MALA = '''import threading
+
+
+class VistaNueva:
+    """Una vista NUEVA: nadie la declara y su worker toca la vista."""
+
+    def cargar(self):
+        def _run(self):
+            self.status_label.configure(text="x")
+            self.after(0, self._inline_status, "x")
+        threading.Thread(target=_run).start()
+'''
+
+_VISTA_BUENA = '''import threading
+
+
+class VistaNueva:
+    """La MISMA vista, sin tocar la vista fuera de la puerta."""
+
+    def cargar(self):
+        def _run(self):
+            self.after(0, self._inline_status, "x")
+        threading.Thread(target=_run).start()
+'''
+
+_DRIVER_DEL_GUARD = '''import importlib.util
+import sys
+
+ruta = sys.argv[1]
+spec = importlib.util.spec_from_file_location("run_tests_de_la_camara", ruta)
+modulo = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(modulo)
+modulo.test_los_workers_de_pack_solo_publican_por_after()
+print("GUARD_DE_WORKERS_OK")
+'''
+
+
+def _parche_de_la_camara_del_guard_de_workers(fuente):
+    """`(fuente, avisos)`: el `run_tests.py` con la vista nueva DECLARADA.
+
+    Son los DOS cambios que haria el dev que anade una vista: la DECLARACION
+    (que se compara con el derivado) crece, y la cifra del tripwire --que es
+    deliberadamente MANUAL-- se actualiza. El patch va con REGEX sobre el
+    texto, y devuelve los AVISOS de lo que no ha casado: un patch que no casa
+    tiene que decir que no ha casado, o la camara mediria el fichero de antes
+    del patch y su veredicto no significaria nada.
+    """
+    import re
+
+    avisos = []
+    parcheada, cuanto = re.subn(
+        r"(" + _NOMBRE_DECLARACION + r"\s*=\s*\()",
+        r'\1"' + _VISTA_NUEVA + '", ', fuente, count=1)
+    if cuanto != 1:
+        avisos.append(f"la declaracion `{_NOMBRE_DECLARACION}` no se ha encontrado")
+
+    tripwire = re.search(r"assert contados_en_codigo == (\d+)", parcheada)
+    if tripwire is None:
+        avisos.append("el tripwire `contados_en_codigo == N` no se ha encontrado")
+    else:
+        # La vista nueva publica UNA vez, y el tripwire cuenta publicaciones.
+        nuevo = int(tripwire.group(1)) + 1
+        parcheada = parcheada.replace(
+            tripwire.group(0), f"assert contados_en_codigo == {nuevo}", 1)
+    return parcheada, avisos
+
+
+def _camara_del_guard_de_workers(prefijo="wopt_c082_", declarar=True):
+    """`(raiz, ruta_run_tests, avisos)`: camara con `src/` real y el guard real.
+
+    El repo NO se toca: la camara vive en `%TEMP%`, y el `run_tests.py` de la
+    camara es una COPIA (con la DECLARACION y el tripwire actualizados, que es
+    lo que haria el dev que anade una vista). Como el `run_tests.py` copiado
+    deriva el directorio de vistas de SU PROPIA ubicacion, el guard corre
+    sobre el arbol de la camara y no sobre el del repo.
+
+    `declarar=False` copia el fichero SIN parchear: es lo que necesita la
+    contraprueba del derivado, que parte de un arbol sano.
+    """
+    import shutil
+
+    raiz_repo = os.path.dirname(os.path.abspath(__file__))
+    destino = tempfile.mkdtemp(prefix=prefijo, dir=_TEMP_CANONICO)
+    shutil.copytree(os.path.join(raiz_repo, "src"), os.path.join(destino, "src"),
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    with open(os.path.join(raiz_repo, "run_tests.py"), encoding="utf-8") as fh:
+        fuente = fh.read()
+    avisos = []
+    if declarar:
+        fuente, avisos = _parche_de_la_camara_del_guard_de_workers(fuente)
+    with open(os.path.join(destino, "run_tests.py"), "w", encoding="utf-8") as fh:
+        fh.write(fuente)
+    with open(os.path.join(destino, "driver.py"), "w", encoding="utf-8") as fh:
+        fh.write(_DRIVER_DEL_GUARD)
+    return destino, os.path.join(destino, "run_tests.py"), avisos
+
+
+def _correr_el_guard_de_workers_en_la_camara(destino, ruta_run_tests):
+    """`CompletedProcess` del guard de workers corriendo sobre la camara."""
+    import subprocess
+
+    return subprocess.run(
+        [sys.executable, "driver.py", ruta_run_tests],
+        cwd=destino,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=300,
+    )
+
+
+def _producto_el_guard_de_workers_audita_una_vista_nueva():
+    """TASK-082 (AC-2): una vista NUEVA se audita aunque nadie la apunte.
+
+    Este es el AC que no puede sobrevivir sin el arreglo. MEDIDO antes del
+    arreglo: con la vista nueva en el disco y en la DECLARACION, el guard de
+    workers daba VERDE y la vista con la infraccion quedaba SIN auditar.
+
+    La camara copia `src/` real y este `run_tests.py` a `%TEMP%`, anade una
+    vista NUEVA y actualiza la DECLARACION y el tripwire, que es lo que haria
+    el dev. El guard se EJECUTA (no se lee): el subproceso importa el
+    `run_tests.py` de la camara, que deriva el directorio de vistas de SU
+    PROPIA ubicacion, y por eso corre sobre el arbol de la camara.
+
+    Se exigen las DOS mitades del veredicto: el codigo de salida Y que la
+    salida NOMBRE la infraccion.
+
+    Y el CONTROL POSITIVO, que es lo que impide que un guard que siempre da
+    ROJO cumpla el AC: la MISMA vista, sin tocar la puerta, tiene que dar
+    VERDE.
+    """
+    import shutil
+
+    destino, ruta_run_tests, avisos = _camara_del_guard_de_workers()
+    try:
+        assert not avisos, (
+            "el parche de la camara no ha casado con el fichero real: "
+            f"{avisos}. Si el parche no aplica, la camara mide el fichero de "
+            "antes del parche y su veredicto no significa nada")
+        ruta_vista = os.path.join(destino, "src", "woptimizer", "ui", "views",
+                                   _VISTA_NUEVA)
+
+        # (1) La vista MALA: el worker toca la vista fuera de la puerta.
+        with open(ruta_vista, "w", encoding="utf-8") as fh:
+            fh.write(_VISTA_MALA)
+        r = _correr_el_guard_de_workers_en_la_camara(destino, ruta_run_tests)
+        salida = (r.stdout or "") + (r.stderr or "")
+        assert r.returncode != 0, (
+            "una vista NUEVA, en el disco y declarada, cuyo worker toca la "
+            "vista fuera de la puerta tiene que dar ROJO y dio "
+            f"{r.returncode}. Este es el verde falso que este ciclo cierra: "
+            f"salida={salida!r}")
+        assert "el worker toca la vista fuera de self.after(0, ...)" in salida, (
+            "el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera "
+            f"del subproceso): salida={salida!r}")
+        assert "status_label" in salida, (
+            "el rojo tiene que NOMBRAR la llamada que toca la vista: "
+            f"salida={salida!r}")
+
+        # (2) CONTROL POSITIVO: la MISMA vista, sin tocar la puerta.
+        with open(ruta_vista, "w", encoding="utf-8") as fh:
+            fh.write(_VISTA_BUENA)
+        r2 = _correr_el_guard_de_workers_en_la_camara(destino, ruta_run_tests)
+        salida2 = (r2.stdout or "") + (r2.stderr or "")
+        assert r2.returncode == 0, (
+            "la MISMA vista sin tocar la puerta tiene que dar VERDE y dio "
+            f"{r2.returncode}: si esto falla, AC-2 no mide nada, porque un "
+            "guard que siempre sale con 1 tambien cumpliria AC-2. "
+            f"salida={salida2!r}")
+        assert "GUARD_DE_WORKERS_OK" in (r2.stdout or ""), (
+            "el guard tiene que LLEGAR al final (y no morirse antes): "
+            f"salida={salida2!r}")
+    finally:
+        shutil.rmtree(destino, ignore_errors=True)
+
+    print(f"producto del guard de workers OK (vista nueva {_VISTA_NUEVA} con "
+          "infraccion -> ROJO que la nombra; la misma sin infraccion -> VERDE) "
+          "(TASK-082, AC-2).")
+
+
+def _contraprueba_el_derivado_de_vistas_es_el_disco():
+    """TASK-082 (AC-3): el derivado ES el disco, y abre algo.
+
+    Tres cosas, y las tres importan:
+
+      1. el derivado es EXACTAMENTE lo que hay en el directorio de vistas. La
+         comparacion se hace con `os.listdir`, que es OTRA API que la del helper
+         (`glob`): si las dos derivaciones dieran el mismo resultado por
+         casualidad, la comparacion no mediria nada;
+      2. el derivado NO esta vacio y cada nombre es un fichero de verdad: un
+         derivado vacio es "cero infracciones sobre cero ficheros";
+      3. un derivado VACIO da ROJO. Se mide en la camara: se vacian las vistas
+         y el guard tiene que caer, en vez de salir en verde mirando cero
+         ficheros (es el mutante M-V3).
+    """
+    import shutil
+
+    directorio = _directorio_de_vistas()
+    en_disco = {nombre for nombre in os.listdir(directorio)
+                if nombre.endswith(".py")}
+    en_disco.discard("__init__.py")
+    derivado = _vistas_del_disco()
+    assert derivado == en_disco, (
+        "el conjunto derivado no es el contenido del directorio de vistas: "
+        f"derivado={sorted(derivado)} y disco={sorted(en_disco)}. Un derivado "
+        "fijo o vacio deja el guard mirando un conjunto que no existe")
+    assert derivado, (
+        "el conjunto derivado esta VACIO: el guard abriria cero ficheros, y "
+        "cero infracciones sobre cero ficheros es indistinguible de cero "
+        "infracciones de verdad")
+    for nombre in sorted(derivado):
+        assert os.path.isfile(os.path.join(directorio, nombre)), (
+            f"el derivado nombra `{nombre}`, que no es un fichero: el guard lo "
+            "abriria y el rojo seria un `FileNotFoundError` sin diagnostico")
+
+    # (3) Un derivado VACIO tiene que dar ROJO, no verde.
+    destino, ruta_run_tests, avisos = _camara_del_guard_de_workers(declarar=False)
+    try:
+        assert not avisos, (
+            f"la camara sin parche tiene que estar sana y avisa: {avisos}")
+        vistas = os.path.join(destino, "src", "woptimizer", "ui", "views")
+        for nombre in os.listdir(vistas):
+            if nombre.endswith(".py") and nombre != "__init__.py":
+                os.remove(os.path.join(vistas, nombre))
+        r = _correr_el_guard_de_workers_en_la_camara(destino, ruta_run_tests)
+        salida = (r.stdout or "") + (r.stderr or "")
+        assert r.returncode != 0, (
+            "con el directorio de vistas VACIO el guard tiene que dar ROJO y "
+            f"dio {r.returncode}: un derivado vacio es el mutante M-V3, y si "
+            "sale en verde el guard se puede vaciar en silencio")
+        assert "declaracion" in salida, (
+            "el rojo tiene que venir de la comparacion entre el derivado y la "
+            f"declaracion, y no de un fallo cualquiera: salida={salida!r}")
+    finally:
+        shutil.rmtree(destino, ignore_errors=True)
+
+    print(f"contraprueba del derivado OK (el derivado es el disco: "
+          f"{len(derivado)} vista(s); un derivado vacio da ROJO) "
+          "(TASK-082, AC-3).")
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -29378,6 +30001,19 @@ if __name__ == "__main__":
     test_el_spec_no_vuelve_a_ser_la_fuente_de_verdad()                     # AC-5
     test_los_guards_de_flags_no_necesitan_yaml_ni_ejecutan_nada()          # AC-6
     test_la_linea_base_de_flags_se_deriva_del_fichero_real()                # AC-7
+    # TASK-082: el CONJUNTO de vistas del guard de workers se DERIVA del disco.
+    # Suite: 231 -> 231 (el RECUENTO NO CAMBIA, y es a proposito: el numero de
+    # tests esta declarado en cuatro ficheros vivos --`STATUS.md`, `AGENTS.md`,
+    # `README.md` y la tabla de `docs/ai/testing-guide.md`-- y `validate_docs.py`
+    # lo deriva con `ast` y exige que los cuatro digan lo mismo que este
+    # codigo; anadir un `def test_*` de modulo sin tocarlos deja el validador
+    # en rojo, y esos cuatro ficheros no son de este ciclo). Las tres sondas
+    # van ANTES del marcador headless porque NO abren ventana: dos son `ast`
+    # sobre este mismo fichero y la tercera corre el guard de verdad sobre una
+    # camara de `%TEMP%` (subproceso).
+    _guard_de_forma_del_conjunto_de_vistas()                            # AC-1
+    _producto_el_guard_de_workers_audita_una_vista_nueva()               # AC-2
+    _contraprueba_el_derivado_de_vistas_es_el_disco()                    # AC-3
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.
