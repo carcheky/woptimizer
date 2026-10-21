@@ -6114,6 +6114,12 @@ def test_orden_de_categorias_no_es_alfabetico():
       * `sorted(categorias.keys())` en CUALQUIERA de los dos sitios -> la guarda;
       * un `key=` en línea en vez de `ordenar_categorias` -> la guarda de uso,
         para que no se "arregle" duplicando la política en cada vista.
+
+    TASK-082 (AC-1, R2): ENUMERACION JUSTIFICADA de nombres de vista, y el
+    guard de forma del conjunto de vistas la DELATA cada vez que corre. No la
+    repara: repara es otro ciclo.
+    (a) POR QUE existe la enumeracion: estas DOS vistas son las que manejan categorias y las elige el sentido del test, no el sistema de ficheros: la tercera vista no tiene catalogo que ordenar.
+    (b) QUE LA RETIRA: el ciclo que recorra el conjunto de vistas DERIVADO reescribe este test para iterar el derivado y filtrar por el criterio semantico de "maneja categorias".
     """
     import random
     from woptimizer.config import CATEGORY_ORDER, ordenar_categorias
@@ -9433,11 +9439,11 @@ def test_los_workers_de_pack_solo_publican_por_after():
     # separan y esto dice cual de los dos va por detras.
     contados_en_codigo = sum(_publicaciones_de(_arbol_de(_ruta_de_vista(n), n))
                               for n in sorted(vistas_en_disco))
-    assert contados_en_codigo == 10, (
+    assert contados_en_codigo == _CIFRA_DE_PUBLICACIONES_VIGILADAS, (
         f"las vistas del disco tienen {contados_en_codigo} publicaciones a una "
-        f"puerta autorizada y el invariante de TASK-073 habla de 10 call sites "
-        "migrados. O se movio una publicacion, o esta cifra esta desfasada: "
-        "decidalo explicitamente en vez de dejar que el guard se adapte solo."
+        f"puerta autorizada y este tripwire COMPARA con {_CIFRA_DE_PUBLICACIONES_VIGILADAS} call sites migrados. "
+        "O se movio una publicacion, o esta cifra esta desfasada: decidalo "
+        "explicitamente en vez de dejar que el guard se adapte solo."
     )
 
     publicaciones_vistas = 0
@@ -16535,8 +16541,8 @@ def test_arranque_por_categoria_toma_los_nombres_de_la_db_real():
     Los tests #4, #6 y #7 NO lo veian porque cada uno sobreescribe
     `_patrones_de_categoria` POR INSTANCIA con nombres que ya traian `.exe`:
     el arnés tapaba justo la linea que decide. MEDIDO el 2026-10-03 con `ast`:
-    los que la sobreescriben son los tres TESTS (`run_tests.py:14787` del #4,
-    `:14893` del #6 y `:14920` del #7), no la clase: `_ServicioDeArranque`
+    los que la sobreescriben son los tres TESTS (`run_tests.py:15766` y `:15793`
+    del #4, `:15886` del #6 y `:15932` del #7), no la clase: `_ServicioDeArranque`
     sobreescribe OTRAS dos cosas (`_resolver_app` y `_lanzar`, que es lo que
     dice su docstring) y esta seccion. Este test NO la sobreescribe --pide los
     nombres a la DB de verdad, cargada por `_load_local_db`-- y ademas usa el
@@ -28244,7 +28250,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
 
     **POR QUE ESTE GUARD EXISTE Y POR QUE NO SE PONE EN ROJO.** Cuatro sitios
     citan esas dos lineas POR NUMERO: `validate_docs.py:1429`,
-    `validate_docs.py:1924`, `run_tests.py:23102` y
+    `validate_docs.py:1924`, `run_tests.py:23133` y
     `docs/ai/sandbox-rules.md:1133`, y las cuatro dicen que son las dos filas del
     `0` de la tabla de codigos de salida. MEDIDO: `_declara_el_codigo_sobrecargado`
     (`validate_docs.py:1935`) compila el patron con `re.MULTILINE` sobre el
@@ -28259,7 +28265,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     por encima de la 55 desplaza la tabla y este guard muere.
 
     Ademas se comprueba que la seccion "Por que el validador NO corre en CI"
-    sigue por encima de la 61 (`run_tests.py:23125`), que es el suelo que hace
+    sigue por encima de la 61 (`run_tests.py:23131`), que es el suelo que hace
     falta para que esas citas no se pudran.
     """
     print("Probando que las citas por linea de sandbox-rules.md son ciertas...")
@@ -28287,7 +28293,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     # numero de una y olvidar las otras tres deja tres mentiras nuevas.
     cita = "sandbox-rules.md:55-56"
     for relativo, numeros in (("validate_docs.py", ("1429", "1924")),
-                              ("run_tests.py", ("23127",)),
+                              ("run_tests.py", ("23133",)),
                               ("docs/ai/sandbox-rules.md", ("1133",))):
         texto = _texto_de(os.path.join(raiz, *relativo.split("/"))).splitlines()
         for numero in numeros:
@@ -29101,20 +29107,31 @@ def test_ningun_guard_enumera_el_arbol_de_src_que_ya_esta_en_el_sistema_de_fiche
 # Lo que se declara aqui es la DERIVACION --una sola fuente de verdad-- y las
 # tres sondas que la vigilan.
 #
-# EL RECUENTO DE TESTS NO CAMBIA (231), y eso es una DECISION MEDIDA, no un
+# EL RECUENTO DE TESTS SUBE (231 -> 234), y eso es una DECISION MEDIDA, no un
 # descuido: el numero de tests esta DECLARADO en cuatro ficheros vivos
 # (`STATUS.md`, `AGENTS.md`, `README.md` y la tabla de `docs/ai/testing-guide.md`),
 # y `validate_docs.py` lo DERIVA de este fichero con `ast` y exige que los
-# cuatro digan lo mismo que el codigo. Anadir un `def test_*` de modulo sin
-# tocar esos cuatro ficheros deja el validador en rojo, y esos cuatro no son de
-# este ciclo. Por eso las tres sondas de este ciclo NO son `test_*` de modulo:
-# se ejecutan desde `__main__` como paso propio, con su veredicto impreso.
+# cuatro digan lo mismo que el codigo. Las tres sondas de este ciclo SON
+# `test_*` de modulo y se invocan desde `__main__` como cualquier otro test.
+# MEDIDO por el mutation-auditor del ciclo 68: mientras fueron `_`-prefijadas,
+# `validate_docs.py` NO las contaba (solo cuenta `test_*`), de modo que BORRAR
+# LAS TRES no bajaba ningun recuento y no rompia nada (`231 = 231`, validador
+# `156 OK / 0 FAIL`, suite completa en verde). Ahora el validador las cuenta: si
+# desaparecen, `defined != invoked` y el validador da FAIL. El reparto
+# DERIVADO con `ast` pasa a 158 backend + 76 headless (las tres sondas van
+# ANTES del marcador headless: no abren ventana).
 # ============================================================================
 
 _NOMBRE_DERIVADOR = "_vistas_del_disco"
 _NOMBRE_DECLARACION = "VISTAS_DECLARADAS"
-_GUARD_DE_WORKERS = "test_los_workers_de_pack_solo_publican_por_after"
-_GUARD_HERMANO = "test_ninguna_vista_programa_after_a_mano"
+
+# La cifra que el guard de workers COMPARA (tripwire deliberado, NO derivada:
+# si se movio una publicacion, hay que decidirlo aqui y no dejar que el guard
+# se adapte solo). El MENSAJE del tripwire sale de esta MISMA cifra: un
+# mensaje con su propia cifra se contradice en cuanto una de las dos se mueve
+# (TASK-082, R6). El mutante Q5 (la cifra desfasada) se mide contra esta
+# constante, no contra un literal en el `assert`.
+_CIFRA_DE_PUBLICACIONES_VIGILADAS = 10
 
 # La DECLARACION del conjunto de vistas: lo que TIENE que haber en el
 # directorio de vistas. NO es la fuente de lo que se abre: se COMPARA con el
@@ -29234,7 +29251,7 @@ def _expresion_deriva_el_conjunto(expresion, vinculos, profundidad=8):
     return False
 
 
-def _fuentes_del_conjunto_en_un_guard(guard):
+def _fuentes_del_conjunto_en_un_ambito(ambito):
     """`[(linea, "literal"|"derivado")]` de cada `for` que recorre un conjunto.
 
     "literal" es una enumeracion escrita a mano (directamente o por un nombre);
@@ -29242,9 +29259,9 @@ def _fuentes_del_conjunto_en_un_guard(guard):
     las dos cosas no aparece: este detector no juzga los bucles que no son del
     conjunto de vistas.
     """
-    vinculos = _valores_asignados(guard)
+    vinculos = _valores_asignados(ambito)
     fuentes = []
-    for nodo in ast.walk(guard):
+    for nodo in ast.walk(ambito):
         if not isinstance(nodo, ast.For):
             continue
         iterable = nodo.iter
@@ -29256,6 +29273,139 @@ def _fuentes_del_conjunto_en_un_guard(guard):
         elif _expresion_deriva_el_conjunto(iterable, vinculos):
             fuentes.append((nodo.lineno, "derivado"))
     return fuentes
+
+
+def _fors_del_modulo(arbol):
+    """`[(ambito, nodo_for)]`: cada `for` del modulo, con el ambito que lo contiene.
+
+    El ambito es el `FunctionDef` (o `ClassDef`) que lo contiene, o `None` si el
+    `for` esta en ambito de MODULO --y entonces no hay docstring donde
+    justificarlo, luego no hay tolerancia posible.
+
+    El ambito es lo que permite que la regla sea DE MODULO: sin el, un detector
+    que solo mira dos funciones puede cumplir en verde (TASK-082, R2: Q2 y Q2b
+    sobrevivieron a la suite completa por eso).
+    """
+    salida = []
+
+    def _bajar(lista, ambito):
+        for nodo in lista:
+            if isinstance(nodo, ast.For):
+                salida.append((ambito, nodo))
+            if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            for hijo in ast.iter_child_nodes(nodo):
+                if isinstance(hijo, ast.stmt):
+                    _bajar([hijo], ambito)
+
+    _bajar(arbol.body, None)
+    for ambito in ast.walk(arbol):
+        if isinstance(ambito, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            _bajar(ambito.body, ambito)
+    return salida
+
+
+def _nombres_de_un_contenedor(nodo):
+    """`{nombre, ...}` de los literales de un contenedor, o `set()`."""
+    nombres = set()
+    for elemento in getattr(nodo, "elts", []):
+        if isinstance(elemento, ast.Constant) and isinstance(elemento.value, str):
+            nombres.add(elemento.value)
+    return nombres
+
+
+def _es_nombre_de_vista(nombre, nombres_de_vista):
+    """True si `nombre` es un NOMBRE DE VISTA (no una ruta, no otra cosa).
+
+    Un nombre de vista es el NOMBRE de un fichero de vista: `"dashboard_view.py"`.
+    Una ruta (`"src/woptimizer/ui/views/dashboard_view.py"`) NO lo es: el guard
+    abre por nombre, no por ruta, y las rutas ya tienen su propio guard (AC-5
+    de TASK-081).
+    """
+    if "/" in nombre or "\\" in nombre:
+        return False
+    return nombre in nombres_de_vista
+
+
+def _expresion_usa_nombre(expresion, nombre):
+    """True si la expresion MENCIONA ese nombre."""
+    return any(isinstance(nodo, ast.Name) and nodo.id == nombre
+               for nodo in ast.walk(expresion))
+
+
+def _funcion_de_modulo_a_la_que_llega(expresion, vinculos, funciones,
+                                      profundidad=8):
+    """El NOMBRE de la funcion de MODULO a la que llega la expresion, o `None`.
+
+    Es la derivacion counterpart de `_expresion_deriva_el_conjunto`: en vez de
+    decir SI llega al helper conocido, DICE a cual llega. Asi el detector no
+    necesita NOMBRAR la funcion que deriva el conjunto: la saca del `ast`.
+    """
+    if profundidad < 0:
+        return None
+    if isinstance(expresion, ast.Call):
+        if (isinstance(expresion.func, ast.Name)
+                and expresion.func.id in funciones):
+            return expresion.func.id
+        for argumento in (list(expresion.args)
+                          + [kw.value for kw in expression.keywords]):
+            encontrado = _funcion_de_modulo_a_la_que_llega(
+                argumento, vinculos, funciones, profundidad - 1)
+            if encontrado:
+                return encontrado
+        return None
+    if isinstance(expresion, ast.Name):
+        for valor in vinculos.get(expresion.id, []):
+            encontrado = _funcion_de_modulo_a_la_que_llega(
+                valor, vinculos, funciones, profundidad - 1)
+            if encontrado:
+                return encontrado
+        return None
+    if isinstance(expresion, (ast.BinOp, ast.Set)):
+        for parte in ast.iter_child_nodes(expresion):
+            encontrado = _funcion_de_modulo_a_la_que_llega(
+                parte, vinculos, funciones, profundidad - 1)
+            if encontrado:
+                return encontrado
+    return None
+
+
+def _declaracion_y_derivador(arbol):
+    """`(declaracion, derivador)`: los dos DERIVADOS, ninguno nombrado.
+
+    La DECLARACION es la enumeracion de nombres de vista COMPARADA con el
+    derivado; el DERIVADOR es la funcion de MODULO a la que llega el otro lado
+    de esa comparacion. Los dos se SACAN del `ast`: el detector no nombra ni el
+    conjunto de vistas ni la funcion que lo deriva (TASK-082, R2: lo que no se
+    lista, no se puede vaciar).
+    """
+    funciones = {nodo.name for nodo in arbol.body
+                 if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    vinculos = _valores_asignados(arbol)
+    candidatos = {}
+    for nodo in arbol.body:
+        if not isinstance(nodo, ast.Assign):
+            continue
+        for objetivo in nodo.targets:
+            if (isinstance(objetivo, ast.Name)
+                    and _es_contenedor_de_ficheros(nodo.value)):
+                candidatos[objetivo.id] = nodo.value
+    for nodo in ast.walk(arbol):
+        if not isinstance(nodo, ast.Compare):
+            continue
+        lados = [nodo.left] + list(nodo.comparators)
+        for izquierda in lados:
+            for derecha in lados:
+                if izquierda is derecha:
+                    continue
+                for nombre, valor in candidatos.items():
+                    if not _expresion_usa_nombre(izquierda, nombre):
+                        continue
+                    derivador = _funcion_de_modulo_a_la_que_llega(
+                        derecha, vinculos, funciones)
+                    if derivador:
+                        return (valor, derivador)
+    return (None, None)
 
 
 def _delitos_del_helper_anidado(arbol):
@@ -29285,87 +29435,192 @@ def _copias_del_conjunto_de_vistas(arbol, declaracion):
     """`[(linea, motivo)]`: una SEGUNDA copia del conjunto de vistas, a mano."""
     delitos = []
     if declaracion is None:
-        return [(0, f"no existe la declaracion `{_NOMBRE_DECLARACION}`")]
-    nombres = {e.value for e in getattr(declaracion, "elts", [])
-               if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+        return delitos
+    nombres = _nombres_de_un_contenedor(declaracion)
     for nodo in ast.walk(arbol):
         if not isinstance(nodo, (ast.Tuple, ast.List, ast.Set)):
             continue
         if nodo is declaracion:
             continue
-        otros = {e.value for e in nodo.elts
-                 if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+        otros = _nombres_de_un_contenedor(nodo)
         if otros and otros == nombres:
             delitos.append((nodo.lineno, "una SEGUNDA copia del conjunto de "
                                           "vistas escrita a mano"))
     return delitos
 
 
-def _declaracion_del_conjunto(arbol):
-    """El nodo AST de la DECLARACION del conjunto de vistas, o `None`."""
-    for nodo in arbol.body:
+def _nombres_enlazados_a_enumeraciones_de_vistas(arbol, nombres_de_vista):
+    """`{nombre, ...}`: los identificadores enlazados a una enumeracion de VISTAS.
+
+    Es lo que permite decir "el helper USA una enumeracion escrita a mano" sin
+    escribir a mano el nombre de esa enumeracion: se busca el ENLACE, no el
+    nombre.
+    """
+    enlazados = set()
+    for nodo in ast.walk(arbol):
         if not isinstance(nodo, ast.Assign):
             continue
         for objetivo in nodo.targets:
-            if (isinstance(objetivo, ast.Name)
-                    and objetivo.id == _NOMBRE_DECLARACION):
-                return nodo.value
-    return None
+            if not isinstance(objetivo, ast.Name):
+                continue
+            if not _es_contenedor_de_ficheros(nodo.value):
+                continue
+            if any(_es_nombre_de_vista(nombre, nombres_de_vista)
+                   for nombre in _nombres_de_un_contenedor(nodo.value)):
+                enlazados.add(objetivo.id)
+    return enlazados
 
 
-def _delitos_de_forma_del_conjunto_de_vistas(arbol):
-    """`[(linea, motivo)]`: donde el conjunto de vistas NO esta derivado.
+def _delitos_del_helper_que_no_deriva(arbol, derivador, nombres_de_vista):
+    """`[(linea, motivo)]`: el helper que deriva NO puede devolver la DECLARACION.
 
-    Las tres reglas de AC-1, en una sola lista:
-
-      1. el helper que deriva el conjunto esta en AMBITO DE MODULO;
-      2. cada guard RECORRE el derivado, no una enumeracion literal;
-      3. la DECLARACION es UNICA: no hay una segunda copia del conjunto.
-
-    Cada hallazgo lleva su LINEA, que es lo que lo hace deuda visible en vez
-    de agujero invisible. SIN lista muda de permitidos: la unica tolerancia es
-    la que esta escrita en el codigo, y no hay ninguna.
+    Con M-V5 (`return set(VISTAS_DECLARADAS)`) la comparacion se vuelve
+    tautologica: el rojo que nombra la vista nueva desaparece, la vista nueva
+    deja de auditarse, y AC-1 y AC-2 lo pasan. La FORMA se ve aqui: el cuerpo
+    del helper no puede REFERENCIAR ninguna enumeracion de nombres de vista.
+    Su `return` tiene que salir del DISCO, no de la declaracion.
     """
-    delitos = list(_delitos_del_helper_anidado(arbol))
-    delitos.extend(_copias_del_conjunto_de_vistas(arbol,
-                                                  _declaracion_del_conjunto(arbol)))
+    if derivador is None:
+        return [(0, "no se puede derivar que funcion deriva el conjunto de "
+                    "vistas: la DECLARACION tiene que COMPARARSE con el "
+                    "derivado")]
+    helper = None
+    for nodo in arbol.body:
+        if (isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and nodo.name == derivador):
+            helper = nodo
+            break
+    if helper is None:
+        return [(0, f"el helper `{derivador}` no esta en ambito de modulo")]
+    enumeraciones = _nombres_enlazados_a_enumeraciones_de_vistas(
+        arbol, nombres_de_vista)
+    for nodo in ast.walk(helper):
+        if isinstance(nodo, ast.Name) and nodo.id in enumeraciones:
+            return [(helper.lineno,
+                     f"`{derivador}` NO deriva del disco: usa `{nodo.id}`, que "
+                     "es una enumeracion escrita a mano. Su `return` tiene que "
+                     "salir del disco, no de la DECLARACION")]
+    return []
 
-    for nombre_guard in (_GUARD_DE_WORKERS, _GUARD_HERMANO):
-        guard = None
-        for nodo in arbol.body:
-            if isinstance(nodo, ast.FunctionDef) and nodo.name == nombre_guard:
-                guard = nodo
-                break
-        if guard is None:
-            delitos.append((0, f"no existe el guard `{nombre_guard}`"))
+
+def _delitos_de_fuente_escrita_a_mano(arbol, declaracion, nombres_de_vista):
+    """`[(linea, motivo)]`: una enumeracion escrita a mano que es la FUENTE.
+
+    La regla es DE MODULO: se aplica a TODAS las funciones del fichero, no a
+    una lista de guards. Un `for` que recorre una enumeracion de nombres de
+    VISTA escrita a mano es una FUENTE prohibida: lo que se abre tiene que ser
+    el DERIVADO.
+
+    La tolerancia NO es una lista muda de permitidos: es la JUSTIFICACION
+    ESCRITA en el docstring de la funcion infractora --(a) por que existe y
+    (b) que la retira--, el mismo mecanismo que el guard de AC-5 de TASK-081.
+    """
+    delitos = []
+    for ambito, nodo_for in _fors_del_modulo(arbol):
+        iterable = nodo_for.iter
+        vinculos = _valores_asignados(ambito if ambito is not None else arbol)
+        contenedor = None
+        if _es_contenedor_de_ficheros(iterable):
+            contenedor = iterable
+        elif isinstance(iterable, ast.Name):
+            for valor in vinculos.get(iterable.id, []):
+                if _es_contenedor_de_ficheros(valor):
+                    contenedor = valor
+                    break
+        if contenedor is None:
             continue
-        fuentes = _fuentes_del_conjunto_en_un_guard(guard)
-        for linea, origen in fuentes:
-            if origen == "literal":
-                delitos.append((linea, f"`{nombre_guard}` recorre una "
-                                        "ENUMERACION literal del conjunto de "
-                                        "vistas"))
-        if not any(origen == "derivado" for _linea, origen in fuentes):
-            delitos.append((0, f"`{nombre_guard}` no recorre el conjunto "
-                              "DERIVADO: la derivacion esta escrita y muerta"))
+        if contenedor is declaracion:
+            continue
+        nombres = _nombres_de_un_contenedor(contenedor)
+        if not any(_es_nombre_de_vista(nombre, nombres_de_vista)
+                   for nombre in nombres):
+            continue
+        if ambito is None:
+            delitos.append((nodo_for.lineno,
+                            "un `for` en ambito de modulo recorre una "
+                            "ENUMERACION literal del conjunto de vistas"))
+            continue
+        if _justificacion_de_la_enumeracion(_docstring_de(ambito)) != (None, None):
+            continue
+        delitos.append((nodo_for.lineno,
+                        f"`{ambito.name}` recorre una ENUMERACION literal del "
+                        f"conjunto de vistas (escrita a mano: {sorted(nombres)}). "
+                        "Lo que se abre tiene que ser el DERIVADO"))
     return delitos
 
 
-def _guard_de_forma_del_conjunto_de_vistas():
+def _redacto_de_delitos(delitos, fichero="run_tests.py"):
+    """`[str]`: los hallazgos con FICHERO Y LINEA."""
+    return [f"{fichero}:{linea}: {motivo}" for linea, motivo in delitos]
+
+
+def _delitos_de_forma_del_conjunto_de_vistas(arbol, nombres_de_vista):
+    """`[(linea, motivo)]`: donde el conjunto de vistas NO esta derivado.
+
+    Las reglas de AC-1, y son DE MODULO: el detector recorre TODO este
+    fichero con `ast` y aplica la regla a TODAS las funciones. NO hay ninguna
+    lista de guards: con lista, el detector se puede vaciar mirando dos
+    guards o ninguno, y MEDIDO lo hacia (TASK-082, R2: Q2 y Q2b sobrevivieron
+    a la suite completa).
+
+      1. el helper que deriva el conjunto esta en AMBITO DE MODULO;
+      2. la DECLARACION se DERIVA (es la enumeracion COMPARADA con el
+         derivado) y es UNICA: no hay una segunda copia del conjunto;
+      3. el helper que deriva NO devuelve la DECLARACION: su `return` sale
+         del disco;
+      4. NINGUNA funcion recorre una enumeracion escrita a mano del conjunto
+         de vistas: lo que se abre es el DERIVADO.
+
+    Cada hallazgo lleva su LINEA, que es lo que lo hace deuda visible en vez
+    de agujero invisible.
+    """
+    delitos = list(_delitos_del_helper_anidado(arbol))
+    declaracion, derivador = _declaracion_y_derivador(arbol)
+    if declaracion is None:
+        delitos.append((0, "no se puede derivar la DECLARACION del conjunto de "
+                          "vistas: tiene que ser la enumeracion COMPARADA con "
+                          "el derivado"))
+    else:
+        delitos.extend(_copias_del_conjunto_de_vistas(arbol, declaracion))
+    delitos.extend(_delitos_del_helper_que_no_deriva(arbol, derivador,
+                                                     nombres_de_vista))
+    delitos.extend(_delitos_de_fuente_escrita_a_mano(arbol, declaracion,
+                                                     nombres_de_vista))
+    return delitos
+
+
+def test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad():
     """TASK-082 (AC-1): el conjunto de vistas tiene UNA sola fuente de verdad.
 
-    Con `ast`, sobre este mismo fichero:
+    Con `ast`, sobre este mismo fichero, y como REGLA DE MODULO (no como una
+    lista de guards): el detector recorre TODAS las funciones y no tiene
+    ningun conjunto de sujetos escrito a mano.
 
       1. el helper que deriva el conjunto esta en AMBITO DE MODULO (anidado no
          lo puede reutilizar el otro guard, y la copia a mano vuelve);
-      2. NINGUN guard recorre una enumeracion literal del conjunto: lo que
-         recorre es el DERIVADO;
-      3. la DECLARACION es unica: no hay una segunda copia del conjunto.
+      2. la DECLARACION se DERIVA: es la unica enumeracion de nombres de vista
+         COMPARADA con el derivado, y la funcion que deriva se deriva del
+         mismo `ast` (ninguno de los dos se nombra);
+      3. la DECLARACION es unica: no hay una segunda copia del conjunto;
+      4. el helper que deriva NO puede devolver la DECLARACION: su `return`
+         sale del DISCO y no de una enumeracion escrita a mano (M-V5);
+      5. NINGUNA funcion recorre una enumeracion escrita a mano del conjunto de
+         vistas: lo que se abre es el DERIVADO. La tolerancia es la
+         JUSTIFICACION ESCRITA en el docstring del infractor --(a) por que
+         existe y (b) que la retira--, no una lista de permitidos.
+
+    LO QUE ESTE GUARD **NO** COMPRUEBA, y por que lo dice: que el helper lea
+    el disco de verdad. Eso lo mide AC-3 (el derivado es el `os.listdir` de un
+    directorio). Aqui se comprueba la FORMA: que el `return` no venga de una
+    enumeracion escrita a mano. Antes esta sonda decia "recorre el DERIVADO"
+    y no era cierto: M-V5 demostraba que se podia recorrer la DECLARACION.
 
     Y las CONTRAPRUEBAS del detector, que son lo que impide que un detector que
-    no mira nada cumpla las tres reglas en verde: un helper anidado se
-    denuncia, una enumeracion literal se denuncia, el derivado se calla y una
-    segunda copia se denuncia.
+    no mira nada cumpla las reglas en verde: un helper anidado se denuncia, el
+    derivado se calla, una segunda copia se denuncia, un helper que devuelve la
+    declaracion se denuncia, y --la que mata a Q2 y a Q2b-- una enumeracion
+    escrita a mano en una funcion que NO esta en ninguna lista se denuncia CON
+    SU FICHERO Y SU LINEA.
 
     Cada hallazgo se nombra con FICHERO Y LINEA.
     """
@@ -29374,12 +29629,19 @@ def _guard_de_forma_del_conjunto_de_vistas():
     with open(ruta, encoding="utf-8") as fh:
         arbol = ast.parse(fh.read(), ruta)
 
-    delitos = _delitos_de_forma_del_conjunto_de_vistas(arbol)
+    # Los NOMBRES de vista se DERIVAN: lo que hay en el disco, mas lo que declara
+    # el propio modulo (la DECLARACION se deriva tambien, por comparacion). No
+    # hay ninguna lista escrita a mano.
+    nombres_de_vista = set(_vistas_del_disco())
+    declaracion_derivada, _derivador = _declaracion_y_derivador(arbol)
+    if declaracion_derivada is not None:
+        nombres_de_vista.update(_nombres_de_un_contenedor(declaracion_derivada))
+
+    delitos = _delitos_de_forma_del_conjunto_de_vistas(arbol, nombres_de_vista)
     assert not delitos, (
         "el conjunto de vistas que vigilan los guards NO esta derivado del "
         "disco:\n"
-        + "\n".join(f"  - run_tests.py:{linea}: {motivo}"
-                    for linea, motivo in delitos)
+        + "\n".join("  - " + linea for linea in _redacto_de_delitos(delitos))
         + "\nLa fuente tiene que ser el disco (`_vistas_del_disco()`, en ambito "
           "de modulo) y la DECLARACION se compara con el derivado (TASK-082, "
           "AC-1).")
@@ -29411,10 +29673,10 @@ def _guard_de_forma_del_conjunto_de_vistas():
         "        pass\n"
     )
     origenes = [origen for _linea, origen in
-                _fuentes_del_conjunto_en_un_guard(literal.body[0])]
+                _fuentes_del_conjunto_en_un_ambito(literal.body[0])]
     assert "literal" in origenes, (
         "el detector tiene que DENUNCIAR un `for` sobre una enumeracion "
-        "literal: es el mutante M-V1, y sin esta celda la regla (2) de AC-1 "
+        "literal: es el mutante M-V1, y sin esta celda la regla (5) de AC-1 "
         "puede no mirar nada y cumplir en verde")
     assert "derivado" not in origenes, (
         "una enumeracion literal no puede contar como derivada: son cosas "
@@ -29428,7 +29690,7 @@ def _guard_de_forma_del_conjunto_de_vistas():
         "        pass\n"
     )
     origenes = [origen for _linea, origen in
-                _fuentes_del_conjunto_en_un_guard(derivado.body[0])]
+                _fuentes_del_conjunto_en_un_ambito(derivado.body[0])]
     assert "derivado" in origenes, (
         "la forma buena (derivar y recorrer en un `for`) tiene que contar como "
         "derivada: sin esta celda el detector no distingue el fix de la copia "
@@ -29446,8 +29708,86 @@ def _guard_de_forma_del_conjunto_de_vistas():
         "una SEGUNDA copia del conjunto de vistas, escrita a mano, tiene que "
         "dar hallazgo: es el otro camino del mutante M-V4")
 
+    # -- (R3) EL HELPER QUE DEVUELVE LA DECLARACION --------------------------
+    nombres = {"dashboard_view.py", "pack_manager_view.py"}
+    helper_falso = ast.parse(
+        "def _vistas_del_disco():\n"
+        "    return set(VISTAS_DECLARADAS)\n"
+        "\n"
+        "VISTAS_DECLARADAS = ('dashboard_view.py', 'pack_manager_view.py')\n"
+        "\n"
+        "def guarda():\n"
+        "    en_el_disco = _vistas_del_disco()\n"
+        "    assert set(VISTAS_DECLARADAS) == en_el_disco\n"
+    )
+    falsos = _delitos_del_helper_que_no_deriva(
+        helper_falso, _declaracion_y_derivador(helper_falso)[1], nombres)
+    assert falsos, (
+        "un helper que devuelve la DECLARACION en vez de leer el disco tiene "
+        "que dar hallazgo: es el mutante M-V5, con el cual la comparacion es "
+        "tautologica, el rojo que nombra la vista nueva desaparece y la vista "
+        "nueva deja de auditarse")
+    assert "VISTAS_DECLARADAS" in falsos[0][1], (
+        "el hallazgo tiene que NOMBRAR la enumeracion que el helper usa: "
+        f"{falsos[0][1]!r}")
+
+    helper_sano = ast.parse(
+        "import glob\n"
+        "\n"
+        "def _vistas_del_disco():\n"
+        "    return {p for p in glob.glob('vistas/*.py')}\n"
+        "\n"
+        "VISTAS_DECLARADAS = ('dashboard_view.py', 'pack_manager_view.py')\n"
+        "\n"
+        "def guarda():\n"
+        "    en_el_disco = _vistas_del_disco()\n"
+        "    assert set(VISTAS_DECLARADAS) == en_el_disco\n"
+    )
+    assert _delitos_del_helper_que_no_deriva(
+        helper_sano, _declaracion_y_derivador(helper_sano)[1], nombres) == [], (
+        "un helper que deriva del disco tiene que CALLARSE: si no, la regla (4) "
+        "prohibiria tambien la forma correcta")
+
+    # -- (R2) LA CONTRAPRUEBA QUE MATA A Q2 Y A Q2b ---------------------------
+    # Una enumeracion escrita a mano en una funcion que NO esta en ninguna
+    # lista. Si el detector vuelve a mirar un conjunto de guards escrito a mano
+    # (Q2) o deja de mirar ninguno (Q2b), la enumeracion se cuela en silencio
+    # y ESTA CELDA es la que muere. MEDIDO en el ciclo 68: con la lista de
+    # guards, Q2 y Q2b sobrevivieron a la suite completa.
+    plantado = ast.parse(
+        "import glob\n"
+        "\n"
+        "def _vistas_del_disco():\n"
+        "    return {p.rsplit('/', 1)[1] for p in glob.glob('vistas/*.py')}\n"
+        "\n"
+        "VISTAS_DECLARADAS = ('dashboard_view.py', 'pack_manager_view.py')\n"
+        "\n"
+        "def guarda():\n"
+        "    en_el_disco = _vistas_del_disco()\n"
+        "    assert set(VISTAS_DECLARADAS) == en_el_disco\n"
+        "\n"
+        "def guarda_cualquiera():\n"
+        "    VISTAS = ('dashboard_view.py', 'pack_manager_view.py')\n"
+        "    for n in VISTAS:\n"
+        "        pass\n"
+    )
+    linea_del_for = next(nodo.lineno for nodo in ast.walk(plantado)
+                         if isinstance(nodo, ast.For))
+    rojo = "\n".join(_redacto_de_delitos(
+        _delitos_de_forma_del_conjunto_de_vistas(plantado, nombres)))
+    assert f"run_tests.py:{linea_del_for}" in rojo, (
+        "el detector tiene que DENUNCIAR una enumeracion escrita a mano en una "
+        "funcion que NO esta en ninguna lista, y nombrarla con FICHERO Y LINEA: "
+        "si el detector vuelve a mirar un conjunto de guards escrito a mano "
+        "(Q2) o deja de mirar ninguno (Q2b), la enumeracion se cuela en "
+        f"silencio y este AC no mide nada. rojo={rojo!r}")
+    assert "guarda_cualquiera" in rojo, (
+        "el hallazgo tiene que NOMBRAR la funcion infractora, no solo su linea: "
+        f"rojo={rojo!r}")
+
     print("guard de forma del conjunto de vistas OK (helper de ambito de modulo, "
-          "los dos guards recorren el derivado, una sola declaracion; detector "
+          "la DECLARACION se deriva y es unica, el derivado sale del disco, "
+          "ninguna funcion recorre una enumeracion escrita a mano; detector "
           "probado en las dos direcciones) (TASK-082, AC-1).")
 
 
@@ -29511,14 +29851,29 @@ def _parche_de_la_camara_del_guard_de_workers(fuente):
     if cuanto != 1:
         avisos.append(f"la declaracion `{_NOMBRE_DECLARACION}` no se ha encontrado")
 
-    tripwire = re.search(r"assert contados_en_codigo == (\d+)", parcheada)
+    tripwire = re.search(r"assert contados_en_codigo == ([A-Za-z_][A-Za-z_0-9]*|\d+)",
+                         parcheada)
     if tripwire is None:
         avisos.append("el tripwire `contados_en_codigo == N` no se ha encontrado")
     else:
         # La vista nueva publica UNA vez, y el tripwire cuenta publicaciones.
-        nuevo = int(tripwire.group(1)) + 1
-        parcheada = parcheada.replace(
-            tripwire.group(0), f"assert contados_en_codigo == {nuevo}", 1)
+        # La cifra puede ser un LITERAL (la forma del mutante Q5) o la
+        # CONSTANTE que el mensaje comparte (R6): se parchea la que haya, y el
+        # parche no puede dejar de casar sin avisar.
+        figura = tripwire.group(1)
+        if figura.isdigit():
+            nuevo = int(figura) + 1
+            parcheada = parcheada.replace(
+                tripwire.group(0), f"assert contados_en_codigo == {nuevo}", 1)
+        else:
+            constante = re.search(r"^" + re.escape(figura) + r" = (\d+)$", parcheada,
+                                  re.MULTILINE)
+            if constante is None:
+                avisos.append(f"la cifra del tripwire `{figura}` no se ha encontrado")
+            else:
+                nuevo = int(constante.group(1)) + 1
+                parcheada = parcheada.replace(constante.group(0),
+                                              f"{figura} = {nuevo}", 1)
     return parcheada, avisos
 
 
@@ -29567,7 +29922,7 @@ def _correr_el_guard_de_workers_en_la_camara(destino, ruta_run_tests):
     )
 
 
-def _producto_el_guard_de_workers_audita_una_vista_nueva():
+def test_una_vista_nueva_se_audita_aunque_nadie_la_apunte():
     """TASK-082 (AC-2): una vista NUEVA se audita aunque nadie la apunte.
 
     Este es el AC que no puede sobrevivir sin el arreglo. MEDIDO antes del
@@ -29586,6 +29941,12 @@ def _producto_el_guard_de_workers_audita_una_vista_nueva():
     Y el CONTROL POSITIVO, que es lo que impide que un guard que siempre da
     ROJO cumpla el AC: la MISMA vista, sin tocar la puerta, tiene que dar
     VERDE.
+
+    Y el SEGUNDO ESCENARIO, que es el que mata al mutante M-V5 por PRODUCTO y
+    no por efecto colateral: la vista esta en el disco y NO esta declarada. El
+    guard tiene que dar ROJO NOMBRANDO la vista nueva. Si la derivacion
+    devuelve la DECLARACION, la comparacion es tautologica, no hay rojo, y la
+    vista nueva deja de auditarse: eso es exactamente M-V5.
     """
     import shutil
 
@@ -29631,12 +29992,43 @@ def _producto_el_guard_de_workers_audita_una_vista_nueva():
     finally:
         shutil.rmtree(destino, ignore_errors=True)
 
+    # (3) La vista NUEVA esta en el disco y NO esta DECLARADA. El rojo tiene que
+    #     NOMBRAR la vista nueva. Con una derivacion falsa (el helper devuelve
+    #     la DECLARACION) la comparacion es tautologica, NO HAY ROJO, y la vista
+    #     nueva deja de auditarse: es el mutante M-V5, que AC-1 no ve y este
+    #     escenario si.
+    destino2, ruta_run_tests2, avisos2 = _camara_del_guard_de_workers(
+        prefijo="wopt_c082_sin_declarar_", declarar=False)
+    try:
+        assert not avisos2, (
+            f"la camara sin parche tiene que estar sana y avisa: {avisos2}")
+        with open(os.path.join(destino2, "src", "woptimizer", "ui", "views",
+                               _VISTA_NUEVA), "w", encoding="utf-8") as fh:
+            fh.write(_VISTA_BUENA)
+        r3 = _correr_el_guard_de_workers_en_la_camara(destino2, ruta_run_tests2)
+        salida3 = (r3.stdout or "") + (r3.stderr or "")
+        assert r3.returncode != 0, (
+            "una vista NUEVA en el disco y SIN declarar tiene que dar ROJO que "
+            f"la nombre y dio {r3.returncode}: si la derivacion devuelve la "
+            "DECLARACION la comparacion es tautologica, no hay rojo, y la "
+            "vista nueva deja de auditarse sin que nadie lo note (M-V5). "
+            f"salida={salida3!r}")
+        assert _VISTA_NUEVA in salida3, (
+            "el rojo tiene que NOMBRAR la vista nueva (y no un fallo cualquiera "
+            f"del subproceso): salida={salida3!r}")
+        assert "AssertionError" in salida3, (
+            "el rojo tiene que ser una ASERCION (la comparacion entre el "
+            f"derivado y la declaracion) y no una excepcion: salida={salida3!r}")
+    finally:
+        shutil.rmtree(destino2, ignore_errors=True)
+
     print(f"producto del guard de workers OK (vista nueva {_VISTA_NUEVA} con "
-          "infraccion -> ROJO que la nombra; la misma sin infraccion -> VERDE) "
+          "infraccion -> ROJO que la nombra; la misma sin infraccion -> VERDE; "
+          "la misma sin declarar -> ROJO que nombra la vista nueva) "
           "(TASK-082, AC-2).")
 
 
-def _contraprueba_el_derivado_de_vistas_es_el_disco():
+def test_el_derivado_de_vistas_es_el_disco_y_abre_algo():
     """TASK-082 (AC-3): el derivado ES el disco, y abre algo.
 
     Tres cosas, y las tres importan:
@@ -30002,18 +30394,20 @@ if __name__ == "__main__":
     test_los_guards_de_flags_no_necesitan_yaml_ni_ejecutan_nada()          # AC-6
     test_la_linea_base_de_flags_se_deriva_del_fichero_real()                # AC-7
     # TASK-082: el CONJUNTO de vistas del guard de workers se DERIVA del disco.
-    # Suite: 231 -> 231 (el RECUENTO NO CAMBIA, y es a proposito: el numero de
-    # tests esta declarado en cuatro ficheros vivos --`STATUS.md`, `AGENTS.md`,
-    # `README.md` y la tabla de `docs/ai/testing-guide.md`-- y `validate_docs.py`
-    # lo deriva con `ast` y exige que los cuatro digan lo mismo que este
-    # codigo; anadir un `def test_*` de modulo sin tocarlos deja el validador
-    # en rojo, y esos cuatro ficheros no son de este ciclo). Las tres sondas
-    # van ANTES del marcador headless porque NO abren ventana: dos son `ast`
-    # sobre este mismo fichero y la tercera corre el guard de verdad sobre una
-    # camara de `%TEMP%` (subproceso).
-    _guard_de_forma_del_conjunto_de_vistas()                            # AC-1
-    _producto_el_guard_de_workers_audita_una_vista_nueva()               # AC-2
-    _contraprueba_el_derivado_de_vistas_es_el_disco()                    # AC-3
+    # Suite: 231 -> 234. Las tres sondas de este ciclo SON `test_*` de modulo y
+    # se invocan desde aqui como cualquier otro test, porque `validate_docs.py`
+    # SOLO cuenta las que empiezan por `test_`: mientras fueron `_`-prefijadas,
+    # borrarlas NO bajaba ningun recuento y no rompia nada (MEDIDO por el
+    # mutation-auditor del ciclo 68: `231 = 231`, validador `156 OK / 0 FAIL`,
+    # suite completa en verde). Ahora el validador las cuenta: si desaparecen,
+    # `defined != invoked` y el validador da FAIL. El reparto DERIVADO con
+    # `ast` pasa a 158 backend + 76 headless. Las tres van ANTES del marcador
+    # headless porque NO abren ventana: dos son `ast` sobre este mismo fichero
+    # y la tercera corre el guard de verdad sobre una camara de `%TEMP%`
+    # (subproceso).
+    test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad()      # AC-1
+    test_una_vista_nueva_se_audita_aunque_nadie_la_apunte()            # AC-2
+    test_el_derivado_de_vistas_es_el_disco_y_abre_algo()               # AC-3
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.

@@ -1177,7 +1177,7 @@ def _reparto_de_tests(root):
     #
     # NO se busca el marcador fuera del bucle, y hay un motivo MEDIDO: aparece
     # DOS veces en `run_tests.py`, y la segunda (en `_run_tests_sintetico()`,
-    # `run_tests.py:13553`) esta POR ENCIMA de `cuerpo_main`. Un
+    # `run_tests.py:14013`) esta POR ENCIMA de `cuerpo_main`. Un
     # `visto = MARCADOR_HEADLESS in fuente` daria `antes = 0` y `desde = <el
     # total entero>`, o sea TODA la suite por delante del marcador, y el total
     # seguiria cuadrando: el bug seria invisible para cualquier check que mire
@@ -1432,7 +1432,7 @@ CODIGOS_DE_SALIDA_SOBRECARGADOS = ("WOPT_COMMIT_OK", "WOPT_NOOP")
 # sobrecargado` la compone con el nombre del codigo. Antes vivia el patron
 # DUPLICADO dentro de la funcion y la constante aqui sin un solo uso: MEDIDO con
 # `ast` el 2026-10-02, `_RE_DECLARACION_DE_CODIGO` estaba definida y nunca leida,
-# y el guard de codigo muerto de `run_tests.py:11650` no la cazaba porque su
+# y el guard de codigo muerto de `run_tests.py:28734` no la cazaba porque su
 # alcance es `src/woptimizer/**`, no el tooling. Dos definiciones de una forma en
 # el mismo fichero es como una de las dos se queda desfasada sin que nadie lo vea.
 _RE_DECLARACION_DE_CODIGO = re.compile(r"^[ \t]*0[ \t]+", re.MULTILINE)
