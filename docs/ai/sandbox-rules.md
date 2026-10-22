@@ -90,7 +90,7 @@ Reglas duras (TASK-022, `openspec/changes/2026-09-29-git-tooling-resilience/`):
    con un `GIT_DIR` desechable hacía `add -A` y `commit` **sobre el árbol de trabajo real**: se
    midió un `GIT_DIR` temporal que stageó y commiteó el árbol del duño dentro del repo temporal
    (el historial real quedó intacto, porque `GIT_DIR` era el temporal). La contaminación ocurrió
-   dos veces en este repo (`STATUS.md:23`).
+   dos veces en este repo (el incidente de la sonda con `GIT_DIR` desechable).
 
    *Y ahora el árbol se valida además como DIRECTORIO.* Un `GIT_WORK_TREE` que existe pero no es
    un directorio tiene que salir con `3` y el motivo del **pre-chequeo**

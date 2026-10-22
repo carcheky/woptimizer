@@ -60,7 +60,7 @@ por el codigo.
 
 LA RAMA ES AVISO, NO RECHAZO (proposal.md seccion 3.2). Estar en `main` imprime
 un bloque `AVISO` que nombra la regla de TASK-066 y **se sigue con codigo 0**.
-El motivo es evidencia ya pagada por este repo (`STATUS.md:95(b)`): una puerta
+El motivo es evidencia ya pagada por este repo (`STATUS.md:100(b)`): una puerta
 que solo existe en el wrapper no puede cerrar un `git commit` escrito a mano, y
 un rechazo duro sobre `main` solo guardaria el camino guardado --el wrapper-- y
 **bloquearia el commit legitimo del dueno en la rama de release**, que es el
@@ -284,7 +284,7 @@ def get_env():
     **La hermeticidad del hook es de REPO y de ARBOL, no solo de repo (TASK-061).**
     MEDIDO: con la imposicion incondicional, una sonda con `GIT_DIR` temporal
     stageaba y commiteaba el ARBOL DE TRABAJO REAL dentro del repo temporal, que es
-    exactamente el mecanismo que produjo la contaminacion de `STATUS.md:23`. Honrar
+    exactamente el mecanismo que produjo la contaminacion documentada en `docs/ai/sandbox-rules.md`. Honrar
     `GIT_WORK_TREE` sin mas seria un arma de doble filo (basta un `GIT_DIR` real +
     un arbol ajeno para versionar un arbol extranjero en el historial real), asi que
     la paridad es **el precio** de la decision, no un extra.

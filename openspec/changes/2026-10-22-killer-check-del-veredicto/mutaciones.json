@@ -2,6 +2,16 @@
   "cambio": "openspec/changes/2026-10-22-killer-check-del-veredicto/",
   "ciclo": 70,
   "nota": "El `asa` (el test que DEBE morir) y el `motivo` (el substring del mensaje de la asercion) los DECLARA quien muta. El gate los re-deriva del log commiteado: el log dice quien murio, nunca quien debia.",
+  "reauditoria_cierre": {
+    "quien": "mutation-auditor, 2026-10-22, ronda de cierre del commit 423a96e",
+    "nota": "Esta clave es INFORMATIVA: el gate no la lee (solo lee `id`, `asa`, `motivo` y `sha_arbol_auditado` de cada mutante), luego anadirla NO cambia el estado derivado ni obliga a mas lineas canonicas en el journal.",
+    "evidencia_commiteada": {
+      "M-3.cola": "sha1 3eee8031d44b21465bc788bb251982858fa71eca, 3395 bytes, sin cambios",
+      "M-A1.cola": "sha1 36c4c3d1c5bde74652c331c81a1310b88633b269, 574 bytes, sin cambios"
+    },
+    "remedidos_contra_el_codigo_nuevo": "Los 14 mutantes previos de la ronda anterior (K-1..K-7, K-9a/b/c, K-10a, K-11, K-14, K-15, K-17) siguen MUERTOS; K-10b y K-12 los ACEPTA el gate y son los dos limites que declara (d) y (e). Detalle y motivos en `mutation-report.md` §7.1.",
+    "vias_nuevas_encoladas": "D-B (el CUERPO del check 11 se vacia y la suite sigue verde), D-C (el emisor borra el directorio de evidencia: rojo por FileNotFoundError, no por asercion), D-H (el gate ignora el campo `mutacion` del catalogo: 0 FAIL). NO son mutantes del ciclo: no se anaden al catalogo porque obligarian al journal a declarar lineas que el cierre no tiene. Ver `mutation-report.md` §7.6."
+  },
   "mutaciones": [
     {
       "id": "M-3",

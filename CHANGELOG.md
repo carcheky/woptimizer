@@ -1,3 +1,31 @@
+## CYCLE-070 - 2026-10-22
+
+### 🔴 Corregido — El veredicto de las pruebas ya no se puede afirmar sin dejar rastro
+
+**Estado**: **PASS** en auditoría de mutación (D-A, D-D, D-E, D-F, D-G y los 14 previos, todos muertos por su aserción). Tests: **235** (159 backend + 76 headless, **intactos**). Commits: `ba28261`, `f5bec54`, `423a96e`.
+
+- 🔴 **Qué estaba roto**: el resultado de cada prueba de mutación lo escribía **a mano** el revisor, y **nadie lo vigilaba**. Medido en un laboratorio: **borrar el veredicto** del registro → **0 fallos**; **borrar el informe entero** → **0 fallos**; borrar una fila suelta → 1 fallo. Es decir: la fila se vigilaba, **el veredicto y el informe no**.
+- 🔴 **Y el veredicto no tenía ni tres estados**: la prosa decía solo «muerto» o «vivió», y la herramienta que mide sacaba el código de salida y la última línea — **no el nombre de la prueba que había muerto**. Por eso un mutante podía morir **por casualidad** y nadie lo notaba: ya pasó, y se detectó **a mano**, porque el registro no cuadraba. Ese «porque no cuadraba» era **todo** el mecanismo de detección que había.
+- 🛡️ **Qué se hizo**: ahora hay una **herramienta que emite** el veredicto con un formato exacto (`WOPT_VEREDICTO <mutante> <MUERTO|SOBREVIVIENTE|NO MEDIDO> <sha>`) y un **guard que lo vuelve a derivar** desde la evidencia guardada en el repositorio. Si lo que dice el veredicto no cuadra con la evidencia, **falla**. El guard vive en el validador de documentación y **no** como un test más, para que **el número de tests no cambie** y porque el registro se escribe después de la revisión.
+- 🧪 **Y se comprobó de verdad**: se reprodujo el mutante real que moría con azar (1 de cada 4 veces por la prueba correcta, 3 de cada 4 por la que no tocaba) y el guard lo declara **NO MEDIDO** — el tercer estado, que hasta ahora no existía.
+- 🔴 **Tres fallos de verdad encontrados de paso**: el guard se podía **desenchufar** sin que nadie lo notara (160 «todo bien», cero registro); el texto del guard **declaraba tres límites y le faltaban dos** (aceptaba una evidencia fabricada y un identificador inexistente); y la herramienta de emisión **borraba la evidencia de los otros mutantes** al emitir uno. Los tres están corregidos y medidos.
+- ✅ **Y un dato que salió de medir lo obvio**: el validador se puso **2,6 veces más rápido**. Podía ser una mejora o un check que había dejado de correr, así que se comparó **una a una** las salidas antes y después: **160 «todo bien» idénticos**, ninguno desaparecido.
+
+### 📌 Lo que queda anotado
+
+- **Dos cosas quedan encoladas con su medida**: el **cuerpo** del guard se puede vaciar y el registro sigue verde, y el guard **no lee** el campo que dice *qué* se sustituyó en cada mutante. Las dos están **nombradas y medidas**, no son notas.
+- **El contrato del cierre ha cambiado**: a partir de ahora, cerrar un ciclo **no es escribir prosa**, es **emitir** las líneas con la herramienta y copiarlas a los tres sitios. El guard vuelve a derivar el estado y falla si no cuadra. El bucle ya no puede **afirmar** un PASS sin dejar rastro verificable.
+- El guard verifica **coherencia**, no verdad: eso está **escrito** en su texto, con el porqué de cada límite, y el texto dice que la lista **no es exhaustiva**.
+- La cifra de tests **no cambia** (235 = 159 + 76): el guard no es un test.
+- La **interfaz** (`src/woptimizer/`) **no se ha tocado**: cero cambios. Todo lo de este ciclo es herramienta del taller.
+
+### 🤖 Veredicto de mutación de este ciclo
+
+<!-- WOPT_VEREDICTOS -->
+WOPT_VEREDICTO M-3 NO MEDIDO e811115886a8de68bbcd338c11aaa426477caeb5
+WOPT_VEREDICTO M-A1 MUERTO f5bec54db57e65295ee4870afefbf6a8a0988c94
+<!-- /WOPT_VEREDICTOS -->
+
 ## CYCLE-069 - 2026-10-22
 
 ### 🔴 Corregido — Un test que fallaba sin motivo una de cada dieciséis veces

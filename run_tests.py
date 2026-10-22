@@ -13204,7 +13204,7 @@ def _copiar_el_esqueleto_del_validador(destino):
     este docstring manda: que la copia exponga la lectura nueva.
 
     MEDIDO OTRA VEZ el 2026-10-18 (TASK-077, el `mutation-auditor` lo encontró):
-    `build.bat` faltaba, y `STATUS.md:64` --la fila que añadió el ciclo 66-- se
+    `build.bat` faltaba, y `STATUS.md:66` --la fila que añadió el ciclo 66-- se
     ancla en ese fichero. En el árbol real la ruta resuelve y la fila queda
     eximida; en la copia NO resolvia, se quedaba con `fuentes == ["tarea"]` con
     `TASK-077` ya cerrada y saltaba el check de `validate_docs.py:2248`. Firma
@@ -17733,7 +17733,7 @@ def _head_del_repo_real():
     mismo helper y en el mismo orden de tres pasos, y sigue fallando fuerte si no
     hay ninguno. Un skip aqui seria una guarda que se apaga sola en el unico
     sitio donde nadie la ve, que es la clase de punto ciego que
-    la decision P-2b de `STATUS.md:109` prohibe. Y sigue mirandose ESTE repo, porque
+    la decision P-2b de `STATUS.md:114` prohibe. Y sigue mirandose ESTE repo, porque
     `_entorno_git_del_repo()` verifica que el `GIT_DIR` candidato sea de verdad
     este arbol: cambiar de ruta no cambia lo que la sonda mide.
     """
@@ -17895,7 +17895,7 @@ def _sin_contaminacion(d_repo, head_antes):
        el arbol de su `HEAD` tampoco. Este es el que MUERE si alguien revierte la
        paridad de `get_env()`: sin ella el wrapper hace `add -A` sobre
        `REPO_ROOT` y el arbol del dueno aparece dentro del repo de temporal, que
-       es la contaminacion medida dos veces en este repo (`STATUS.md:23`).
+       es la contaminacion medida dos veces en este repo (`docs/ai/sandbox-rules.md`).
     2. **El `HEAD` del repo real no se mueve.** Se compara por contenido, con el
        unico `HEAD` de antes y de despues, y NO con una igualdad de
        `git status`: hay otro actor commiteando en este arbol
@@ -21083,7 +21083,7 @@ def test_la_puerta_de_paridad_va_despues_de_validar_repo_por_estructura():
         "Esta sonda mira el arbol, no la salida: si el bloque desaparece o se "
         "mueve a otro ambito (un `if` anidado, un helper), el fallo es de esta "
         "sonda y hay que reescribirla. Sin este assert, una sonda que no "
-        "encuentra el bloque podria quedarse en verde sin mirar (STATUS.md:67)")
+        "encuentra el bloque podria quedarse en verde sin mirar (STATUS.md:82)")
     assert validar is not None, (
         "NO se ha encontrado en el CUERPO de `main()` la asignacion "
         "`ok, fallo_repo, git_dir = validar_repo(env)`, que es el nodo con el "

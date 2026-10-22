@@ -1,3 +1,84 @@
+## [CYCLE-070] 2026-10-22 - task-087-killer-check-del-veredicto
+
+### TASK-087: el veredicto de mutacion se vuelve comprobable
+
+**Area**: Tooling / Testing. **Change**: `openspec/changes/2026-10-22-killer-check-del-veredicto/`
+**Estado**: **COMPLETED** — auditoria **PASS** (dos rondas). **Tests**: **235 = 159 + 76 INTACTOS**. `src/woptimizer/**` intacto.
+**Commits**: `ba28261` (arquitectura), `f5bec54` (fix), `423a96e` (ronda de cierre).
+
+**Models**
+- Paso 1 (Buscar): orquestador — backlog: `TASK-087` (creada en el cierre del ciclo 69).
+- Paso 2 (Planear): `architect-review` — **refuto tres premisas** del encargo (el asa NO se puede derivar; M-V2 NO es una mutacion real; S3 NO "parecio" muerto).
+- Paso 3 (Ejecutar): `openspec-dev` — **dos rondas** (el fix, y la ronda que mato K-8, anadio los 2 limites y arreglo el emisor).
+- Paso 4 (Auditar): `mutation-auditor` — **PARTIAL** (14/16) y luego **PASS**.
+
+### La premisa, y lo que la medicion dijo de ella
+
+El encargo suponia que el «asa esperada» (el test que DEBE morir) se podria **derivar** del log. **Es falsa**: del log se deriva **quien murio** (7/7 logs ROJO -> nombre exacto, linea y motivo, en 0,267 ms por log, mirando solo los 624-961 B de cola), pero **quien debia morir** no esta derivable de nada: el log no lo dice y la spec tampoco contiene el nombre de la funcion. **Decidir: el asa la DECLARA quien muta**, en un `mutaciones.json` commiteado, y el gate lo re-deriva.
+
+**El agujero, medido con cuatro celdas en camara**: borrar el **veredicto** del journal -> **0 FAIL**; borrar el **`mutation-report.md`** entero -> **0 FAIL**; borrar una **fila** -> 1 FAIL. La fila vigilada, el veredicto y el informe no. Y el veredicto era **binario**: `agent.md:116` solo decia `killed`/`survived`, y el instrumento real del auditor (`correr_suite.py:33-36`) sacaba rc/bytes/ultima linea, **no el nombre del test que murio**.
+
+### Diseno (y por que el gate NO es un test_)
+
+| decision | motivo |
+|---|---|
+| El gate va en **`validate_docs.py` (check 11)**, no como `test_*` | el journal se escribe **DESPUES** del Paso 4 (`SKILL.md:22`), luego un test_ solo veria el ciclo **anterior**; y asi el **recuento queda intacto** (235 = 159 + 76) sin mover **cinco** declaraciones |
+| El **asa** la declara quien muta | el log dice quien murio, nunca quien debia (refutado con 14 logs reales) |
+| El **conjunto de sujetos** es DERIVADO | entradas del journal con `cycle >= CICLO_ORIGEN_VEREDICTO`, cambio localizado por su campo `change` — nunca una enumeracion escrita a mano |
+| **Conjunto vacio** -> no es verde | el gate imprime `REGISTRO entradas=0, mutantes=0` y **no** emite `[OK]`: un `[OK]` que no ha comprobado nada es verde por omision |
+
+### Mutaciones auditadas — dos rondas
+
+| id | que rompe | veredicto | Motivo literal |
+|---|---|---|---|
+| D-A | `validar()` deja de llamar al check 11 | **MUERTO** | `el check 11 tiene que CORRER dentro de validar(): su REGISTRO no aparece` |
+| D-D | el emisor pisa la evidencia ajena | **MUERTO** | `el emisor NO puede reescribir la evidencia...` |
+| D-E | la invocacion del guard sale del `__main__` | **MUERTO** | `235 definidos y 234 invocados... definido y NO invocado` |
+| D-F | la asercion se debilita a `assert True` | **MUERTO** | `no se encuentra la linea de cableado...` |
+| D-G | los limites (d)/(e) desaparecen | **MUERTO** | `los dos limites que faltaban se anaden CON SU MOTIVO MEDIDO` |
+| K-1..K-7, K-9a/b, K-9c, K-10a, K-11, K-14, K-15, K-17 | los 14 de la ronda 1 | **MUERTOS** | el guard falla en SANO y desaparece en MUTADO |
+| K-10b, K-12 | frame de otro fichero / sha inexistente | **ACEPTADOS = limites (d),(e)** | 0 FAIL medido, y **declarados** en el docstring |
+| **D-B** | el **cuerpo** del check 11 se vacia (el REGISTRO sigue) | **SUPERVIVIENTE** | suite rc=0 verde -> `TASK-090` |
+| **D-H** | el gate ignora el campo `mutacion` del catalogo | **0 FAIL** | limite nuevo -> `TASK-091` |
+| D-C | el emisor borra el dir de evidencia | **NO MEDIDO** | rojo por `FileNotFoundError`, no por asercion (fallo de instrumento, no veredicto) |
+
+### La velocidad: **2,6 x mas rapido**, y por que NO es un check saltado
+
+El validador bajo de **11.401 ms a ~4.350 ms**. Sospeche de un check saltado y el auditor lo **midio comparando uno a uno**: **160 OK / 0 FAIL / 0 SKIP IDENTICOS** antes (`ba28261`) y despues (`f5bec54`) — **ninguno desaparecio**. Los 158->160 del dev eran del **arbol**, no del fix. El `ast.parse` de `run_tests.py` paso de **3 veces a 1** por `validar()`, con la cache invalidada **por contenido** (clave `(nombre, hash(fuente))`, `validate_docs.py:2922`). Con la entrada del ciclo 70 escrita: **162 OK**.
+
+### El contrato del cierre, que es lo que de verdad cambio
+
+Desde el ciclo 70, cerrar un ciclo **no es escribir prosa**:
+
+1. La entrada del journal **debe declarar `change`** (el directorio del cambio) y **las lineas canonicas** en el campo **`veredictos`**.
+2. El gate exige **una linea por cada mutante del catalogo**, con el **mismo sha**, y el estado declarado tiene que **coincidir con el derivado** de la evidencia commiteada.
+3. El `mutation-report.md` del cambio debe llevar **las mismas lineas** en su bloque `<!-- WOPT_VEREDICTOS -->`.
+4. Los **dos changelogs** pueden llevar el bloque; si lo llevan, el estado debe ser el derivado (si no, no se dice nada: limite (c)).
+
+Verificado por el auditor con **15 roturas**: 11 dan FAIL, 3 dan 0 FAIL **por diseño** (changelogs sin bloque / lineas solo en `status` / `veredictos` como texto).
+
+### Lo que el gate NO prueba (declarado, con su motivo)
+
+(a) que el `asa` declarada sea la guarda **semanticamente** correcta; (b) que el `asa` no se ajustara despues de ver el log; (c) que los changelogs **LLEVEN** las lineas; (d) que la evidencia commiteada **SEA EL LOG REAL** (una evidencia fabricada con el frame en otro fichero -> 0 FAIL); (e) que el `sha` del arbol auditado **exista** (uno inventado -> 0 FAIL: el sha identifica **el arbol auditado**, que en el ciclo 70 es el de la **camara**, no el del repo real). Y la lista **NO es exhaustiva**: es la de los limites **MEDIDOS** hasta ahora.
+
+### Dos deudas que quedan, con nombre y metrica
+
+- **D-B** (`TASK-090`): el **cuerpo** del check 11 se puede vaciar y el guard sigue verde. El repo ya tiene el patron para el check 9 (el «mutante de cableado» que lo vigila, en `run_tests.py`); el check 11 **solo** tiene el cableado vigilado, no el contenido.
+- **D-H** (`TASK-091`): el gate **no lee** el campo `mutacion` del catalogo (que se sustituye y por que). Un catalogo con una `mutacion` incorrecta pasa el gate sin que nada lo note.
+
+### Y dos citas que no tenian destino fijo
+
+`STATUS.md` citaba `run_tests.py:23133` y al insertar lineas por encima la viva paso a **`23305`**: **ningun guard lo aviso**, porque ninguna cita por numero de linea la vigila (`TASK-086`). Corregida en este cierre.
+
+Y dos citas mas no se pudieron **mover**: apuntaban a `STATUS.md:23`, una fila que **ya no existe** (el panel se reescribio y esa linea es hoy «Rama de trabajo»). Mover el numero habria sido apuntar a otra cosa: se sustituyeron por la **casa real** de la evidencia (`docs/ai/sandbox-rules.md`), donde si vive el incidente de la contaminacion.
+
+### 🤖 Veredicto de mutacion de este ciclo
+
+<!-- WOPT_VEREDICTOS -->
+WOPT_VEREDICTO M-3 NO MEDIDO e811115886a8de68bbcd338c11aaa426477caeb5
+WOPT_VEREDICTO M-A1 MUERTO f5bec54db57e65295ee4870afefbf6a8a0988c94
+<!-- /WOPT_VEREDICTOS -->
+
 ## [CYCLE-069] 2026-10-22 - task-083-veredicto-de-no-medido
 
 ### TASK-083: un test flaky puede fabricar falsos veredictos

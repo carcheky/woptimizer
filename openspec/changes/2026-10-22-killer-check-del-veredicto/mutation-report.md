@@ -405,3 +405,229 @@ re-auditar en tres ciclos):
 WOPT_VEREDICTO M-3 NO MEDIDO e811115886a8de68bbcd338c11aaa426477caeb5
 WOPT_VEREDICTO M-A1 MUERTO f5bec54db57e65295ee4870afefbf6a8a0988c94
 <!-- /WOPT_VEREDICTOS -->
+
+---
+
+# 7. RE-AUDITORIA DE LA RONDA DE CIERRE (mutation-auditor, ciclo 70, 2026-10-22)
+
+Auditoria del commit `423a96e` (los TRES arreglos del dev) contra el codigo de
+ese mismo commit. Camara desechable en `%TEMP%` (`wopt_c70_c4`), copia **sin**
+`.git` (que en el repo real es un FICHERO puntero de 57 bytes) y `GIT_DIR`
+EXPLICITO y desechable por camara. El repo real no se toco: HEAD `423a96e`,
+`git status --porcelain` vacio, reflog **318** antes y despues.
+
+**El catalogo y la evidencia NO se han tocado**: los dos mutantes que declara
+(`M-3`, `M-A1`) y sus estados derivados (`NO MEDIDO`, `MUERTO`) son los del
+catalogo commiteado, y la evidencia commiteada esta **byte a byte igual**
+(`evidencia/M-3.cola` sha1 `3eee8031d44b21465bc788bb251982858fa71eca`, 3395 B;
+`evidencia/M-A1.cola` sha1 `36c4c3d1c5bde74652c331c81a1310b88633b269`, 574 B).
+Motivo: anadir mutantes al catalogo obliga al orquestador a escribir MAS
+lineas canonicas en el journal (el gate exige una por mutante del catalogo),
+y el encargo de cierre es con **las dos**. Las vias nuevas de §7.6 se
+**encolan como tarea**, con nombre y metrica, que es lo que manda el
+contrato.
+
+## 7.1 Los 14 mutantes previos, re-medidos contra el codigo nuevo
+
+Misma metoda que la ronda anterior: **SANO** = el estado que el mutante
+dejaria pasar + el codigo SIN mutar (el guard tiene que FALLAR); **MUTADO** =
+el MISMO estado + el codigo mutado (el guard no puede fallar por ese motivo).
+Validador en la camara, 5 s por corrida.
+
+| id | que rompe | SANO (OK/FAIL) | MUTADO (OK/FAIL) | veredicto |
+|---|---|---|---|---|
+| K-1 | el emisor dice MUERTO porque el log esta rojo | 162 / **0** | 162 / **4** | **MUERTO** |
+| K-2 | la gramatica acepta cualquier cosa (`match`) | 162 / **2** | 162 / **0** | **MUERTO** |
+| K-3 | el asa se compara por prefijo | 162 / **3** | 162 / **0** | **MUERTO** |
+| K-4 | se cae el chequeo del motivo | 162 / **3** | 162 / **0** | **MUERTO** |
+| K-5 | el asa declarado no tiene que existir | 162 / **1** | 162 / **0** | **MUERTO** |
+| K-6 | al gate le basta el ROJO | 162 / **3** | 162 / **0** | **MUERTO** |
+| K-7 | el filtro de epochs, en el futuro | 162 / 0 | **160** / 0 | **MUERTO** (verde por omision: el `[OK]` del check 11 desaparece y el REGISTRO dice 0) |
+| K-9a | el `change` apunta a otro sitio | 161 / **1** | 161 / 1 (otro FAIL) | **MUERTO** |
+| K-9b | la entrada no declara `change` | 161 / **1** | 162 / **0** | **MUERTO** |
+| K-9c | el gate deja de iterar las entradas | 162 / 0 | **161** / 0 | **MUERTO** (verde por omision) |
+| K-10a | la evidencia se corta antes del frame | 162 / **3** | 162 / **0** | **MUERTO** |
+| K-10b | el frame es de OTRO fichero | 162 / **0** | 162 / **0** | **ACEPTADO POR EL GATE** = limite **(d)**, declarado |
+| K-11 | el cross-check de los changelogs no compara el estado | 162 / **2** | 162 / **0** | **MUERTO** |
+| K-12 | el sha no existe | 162 / **0** | 162 / **0** | **ACEPTADO POR EL GATE** = limite **(e)**, declarado |
+| K-14 | un mutante fuera del catalogo | 162 / **1** | 162 / **0** | **MUERTO** |
+| K-15 | el informe no tiene que llevar las mismas lineas | 162 / **1** | 162 / **0** | **MUERTO** |
+| K-17 | el emisor declara MUERTO si alguna corrida muere por el asa | 162 / **0** | 162 / **4** | **MUERTO** |
+
+**15 de 17 MUERTOS; los 2 que quedan los ACEPTA el gate, y son exactamente los
+dos limites que el dev declaro** (K-10b = (d) la evidencia puede no ser el log
+real; K-12 = (e) el sha no se resuelve contra ningun objeto). Los dos
+**dicen la verdad**: MEDIDO, 0 FAIL en los dos casos.
+
+## 7.2 Los TRES arreglos del dev, con la suite COMPLETA
+
+Suite completa en camara propia (`.git` propio, DIRECTORIO, con indice
+reconstruido desde HEAD). 476 lineas de salida; el VERDE es `rc=0` con
+`ALL TESTS PASSED.` en la linea 366.
+
+| celda | camara | mutacion | rc | veredicto |
+|---|---|---|---|---|
+| S1 | `work_s1` | ninguna (**control positivo**) | 0, `ALL TESTS PASSED.` | VERDE |
+| S2 | `work_s2` | **el estado de cierre** (journal + los dos changelogs) | 0, `ALL TESTS PASSED.` | VERDE: **el cierre NO rompe la suite** |
+| S3 | `work_s3` | **D-A** `validar()` deja de llamar al check 11 | **1** | **MUERTO**: `el check 11 tiene que CORRER dentro de \`validar()\`: su REGISTRO no aparece en el informe` (`run_tests.py:22375`) |
+| S4 | `work_s4` | **D-B** el **CUERPO** del check 11 se vacia (el REGISTRO sigue saliendo) | **0, `ALL TESTS PASSED.`** | **SOBREVIVIENTE** -> via nueva, §7.6 |
+| S5 | `work_s5` | **D-C** el emisor **borra** el directorio de evidencia | **1** | ROJO, pero por **FileNotFoundError**, no por su asercion -> **NO MEDIDO** por el contrato |
+| S6 | `work_s6` | **D-D** el emisor vuelve a **pisar** la evidencia ajena (el bug previo) | **1** | **MUERTO**: `el emisor NO puede reescribir la evidencia de un mutante que no se le ha pasado: la evidencia de M-3 ha cambiado` |
+| S7/S7b | `work_s7` | **D-E** la **invocacion** del guard desaparece del `__main__` | **1** | **MUERTO**: `235 test(s) definidos y 234 invocado(s)... definido y NO invocado: test_el_check_9_se_cablea_en_el_camino_real_del_validador` |
+| S8 | `work_s8` | **D-F + D-A** la asercion se debilita a `assert True` **y** el check se desenchufa | **1** | **MUERTO**: `no se encuentra la linea de cableado \`_comprobar_veredictos_de_mutacion(root, ...)\`` (la mitad mutante del test) |
+| S9 | `work_s9` | **D-G** los limites **(d)** y **(e)** desaparecen del bloque del gate | **1** | **MUERTO**: `los dos limites que faltaban se anaden CON SU MOTIVO MEDIDO (0 FAIL)` |
+
+Las tres respuestas que pedia el encargo:
+
+* **(a) el REGISTRO se imprime pero el check no hace nada** -> **D-B**: la
+  suite se queda **VERDE**. El test vigila el **CABLEADO**, no el **CUERPO**.
+* **(b) la asercion se debilita** -> **D-F**: **MUERTO**, porque la mitad
+  mutante del propio test sigue exigiendo la linea de cableado. Debilitar la
+  asercion positive NO desenchufa el guard.
+* **(c) el test se borra del `__main__`** -> **D-E**: **MUERTO**. No lo caza el
+  guard (que ya no corre), lo caza el **recuento**: `235 definidos / 234
+  invocados`. El recuento derivado por `ast` es la red.
+
+Ademas, el arreglo **C** del emisor, medido **directamente** (no por el suite):
+emitiendo el veredicto de **M-A1** con un solo `--log`, el `sha1` de
+`evidencia/M-3.cola` es **IDENTICO antes y despues**
+(`3eee8031d44b21465bc788bb251982858fa71eca`), `M-A1.cola` se escribe, y el
+gate sobre el estado de cierre sigue en **162 OK / 0 FAIL**. El emisor emite
+`M-3: NO MEDIDO (no hay ninguna corrida...)` y `M-A1: MUERTO`.
+
+## 7.3 El ESCENARIO DE CIERRE, medido entero
+
+Estado escrito tal como lo va a escribir el orquestador (journal con las dos
+lineas + los dos changelogs con el bloque de maquina), sobre el catalogo y la
+evidencia commiteados:
+
+* `validate_docs.py` -> **162 OK, 0 FAIL, 0 SKIP**, y el REGISTRO:
+  `entradas cubiertas=1, mutantes re-derivados=2, origen del contrato: ciclo 70`.
+* `run_tests.py` -> **VERDE** (rc=0, `ALL TESTS PASSED.`): el estado de cierre
+  **no rompe la suite** (celda S2).
+
+Y rompiendo **cada pieza por separado** (15 piezas, `validate_docs.py` en la
+camara):
+
+| pieza | FAIL | primer FAIL |
+|---|---|---|
+| B0 · intacto | **0** | - |
+| B1 · journal sin la linea de **M-3** | **2** | `NO tiene linea canonica para el mutante M-3, que si esta en el catalogo del cambio` |
+| B2 · journal sin la linea de **M-A1** | **2** | `NO tiene linea canonica para el mutante M-A1, que si esta en el catalogo del cambio` |
+| B3 · journal con un mutante de mas (M-99) | **1** | `declara el mutante M-99, que NO esta en el catalogo` |
+| B4 · journal con el sha cambiado | **1** | `cita el sha ffff... y el catalogo declara e811...: la linea no apunta al arbol auditado` |
+| B5 · journal con el estado equivocado | **1** | `esta declarado como MUERTO y la evidencia commiteada obliga a NO MEDIDO` |
+| B6 · journal **sin `change`** | **1** | `NO declara el campo \`change\`, que es el ancla del cambio` |
+| B7 · journal con `change` inexistente | **1** | `ese directorio NO EXISTE (o se sale del arbol)` |
+| B8 · informe **sin** bloque de maquina | **1** | `NO tiene el bloque de maquina \`<!-- WOPT_VEREDICTOS -->\`` |
+| B9 · informe con solo la linea de M-3 | **1** | `el bloque de maquina NO lleva las mismas lineas canonicas que el journal` |
+| B10 · `evidencia/M-A1.cola` ausente | **1** | `evidencia/M-A1.cola: NO EXISTE` |
+| B11 · changelogs con el estado equivocado | **2** | `el mutante M-3 aparece como MUERTO y la evidencia commiteada obliga a NO MEDIDO` (uno por changelog) |
+| B12 · changelogs **sin** bloque | **0** | limite **(c)**, declarado |
+| B13 · journal con las lineas **solo** en `status` | **0** | la prosa tambien vale |
+| B14 · `veredictos` como **TEXTO** (no lista) | **0** | las dos formas valen |
+
+## 7.4 LA RESPUESTA PARA EL ORQUESTADOR (sin adivinar)
+
+1. **Que campo del JSON del journal lleva las lineas**: el campo **`veredictos`**
+   de la entrada del ciclo 70. Acepta **lista de cadenas** o **cadena con
+   saltos de linea** (B14). Las lineas tambien se leen de la prosa del campo
+   `status` si empiezan por `WOPT_VEREDICTO` (B13), pero **`veredictos` es el
+   sitio propio**. La entrada **tiene que declarar `change`** (B6), apuntando
+   al directorio del cambio: `"openspec/changes/2026-10-22-killer-check-del-veredicto/"`.
+2. **Que envoltura usan los changelogs**: el bloque de maquina
+   `<!-- WOPT_VEREDICTOS -->` ... `<!-- /WOPT_VEREDICTOS -->` con las lineas
+   canonicas dentro, en **los dos** changelogs (`CHANGELOG.md` de la raiz y
+   `.taskmaster/CHANGELOG.md`). **Los changelogs son OPCIONALES**: sin bloque
+   no hay FAIL (B12, limite (c)); si los pones, sus estados tienen que ser los
+   derivados (B11). La seccion del changelog de raiz que el ancla exige es
+   `## CYCLE-070` (la del **ultimo** ciclo del journal).
+3. **Si el gate exige las DOS lineas del catalogo**: **SI, y las dos**. El
+   gate recorre **el catalogo** (`mutaciones.json`) y exige una linea
+   canonica por mutante: si falta la de M-3 o la de M-A1, FAIL (B1, B2). Y
+   **no admite lineas de mas** (B3). O sea: el journal lleva **exactamente**
+   las dos lineas del catalogo, con **los sha tal cual estan en el catalogo**
+   (B4) y con **los estados derivados** (B5). El **informe** (`mutation-report.md`)
+   lleva un bloque de maquina con **el mismo conjunto de lineas** (B9) y la
+   evidencia commiteada es la que obliga al estado (B10).
+   En corto: **las dos lineas del catalogo completo**, no solo las del Paso 4.
+
+   Lineas exactas a escribir (las del catalogo, sin tocar un caracter):
+
+   ```
+   WOPT_VEREDICTO M-3 NO MEDIDO e811115886a8de68bbcd338c11aaa426477caeb5
+   WOPT_VEREDICTO M-A1 MUERTO f5bec54db57e65295ee4870afefbf6a8a0988c94
+   ```
+
+4. **Lo que el orquestador NO tiene que hacer**: no tocar `mutaciones.json` ni
+   `evidencia/` (ya estan commiteados y son los que el gate re-deriva), y no
+   anadir mutantes al catalogo sin anadir tambien sus lineas y su evidencia.
+
+## 7.5 Higiene
+
+| comprobacion | resultado |
+|---|---|
+| identificadores sin definir | **0** en `run_tests.py`, `validate_docs.py` y `.taskmaster/veredicto.py` (`symtable`, con control positivo: la sonda `_nombre_que_no_existe_12345` sale; los dunder que inyecta el interprete se excluyen) |
+| recuento | **235 definidos = 235 invocados**, 0 definidos-no-invocados, 0 invocados-no-definidos (derivado con `ast`) |
+| reparto | **235 = 159 + 76** |
+| las **cinco** declaraciones | `AGENTS.md` (1), `README.md` (1), `STATUS.md:12` (1), `STATUS.md:127` (1) y `docs/ai/testing-guide.md` (2 + la tabla de 235 filas = 235 tests): **intactas** |
+| residuos (CJK/hangul/U+FFFD/soft hyphen/cirilico) | **0 en los 10 ficheros del commit `423a96e`**. Hay **34 preexistentes** en `docs/archive/legacy-skills/`, `docs/known-issues.md`, `llms-full.txt`, `openspec/README.md` y dos changes viejos: **preexistentes, no de este ciclo** |
+| `git diff HEAD~1 HEAD -- src/` | **vacio** (0 bytes) |
+| `git status --porcelain` | **vacio** |
+
+**Las citas vivas, una a una** (el guard `test_las_citas_de_sandbox_rules_siguen_siendo_ciertas`
+las exige por numero; MEDIDO con `ast`/lectura, no de palabra):
+
+* `run_tests.py:23305` -> **VIVA**: *"`validate_docs.py` cita `sandbox-rules.md:55-56` POR NUMERO DE LINEA"*. **Esta es la linea viva que el dev actualizo** (antes `23133`).
+* `validate_docs.py:1429` -> **VIVA**: *"el contrato (`docs/ai/sandbox-rules.md:55-56`) lo documenta, no lo declara."*
+* `validate_docs.py:1924` -> **VIVA**: *"`docs/ai/sandbox-rules.md:55-56` lo TABULA y no lo DECLARA."*
+* `docs/ai/sandbox-rules.md:1133` -> **VIVA**: *"de markdown que **tabula** el contrato (`docs/ai/sandbox-rules.md:55-56`) lo documenta,"*
+
+**Las otras dos citas que el dev actualizo son ciertas**, y las tres
+actualizadas estan bien. **Aviso al orquestador**: **`STATUS.md:102` sigue
+citando `run_tests.py:23133`, y esa linea esta CADUCADA** (hoy la cita viva es
+la **23305**). Ese panel dice, con razon, que las citas por numero se caducan
+solas: es el mismo punto que el propio STATUS.md:102 ya declara, y esta vez
+le ha vuelto a pasar al ciclo.
+
+## 7.6 Vias nuevas (NO reabren el ciclo: se encolan)
+
+| id | via | metrica | donde |
+|---|---|---|---|
+| **D-B** | el **CUERPO** del check 11 se vacia y el REGISTRO sigue saliendo: la suite se queda VERDE | suite completa rc=0 con `ALL TESTS PASSED.` y el gate sin discriminar (D-B + K-1/K-17 darian 0 FAIL) | `TASK-087-cierre-D-B` (sugerida) |
+| **D-C** | el emisor **borra** el directorio de evidencia: la suite se pone roja, pero por `FileNotFoundError`, no por su asercion | el guard deberia morir por su asercion; hoy muere por la excepcion (no es veredicto por el contrato) | `TASK-087-cierre-D-C` (sugerida) |
+| **D-H** (nuevo, medido) | el gate **ignora el campo `mutacion` del catalogo** (`fichero`/`linea`): se puede declarar una mutacion que no existe y el gate **0 FAIL** | `mutaciones.json` con `mutacion.fichero = src/woptimizer/NO_EXISTE.py` -> **rc=0, 0 FAIL**; lo mismo con `ciclo: 999` | `TASK-087-cierre-D-H` (sugerida) |
+| **D-G** (nuevo, medido) | una evidencia **fabricada en VERDE** (`RC=0` + `ALL TESTS PASSED.`) con el journal y los changelogs de acuerdo: el gate **0 FAIL** | es otra instancia del limite (d) declarada, no un limite nuevo: el gate prueba la COHERENCIA, no la VERDAD | covered by (d) |
+
+**Ninguno de estos cuatro BLOQUEA el cierre**: son vias nuevas sobre codigo
+propio, y el criterio del ciclo dice que una via nueva **se encola**, no que
+reabre. **Lo que si bloquea** (y no ha pasado): la falta de un mutante que
+muera por su asercion, un identificador sin definir, un docstring que miente,
+o la higiene.
+
+## 7.7 VERDICT contra el criterio de cierre
+
+| punto | veredicto | por que |
+|---|---|---|
+| **(a) el fix aguanta** | **SI** | D-A (el check 11 desenchufado) -> suite ROJA por la asercion esperada; D-D (el emisor pisando la ajena) -> ROJA por su asercion; D-E (la invocacion borrada) -> ROJA por el recuento; D-G (los limites borrados) -> ROJA por su asercion. El D-B sobrevive, y es via nueva encolada. |
+| **(b) los mutantes declarados y los anadidos mueren por su asercion** | **SI** | M-3 `NO MEDIDO` y M-A1 `MUERTO`, con sus sha tal cual (el gate los re-deriva: 162 OK / 0 FAIL). Los 14 previos: 12 MUERTOS + 2 ACEPTADOS (= los dos limites declarados, y DICIEN LA VERDAD). Los anadidos: D-A, D-D, D-E, D-F, D-G MUERTOS; D-B sobrevive (encolado); D-C muere por excepcion (NO MEDIDO). |
+| **(c) 0 identificadores sin definir** | **SI** | 0 en los tres modulos, con control positivo. |
+| **(d) los docstrings no mienten** | **SI** | Los limites (d) y (e) estan escritos con su motivo medido (`validate_docs.py:2838` y `:2844`), la lista dice **NO ES EXHAUSTIVA** (`:2853`), y el docstring de la funcion los repite (`:3155`). MEDIDO: los dos son verdad (0 FAIL en los dos casos). El limite nuevo D-H **no** esta declarado: es lo que se encola. |
+| **(e) higiene, recuento y citas** | **SI** | 235 = 159 + 76, las cinco declaraciones intactas, 0 residuos en los ficheros del ciclo, `src/` intacto, y las tres citas del dev son ciertas. **`STATUS.md:102` cita `23133` y esta caducado**: la viva es la **23305**. |
+
+**VERDICT: PASS**, con dos avisos que no lo mueven: (1) la via **D-B** (el
+cuerpo del check 11 se puede vaciar sin que la suite lo note) y el limite
+nuevo **D-H** (el gate ignora la `mutacion` del catalogo) quedan **encolados**
+con nombre y metrica; (2) **`STATUS.md:102` esta caducado** y hay que
+actualizarlo a `run_tests.py:23305`.
+
+## 7.8 Ficheros de la camara (desechables)
+
+`%TEMP%\wopt_c70_c2\` (harness, logs de todas las corridas) y
+`%TEMP%\wopt_c70_c4\` (9 camaras: `base`, `work`, `work_s1..work_s9`, cada una
+con su `.git` DIRECTORIO desechable). Copia del repo **sin** `.git`; el
+`.git` del repo real (FICHERO puntero de 57 bytes) no viajo a ninguna camara
+(comprobado: `git rev-parse --git-dir` dentro de la camara devuelve la camara).
+El repo real: **HEAD `423a96e`, `git status --porcelain` vacio, reflog 318
+(igual que antes)**.
+

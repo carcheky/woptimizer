@@ -1910,6 +1910,46 @@
     "AC-5: el coste del guard se mide y se declara en segundos reales contra la suite de 734,9 s."
    ],
    "notes": "Ciclo 69. Se encola porque el encargo del ciclo lo daba por hecho y la medicion lo refuto en su direccion: no habia ese guard, habia otro con otro alcance. El hueco que queda es real pero es de otra clase (integridad de la medicion), asi que no se mezcla con TASK-083."
+  },
+  {
+   "id": "TASK-090",
+   "title": "El CUERPO del check 11 se puede vaciar y el guard sigue verde: el cableado esta vigilado, el contenido no",
+   "description": "MEDIDO el 2026-10-22 en el ciclo 70 (mutation-auditor): el gate que re-deriva el veredicto de mutacion (check 11 de validate_docs.py) se puede dejar SIN CUERPO y el REGISTRO sigue imprimiendose: la suite completa sale rc=0 y en VERDE. El cableado SI esta vigilado (el mutante D-A, que quita la llamada al check 11 dentro de validar(), muere por su asercion), pero lo que el gate DICE no esta vigilado en absoluto. El repo ya tiene el patron para el check 9 (el «mutante de cableado» que lo vigila, en run_tests.py); el check 11 solo tiene el cableado.",
+   "complexity": 3,
+   "priority": "medium",
+   "status": "pending",
+   "dependencies": [
+    "TASK-087"
+   ],
+   "module": "openspec/changes/2026-10-22-killer-check-del-veredicto/proposal.md",
+   "acceptance_criteria": [
+    "AC-1: un mutante de CONTENIDO (no de cableado) del check 11 da ROJO: vaciar el cuerpo del gate, dejando el REGISTRO, tiene que ser detectable por la suite.",
+    "AC-2: el guard que lo detecta mira el CONTENIDO del gate, no su presencia: tiene que distinguir «el gate corrio y no dijo nada» de «el gate dijo lo que tiene que decir».",
+    "AC-3: contraprueba con control positivo: el gate sano pasa, y el gate vacio con el REGISTRO puesto falla.",
+    "AC-4: el recuento de tests NO cambia si el guard va en el validador; si va como test_*, la cifra sube y se mueven las cinco declaraciones (que es lo que se quiere evitar).",
+    "AC-5: el coste se mide y se declara en milisegundos reales contra validate_docs.py."
+   ],
+   "notes": "Ciclo 70, auditor. Via NUEVA sobre codigo propio: no reabre el ciclo 70 (el criterio del ciclo dice que las vias nuevas se encolan con nombre y metrica), pero es un agujero REAL y no un limite declarado: el guard dice mas de lo que vigila."
+  },
+  {
+   "id": "TASK-091",
+   "title": "El gate ignora el campo `mutacion` del catalogo: se puede declarar una mutacion que no existe y el gate da 0 FAIL",
+   "description": "MEDIDO el 2026-10-22 en el ciclo 70 (mutation-auditor): el gate lee del catalogo (`mutaciones.json`) los campos `id`, `asa`, `motivo` y `sha_arbol_auditado`, pero NO lee el campo `mutacion` (que fichero y que linea se sustituyen, y por que). MEDIDO que un catalogo con `mutacion.fichero = src/woptimizer/NO_EXISTE.py` pasa el gate con 0 FAIL, y lo mismo con `ciclo: 999`. O sea: el catalogo puede declarar una mutacion que no existe y el gate no lo nota. Es un limite NUEVO, y la lista de limites que el docstring declara **NO es exhaustiva**, luego no estaba cubierto por ningun limite anterior.",
+   "complexity": 3,
+   "priority": "medium",
+   "status": "pending",
+   "dependencies": [
+    "TASK-087"
+   ],
+   "module": "openspec/changes/2026-10-22-killer-check-del-veredicto/proposal.md",
+   "acceptance_criteria": [
+    "AC-1: el gate comprueba que el campo `mutacion` del catalogo es COHERENTE con la evidencia: el fichero existe, la linea existe y el texto original declarado esta en ella.",
+    "AC-2: un catalogo con una `mutacion` incorrecta da FAIL, con el nombre del campo y el valor que no cuadra.",
+    "AC-3: contraprueba con control positivo: el catalogo real del ciclo 70 pasa con 0 FAIL.",
+    "AC-4: si el campo `mutacion` sigue siendo informativo, la lista de limites del docstring lo declara con su motivo medido (no es lo mismo que omitirlo en silencio).",
+    "AC-5: el coste se mide y se declara en milisegundos reales contra validate_docs.py."
+   ],
+   "notes": "Ciclo 70, auditor. Va pareado con TASK-090: los dos son el mismo patron (el gate vigila la FORMA y no el CONTENIDO), pero se encolan aparte porque el arreglo de uno no arregla el otro."
   }
  ]
 }
