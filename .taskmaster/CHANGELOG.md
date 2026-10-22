@@ -1,3 +1,69 @@
+## [CYCLE-068] 2026-10-22 - task-082-vistas-del-guard-de-workers-derivadas
+
+### TASK-082: el conjunto de vistas del guard de workers se deriva, y su vigilancia deja de ser vaciable
+
+**Area**: Tooling / Testing. **Change**: `openspec/changes/2026-10-21-vistas-del-guard-de-workers-derivadas/`
+**Estado**: **COMPLETED** — auditoria **PASS** tras **tres** rondas. **Tests**: 231 -> **234 = 158 + 76**. `src/woptimizer/**` intacto.
+**Commits**: `515c36d` (arquitectura), `f8bc867` (fix), `73b2393` (reparacion de la vigilancia), `9ccbfd6` (ronda 3).
+
+**Models**
+- Paso 1 (Buscar): orquestador — backlog: `TASK-082` (creada por el arquitecto del ciclo).
+- Paso 2 (Planear): `architect-review` — **refuto la premisa del encargo**: el guard de forma AC-5 **se queda** en `run_tests.py` (+3,59 s medidos si se muda a `verify_ui_syntax.py`, dos contratos en un `exit`, y un guard vigilandose a si mismo).
+- Paso 3 (Ejecutar): `openspec-dev` — **tres rondas** (fix, reparacion de la vigilancia, ronda 3).
+- Paso 4 (Auditar): `mutation-auditor` — **PASS**, **FAIL**, **FAIL**, **PASS**. El FAIL **intermedio devolvio el ciclo al Paso 3**, y el FAIL de la ronda 2 lo devolvio otra vez.
+
+### El encargo, y lo que la medicion dijo de el
+
+`run_tests.py:9410` (guard de workers) abria `VISTAS_INVENTARIADAS` — una **enumeracion literal** — en vez del contenido de `src/woptimizer/ui/views/`. MEDIDO con control positivo: una vista nueva en disco, listada en `VISTAS` y NO en `VISTAS_INVENTARIADAS` -> guard **VERDE**, la vista **sin auditar**.
+
+El conjunto estaba escrito **CUATRO** veces (`VISTAS`, las claves de `RUTAS_VIGILADAS`, `ESPERADOS`, `VISTAS_INVENTARIADAS`) y **solo UNA** atada al disco. Las tres entradas de vista de `RUTAS_VIGILADAS` eran **redundantes**: el default del `.get()` ya devolvia `os.path.join("views", nombre)`.
+
+**Causa raiz MECANICA**: el helper que deriva (`_vistas_del_disco`) estaba **ANIDADO** en la funcion del guard hermano -> no se podia reutilizar -> la copia a mano era **inevitable**, no descuidada. Ese es el tipo de causa que hace que el arreglo de fondo sea un **hoist**, no un parche.
+
+### Inventario medido por el arquitecto (41 enumeraciones)
+
+| clase | n | veredicto |
+|---|---:|---|
+| (a) derivable HOY | 2 | las 2 del encargo; **el mismo conjunto** |
+| (b) seleccion / no derivable | 22 | ruido o bomba de mantenimiento; **denunciadas, no arregladas** |
+| (c) otra cosa (argv, regex, fixtures) | 17 | fuera de clase |
+
+**El #2 del ranking lo encontro la propia auditoria**: el alcance del AC-5 (`run_tests.py:28993`) era una literal y el guard **seguia en VERDE** al reducirlo a 2 ficheros. Agujero latente, con su propio ciclo.
+
+### Mutaciones auditadas (Paso 4) — ronda final
+
+| id | mutacion | veredicto | Motivo literal |
+|---|---|---|---|
+| M-V1 (ORIGINAL) | la DECLARACION vuelve a ser la fuente | **MUERTO** | AC-2 «una vista NUEVA en el disco y SIN declarar tiene que dar ROJO que la nombre y dio 0» |
+| M-V4 (ORIGINAL) | helper no hoistado + copia a mano | **MUERTO** | AC-1 «NO esta derivado del disco: ANIDADO / SEGUNDA copia / no recorre el DERIVADO» |
+| M-V3 | derivado vacio | **MUERTO** | AC-2 «el rojo tiene que NOMBRAR la infraccion» |
+| M-V3b | lista fija a mano | **MUERTO** | AC-1 «una SEGUNDA copia del conjunto de vistas escrita a mano» |
+| M-V5 | derivado = la DECLARACION | **MUERTO** | AC-1 «NO deriva del disco» **y** AC-2 (medido in-process) |
+| M-V6 / M-V7 | directorio fijo / directorio equivocado | **MUERTO** | AC-2 |
+| Q1 | borrar las tres sondas | **MUERTO** | suite: «234 definidos y 231 invocados» |
+| Q2 / Q2b | reducir el alcance de AC-1 | **MUERTO** | AC-1 «DENUNCIAR una enumeracion que NO esta en ninguna lista, con FICHERO Y LINEA» |
+| S1 | el recorrido no baja a un `for` anidado | **MUERTO** | AC-1 «en un bucle ANIDADO» |
+| S2 | una justificacion tapa DOS enumeraciones | **MUERTO** | AC-1 «UNA justificacion no puede tapar DOS» |
+| S4 | (control) S3 aplicado al guard real | **MUERTO** | AC-1 «una SEGUNDA copia» -> **acota S3** |
+| M-V2 | (escenario) vista nueva sin declarar | **EQUIVALENTE** | rojo por **asercion** que nombra la vista y el directorio; no una excepcion |
+| **S3** | enumeracion detras de una llamada | **SUPERVIVIENTE 3/3** | hueco de la **heuristica**, no del guard (S4 lo caza) — **no cuenta como FAIL**, por decision documentada |
+
+### Los tres supervivientes, y por que el ciclo los ARREGLO en vez de anotarlos
+
+Ronda 1: **FAIL** de vigilancia con 3 supervivientes. (1) **Q1**: las tres sondas eran `_`-prefijadas y **el recuento no las veia** — borrarlas no bajaba ninguna cifra y no rompia nada (231 = 231, 156 OK / 0 FAIL, suite rc=0 con 3 lineas menos). Contador que nadie lee. (2) **Q2 / Q2b**: el conjunto de sujetos de AC-1 era la literal `(_GUARD_DE_WORKERS, _GUARD_HERMANO)`; reducirlo a uno o a **cero** guards dejaba la suite **verde**, con log **IDENTICO** al baseline. (3) **A-C68-3**: la derivacion era **falsable** — `return set(VISTAS_DECLARADAS)` hace la comparacion tautologica, el rojo que nombra la vista nueva desaparece y **AC-1 y AC-2 lo pasaban**; solo AC-3 lo cazaba, por efecto colateral.
+
+La ronda 2 los arreglo, **y metio un `NameError` latente** (`run_tests.py:29351`: `expression` por `expresion`) que hacia que **M-V1 y M-V4 MURIERAN POR EXCEPCION** en vez de por su asercion. Eso era un **PASS con el termometro tapado**: el auditor lo midio como tal y lo reporto como P1. La ronda 3 lo corrigio y **volvio a medir en forma ORIGINAL**.
+
+### Los tres hallazgos que no estaban en el encargo
+
+1. **Un test FLAKY que fabrica falsos veredictos.** El pre-vuelo de un hash falla **11 de 200** (5,50 %; teorico 6,25 %) porque los fixtures comparten sha dentro del mismo segundo. Con 17 camaras en paralelo, **P(contaminar una medicion) = 61 %**. YA PRODUJO UN FALSO VEREDICTO: S3 parecio muerto en la ronda 3 y lo detectaron el dev y el auditor porque el log no cuadraba. Un guard que a veces no vigila es un guard que a veces da verde falso.
+2. **La cita del panel apuntaba a una linea que decia literalmente `nada.`** — y en el codigo, un ordinal equivocado (**la «segunda» vez que el marcador del reparto aparecia era la PRIMERA**). La correccion fue **sustituir el numero por la verdad**, no movernos al numero siguiente: dos numeros fragiles **eliminados**, no actualizados.
+3. **S7 REPLICADO**: el AC-1 nuevo de este ciclo repito el patron del AC-1 del ciclo 67 — docstring que afirma una garantia que no tiene. El ciclo cierra una enumeracion literal y **abre otra en el guard que la cierra**.
+
+### Decision de cierre del ciclo (del orquestador, escrita para que se lea como decision)
+
+Un guard de forma sobre codigo propio **nunca** es perfectible: siempre habra una forma sintactica nueva de escribir una enumeracion, y perseguirla sin limite es un pozo. Un bucle que se queda indefinidamente en el mismo guard deja de producir hallazgos en cualquier otra parte. Por tanto: **PASS** si el fix aguanta, si los mutantes **declarados** mueren por su asercion, si no queda ningun identificador sin definir, si los docstrings no mienten y si la higiene esta limpia; las **vias nuevas se encolan como tarea con nombre y metrica** (TASK-083..086) y **no reabren el ciclo**. Los tres supervivientes de la ronda 1, en cambio, **se repararon**: un superviviente se arregla, no se anota.
+
 ## [CYCLE-067] 2026-10-19 - task-081-verificacion-ui-alcance-derivado
 
 ### TASK-081: el alcance de la puerta de sintaxis UI se deriva, no se enumera

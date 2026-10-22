@@ -1176,8 +1176,8 @@ def _reparto_de_tests(root):
     # validador entero. Se parten UNA vez y cada sentencia recorta su tramo.
     #
     # NO se busca el marcador fuera del bucle, y hay un motivo MEDIDO: aparece
-    # DOS veces en `run_tests.py`, y la segunda (en `_run_tests_sintetico()`,
-    # `run_tests.py:14013`) esta POR ENCIMA de `cuerpo_main`. Un
+    # DOS veces en `run_tests.py`, y la PRIMERA (la de `_run_tests_sintetico()`)
+    # esta POR ENCIMA de `cuerpo_main`. Un
     # `visto = MARCADOR_HEADLESS in fuente` daria `antes = 0` y `desde = <el
     # total entero>`, o sea TODA la suite por delante del marcador, y el total
     # seguiria cuadrando: el bug seria invisible para cualquier check que mire
@@ -2040,7 +2040,7 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
     es la clase de fallo que D1 cerro en el ciclo #47.
 
     MEDIDO el 2026-10-02 al nacer: 15 filas, 7 exentas y 8 vivas, y de las 8 vivas
-    solo `STATUS.md:91` se quedaba sin ninguna fuente resoluble -- por eso el
+    solo `STATUS.md:94` se quedaba sin ninguna fuente resoluble -- por eso el
     nacimiento toco UNA fila y no tres. Las exentas NO son filas mudas por
     capricho: son registros historicos, y exigirles anclas haria que el check
     fallara siempre y luego nadie lo mirara, que es como muere un validador.

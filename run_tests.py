@@ -17733,7 +17733,7 @@ def _head_del_repo_real():
     mismo helper y en el mismo orden de tres pasos, y sigue fallando fuerte si no
     hay ninguno. Un skip aqui seria una guarda que se apaga sola en el unico
     sitio donde nadie la ve, que es la clase de punto ciego que
-    la decision P-2b de `STATUS.md:98` prohibe. Y sigue mirandose ESTE repo, porque
+    la decision P-2b de `STATUS.md:105` prohibe. Y sigue mirandose ESTE repo, porque
     `_entorno_git_del_repo()` verifica que el `GIT_DIR` candidato sea de verdad
     este arbol: cambiar de ruta no cambia lo que la sonda mide.
     """
@@ -27005,8 +27005,8 @@ def test_la_clausula_de_arranque_lista_todas_las_categorias_y_va_en_singular():
 # lineas UNA vez fuera del bucle y recortar por `lineno`/`end_lineno`.
 #
 # Y hay un segundo hecho, MEDIDO, que decide donde NO optimizar: el marcador
-# aparece DOS veces en el fichero. La segunda esta en `_run_tests_sintetico()`
-# (linea 13553), que esta POR ENCIMA de `cuerpo_main` (que empieza en la 23606).
+# aparece DOS veces en el fichero. La PRIMERA esta en `_run_tests_sintetico()`,
+# que esta POR ENCIMA de `cuerpo_main` (que empieza mas abajo, en el `__main__`).
 # El mutante "optimizado" `visto = MARCADOR_HEADLESS in fuente` declara por eso
 # `antes = 0` y `desde = <el total entero>` MEDIDO, o sea toda la suite por
 # delante del marcador, y EL TOTAL SIGUE DANDO IGUAL, asi que el bug seria

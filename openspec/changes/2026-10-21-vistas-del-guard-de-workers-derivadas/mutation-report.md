@@ -1198,3 +1198,391 @@ la camara vuelve a verde byte a byte despues de haber pasado por el mutante.
   desde `%TEMP%`): la camara usa `git` a pelo contra su `GIT_DIR` desechable;
 * el unico fichero escrito en el repo es este informe, y lo versiona el
   orquestador.
+
+---
+
+# PARTE 3 -- RONDA 3 (ciclo 68, commit `9ccbfd6`)
+
+Auditoria de la **tercera ronda** de TASK-082. HEAD auditado: `9ccbfd6`
+(`fix(tools): el guard de forma deja de ser vaciable por tres vias (TASK-082)`),
+rama `beta`. Lo que se declara en el commit se **mide**, no se lee: cada fix se
+rompe a proposito en una camara desechable y se lee el veredicto de la suite
+completa.
+
+Criterio de cierre del ciclo 68 (lo fija el orquestador, es vinculante):
+
+> **PASS** si: (a) el fix sigue PASS; (b) los mutantes declarados mueren por su
+> asercion; (c) cero identificadores sin definir; (d) el docstring de AC-1 no
+> afirma nada que no vigile; (e) higiene: 0 residuos y las 8+ citas vivas.
+> **S3 NO cuenta como FAIL** (esta decidido y documentado como deuda S9).
+> Una via NUEVA no reabre el ciclo: se encola como tarea con nombre y metrica.
+
+## P3.1 -- Instrumento (que hay que declarar antes que los veredictos)
+
+**Camaras**: 17 copias desechables del repo en
+`%TEMP%\wopt_c68_r3_aud\camara_<mutante>_20261022_045953\`, cada una con su
+propio `git init -b beta` (repo **desechable**, nunca el del repo real). La
+copia se hizo con `shutil.copytree(..., ignore=shutil.ignore_patterns(".git"))`
+porque **`.git` en este repo es un FICHERO de 57 bytes**, no un directorio: un
+`robocopy /XD .git` lo habria arrastrado y la camara se habria convertido en
+cliente del repo real (ya paso dos veces en este repo).
+
+**Control de aislamiento, ejecutado ANTES de mutar nada** en las 17 camaras:
+
+```
+A) .git en la camara: fichero=False dir=True   (el repo real lo tiene como FICHERO)
+B) sin GIT_DIR -> rc=0 '<camara>\.git'          (no apunta al repo real)
+C) GIT_DIR desechable -> rc=0 '<...>\.git'      (no apunta al repo real)
+AISLAMIENTO OK: True (B=True C=True)
+```
+
+**Control de instrumento (el tercer fallo de instrumento del ciclo, repetido
+NO)**: `mutar3.py` compara, antes y despues de mutar, el **contenido** de
+`run_tests.py:23133` y de `validate_docs.py:1429` --las dos lineas que el guard
+de citas lee en caliente-- y **aborta** si alguna se mueve. Verificado en las 15
+mutaciones: `OK/OK` en las 15. Ademas, cada camara mutada se comprobó con
+`ast.parse` (las 15 parsean) y con un diff contra el original (**delta de 2 a 44
+lineas**, nunca 0: una mutacion que no se aplica daria un "superviviente" falso).
+
+**`__pycache__` purgado** entre mutaciones (el `.pyc` obsoleto de igual
+longitud y mismo mtime contaminationa el mutante SIGUIENTE).
+
+**Un log cortado NO MEDIDO**: cada veredicto sale del `.meta` que se escribe
+**despues** de que el proceso termina, con `rc`, `bytes`, `lineas`,
+`segundos`, `ultima_linea` y el motivo literal.
+
+## P3.2 -- El flakiness: tasa real (medida, con mi propia distribucion)
+
+El dev declaro que `test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe`
+es flaky ~5 % porque hay fixtures cuyo sha arranca por `hash_real + "0"`. Lo
+**verifique** replicando la fixture EXACTA (`git init` + `commit --allow-empty`
+con el mismo asunto `chore: fixture del pre-vuelo` y el mismo user/email) y
+midiendo con la MISMA comprobacion (`git cat-file -e <short>0`):
+
+```
+fixtures medidas            : 200
+longitud del short hash     : {7: 200}
+CASOS QUE ROMPEN EL TEST    : 11  (5.50 %)
+teorico 1/16                : 6.25 %
+error tipico +-1.61 %  ->  intervalo +-3.16 %
+```
+
+**Tasa real: 11/200 = 5,50 %** (el devmidio 3/60 = 5 %; los dos dentro del
+intervalo). La causa esta confirmada: el short hash tiene siempre 7 caracteres
+y el 8o digito del sha completo es equiprobable, asi que `hash_real + "0"`
+existe con probabilidad 1/16.
+
+**Cuanto se ha visto en esta auditoria**: **0 muertes por el pre-vuelo en 20
+corridas** (17 camaras + 3 replicas). Con n=20 y p=5,5 %, P(0 muertes) = 32,6 %:
+es compatible con la tasa teorica, asi que **la observacion no la confirma ni
+la desmiente** -- por eso la tasa se mide aparte, con 200 fixtures, y no se
+deduce de las corridas.
+
+**Esto no es una nota: es un falso veredicto posible.** Con una tasa del 5,5 %
+por corrida, la probabilidad de que **una sola** de las 17 camaras se vea
+afectada es del **61 %** (`1 - 0,945^17`). Un mutante que en realidad SOBREVIVE
+puede morir por el pre-vuelo y ser medido como "detectado": eso es un **falso
+veredicto**, y es exactamente lo que le paso al dev con S3 en su primer lote.
+Regla que se aplico aqui: **ningun veredicto de este informe se acepta con una
+sola corrida** si su motivo puede ser el pre-vuelo; y ningun superviviente se
+declara sin el motivo leido.
+
+## P3.3 -- Criterio (c): identificadores sin definir, por AMBITOS
+
+El comprobador **no es el del dev**: el suyo daba 541 falsos positivos (no
+paraba en `lambda`/comprehensions) y luego 720 (no recogia enlaces de bloques
+anidados). Escribo uno propio, con la regla de cierre **verificada en Python
+real** (7 casos, `reglas_python.py`), porque la regla de las clases no es la
+que uno se inventa:
+
+| regla | veredicto en Python real |
+|---|---|
+| el CUERPO de una clase SI captura la funcion que la envuelve | **OK** |
+| un METODO NO ve los atributos de su clase | **NameError** |
+| un metodo SI ve la funcion que envuelve a la clase | **OK** |
+| el default de un metodo se evalua en el ambito de definicion | **OK** |
+| una comprehension y una lambda tienen ambito propio | **OK** |
+
+**Autotest: 13/13 casos correctos** (nombre suelto, cierre de funcion anidada,
+clase dentro de funcion, metodo que no ve el atributo de su clase, global sin
+definir, nonlocal, dict comp, comprehension, lambda, target de `for`, clase en
+clase, default de metodo, global).
+
+Medicion con el algoritmo del comprobador, sobre el mismo fichero que usa el
+validador:
+
+```
+HEAD~1 (73b2393, ANTES de R7) -> 1  nombres sin definir
+    linea 29351   expression    sin definir
+HEAD   (9ccbfd6, actual)       -> 0  nombres sin definir
+```
+
+**El control se cumple exactamente como se pidio**: `HEAD~1` da **>=1** (y es
+precisamente el `expression` que R7 arregla) y el actual da **0**. El
+comprobador del dev (y el mini-pyflakes sin ambitos que use en la ronda 2)
+dan **111-112 falsos positivos** sobre el mismo fichero: **repetido, y
+documentado** -- un comprobador que no distingue ambitos no vale, y el numero
+de falsos positivos es la prueba.
+
+## P3.4 -- Criterio (d): los docstrings son honestos
+
+**El docstring de AC-1** (`run_tests.py:29683-29731`) declara las 5 reglas que
+el guard vigila y, en un bloque explicito titulado *"LO QUE ESTE GUARD **NO**
+COMPRUEBA, y por que lo dice"*, declara el hueco:
+
+> `29711`: "una enumeracion escrita a mano escondida DETRAS DE UNA LLAMADA
+> (`for n in _mis_vistas()`): la regla de forma solo mira el iterable del `for`
+> cuando es un contenedor de literales o un nombre enlazado a el, y una llamada
+> no tiene nada que mirar. MEDIDO: el hueco es de la REGLA, no del GUARD -- con
+> ese patron aplicado al guard de verdad (mutante S4), el conjunto COMPLETO lo
+> caza la regla 3 y un subconjunto lo caza la comparacion tautologica de los
+> dos guards. Es la deuda A-C68-8 (S3), pendiente de su ciclo: este docstring
+> no afirma mas de lo que el guard vigila."
+
+El docstring **NO** afirma que el helper lea el disco de verdad (eso lo mide
+AC-3) y **NO** afirma que se cierren las enumeraciones escritas a mano: dice
+exactamente lo contrario, y nombra las dos celdas nuevas (R8 y R9). El hueco que
+declara (S3) es **exactamente** el que explota el mutante S3. **Honesto.**
+
+**La justificacion de `run_tests.py:6118-6122`** nombra las dos vistas que
+tolera: `process_manager_view.py` y `pack_manager_view.py` -- y la
+enumeracion que sigue (`for nombre in ("process_manager_view.py",
+"pack_manager_view.py")`) es exactamente esas dos. **Honesto.**
+
+## P3.5 -- Criterio (e): residuos y recuento
+
+**Residuos** (CJK / hangul / U+FFFD / soft hyphen / ZWSP) en los ficheros que
+toca el commit `9ccbfd6`:
+
+```
+run_tests.py                      lineas=30845  residuos=0
+.../tasks.md                      lineas=  378  residuos=0
+.../mutation-report.md            lineas= 1200  residuos=0
+TOTAL: 0
+```
+
+**Recuento**, replicando con `ast` el algoritmo de
+`validate_docs.py._recuento_de_tests` (no de palabra):
+
+```
+defined (def test_* de modulo) : 234
+invoked (llamadas en __main__)  : 234
+huerfanos defined-invoked      : ninguno
+huerfanos invoked-defined      : ninguno
+reparto de las INVOCACIONES    : 158 antes del marcador + 76 desde = 234
+marcador headless (2a ocurr.)  : run_tests.py:30602
+```
+
+**234 = 158 + 76 sale, por derivacion y no por palabra.**
+
+## P3.6 -- Las citas por numero de linea: 19 verificadas, 18 vivas y 1 FALSA
+
+Las **8** de la ronda 2 y las que la ronda 3 toco, todas contra HEAD:
+
+| cita | que afirma | que hay en esa linea | veredicto |
+|---|---|---|---|
+| `run_tests.py:15766` | una sobrescritura de `_patrones_de_categoria` | `svc._patrones_de_categoria = lambda cat: (` | **VIVA** |
+| `run_tests.py:15793` | otra | idem | **VIVA** |
+| `run_tests.py:15886` | otra | idem | **VIVA** |
+| `run_tests.py:15932` | otra | idem | **VIVA** |
+| `run_tests.py:23131` | el suelo `min(posiciones) > 61` | `assert min(posiciones) > 61, (` | **VIVA** |
+| `run_tests.py:23133` | la cita de `sandbox-rules.md:55-56` | la linea que la cita | **VIVA** |
+| `run_tests.py:28734` | el guard de codigo muerto | `def test_la_verificacion_de_sintaxis_deriva_su_alcance...` | **VIVA** |
+| `run_tests.py:14013` | "la **2a** ocurrencia del marcador headless" | `lineas.append('    print("\n--- Running Headless UI Tests ---")')` | **VIVA de linea, FALSA de ordinal** (ver abajo) |
+| `run_tests.py:29278` | `_fors_del_modulo` (R8) | `def _fors_del_modulo(arbol):` | **VIVA** |
+| `run_tests.py:29363` | R7: `expresion.keywords` | `+ [kw.value fo...` | **VIVA** |
+| `run_tests.py:29518` | `_bloques_de_justificacion` (R9) | `def _bloques_de_justificacion(doc):` | **VIVA** |
+| `run_tests.py:29540` | `_nombres_de_vista_en_una_frase` (R9) | `def _nombres_de_vista_en_una_frase(frase...` | **VIVA** |
+| `run_tests.py:29545` | `_enumeracion_justificada` (R9) | `def _enumeracion_justificada(doc, nombre...` | **VIVA** |
+| `run_tests.py:29580` | `_delitos_de_fuente_escrita_a_mano` (R9) | `def _delitos_de_fuente_escrita_a_mano(ar...` | **VIVA** |
+| `run_tests.py:6118` | la justificacion real de la enumeracion | `TASK-082 (AC-1, R2 y R9): ENUMERACION JUSTIFICADA...` | **VIVA** |
+| `run_tests.py:30602` | la 2a ocurrencia REAL del marcador | `print("\n--- Running Headless UI Tests ---")` | **VIVA** |
+| `validate_docs.py:1429` | la cita de `sandbox-rules.md:55-56` | el contrato | **VIVA** |
+| `validate_docs.py:1924` | la cita de `sandbox-rules.md:55-56` | la cita | **VIVA** |
+| `validate_docs.py:1180` | "la **segunda** ocurrencia (`run_tests.py:14013`)" | `# \`run_tests.py:14013\`) esta POR ENCIMA de \`cuerpo_main\`. Un` | **VIVA de linea, FALSA de ordinal** |
+
+**Reparto: 19 verificadas -> 18 VIVAS, 1 FALSA de ordinal, 0 CADUCADAS.**
+
+La FALSA es `validate_docs.py:1178-1180`, y es un hallazgo mio de la ronda 2 que
+corrijo ahora:
+
+```
+1178|    # NO se busca el marcador fuera del bucle, y hay un motivo MEDIDO: aparece
+1179|    # DOS veces en `run_tests.py`, y la segunda (en `_run_tests_sintetico()`,
+1180|    # `run_tests.py:14013`) esta POR ENCIMA de `cuerpo_main`. Un
+```
+
+Medido con `ast` sobre HEAD: las dos ocurrencias del marcador en el **texto** son
+
+```
+ 14013| lineas.append('    print("\\n--- Running Headless UI Tests ---")')   <- 1a, en _run_tests_sintetico()
+ 30602| print("\n--- Running Headless UI Tests ---")                      <- 2a, DENTRO del __main__
+```
+
+y `cuerpo_main` empieza en la **30283**. O sea: la 14013 es la **PRIMERA**
+ocurrencia, no la segunda; lo que esta por encima de `cuerpo_main` es la
+**primera**. La **sustancia** del comentario (hay una ocurrencia por encima del
+`__main__` y por eso el bucle no debe buscarla fuera) sigue siendo cierta, y el
+validador resuelve bien (usa el marcador que esta dentro del `__main__`, el de
+la 30602, que es el que separa 158/76). Lo que miente es el **ordinal**.
+
+**En la PARTE 2 di esta cita por VIVA con un contenido que NO era el de esa
+linea** (puse `print("\n--- Running Headless UI Tests ---")`, que es el de la
+30602). Error mio, corregido aqui: la 8 de 8 vivas de la ronda 2 era "8 de 8
+lineas existentes", y **una de las ocho no sostenia lo que la cita afirmaba**.
+El dev de la ronda 3 vio el numero real (30602) y lo dejo escrito en
+`tasks.md`, pero **no subio el cambio a `validate_docs.py:1180`** (el commit
+`9ccbfd6` no toca `validate_docs.py`). Por eso esta deuda **no** es un agujero
+del fix de este ciclo: es un comentario desactualizado, y lo que lo vigila es
+el propio guard de citas (`run_tests.py:23133`), que esta en verde.
+
+Ninguna de las 19 la vigila un guard: el guard de citas ata
+`sandbox-rules.md:55-56`, no estos numeros. Es la deuda **P2**, que sigue
+abierta.
+
+## P3.7 -- La tabla de mutantes (suite COMPLETA, 16 camaras + 1 baseline)
+
+Cada veredicto sale del `.meta` escrito **despues** de que el proceso
+termino. `rc=0` + `ALL TESTS PASSED.` en la ULTIMA linea = SUPERVIVIENTE;
+`AssertionError` con traza = MUERTO; otra cosa = NO MEDIDO.
+
+| mutante | que rompe | rc | bytes / lineas | ultima linea de la suite | veredicto |
+|---|---|---|---|---|---|
+| **baseline** | nada (control positivo) | 0 | 30641 / 398 | `ALL TESTS PASSED.` | **VERDE** |
+| **M-V1** (forma **ORIGINAL**) | la DECLARACION vuelve a ser la fuente | 1 | 18875 / 236 | `AssertionError: una vista NUEVA en el disco y SIN declarar tiene que dar ROJO que la nombre y dio 0: ...` | **MUERTO por su asercion** (AC-2, `run_tests.py:30201`) |
+| **M-V4** (forma **ORIGINAL**) | `_vistas_del_disco` deja de estar en ambito de modulo | 1 | 18707 / 239 | `La fuente tiene que ser el disco (\`_vistas_del_disco()\`, en ambito de modulo) ...` | **MUERTO por su asercion** (AC-1, `run_tests.py:29752`) |
+| **M-V3** | el derivado devuelve conjunto vacio | 1 | 19691 / 236 | `AssertionError: el rojo tiene que NOMBRAR la infraccion ...` | **MUERTO** (AC-2, `:30163`) |
+| **M-V3b** | el derivado devuelve el conjunto escrito a mano | 1 | 18377 / 237 | `La fuente tiene que ser el disco ...` | **MUERTO** (AC-1, `:29747`) |
+| **M-V5** | el derivado devuelve la DECLARACION | 1 | 18484 / 237 | `La fuente tiene que ser el disco ...` | **MUERTO** (AC-1, `:29746`) |
+| **M-V6** | la raiz del repo es una ruta fija | 1 | 19689 / 236 | `AssertionError: el rojo tiene que NOMBRAR la infraccion ...` | **MUERTO** (AC-2, `:30163`) |
+| **M-V7** | el directorio es `ui` y no `ui/views` | 1 | 19929 / 236 | `AssertionError: el rojo tiene que NOMBRAR la infraccion ...` | **MUERTO** (AC-2, `:30163`) |
+| **Q5** | el tripwire de publicaciones se desfasa (10 -> 11) | 1 | 19464 / 236 | `AssertionError: el rojo tiene que NOMBRAR la infraccion ...` | **MUERTO** (AC-2, `:30163`) |
+| **Q1** | las tres sondas `test_*` dejan de invocarse | 1 | 11719 / 173 | `AssertionError: un journal ILEGIBLE es un fallo del ancla y solo uno: ...` | **MUERTO** (`run_tests.py:13542`) |
+| **Q2** | la regla de modulo se estrecha a UN guard | 1 | 18516 / 235 | `AssertionError: el detector tiene que DENUNCIAR una enumeracion escrita a mano en una funcion que NO esta en ninguna lista, y nombrarla con FICHERO Y LINEA: ...` | **MUERTO** (AC-1, `:29885`) |
+| **Q2b** | la regla de modulo no mira nada | 1 | 18518 / 235 | idem | **MUERTO** (AC-1, `:29883`) |
+| **S1** | el recorrido NO baja al cuerpo de un `for` | 1 | 18400 / 235 | `AssertionError: el detector tiene que DENUNCIAR una enumeracion escrita a mano metida en un bucle ANIDADO, y nombrarla con FICHERO Y LINEA: ...` | **MUERTO** (AC-1, `:29927`) |
+| **S2** | la tolerancia vuelve a ser POR FUNCION | 1 | 18389 / 235 | `AssertionError: UNA justificacion escrita no puede tapar DOS enumeraciones de la misma funcion: cada enumeracion necesita la SUYA, y la suya tiene que NOMBRARLA. ...` | **MUERTO** (AC-1, `:29965`) |
+| **S3** | la enumeracion escrita a mano detras de una LLAMADA | **0** | **30641 / 398** | `ALL TESTS PASSED.` | **SUPERVIVIENTE por decision documentada** (no es FAIL) |
+| **S4** | el patron de S3 aplicado al GUARD DE VERDAD | 1 | 18371 / 237 | `La fuente tiene que ser el disco ...` | **MUERTO** (AC-1, `:29752`) |
+
+Los tres que el encargo pedia en su **forma ORIGINAL** (los que la ronda 2 no
+pudo acreditar por el `NameError` de R7) mueren **por su asercion**, con traza
+al `assert` y sin una sola excepcion:
+
+* **M-V1**: `assert r3.returncode != 0, (...)` en `test_una_vista_nueva_se_audita_aunque_nadie_la_apunte`
+  (`run_tests.py:30201`). El mensaje es el del AC-2 y nombra la causalidad
+  ("si la derivacion devuelve la DECLARACION la comparacion es tautologica").
+* **M-V4**: `assert not delitos, (...)` en `test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad`
+  (`run_tests.py:29752`). **Cero `NameError`.** El helper anidado lo denuncia la
+  regla 1, que es justo lo que R7 habia dejado inservible.
+* **M-V2** (el **escenario**, no un mutante): con el codigo sano y una vista
+  nueva en disco, el guard de workers da **ROJO_ASERCION** que nombra la vista
+  y el directorio:
+
+  ```
+  ROJO_ASERCION|test_los_workers_de_pack_solo_publican_por_after|
+  el conjunto de vistas que este guard audita no es el que hay en el disco:
+  en el directorio de vistas hay ['dashboard_view.py', 'pack_manager_view.py',
+  'process_manager_view.py', 'vista_nueva_de_la_camara.py'] y la declaracion es
+  [...]; la diferencia es ['vista_nueva_de_la_camara.py'].
+  ```
+  Control positivo en la MISMA camara sin la vista nueva: **VERDE**. Por eso
+  M-V2 sigue siendo **EQUIVALENTE**, no un fallo.
+
+**S3: el acotamiento (S4) queda verificado.** El mismo patron (enumeracion
+escrita a mano detras de una llamada) aplicado al **guard de verdad** (S4)
+**MUERE** por AC-1 (`:29752`): el conjunto COMPLETO lo caza la regla 3 y el
+subconjunto lo caza la comparacion de los dos guards. Es decir: el hueco es de
+la **REGLA** (la heuristica), no del **GUARD** -- y el docstring de AC-1 lo dice
+literalmente. Ademas, el log de **S3 es el del baseline con 34 lineas de ruido**
+(latencias en ms y nombres de Tk con marca de tiempo) y **cero** lineas de
+veredicto distintas: S3 no se ha colado por el flakiness en esta corrida.
+
+**S3, con tasa y no con una sola corrida.** Un superviviente que puede morir
+por el flaky no se declara con una ejecucion: se **repite**. Tres camaras
+distintas con la misma mutacion S3 y un baseline extra:
+
+| corrida | rc | bytes / lineas | ultima linea | veredicto |
+|---|---|---|---|---|
+| **S3** | 0 | 30641 / 398 | `ALL TESTS PASSED.` | SUPERVIVIENTE |
+| **S3b** | 0 | 30641 / 398 | `ALL TESTS PASSED.` | SUPERVIVIENTE |
+| **S3c** | 0 | 30641 / 398 | `ALL TESTS PASSED.` | SUPERVIVIENTE |
+| **baseline** | 0 | 30641 / 398 | `ALL TESTS PASSED.` | VERDE (control) |
+| **baseline2** | 0 | 30791 / 402 | `ALL TESTS PASSED.` | VERDE (control) |
+
+**S3 sobrevive 3 de 3**, y los dos controles positivos verdes. El log de S3 es
+**byte a byte** igual al del baseline de la misma tanda (30641 B, 398 lineas):
+el mutante no cambia **nada** del resultado de la suite, que es lo que
+significa "superviviente".
+
+## P3.8 -- Las deudas: verificadas, y ninguna es un agujero del fix
+
+| deuda | que es | como la he medido | es un agujero del fix de este ciclo? |
+|---|---|---|---|
+| **S8** | la tolerancia **por funcion** sigue viva en el guard **AC-5 de TASK-081** | `run_tests.py:28676` (`_delitos_de_enumeracion`): calcula `justificado` **una vez por ambito** (`for ambito, doc_node, nodos in _ambitos(arbol)`) y hace `continue` para **todas** las enumeraciones de ese ambito. Es la misma clase que S2 | **NO**: es OTRO guard (AC-5, de TASK-081), y este ciclo tiene **cero ediciones** en `src/woptimizer/**` (donde vive su enumeracion justificada). R9 solo arranco el camino de AC-1 (`_enumeracion_justificada`); `_justificacion_de_la_enumeracion` sigue viva, pero para otro guard |
+| **S9** (en `tasks.md`) | el test del pre-vuelo es **flaky** por construccion | 11/200 = **5,50 %** de fixtures (teorico 1/16 = 6,25 %) | **NO**: es un test de TASK-072, ajeno a TASK-082. Pero **si** puede contaminar una medicion de mutacion (ver P3.2) |
+| **S3 / A-C68-10** | la heuristica de AC-1 no ve una enumeracion detras de una **llamada** | S3 sobrevive (rc=0, log identico al baseline salvo ruido) y **S4** (el mismo patron en el guard de verdad) **muere** por AC-1 | **NO**: es un hueco de la **REGLA**, no del guard, y el docstring de AC-1 lo declara. Declarado como deuda (decisión documentada) |
+
+## P3.9 -- Veredicto de cierre del ciclo 68, punto por punto
+
+| punto del criterio | veredicto | por que (medido) |
+|---|---|---|
+| **(a)** el fix de TASK-082 sigue PASS | **SI** | Los **7** mutantes del fix (M-V1, M-V3, M-V3b, M-V4, M-V5, M-V6, M-V7) **mueren por su asercion**, con traza al `assert` y sin excepciones; **M-V1 y M-V4 en su forma ORIGINAL** (lo que la ronda 2 no pudo acreditar). **M-V2** sigue **EQUIVALENTE**, con control positivo en verde |
+| **(b)** los mutantes declarados de la vigilancia mueren por su asercion | **SI** | **13 de 13** MUERTOS por su asercion: M-V1, M-V3, M-V3b, M-V4, M-V5, M-V6, M-V7, Q1, Q2, Q2b, Q5, S1, S2. **S3 sobrevive** y **no es FAIL** (decidido y documentado; su gravedad acotada por S4, que muere) |
+| **(c)** cero identificadores sin definir | **SI** | `HEAD` = **0**; `HEAD~1` = **1** (`expression`, linea 29351, el bug que R7 arregla). Comprobador propio con **ambitos**, autotest **13/13**, regla de cierre verificada en Python real (7/7). Los comprobadores sin ambitos dan **111-112 falsos positivos** sobre el mismo fichero |
+| **(d)** el docstring de AC-1 no afirma nada que no vigile | **SI** | Declara las 5 reglas, declara en un bloque explicito lo que **NO** comprueba, y nombra el hueco de S3 con su acotamiento. La justificacion de `:6118` nombra las dos vistas que tolera, y la enumeracion que sigue es exactamente esas dos |
+| **(e)** higiene: 0 residuos y las 8+ citas vivas | **SI, CON UNA SALVEDAD MEDIDA** | **0 residuos** (CJK/hangul/U+FFFD/soft-hyphen/ZWSP) en los 3 ficheros del commit, y **19 de 19** lineas citadas **existen**. **PERO**: 1 de las 19 (la `validate_docs.py:1180` -> `run_tests.py:14013`) es **FALSA de ordinal**: la 14013 es la **1a** ocurrencia del marcador, no la 2a (la 2a real es la 30602). No altera ninguna derivacion (el validador usa la 30602 y da 158/76), no la vigila ningun guard, y **no es un cambio de este ciclo** (`9ccbfd6` no toca `validate_docs.py`) |
+
+### VERDICT: **PASS** (ciclo 68)
+
+El ciclo se puede cerrar. La salvedad de (e) **no reabre el ciclo** por la razon
+estructural que el propio criterio enuncia: una via nueva --o un defecto
+preexistente de otro fichero-- se encola como tarea con nombre y metrica, y no
+hace que un bucle se quede indefinidamente en el mismo guard. Y no es un
+agujero del fix: `validate_docs.py` es de **TASK-081**, este ciclo tiene cero
+ediciones en el, y el numero que el validador deriva (30602) es el correcto.
+La **deuda S9** (flakiness) y la **S8** (tolerancia por funcion en AC-5) estan
+declaradas con su metrica y ninguna toca el fix.
+
+*Si el orquestador exige que "viva" signifique "la linea existe **y** su
+contenido sostiene la cita, ordinal incluido", entonces (e) queda **PARCIAL** y
+no PASS. Lo digo explicitamente para que la decision sea del orquestador y no
+mia; el resto de (a)-(d) y el 0 residuos no se tocan en ninguna de las dos
+lecturas.*
+
+## P3.10 -- Tareas nuevas para el backlog (con nombre y metrica)
+
+Ninguna reabre el ciclo 68. Todas con criterio de aceptacion **medible**:
+
+| id | deuda | metrica (como se mide) | criterio de aceptacion medible |
+|---|---|---|---|
+| **T-C68-A** | **Los identificadores de deuda se pisan**: `S9` designa **dos** deudas distintas -- en `tasks.md:313` es el flakiness, y en el encargo del ciclo 68 es la heuristica de AC-1, que `tasks.md:298` llama **S3 (A-C68-10)** | recuento de etiquetas `S<n>` por fichero | cada etiqueta `S<n>` de `tasks.md` y del informe tiene **UN** solo significado; `grep -o 'S[0-9]' tasks.md mutation-report.md | sort | uniq -c` no devuelve ninguna etiqueta con dossignificados distintos, y el informe del ciclo 68 nombra las deudas con el mismo rotulo que `tasks.md` |
+| **T-C68-B** | **El test del pre-vuelo es flaky y puede dar un FALSO VEREDICTO de mutacion** | **11/200 = 5,50 %** de fixtures con `short + "0"` como prefijo del sha (teorico 1/16 = 6,25 %); con 17 camaras, la probabilidad de que **una** se contamine es del **61 %** | el test deja de depender del 8o digito del sha (o el hash muerto se deriva del sha **completo**), y **0 muertes en 1000 corridas** de la suite (con la tasa actual, P(0 muertes) = 10^-25) |
+| **T-C68-C** | **La cita `validate_docs.py:1180` -> `run_tests.py:14013` tiene el ordinal equivocado** (la 14013 es la **1a** ocurrencia del marcador; la 2a es la 30602) | 1 cita falsa de ordinal entre 19 verificadas | el comentario dice "la primera (`run_tests.py:14013`)" y "la segunda (`run_tests.py:30602`)", **derivadas**, no escritas a mano; y un guard deriva la posicion del marcador en vez de citarla |
+| **T-C68-D** | **S8: la tolerancia por funcion sigue viva en AC-5 (TASK-081)** -- `_delitos_de_enumeracion` (`run_tests.py:28676`) calcula la justificacion **una vez por ambito** | 1 justificacion por ambito, no por enumeracion | un mutante con la tolerancia por funcion en AC-5 **muere por su asercion**, y **0** guards del repo saltan "todas las enumeraciones de este ambito" con una sola justificacion |
+| **T-C68-E** | **S3 / A-C68-10: la heuristica de AC-1 no ve una enumeracion detras de una llamada** (`for n in _mis_vistas()`) | 1 via conocida que la regla 5 no ve | el detector ve el iterable de un `for` a traves de una llamada cuando el helper devuelve un conjunto de literales: el mutante **S4** muere por la **regla 5**, no por la comparacion de los dos guards |
+| **T-C68-F** | **P2: ninguna de las 19 citas por numero de linea la vigila un guard** | 0 de 19 | un guard deriva la linea que dice el comentario y compara; o el comentario **no dice** numeros. Criterio: 0 citas por numero de linea sin guard que las derive |
+
+## P3.11 -- Ancla: el repo real NO se ha tocado
+
+* `git rev-parse HEAD` = `9ccbfd68c3119bbfe1ebd6723a54906b40cc8e40` **antes y
+  despues** (y `git rev-parse --abbrev-ref HEAD` = `beta`);
+* `git rev-parse --git-dir` = `C:\Users\carch\AppData\Local\woptimizer_git\.git`
+  (el repo real, desacoplado): las camaras nunca lo tocaron;
+* `git status --porcelain` **NO esta vacio**, y hay que decirlo: lo unico que
+  aparece es **`M openspec/changes/2026-10-21-vistas-del-guard-de-workers-derivadas/mutation-report.md`**
+  -- **este informe**, +379 lineas, que versiona el orquestador. **Cero** ficheros
+  de codigo tocados, **cero** commits;
+* `git diff --stat` = 1 fichero, 379 inserciones (todo el fichero anterior
+  intacto: la PARTE 3 es una **adicion**, no una reescritura);
+* `git diff --cached --stat` = **vacio** (nada en el indice);
+* `git reflog` = **310** entradas antes y despues: **no ha crecido**;
+* `git_safe_commit.py` **no** se ha invocado **ni una vez** (ni desde el repo ni
+  desde `%TEMP%`): en la camara se usa `git` a pelo contra un `GIT_DIR`
+  desechable, y el control de aislamiento (A/B/C) se ejecuto **antes** de
+  mutar nada en las 20 camaras;
+* **Cero escrituras** bajo `C:\Users\carch\Nextcloud\Scripts\woptimizer\` fuera
+  de **este informe**. **Ningun commit.**
+
+
+

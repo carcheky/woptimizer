@@ -1,3 +1,23 @@
+## CYCLE-068 - 2026-10-22
+
+### 🔴 Corregido — Una ventana nueva en la interfaz ya no se salta sin avisar
+
+**Estado**: **PASS** en auditoría de mutación (13 mutantes declarados, 13 muertos; 0 identificadores sin definir). Tests: **234** (158 backend + 76 headless). Commits: `515c36d`, `f8bc867`, `73b2393`, `9ccbfd6`.
+
+- 🔴 **Qué se rompía**: la revisión automática que vigila las ventanas de la interfaz **abría una lista de ficheros escrita a mano**. Si mañana alguien añade una ventana nueva, **nadie la revisaría** y todo saldría en verde. Medido en un laboratorio: la ventana nueva, **con un fallo de verdad**, **no se vio**.
+- 🔴 **Y el conjunto estaba escrito CUATRO veces** en el proyecto, y **sólo una** estaba atada a lo que hay de verdad en el disco. Tres de las cuatro sobraban: la revisión ya sabía deducir dónde están y sin embargo se escribía a mano una lista.
+- 🛡️ **Qué se hizo**: ahora esa lista **se deduce del disco**. La lista escrita a mano queda como **declaración**: se compara con lo que hay de verdad y, si no coinciden, **sale un aviso que dice exactamente qué ventana falta**. La ventana nueva **se revisa igual**, esté o no en ninguna lista.
+- 🧪 **La revisión se midió de verdad**: se rompieron 13 casos a propósito, uno por uno, y se comprobó que cada uno lo detectara. El caso que más importaba: **se borraron las tres revisiones nuevas y nadie se enteró**. Eso ya no pasa: borrarlas **rompe** el proyecto.
+- 🔴 **Un fallo de verdad en el trabajo de este ciclo, y queda dicho**: una de las correcciones dejó un **nombre mal escrito** dentro del código. No se notaba porque solo se usaba en un camino raro, pero **hacía que dos de los casos de prueba murieran por un error de nombre** en vez de por la comprobación que les tocaba. Eso es un «verde» que no era verde. Se detectó, se corrigió y **se midió otra vez**: los dos casos ahora mueren por la comprobación correcta.
+- 🔴 **Tres maneras de dejar la revisión ciega, y tres maneras de taparlas**: (1) las revisiones nuevas **no estaban contadas** por nadie, (2) el detector miraba **una lista escrita a mano** en vez de todo el fichero, (3) la lista de excepciones **tapaba de más** de lo que debería. Las tres están medidas y arregladas.
+
+### 📌 Lo que queda anotado
+
+- Un tipo de comprobación automática **falla de vez en cuando** (5 de cada 100) por un motivo tonto: dos ficheros de prueba nacen con la misma fecha. Se ha medido y **se sabe exactamente dónde**. Se anota como tarea, porque un corrector que a veces no vigila es un corrector que a veces deja pasar algo.
+- Al detector le queda un hueco en una forma **muy rebuscada** de escribir la lista. Se ha medido que esa forma **la pilla otro control**, así que no se pierde nada; queda anotado con su medida en vez de perseguirlo sin límite.
+- La **cifra de tests** pasó de 231 a **234**, y sigue **derivada** del programa, no escrita a mano: los cuatro sitios que la declaran la toman de allí mismo.
+- La **revisión de la interfaz** (`src/woptimizer/`) **no se ha tocado**: cero cambios. Todo lo de este ciclo es herramienta del taller, no el producto.
+
 ## CYCLE-067 - 2026-10-19
 
 ### 🔴 Corregido — La puerta de sintaxis ya no se ciega a los ficheros nuevos
@@ -5,7 +25,7 @@
 **Estado**: **PASS** en auditoría de mutación (7 mutantes, 7 muertos). Tests: **231** (155 backend + 76 headless). Commits: `14ebe4a`, `44fb4e3`.
 
 - 🔴 **Qué se rompía**: la comprobación automática que revisa la interfaz **miraba una lista de ficheros escrita a mano**. Cualquier módulo nuevo se le escapaba **sin decir nada**, y salía todo en verde. **Ya había pasado dos veces**: dos ficheros de la interfaz se crearon después de que esa lista se escribiera, y nunca entraron. Nadie se dio cuenta hasta que alguien lo midió.
-- 🔴 **Por qué no loarryó nadie**: el problema ya estaba escrito en los documentos del proyecto desde el 29 de septiembre. Se "arregló" **añadiendo el fichero a la lista**. Eso es **exactamente** el camino que causa el fallo: cuando el siguiente ficheяo aparezca, pasará lo mismo. Esta vez se arregla la **causa**: la lista **ya no existe**, los ficheros se descubren solos.
+- 🔴 **Por qué no lo arrastró nadie**: el problema ya estaba escrito en los documentos del proyecto desde el 29 de septiembre. Se "arregló" **añadiendo el fichero a la lista**. Eso es **exactamente** el camino que causa el fallo: cuando el siguiente fichero aparezca, pasará lo mismo. Esta vez se arregla la **causa**: la lista **ya no existe**, los ficheros se descubren solos.
 - 🛡️ **Qué se hizo**: la comprobación **recorre el árbol** en vez de leer una lista. Comprobado **ejecutándola de verdad** contra un árbol de prueba: un módulo **nuevo** con un error de sintaxis **ahora da error**, que es el caso que antes pasaba desapercibido.
 - 🧪 **El recuento también deja de escribirse a mano.** La puerta imprime cuántos ficheros ha revisado, y todo lo que lo documenta toma ese número del propio programa. Antes esa cifra la escribió una persona, y en tres ciclos dio tres números distintos: 8, 9 y 10.
 - ⚠️ **Un detalle que se deja dicho y no se esconde**: una de las comprobaciones afirma en su documentación que detecta un caso que **medido, no detecta**. Otra la salva una comprobación distinta. Ninguna rompe el resultado, pero es exactamente el patrón que este ciclo vino a cerrar.
