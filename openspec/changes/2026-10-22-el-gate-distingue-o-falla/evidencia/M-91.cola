@@ -4,7 +4,7 @@ Traceback (most recent call last):
   File "C:\Users\carch\AppData\Local\Temp\wopt_c71_trabajo\solo.py", line 6, in <module>
     run_tests.test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_M-91_7256\run_tests.py", line 22790, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_M-91_24024\run_tests.py", line 22790, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     assert not fallos_del_coherente, (
            ^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: EL GATE ACUSA EN LO QUE NO PUEDE: el sentinela M-FIX-BIEN declara MUERTO y su evidencia commiteada obliga a MUERTO, luego no hay nada que acusar, y el gate lo ha acusado. Un gate que acusa en lo que no puede es tan ciego como uno que no acusa nada (mutante M-91). Fallos que lo nombran: ['  [FAIL] rd_journal.json: el mutante M-FIX-BIEN esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion)']. Informe:

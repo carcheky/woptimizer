@@ -24980,10 +24980,10 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
         # de los tests de herencia de stdin. `parent_code` es el fuente de un
         # programa hijo, no un argv de git.
         ("subprocess.Popen", "[_sys.executable, '-c', parent_code]"): 2,
-        # Las 2 de `[sys.executable, os.path.join(tmp, 'validate_docs.py')]`:
-        # el VALIDADOR de docs, que tiene su propio `--batch-check` legitimo
-        # con `input=` (`validate_docs.py:519`) y otro fichero.
-        ("subprocess.run", "[sys.executable, os.path.join(tmp, 'validate_docs.py')]"): 2,
+        # Las 3 de `[sys.executable, os.path.join(tmp, 'validate_docs.py')]`: dos
+        # de la seccion (A) y la NUEVA de la camara de la seccion (D): el
+        # VALIDADOR de docs: `--batch-check` legitimo con `input=` (`validate_docs.py:519`).
+        ("subprocess.run", "[sys.executable, os.path.join(tmp, 'validate_docs.py')]"): 3,
         # `cat-file -e` es OTRA primitive: se ve el token en el texto del argv,
         # pero `-e` NO es la primitive vigilada, asi que decidirse no cambia el
         # veredicto. Se registra por el motivo de siempre: si alguien lo cambia
