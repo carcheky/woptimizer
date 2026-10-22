@@ -17733,7 +17733,7 @@ def _head_del_repo_real():
     mismo helper y en el mismo orden de tres pasos, y sigue fallando fuerte si no
     hay ninguno. Un skip aqui seria una guarda que se apaga sola en el unico
     sitio donde nadie la ve, que es la clase de punto ciego que
-    la decision P-2b de `STATUS.md:108` prohibe. Y sigue mirandose ESTE repo, porque
+    la decision P-2b de `STATUS.md:109` prohibe. Y sigue mirandose ESTE repo, porque
     `_entorno_git_del_repo()` verifica que el `GIT_DIR` candidato sea de verdad
     este arbol: cambiar de ruta no cambia lo que la sonda mide.
     """

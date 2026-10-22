@@ -1,3 +1,72 @@
+## [CYCLE-069] 2026-10-22 - task-083-veredicto-de-no-medido
+
+### TASK-083: un test flaky puede fabricar falsos veredictos
+
+**Area**: Tooling / Testing. **Change**: `openspec/changes/2026-10-22-veredicto-de-no-medido/`
+**Estado**: **COMPLETED** — auditoria **PASS**. **Tests**: 231 -> **235 = 159 + 76**. `src/woptimizer/**` intacto.
+**Commits**: `eb024b5` (arquitectura), `a4d2775` (fix), `1894f5d` (M-3 determinista).
+
+**Models**
+- Paso 1 (Buscar): orquestador — backlog: `TASK-083` (creada en el cierre del ciclo 68).
+- Paso 2 (Planear): `architect-review` — **refuto la premisa del encargo** (la causa NO era el reloj) y **reescribio** `TASK-083` con 6 criterios discriminantes.
+- Paso 3 (Ejecutar): `openspec-dev` — **dos rondas** (el fix y la ronda que hizo determinista M-3).
+- Paso 4 (Auditar): `mutation-auditor` — **PASS**. 15 corridas, 14 camaras.
+
+### La premisa, y lo que la medicion dijo de ella
+
+El encargo (del orquestador) decia que los fixtures compartian sha porque nacian en el mismo segundo, y que por eso el test fallaba ~5,5 % de las veces. **Las tres partes de esa premisa eran falsas:**
+
+1. **La causa no era el reloj.** `run_tests.py:23415` construia el hash muerto como `hash_real + "0"`, y `git cat-file -e` resuelve **cualquier** prefijo de 8 hex: ese prefijo **coincide con el objeto real** cuando la **8.a cifra del sha es `0`** -> **1/16 = 6,25 %**. **MECANISMO confirmado al 100 %**: 400/400 fixtures rompian **si y solo si** `sha[7]=='0'`. El reloj solo hacia variar el sha; con fecha fija el test falla **siempre o nunca** (8/8 shas identicos).
+2. **"Asunto unico por fixture" NO lo arregla**: 400 shas distintos y la tasa **sigue en 5,75 %** (IC95 3,86-8,48 %).
+3. **El criterio "0 muertes en 1000 corridas" era inutil**: son **8,5 dias** de suite y no mide lo que dice.
+
+**Tasas medidas por el arquitecto** (dos distribuciones): A) 23/400 = 5,75 % (IC95 3,86-8,48 %) con asunto unico; B) 12/144 shas = 8,33 % (IC95 4,83-14,00 %) a nivel de cluster, que es el honesto con el sesgo del repo. El **intervalo** del ciclo 68 (+-3,16 %) era demasiado estrecho: 200 fixtures son ~100 shas, no 200 ensayos.
+
+**Tasas medidas por el auditor** (400 fixtures de la familia): 287 shas distintos, **16/400 = 4,00 %** con `0` en la 8.a cifra (IC95 2,48-6,40 %, el 6,25 % teorico dentro), **0 colisiones** de los 5 literales fijos.
+
+### Opciones con coste medido (suite limpia = 734,9 s en este host)
+
+| Opcion | Coste | Efecto | Decision |
+|---|---|---|---|
+| (a) Determinismo en la fuente | **+0,077 s** (1 llamada a git) | p = 0 para siempre | **GANADORA** |
+| (b) Repetir N veces | N x 734,9 s por mutante -> N=3: **8,0 h/ciclo** | sin consistencia **empeora**: `1-(1-p)^N` = 6,25 % -> **17,6 % (N=3)** -> 27,5 % (N=5) | rechazada |
+| (c) Lista a mano de tests "de evidencia" | mantenerla | es la clase D2/D3/P2/A-C68-1 | rechazada |
+| (d) La suite declara su flakiness | N x S | acaba en artefacto a mano | rechazada |
+
+La variante buena se **(d') la muerte tiene que venir del ASA ESPERADA**: **0 corridas extra**, porque el harness ya captura el log. Se encolo como `TASK-087`.
+
+### Mutaciones auditadas (Paso 4) — 15 corridas en 14 camaras
+
+| id | mutacion | veredicto | Motivo literal |
+|---|---|---|---|
+| M-1 | vuelve a `hash_real + "0"` | **MUERTO** | tripwire `run_tests.py:23681: hash_real + '0'` **y** pre-vuelo («296cfb20 tiene que NO existir») — 30/30 en cada uno |
+| M-2 | hash muerto = literal fijo | **MUERTO** | tripwire («`_hash_muerto_por_construccion` no la llama nadie») **y** pre-vuelo («deadbee tiene que VENIR de la derivacion») — 30/30 en cada uno |
+| M-3 | el reloj de la fixture se suelta | **MUERTO, REPRODUCIBLE** | **aserto del INSTANTE**: 30/30 rojo, 0 verde, 0 excepcion; suite completa **4/4 rojo** |
+| T-1' | el conjunto del tripwire se vacia en silencio | **SUPERVIVIENTE** | el conjunto derivado es hoy un **singleton** (el repo prohibe `test_*.py` en la raiz -> patron muerto; 0 `*_test.py`): con el glob vacio la concatenacion presente pasa y la suite queda VERDE. Cierre natural: `TASK-088` |
+| T-2 | la contraprueba del tripwire se relaja | **MUERTO** | la contraprueba del guard |
+| G-1 / G-2 | el guard de TASK-072 se afloja | **MUERTO** | ROJO por la **regla intacta**; las dos mitades **OK en sano / ROTA con G-3** |
+
+### Lo que la ronda 2 tuvo que arreglar (y por que el ciclo no cerro en la primera)
+
+Con el reloj clavado y el hash derivado, M-3 (el reloj se suelta) **moria 61 de 64** veces (95,3 %): la asercion que lo detectaba era `sha_completo[7] == "0"`, que mide la **CONSECUENCIA con azar** (1/16), no la causa. El dev lo declaro solo («M-3 no es un fallo determinista»), y esa honestidad fue lo que permitio medirlo. La ronda 2 lo cambio por un **aserto del INSTANTE** (epoch DECLARADO por la fixture frente al epoch REAL del objeto commit, leido con `git cat-file commit HEAD`): con el reloj suelto **falla el 100 %**, y es **portable**, porque afirmar el sha absoluto habria dado falso rojo en otro host.
+
+### El criterio de cierre de este ciclo, y por que cambio
+
+Un mutante que muere el 95 % de las veces **NO cuenta como muerto**: un veredicto que depende de una azar es ruido, y este bucle decide PASS/FAIL leyendo un log. Por eso M-3 tiene que dar ROJO **SIEMPRE** (N >= 30, sin una sola verde), y por eso el **guard nuevo cuenta** como test: un guard que nadie cuenta se puede **borrar sin que nada se entere** (leccion A-C68-1).
+
+### Los tres agujeros que quedan, y quien los puede pisar
+
+- **H-A** (killer-check): el motivo del log es **ruido 15/16** -> solo `TASK-087`.
+- **H-B** (la familia): 21 fixtures con sha dependiente del reloj, nadie lo vigila -> solo `TASK-088`.
+- **H-C** (el conjunto del tripwire): se vacia en silencio -> solo `TASK-088`.
+- **H-D** (el arbol que se mueve): `_sin_contaminacion` (`run_tests.py:17889`) compara HEAD **por contenido** -> puede dar verde con el arbol cambiado -> `TASK-089`.
+
+**H-A, H-B y H-C los puede pisar el bucle en cualquier ciclo.** Por eso van encolados con criterio medible y no como nota suelta.
+
+### Dos correcciones de citas, y un error del orquestador
+
+Una cita **falsa** mas (senalada por el dev, corregida por el orquestador): `docs/ai/testing-guide.md` apuntaba a `run_tests.py:22264`, que hoy dice `f"{sha_completo} commit 120") is not None, (`; el test real esta en `run_tests.py:29006`. Y un **error del orquestador**: al cerrar el ciclo 68 calculo que 3 filas nuevas del panel desplazaban **+3** lineas, y desplazan **+6** (3 de texto y 3 en blanco intercaladas) -> dos citas quedaron 6 lineas desviadas (`STATUS.md:94` y `:105`), corregidas a 98 y 109. **Ninguna de las citas la vigila un guard** (`TASK-086`): el dato derivado, escrito a mano, se caduca en silencio.
+
 ## [CYCLE-068] 2026-10-22 - task-082-vistas-del-guard-de-workers-derivadas
 
 ### TASK-082: el conjunto de vistas del guard de workers se deriva, y su vigilancia deja de ser vaciable

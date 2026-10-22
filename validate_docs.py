@@ -2040,7 +2040,7 @@ def _comprobar_deuda_con_anclas(root, errors, ok):
     es la clase de fallo que D1 cerro en el ciclo #47.
 
     MEDIDO el 2026-10-02 al nacer: 15 filas, 7 exentas y 8 vivas, y de las 8 vivas
-    solo `STATUS.md:97` se quedaba sin ninguna fuente resoluble -- por eso el
+    solo `STATUS.md:98` se quedaba sin ninguna fuente resoluble -- por eso el
     nacimiento toco UNA fila y no tres. Las exentas NO son filas mudas por
     capricho: son registros historicos, y exigirles anclas haria que el check
     fallara siempre y luego nadie lo mirara, que es como muere un validador.

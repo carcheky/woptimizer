@@ -1,3 +1,24 @@
+## CYCLE-069 - 2026-10-22
+
+### 🔴 Corregido — Un test que fallaba sin motivo una de cada dieciséis veces
+
+**Estado**: **PASS** en auditoría de mutación (3 mutantes, 3 muertos; el que quedaba con azar ahora es **reproducible**: 30 de 30). Tests: **235** (159 backend + 76 headless). Commits: `eb024b5`, `a4d2775`, `1894f5d`.
+
+- 🔴 **Qué se rompía**: una comprobación automática construía el «hash muerto» **añadiendo un carácter al hash real**. Pero git resuelve **cualquier prefijo de 8 caracteres**, así que ese prefijo **coincidía con el objeto de verdad** cuando la **octava cifra hexadecimal del hash era un cero** → **1 de cada 16 veces** el test fallaba **sin que hubiera ningún fallo**. Medido: **400 de 400** los casos rompían **solo** cuando esa cifra era cero.
+- 🔴 **Y por qué importaba**: el bucle decide si un cambio está bien **leyendo el resultado de la suite**. Un test que falla de vez en cuando puede hacer que un cambio **parezca estar mal** —o **parezca estar bien**— **por casualidad**. No fue una hipótesis: ya había pasado una vez.
+- 🧪 **La causa era otra de la que se suponía**. Se pensaba que el culpable era la **hora** (dos pruebas nacían en el mismo segundo). **No**: la hora solo hacía que el hash cambiase. Con la hora fija, el test falla **siempre o nunca**. Y poner una prueba distinta en cada caso **tampoco** lo arreglaba: 400 hashes distintos y el fallo seguía en el 5,75 %.
+- 🛡️ **Qué se hizo**: la prueba usa ahora una **hora fija** y elegida para que sea **adversaria**; el «hash muerto» ya **no se escribe a mano** sino que **se deduce** de los objetos de la prueba, buscando un dígito que **no** colisione con ninguno (15 de 16 libres, medido en 400 de 400). Y se ha añadido un **vigilante** que detecta en todo el proyecto cualquier sitio donde se construya un valor a partir de un hash real.
+- 🧪 **Y el tiro que quedaba**: el mutante «suelta la hora» moría **61 de 64** veces, porque el vigilante comparaba una cifra del hash —una coincidencia con probabilidad de 1 sobre 16— en vez de la **causa**. Ahora compara **la hora declarada** con **la hora real** del commit: con la hora suelta **falla el 100 %**, y funciona igual en cualquier ordenador. Medido: **30 de 30 en rojo**, ninguna por error.
+- 🔴 **Un fallo de verdad que se encontró de paso**: otro vigilante del repo prohibía una forma de llamada a git **sin motivo** (obligaba a un parámetro que esa forma no usa). Se corrigió **con su contraprueba intacta**, no aflojando la regla.
+- ✅ **Y se comprobó que no hay otro test intermitente**: 0 fallos en **200** ejecuciones de la prueba, 0 en **6** suites completas, y 400 casos de la familia → **0 colisiones**. Los resultados de la suite **no** son idénticos entre corridas: difieren en 42 líneas de **ruido** (identificadores con la hora de arranque y una latencia). **Ninguna** es un fallo.
+
+### 📌 Lo que queda anotado
+
+- La **decisión de fondo** que cambió este ciclo: *un mutante que muere el 95 % de las veces **no cuenta como muerto***, porque un veredicto que depende de una azar es ruido. Y la regla de la casa: **un guard que nadie cuenta se puede borrar sin que nada se entere** — por eso el vigilante nuevo **cuenta** como test.
+- Quedan **encoladas con su medida** tres cosas que este ciclo **no** arregla: el **killer-check** (hoy no hay forma de saber si un mutante murió por su comprobación o por casualidad), la **familia** de pruebas con hash dependiente de la hora, y el **árbol que se mueve** durante la corrida. Las dos primeras **las puede pisar el bucle en cualquier momento**.
+- La cifra de tests pasa de 234 a **235**, y sigue **derivada** del programa, no escrita a mano.
+- La **interfaz** (`src/woptimizer/`) **no se ha tocado**: cero cambios. Todo lo de este ciclo es herramienta del taller.
+
 ## CYCLE-068 - 2026-10-22
 
 ### 🔴 Corregido — Una ventana nueva en la interfaz ya no se salta sin avisar
