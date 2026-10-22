@@ -1432,7 +1432,7 @@ CODIGOS_DE_SALIDA_SOBRECARGADOS = ("WOPT_COMMIT_OK", "WOPT_NOOP")
 # sobrecargado` la compone con el nombre del codigo. Antes vivia el patron
 # DUPLICADO dentro de la funcion y la constante aqui sin un solo uso: MEDIDO con
 # `ast` el 2026-10-02, `_RE_DECLARACION_DE_CODIGO` estaba definida y nunca leida,
-# y el guard de codigo muerto de `run_tests.py:28734` no la cazaba porque su
+# y el guard de codigo muerto de `run_tests.py:30001` no la cazaba porque su
 # alcance es `src/woptimizer/**`, no el tooling. Dos definiciones de una forma en
 # el mismo fichero es como una de las dos se queda desfasada sin que nadie lo vea.
 _RE_DECLARACION_DE_CODIGO = re.compile(r"^[ \t]*0[ \t]+", re.MULTILINE)
@@ -2849,9 +2849,21 @@ def main(argv=None):
 #       camara donde se midio), que NO es el repo real: por eso el gate lo
 #       acepta sin resolverlo, y por eso el sha identifica el arbol MEDIDO y no
 #       el repo donde vive la linea.
+#   (f) que el gate NO ESTE CIEGO, es decir, que su CUERPO compruebe algo. El
+#       validador, POR SI SOLO, NO detecta un gate ciego: MEDIDO en camara
+#       desechable, con el CUERPO de `_comprobar_veredictos_de_mutacion`
+#       vaciado y el REGISTRO puesto, el validador seguia dando **0 FAIL** sobre
+#       un catalogo que se contradice a si mismo (el agujero D-B): el REGISTRO
+#       sale, el cableado sigue vivo y el gate no comprueba NADA. Lo que lo
+#       detecta es la SUITE, con un guard de PRODUCTO: la seccion (D) de
+#       `test_el_check_9_se_cablea_en_el_camino_real_del_validador` monta un
+#       corpus SINTETICO con un centinela COHERENTE y otro CONTRADICTORIO y
+#       exige que el gate ACUSE al segundo y CALLE sobre el primero, y que con
+#       el cuerpo vaciado ese `[FAIL]` DESAPAREZCA (el REGISTRO sigue).
 #
-# ESTA LISTA **NO ES EXHAUSTIVA**: es lo que se ha MEDIDO hasta ahora (ciclo
-# 70, mutantes K-1..K-17). Un limite que nadie ha medido sigue sin declarar, y
+# ESTA LISTA **NO ES EXHAUSTIVA**: es lo que se ha MEDIDO hasta ahora (ciclos
+# 70 y 71: mutantes K-1..K-17 y el limite D-B). Un limite que nadie ha medido
+# sigue sin declarar, y
 # declararlo aqui sin medirlo seria escribir una promesa que nadie ha
 # comprobado. Lo que SI es exhaustivo es la lista de lo que el gate PRUEBA (los
 # cinco puntos de arriba), que sale del CODIGO y no de la prosa.
@@ -3158,7 +3170,12 @@ def _comprobar_veredictos_de_mutacion(root, errors, ok, saltados,
     un FAIL); (d) que la evidencia commiteada SEA EL LOG REAL (una evidencia
     fabricada con el frame en otro fichero -> 0 FAIL); (e) que el `sha` del
     arbol auditado exista (un sha inventado -> 0 FAIL: el sha no se resuelve
-    contra ningun objeto). La lista completa, con el porque de cada limite,
+    contra ningun objeto); (f) que el gate NO ESTE CIEGO: el validador, POR SI
+    SOLO, NO detecta un gate ciego (con el cuerpo de este gate vaciado y el
+    REGISTRO puesto -> 0 FAIL: el agujero D-B), y solo la SUITE lo detecta, con
+    un guard de PRODUCTO (la seccion (D) de
+    `test_el_check_9_se_cablea_en_el_camino_real_del_validador`). La lista
+    completa, con el porque de cada limite,
     esta en el bloque de arriba ("LO QUE ESTE GATE **NO** PRUEBA"), y esa
     lista NO es exhaustiva: es la de los limites MEDIDOS hasta ahora.
     """

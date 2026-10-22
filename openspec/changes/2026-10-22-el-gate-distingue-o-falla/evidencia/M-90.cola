@@ -1,0 +1,31 @@
+=== WOPT_RUN 1 RC=1 ===
+Check 9 en el camino real del validador, con su mutante de cableado...
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_trabajo\solo.py", line 6, in <module>
+    run_tests.test_el_check_9_se_cablea_en_el_camino_real_del_validador()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_M-90_7256\run_tests.py", line 22802, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+    assert len(acusacion_buena) >= 1, (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR al sentinela M-FIX-MAL (su evidencia commiteada obliga a MUERTO y el journal lo declara SOBREVIVIENTE) y no lo ha hecho. Con el cuerpo del gate VACIO el validador tambien daria 0 FAIL, luego sin esta asercion el D-B seguiria abierto. Fallos que lo nombran: []. Informe:
+.md (raiz): entrada presente para los 1 ciclos exigidos (journal 1 | historial 0; ninguno sin enlace muerto)
+  [OK]   mkdocs.yml: nav configurada (7 entries)
+  [OK]   run_tests.py: 235 tests definidos = 235 invocados (derivado con ast)
+  [OK]   STATUS.md: declara los 235 tests que run_tests.py tiene de verdad
+  [OK]   AGENTS.md: declara los 235 tests que run_tests.py tiene de verdad
+  [OK]   README.md: declara los 235 tests que run_tests.py tiene de verdad
+  [OK]   docs/ai/testing-guide.md: 235 filas de test, una por test definido
+  [OK]   run_tests.py: reparto 159 backend + 76 headless derivado con ast (marcador en run_tests.py:31876); suma el total que ya deriva el check 7
+  [OK]   STATUS.md: declara el reparto 159 backend + 76 headless que deriva el marcador de run_tests.py
+  [OK]   STATUS.md: Deuda Tecnica Conocida: 28 fila(s), 4 exenta(s) CERRADA(s), 24 viva(s) con 47 ancla(s) de ruta resuelta(s) y 1 por contenido
+  [OK]   campo 'commits' del journal: 1 entrada(s) con 'cycle', 0 con lista de hash(es), 0 conforme(s) a R1, 1 sin hash declarado, 0 hash(es) perdido(s) declarados con causa (ninguna), 0 sin resolver sin declaracion | techos R5: 3 hash(es) y 2 ciclo(s) sin hash
+  [OK]   docs/ai/architecture.md: declara el contrato de persistencia (`%APPDATA%\woptimizer\profiles.json` y que ya NO esta junto al ejecutable) en una sola unidad de texto
+  [OK]   docs/ai/data-models.md: declara el contrato de persistencia (`%APPDATA%\woptimizer\profiles.json` y que ya NO esta junto al ejecutable) en una sola unidad de texto
+
+  [FAIL] historial de commits: se lee pero NO aporta ningun ciclo (0 subjects con marcador de ciclo sobre 1 leidos) mientras rd_journal.json si registra 1 ciclo(s). Un parser que no encuentra nada es un parser ROTO, y un parser roto en verde es el falso verde que esta union viene a cerrar
+
+  [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=0, mutantes re-derivados=0, origen del contrato: ciclo 70
+
+Resumen: 163 OK, 1 FAIL, 0 SKIP
+
+EL GATE NO DISTINGUE

@@ -1917,7 +1917,7 @@
    "description": "MEDIDO el 2026-10-22 en el ciclo 70 (mutation-auditor): el gate que re-deriva el veredicto de mutacion (check 11 de validate_docs.py) se puede dejar SIN CUERPO y el REGISTRO sigue imprimiendose: la suite completa sale rc=0 y en VERDE. El cableado SI esta vigilado (el mutante D-A, que quita la llamada al check 11 dentro de validar(), muere por su asercion), pero lo que el gate DICE no esta vigilado en absoluto. El repo ya tiene el patron para el check 9 (el «mutante de cableado» que lo vigila, en run_tests.py); el check 11 solo tiene el cableado.",
    "complexity": 3,
    "priority": "medium",
-   "status": "pending",
+   "status": "completed",
    "dependencies": [
     "TASK-087"
    ],
