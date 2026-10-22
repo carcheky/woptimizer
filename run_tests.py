@@ -22319,10 +22319,9 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
         el CUERPO del gate VACIO y el REGISTRO puesto, el validador seguia
         dando 0 FAIL sobre un catalogo que se contradice a si mismo, y NINGUN
         `test_*` lo notaba (el agujero D-B). Aqui el guard es de PRODUCTO: un
-        corpus SINTETICO con DOS entradas de journal y CINCO sentinelas (dos
-        COHERENTES y tres CONTRADICTORIOS: uno por cada sentido de la
-        contradiccion y uno con el motivo equivocado), y el gate tiene que
-        ACUSAR a los tres y CALLAR sobre los dos (D1). La CONTRAPROUEBA (D2)
+        corpus SINTETICO con CUATRO entradas de journal y DIEZ sentinelas
+        (tres COHERENTES y siete CONTRADICTORIOS), y el gate tiene que ACUSAR
+        a los siete y CALLAR sobre los tres (D1). La CONTRAPROUEBA (D2)
         vacia el CUERPO del gate, con el REGISTRO puesto, y exige que la
         acusacion del contradictorio DESAPARECER y que el REGISTRO SIGA: sin
         D2, la D1 podria cumplirse por un motivo equivocado. Y D3 restaura el
@@ -22330,6 +22329,24 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
         COSTE MEDIDO (2026-10-22): dos corridas del validador sobre el esqueleto
         (una con el gate sano y otra con el cuerpo vaciado): un 1,2 % de la
         suite de 735 s. El coste MARGINAL del validador no cambia (10,3 ms).
+
+        (D-bis) LAS CINCO PRECONDICIONES ESTRUCTURALES DEL GATE (TASK-090,
+        segunda ronda).
+        El guard de (D) mide el JUICIO del gate (que acuse al contradictorio y
+        calle sobre el coherente). Hay OTRO cinco ramas que el gate comprueba
+        y que NADIE vigilaba: son sus PRECONDICIONES ESTRUCTURALES (el sha de
+        la linea contra el del catalogo, el `asa` contra los tests definidos,
+        el frame de la evidencia contra el `asa`, el bloque de maquina del
+        informe contra el journal y el journal contra el catalogo). MEDIDO el
+        2026-10-22 (ronda 2 del `mutation-auditor`): con el corpus de (D) los
+        cinco mutantes propios M-102..M-106 SOBREVIVIERON, luego el corpus era
+        estrecho y el guard no tenia por donde verlos (el mismo fallo de la
+        ronda anterior, otra vez). aqui se anaden CINCO centinelas mas, uno
+        por rama, y cada uno es el caso que SOLO su rama puede caza: los
+        demas estan en regla en todo lo demas. Si una de las cinco ramas
+        vuelve a morir, el `[FAIL]` de SU razon desaparece y la celda que la
+        vigila cae (con el motivo "EL GATE NO DISTINGUE", el mismo de las
+        otras, para que el log del mutante diga la verdad).
     """
     print("Check 9 en el camino real del validador, con su mutante de cableado...")
     import json
@@ -22847,9 +22864,163 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
                           f"{ciclo} del corpus.",
                 "veredictos": lineas_canonicas,
             })
-        # El JOURNAL del corpus: DOS entradas. La primera (ciclo 70) es la que
-        # veria un gate que solo mire la PRIMERA, y no tiene ninguna
-        # contradiccion: la segunda (ciclo 71) las tiene todas.
+        # --- (D1-bis) LAS CINCO PRECONDICIONES ESTRUCTURALES DEL GATE -------
+        # El guard de arriba vigila el JUICIO del gate (que acuse al
+        # contradictorio y calle sobre el coherente). Las cinco ramas de
+        # aqui son PRECONDICIONES ESTRUCTURALES: el gate LAS COMPRUEBA,
+        # pero el corpus de arriba NO las ejercitaba, luego NADIE las
+        # vigilaba. MEDIDO el 2026-10-22 (ronda 2 del `mutation-auditor`):
+        # con el corpus viejo, los cinco mutantes propios M-102..M-106
+        # SOBREVIVIERON, luego el corpus era estrecho y el guard no tenia
+        # por donde verlos (el mismo fallo de la ronda anterior, otra vez).
+        #
+        # Cada centinela es el caso que SOLO su rama puede caza. Los otros
+        # cinco sentinelas del corpus de arriba NO los cazan, porque estan
+        # en regla en todo lo demas:
+        #   M-FIX-SHA:    el sha de la linea canonica NO es el que declara
+        #                 el catalogo (rama `sha_del_catalogo and
+        #                 sha_declarado != sha_del_catalogo`). El resto
+        #                 esta PERFECTO: el asa es real, la evidencia
+        #                 obliga a MUERTO y el sha del catalogo es el
+        #                 bueno, luego solo esa rama puede acusarlo.
+        #   M-FIX-ASA:    el `asa` declarado NO es ningun test definido en
+        #                 run_tests.py (rama `asa not in definidos`), y su
+        #                 evidencia muere en ESE MISMO asa: luego el frame
+        #                 COINCIDE (rama `muerto != asa`) y el veredicto
+        #                 sigue siendo coherente.
+        #   M-FIX-FRAME:  la evidencia muere en OTRO test que el `asa`
+        #                 declarado (rama `muerto != asa`), con el sha, el
+        #                 asa y el catalogo en regla: luego solo esa rama
+        #                 puede accusationarlo.
+        #   M-FIX-INFORME: el bloque de maquina del INFORME no lleva las
+        #                 mismas lineas que el journal (rama `del_informe !=
+        #                 del_journal`). Es un cambio PROPIO porque el
+        #                 bloque de maquina es POR CICLO.
+        #   M-FIX-FUERA:  el journal declara un mutante que NO esta en el
+        #                 catalogo (rama `identificador not in
+        #                 ids_del_catalogo`): no tiene evidencia (no esta
+        #                 en el catalogo) ni estado, luego solo esa rama
+        #                 puede accusationarlo.
+        sha_ajeno = "f" * 40
+        asa_real = "test_el_check_9_se_cablea_en_el_camino_real_del_validador"
+        otro_test_real = ("test_un_journal_ilegible_produce_exactamente_un_"
+                          "error_en_el_validador_real")
+        asa_inventado = "test_este_asa_no_esta_definido_en_run_tests"
+        centinela_sha = "M-FIX-SHA"
+        centinela_asa = "M-FIX-ASA"
+        centinela_frame = "M-FIX-FRAME"
+        centinela_informe = "M-FIX-INFORME"
+        centinela_fuera = "M-FIX-FUERA"
+
+        def cola_de_muerte(test_que_murio, motivo):
+            """La cola de una evidencia MUERTA: su frame y su motivo."""
+            return ("=== WOPT_RUN 1 RC=1 ===\n"
+                    "Traceback (most recent call last):\n"
+                    '  File "C:\\camara\\run_tests.py", line 1, in <module>\n'
+                    f'  File "C:\\camara\\run_tests.py", line 1, in '
+                    f"{test_que_murio}\n"
+                    "    assert False, (\n"
+                    f"AssertionError: {motivo}\n")
+
+        def montar_cambio(nombre, ciclo, mutaciones, lineas_journal,
+                           lineas_informe):
+            """Monta un cambio SINTETICO del corpus y devuelve su entrada.
+
+            `mutaciones`: `(id, asa, motivo, sha_del_catalogo,
+            test_que_murio)` de los mutantes DEL CATALOGO. `test_que_murio`
+            es el test que nombra el frame de la evidencia; si no se dice,
+            la evidencia muere en el propio `asa`.
+            """
+            relativo = "openspec/changes/" + nombre
+            directorio = os.path.join(tmp, *relativo.split("/"))
+            os.makedirs(os.path.join(directorio, "evidencia"), exist_ok=True)
+            with open(os.path.join(directorio, "mutation-report.md"), "w",
+                      encoding="utf-8", newline="\n") as fh:
+                fh.write("\n".join(["# Informe del ciclo sintetico (D)", "",
+                                     "<!-- WOPT_VEREDICTOS -->"]
+                                    + list(lineas_informe)
+                                    + ["<!-- /WOPT_VEREDICTOS -->"]) + "\n")
+            with open(os.path.join(directorio, "proposal.md"), "w",
+                      encoding="utf-8", newline="\n") as fh:
+                fh.write(f"# Corpus sintetico de las precondiciones (D) "
+                         f"({nombre})\n\n"
+                         "Cambio SINTETICO que solo existe dentro del "
+                         "esqueleto temporal del test: no esta commiteado en "
+                         "ningun arbol.\n")
+            catalogo = {"cambio": relativo + "/", "ciclo": ciclo,
+                        "mutaciones": []}
+            for indice, (identificador, asa, motivo, sha_del_catalogo,
+                         test_que_murio) in enumerate(mutaciones):
+                original = next(
+                    (l for l in lineas_informe
+                     if l.startswith(f"WOPT_VEREDICTO {identificador} ")),
+                    f"WOPT_VEREDICTO {identificador} MUERTO {sha_del_catalogo}")
+                catalogo["mutaciones"].append({
+                    "id": identificador,
+                    "asa": asa,
+                    "motivo": motivo,
+                    "mutacion": {
+                        "fichero": relativo + "/mutation-report.md",
+                        "linea": 4 + indice,
+                        "original": original,
+                        "sustituto": original.replace(" MUERTO ", " OTRO "),
+                    },
+                    "sha_arbol_auditado": sha_del_catalogo,
+                })
+                with open(os.path.join(directorio, "evidencia",
+                                       f"{identificador}.cola"), "w",
+                          encoding="utf-8", newline="\n") as fh:
+                    fh.write(cola_de_muerte(test_que_murio or asa, motivo))
+            with open(os.path.join(directorio, "mutaciones.json"), "w",
+                      encoding="utf-8", newline="\n") as fh:
+                json.dump(catalogo, fh, ensure_ascii=False, indent=2)
+            return {"cycle": ciclo, "date": "2026-10-22", "slug": nombre,
+                    "task": "TASK-090", "area": "Tooling / Testing",
+                    "change": relativo + "/",
+                    "status": f"CORPUS SINTETICO del guard (D): la entrada del "
+                              f"ciclo {ciclo} del corpus.",
+                    "veredictos": list(lineas_journal)}
+
+        # El cambio "c": el sha, el asa, el frame y el mutante que no esta en
+        # el catalogo. El bloque de maquina de su informe lleva las MISMAS
+        # lineas que su journal, luego la precondicion del INFORME no se
+        # dispara aqui: cada centinela tiene que ser el caso que SOLO su
+        # rama puede caza.
+        lineas_c = [
+            f"WOPT_VEREDICTO {centinela_sha} MUERTO {sha_ajeno}",
+            f"WOPT_VEREDICTO {centinela_asa} MUERTO {sha_sintetico}",
+            f"WOPT_VEREDICTO {centinela_frame} MUERTO {sha_sintetico}",
+            f"WOPT_VEREDICTO {centinela_fuera} MUERTO {sha_sintetico}",
+        ]
+        entradas_sinteticas.append(montar_cambio(
+            "2026-10-22-corpus-sintetico-estructural-c", 72,
+            ((centinela_sha, asa_real, "LA ASERCION DEL SENTINELA DEL SHA",
+              sha_sintetico, None),
+             (centinela_asa, asa_inventado,
+              "LA ASERCION DEL SENTINELA DEL ASA INVENTADO",
+              sha_sintetico, None),
+             (centinela_frame, asa_real,
+              "LA ASERCION DEL SENTINELA DEL FRAME",
+              sha_sintetico, otro_test_real)),
+            lineas_c, lineas_c))
+        # El cambio "d": el bloque de maquina del INFORME NO lleva las mismas
+        # lineas que el journal (el sha de su linea es el ajeno). El resto
+        # esta en regla, luego solo la rama del informe puede acusarlo.
+        lineas_d_journal = [
+            f"WOPT_VEREDICTO {centinela_informe} MUERTO {sha_sintetico}"]
+        lineas_d_informe = [
+            f"WOPT_VEREDICTO {centinela_informe} MUERTO {sha_ajeno}"]
+        entradas_sinteticas.append(montar_cambio(
+            "2026-10-22-corpus-sintetico-estructural-d", 73,
+            ((centinela_informe, asa_real,
+              "LA ASERCION DEL SENTINELA DEL INFORME",
+              sha_sintetico, None),),
+            lineas_d_journal, lineas_d_informe))
+
+        # El JOURNAL del corpus: CUATRO entradas. La primera (ciclo 70) es la
+        # que veria un gate que solo mire la PRIMERA, y no tiene ninguna
+        # contradiccion: la segunda (ciclo 71) las tiene todas, y las dos
+        # ultimas (ciclos 72 y 73) son las precondiciones estructurales.
         with open(os.path.join(tmp, ".taskmaster", "rd_journal.json"), "w",
                   encoding="utf-8", newline="\n") as fh:
             json.dump(entradas_sinteticas, fh, ensure_ascii=False, indent=2)
@@ -22895,6 +23066,61 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
                             "el journal lo declara SOBREVIVIENTE y su evidencia "
                             "obliga a NO MEDIDO porque su ultima linea no nombra "
                             "el motivo declarado")
+
+        # --- (D1-bis) LAS CINCO PRECONDICIONES ESTRUCTURALES -----------------
+        # El guard de arriba mide el JUICIO del gate. Estas cinco celdas
+        # miden sus PRECONDICIONES ESTRUCTURALES: son cinco ramas
+        # DISTINTAS del gate, y el corpus de arriba NO las ejercitaba
+        # (MEDIDO el 2026-10-22: los cinco mutantes propios M-102..M-106
+        # SOBREVIVIERON con el corpus viejo, luego el guard no tenia por
+        # donde verlos). Cada celda exige el `[FAIL]` DE SU RAZON, que es lo
+        # que la distingue: si el gate acusara por otra causa, el texto no
+        # estaria y la celda caeria.
+        #
+        # EL MOTIVO del fallo es SIEMPRE "EL GATE NO DISTINGUE", como en las
+        # tres celdas de arriba: las cinco ramas son cinco maneras de que el
+        # gate calle donde tiene que hablar.
+        def exigir_el_fall_con_esta_razon(informe, razon, por_que):
+            """El gate TIENE que acusar, con ESTA razon en el texto del FAIL."""
+            fallos = [l for l in informe.splitlines()
+                      if l.strip().startswith("[FAIL]") and razon in l]
+            assert fallos, (
+                f"EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el "
+                f"validador tiene que ACUSAR ({por_que}) y no lo ha hecho: ningun "
+                f"[FAIL] del informe dice {razon!r}. Sin esta asercion un gate "
+                "ciego en ESTA rama pasaria por sano: con el cuerpo del gate "
+                "VACIO el validador tambien daria 0 FAIL. Fallos del informe:\n"
+                f"{informe[-3000:]}\n"
+                "EL GATE NO DISTINGUE")
+
+        exigir_el_fall_con_esta_razon(
+            informe_sano,
+            f"el mutante {centinela_sha} cita el sha",
+            f"la linea canonica de {centinela_sha} cita un sha que NO es el que "
+            "declara el catalogo, luego la linea puede apuntar a un arbol que "
+            "no es el auditado")
+        exigir_el_fall_con_esta_razon(
+            informe_sano,
+            f"el asa declarada por {centinela_asa}",
+            f"el asa de {centinela_asa} no es ningun test definido en "
+            "run_tests.py, luego un test que no existe pasa por bueno")
+        exigir_el_fall_con_esta_razon(
+            informe_sano,
+            f"el mutante {centinela_frame} esta declarado como MUERTO",
+            f"la evidencia de {centinela_frame} muere en otro test que su asa "
+            "declarado, luego el gate no puede fabricar un MUERTO")
+        exigir_el_fall_con_esta_razon(
+            informe_sano,
+            "el bloque de maquina NO lleva las mismas lineas canonicas que el "
+            "journal del ciclo 73",
+            f"el bloque de maquina del informe de {centinela_informe} no lleva "
+            "las mismas lineas que el journal del ciclo, luego el segundo "
+            "testigo esta desacoplado del primero")
+        exigir_el_fall_con_esta_razon(
+            informe_sano,
+            f"declara el mutante {centinela_fuera}, que NO esta en el catalogo",
+            f"el journal declara {centinela_fuera} y el catalogo del cambio no, "
+            "luego el catalogo deja de mandar")
 
         # (D2) LA CONTRAPROUEBA: con el CUERPO del gate VACIO (y el REGISTRO
         # puesto, que es lo UNICO que el guard de cableado mira), la acusacion
@@ -22958,9 +23184,10 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
           "mutante de cableado lo hace desaparecer. Y ademas: el check 11 sale "
           "cableado con su REGISTRO (y su mutante lo borra), el gate declara los "
           "seis limites que no prueba y el emisor no pisa la evidencia ajena. "
-          "Y el gate DISTINGUE: acusa a los TRES contradictorios (uno por cada "
-          "sentido y uno con el motivo equivocado), calla sobre los DOS "
-          "coherentes, y con el cuerpo vaciado la acusacion muere (REGISTRO sigue).")
+          "Y el gate DISTINGUE: acusa a los SIETE contradictorios (tres del "
+          "juicio y cinco precondiciones estructurales: sha, asa, frame, "
+          "informe y catalogo), calla sobre los TRES coherentes, y con el "
+          "cuerpo vaciado la acusacion muere (REGISTRO sigue).")
 
 
 def test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real():
@@ -29606,7 +29833,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
 
     **POR QUE ESTE GUARD EXISTE Y POR QUE NO SE PONE EN ROJO.** Cuatro sitios
     citan esas dos lineas POR NUMERO: `validate_docs.py:1429`,
-    `validate_docs.py:1924`, `run_tests.py:23718` y
+    `validate_docs.py:1924`, `run_tests.py:23945` y
     `docs/ai/sandbox-rules.md:1133`, y las cuatro dicen que son las dos filas del
     `0` de la tabla de codigos de salida. MEDIDO: `_declara_el_codigo_sobrecargado`
     (`validate_docs.py:1935`) compila el patron con `re.MULTILINE` sobre el
@@ -29621,7 +29848,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     por encima de la 55 desplaza la tabla y este guard muere.
 
     Ademas se comprueba que la seccion "Por que el validador NO corre en CI"
-    sigue por encima de la 61 (`run_tests.py:23627`), que es el suelo que hace
+    sigue por encima de la 61 (`run_tests.py:23943`), que es el suelo que hace
     falta para que esas citas no se pudran.
     """
     print("Probando que las citas por linea de sandbox-rules.md son ciertas...")
@@ -29649,7 +29876,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     # numero de una y olvidar las otras tres deja tres mentiras nuevas.
     cita = "sandbox-rules.md:55-56"
     for relativo, numeros in (("validate_docs.py", ("1429", "1924")),
-                              ("run_tests.py", ("23718",)),
+                              ("run_tests.py", ("23945",)),
                               ("docs/ai/sandbox-rules.md", ("1133",))):
         texto = _texto_de(os.path.join(raiz, *relativo.split("/"))).splitlines()
         for numero in numeros:

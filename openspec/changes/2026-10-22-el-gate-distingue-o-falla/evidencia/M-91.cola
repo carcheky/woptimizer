@@ -1,28 +1,25 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud\camara_base\run_tests.py", line 31741, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r2_camara1\run_tests.py", line 31830, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud\camara_base\run_tests.py", line 22790, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r2_camara1\run_tests.py", line 22878, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     assert not fallos_del_coherente, (
            ^^^^^^^^^^^^^^^^^^^^^^^^
-AssertionError: EL GATE ACUSA EN LO QUE NO PUEDE: el sentinela M-FIX-BIEN declara MUERTO y su evidencia commiteada obliga a MUERTO, luego no hay nada que acusar, y el gate lo ha acusado. Un gate que acusa en lo que no puede es tan ciego como uno que no acusa nada (mutante M-91). Fallos que lo nombran: ['  [FAIL] rd_journal.json: el mutante M-FIX-BIEN esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion)']. Informe:
- declara los 235 tests que run_tests.py tiene de verdad
-  [OK]   README.md: declara los 235 tests que run_tests.py tiene de verdad
-  [OK]   docs/ai/testing-guide.md: 235 filas de test, una por test definido
-  [OK]   run_tests.py: reparto 159 backend + 76 headless derivado con ast (marcador en run_tests.py:31876); suma el total que ya deriva el check 7
-  [OK]   STATUS.md: declara el reparto 159 backend + 76 headless que deriva el marcador de run_tests.py
-  [OK]   STATUS.md: Deuda Tecnica Conocida: 28 fila(s), 4 exenta(s) CERRADA(s), 24 viva(s) con 47 ancla(s) de ruta resuelta(s) y 1 por contenido
-  [OK]   campo 'commits' del journal: 1 entrada(s) con 'cycle', 0 con lista de hash(es), 0 conforme(s) a R1, 1 sin hash declarado, 0 hash(es) perdido(s) declarados con causa (ninguna), 0 sin resolver sin declaracion | techos R5: 3 hash(es) y 2 ciclo(s) sin hash
+AssertionError: EL GATE ACUSA EN LO QUE NO PUEDE: los sentinelas M-FIX-BIEN y M-FIX-SANO declaran MUERTO y su evidencia commiteada obliga a MUERTO, luego no hay nada que acusar, y el gate los ha acusado. Un gate que acusa en lo que no puede es tan ciego como uno que no acusa nada (mutante M-91). Fallos que los nombran: ['  [FAIL] rd_journal.json: el mutante M-FIX-BIEN esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion)', '  [FAIL] rd_journal.json: el mutante M-FIX-SANO esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real` por su asercion)']. Informe:
+ del journal: 2 entrada(s) con 'cycle', 0 con lista de hash(es), 0 conforme(s) a R1, 2 sin hash declarado, 0 hash(es) perdido(s) declarados con causa (ninguna), 0 sin resolver sin declaracion | techos R5: 3 hash(es) y 2 ciclo(s) sin hash
   [OK]   docs/ai/architecture.md: declara el contrato de persistencia (`%APPDATA%\woptimizer\profiles.json` y que ya NO esta junto al ejecutable) en una sola unidad de texto
   [OK]   docs/ai/data-models.md: declara el contrato de persistencia (`%APPDATA%\woptimizer\profiles.json` y que ya NO esta junto al ejecutable) en una sola unidad de texto
-  [OK]   check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=1, mutantes re-derivados=2, origen del contrato: ciclo 70
+  [OK]   check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=2, mutantes re-derivados=5, origen del contrato: ciclo 70
 
-  [FAIL] historial de commits: se lee pero NO aporta ningun ciclo (0 subjects con marcador de ciclo sobre 1 leidos) mientras rd_journal.json si registra 1 ciclo(s). Un parser que no encuentra nada es un parser ROTO, y un parser roto en verde es el falso verde que esta union viene a cerrar
+  [FAIL] historial de commits: se lee pero NO aporta ningun ciclo (0 subjects con marcador de ciclo sobre 1 leidos) mientras rd_journal.json si registra 2 ciclo(s). Un parser que no encuentra nada es un parser ROTO, y un parser roto en verde es el falso verde que esta union viene a cerrar
+  [FAIL] CHANGELOG.md (raiz): rd_journal.json registra el ciclo 071 pero el changelog legible no tiene su entrada. Borrarla en los dos ficheros no puede hacer desaparecer la obligacion de registrarla
+  [FAIL] CHANGELOG.md (raiz): sin entrada para el/los ciclo/s 071, exigido por rd_journal.json y/o por el historial de commits. La tabla resumen los enlaza, pero el encabezado seccion no existe: enlace muerto
   [FAIL] rd_journal.json: el mutante M-FIX-BIEN esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion)
+  [FAIL] rd_journal.json: el mutante M-FIX-SANO esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real` por su asercion)
 
-  [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=1, mutantes re-derivados=2, origen del contrato: ciclo 70
+  [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=2, mutantes re-derivados=5, origen del contrato: ciclo 70
 
-Resumen: 164 OK, 2 FAIL, 0 SKIP
+Resumen: 163 OK, 5 FAIL, 0 SKIP
 
 EL GATE ACUSA EN LO QUE NO PUEDE

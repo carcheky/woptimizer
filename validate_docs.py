@@ -1432,7 +1432,7 @@ CODIGOS_DE_SALIDA_SOBRECARGADOS = ("WOPT_COMMIT_OK", "WOPT_NOOP")
 # sobrecargado` la compone con el nombre del codigo. Antes vivia el patron
 # DUPLICADO dentro de la funcion y la constante aqui sin un solo uso: MEDIDO con
 # `ast` el 2026-10-02, `_RE_DECLARACION_DE_CODIGO` estaba definida y nunca leida,
-# y el guard de codigo muerto de `run_tests.py:30001` no la cazaba porque su
+# y el guard de codigo muerto de `run_tests.py:12749` no la cazaba porque su
 # alcance es `src/woptimizer/**`, no el tooling. Dos definiciones de una forma en
 # el mismo fichero es como una de las dos se queda desfasada sin que nadie lo vea.
 _RE_DECLARACION_DE_CODIGO = re.compile(r"^[ \t]*0[ \t]+", re.MULTILINE)
@@ -2848,7 +2848,13 @@ def main(argv=None):
 #       Y el sha commiteado de M-3 (`e8111158...`) es el del ARBOL AUDITADO (la
 #       camara donde se midio), que NO es el repo real: por eso el gate lo
 #       acepta sin resolverlo, y por eso el sha identifica el arbol MEDIDO y no
-#       el repo donde vive la linea.
+#       el repo donde vive la linea. MEDIDO el 2026-10-22: el gate lo
+#       CONTRASTA con el sha que declara el catalogo (una linea cuyo sha no
+#       es el del catalogo -> 1 FAIL), luego el sha tiene UNA garantia de
+#       coherencia interna; lo que NO tiene es resolubilidad, y por eso este
+#       limite sigue en pie: inventado en la linea Y en el catalogo -> **0
+#       FAIL**, porque los dos se contradicen el uno al otro y nadie mira
+#       ninguno de los dos contra un objeto.
 #   (f) que el gate NO ESTE CIEGO, es decir, que su CUERPO compruebe algo. El
 #       validador, POR SI SOLO, NO detecta un gate ciego: MEDIDO en camara
 #       desechable, con el CUERPO de `_comprobar_veredictos_de_mutacion`
@@ -2856,13 +2862,26 @@ def main(argv=None):
 #       sobre un catalogo que se contradice a si mismo (el agujero D-B).
 #       Lo que lo detecta es la SUITE, con un guard de PRODUCTO: la seccion (D)
 #       de `test_el_check_9_se_cablea_en_el_camino_real_del_validador` monta
-#       un corpus SINTETICO (DOS entradas de journal y CINCO sentinelas: dos
-#       COHERENTES y tres CONTRADICTORIOS), exige que el gate ACUSE a los tres
-#       y CALLE sobre los dos y que con el cuerpo vaciado ese `[FAIL]` muera;
-#       el guard cubre SOLO las formas de ceguera que el corpus EJERCITA.
+#       un corpus SINTETICO (CUATRO entradas de journal y DIEZ sentinelas:
+#       tres COHERENTES y siete CONTRADICTORIOS), exige que el gate ACUSE a
+#       los siete y CALLE sobre los tres y que con el cuerpo vaciado ese
+#       `[FAIL]` muera; el guard cubre SOLO las formas de ceguera que el
+#       corpus EJERCITA.
+#
+#       Y las CINCO PRECONDICIONES ESTRUCTURALES del gate (el sha de la linea
+#       contra el del catalogo, el `asa` contra los tests definidos, el frame
+#       de la evidencia contra el `asa`, el bloque de maquina del informe
+#       contra el journal y el journal contra el catalogo) las vigila el
+#       MISMO guard, con un centinela por rama. MEDIDO el 2026-10-22 (ronda 2
+#       del `mutation-auditor`): con el corpus viejo, que solo ejercitaba el
+#       JUICIO del gate, los cinco mutantes propios M-102..M-106
+#       SOBREVIVIERON, luego el corpus era estrecho y el guard no tenia por
+#       donde verlos.
 #
 # ESTA LISTA **NO ES EXHAUSTIVA**: es lo que se ha MEDIDO hasta ahora (ciclos
-# 70 y 71: mutantes K-1..K-17 y el limite D-B). Un limite que nadie ha medido
+# 70 y 71: mutantes K-1..K-17 y el limite D-B; y la segunda ronda de TASK-090:
+# las cinco precondiciones estructurales M-102..M-106). Un limite que nadie ha
+# medido
 # sigue sin declarar, y
 # declararlo aqui sin medirlo seria escribir una promesa que nadie ha
 # comprobado. Lo que SI es exhaustivo es la lista de lo que el gate PRUEBA (los
@@ -3170,11 +3189,15 @@ def _comprobar_veredictos_de_mutacion(root, errors, ok, saltados,
     un FAIL); (d) que la evidencia commiteada SEA EL LOG REAL (una evidencia
     fabricada con el frame en otro fichero -> 0 FAIL); (e) que el `sha` del
     arbol auditado exista (un sha inventado -> 0 FAIL: el sha no se resuelve
-    contra ningun objeto); (f) que el gate NO ESTE CIEGO: el validador, POR SI
+    contra ningun objeto; el gate solo lo CONTRASTA con el sha del catalogo,
+    luego inventado en la linea y en el catalogo -> 0 FAIL, inventado solo en
+    la linea -> 1 FAIL); (f) que el gate NO ESTE CIEGO: el validador, POR SI
     SOLO, NO detecta un gate ciego (con el cuerpo de este gate vaciado y el
     REGISTRO puesto -> 0 FAIL: el agujero D-B), y solo la SUITE lo detecta, con
     un guard de PRODUCTO (la seccion (D) de
-    `test_el_check_9_se_cablea_en_el_camino_real_del_validador`). La lista
+    `test_el_check_9_se_cablea_en_el_camino_real_del_validador`, con un
+    centinela por rama: tres para el JUICIO del gate y cinco para sus
+    PRECONDICIONES ESTRUCTURALES). La lista
     completa, con el porque de cada limite,
     esta en el bloque de arriba ("LO QUE ESTE GATE **NO** PRUEBA"), y esa
     lista NO es exhaustiva: es la de los limites MEDIDOS hasta ahora.

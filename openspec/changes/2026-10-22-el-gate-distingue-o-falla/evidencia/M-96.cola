@@ -1,12 +1,21 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud\camara_base\run_tests.py", line 31741, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r2_camara2\run_tests.py", line 31830, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud\camara_base\run_tests.py", line 22802, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
-    assert len(acusacion_buena) >= 1, (
-           ^^^^^^^^^^^^^^^^^^^^^^^^^
-AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR al sentinela M-FIX-MAL (su evidencia commiteada obliga a MUERTO y el journal lo declara SOBREVIVIENTE) y no lo ha hecho. Con el cuerpo del gate VACIO el validador tambien daria 0 FAIL, luego sin esta asercion el D-B seguiria abierto. Fallos que lo nombran: []. Informe:
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r2_camara2\run_tests.py", line 22886, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+    exigir_la_acusacion(informe_sano, contradictorio, "SOBREVIVIENTE",
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        "MUERTO",
+                        ^^^^^^^^^
+                        "el journal lo declara SOBREVIVIENTE y su evidencia "
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        "commiteada obliga a MUERTO")
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r2_camara2\run_tests.py", line 22691, in exigir_la_acusacion
+    assert [l for l in nombran if declarado in l and obliga in l], (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR al sentinela M-FIX-MAL (el journal lo declara SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO: el journal lo declara SOBREVIVIENTE y su evidencia commiteada obliga a MUERTO) y no lo ha hecho. Sin esta asercion un gate ciego en ESTA rama pasaria por sano: con el cuerpo del gate VACIO el validador tambien daria 0 FAIL. Fallos que lo nombran: []. Informe:
 on marcador de ciclo y 1 SIN marcador (punto ciego medido); 0 ciclo(s) corroborables frente a los 0 del journal
   [OK]   mkdocs.yml: nav configurada (7 entries)
   [OK]   run_tests.py: 235 tests definidos = 235 invocados (derivado con ast)
@@ -14,7 +23,7 @@ on marcador de ciclo y 1 SIN marcador (punto ciego medido); 0 ciclo(s) corrobora
   [OK]   AGENTS.md: declara los 235 tests que run_tests.py tiene de verdad
   [OK]   README.md: declara los 235 tests que run_tests.py tiene de verdad
   [OK]   docs/ai/testing-guide.md: 235 filas de test, una por test definido
-  [OK]   run_tests.py: reparto 159 backend + 76 headless derivado con ast (marcador en run_tests.py:31876); suma el total que ya deriva el check 7
+  [OK]   run_tests.py: reparto 159 backend + 76 headless derivado con ast (marcador en run_tests.py:31965); suma el total que ya deriva el check 7
   [OK]   STATUS.md: declara el reparto 159 backend + 76 headless que deriva el marcador de run_tests.py
   [OK]   STATUS.md: Deuda Tecnica Conocida: 28 fila(s), 4 exenta(s) CERRADA(s), 24 viva(s) con 47 ancla(s) de ruta resuelta(s) y 1 por contenido
   [OK]   campo 'commits' del journal: SIN COMPROBAR porque el journal es ilegible (motivo literal: JSONDecodeError: Expecting value: line 1 column 1 (char 0)). Este check no acusa de nuevo: el ancla del changelog de raiz lee el mismo fichero y ya ha acusado este hecho, y una causa produce un mensaje
@@ -25,6 +34,6 @@ on marcador de ciclo y 1 SIN marcador (punto ciego medido); 0 ciclo(s) corrobora
 
   [REGISTRO] check 11 (veredicto de mutacion): REGISTRO no disponible, el journal no se pudo leer, luego no hay ningun veredicto que re-derivar. La ILEGIBILIDAD del journal ya la acusa el ancla
 
-Resumen: 161 OK, 1 FAIL, 0 SKIP
+Resumen: 162 OK, 1 FAIL, 0 SKIP
 
 EL GATE NO DISTINGUE
