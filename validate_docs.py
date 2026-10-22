@@ -2616,7 +2616,7 @@ def validar(root, git_dir=None, sin_ancla_de_git=False):
     # declaraciones escritas a mano.
     _comprobar_veredictos_de_mutacion(root, errors, ok, saltados,
                                        sin_ancla_de_git)
-    return errors, ok, saltados
+    return _comprobar_el_paso_de_publicacion(root, errors, ok, saltados)
 
 
 # --- TASK-069 (cierre del Paso 4): el contrato de persistencia como PREDICADO,
@@ -3454,6 +3454,147 @@ def _comprobar_veredictos_en_los_changelogs(root, estados, errors, ok):
         ok.append(f"check 11 (veredictos de mutacion): {comprobado} linea(s) "
                   f"canonica(s) de los changelogs comprobadas contra la "
                   f"evidencia commiteada")
+
+
+# --- CHECK 12 (TASK-093): el motor PUBLICA al cerrar cada ciclo --------------
+#
+# El hueco REAL que este check cierra: la skill DECIA que el bucle empuja a
+# `beta`, pero NINGUN paso del ciclo mandaba hacerlo. El push se quedaba en la
+# cabeza del orquestador, y lo que no esta en un paso, no pasa: dos semanas
+# sin commits visibles en GitHub son un motor que traba, no un motor que
+# espera.
+#
+# QUE MIDE: que la instruccion de publicacion esta en la skill COMO CONTENIDO
+# OPERATIVO --fuera de comentarios HTML y fuera de vallas ```-- y no como
+# prosa decorativa. Es el mismo criterio que el guard de la regla de rama
+# (`test_la_regla_de_rama_no_vive_en_un_comentario_ni_en_una_valla`), aqui en
+# el gate documental, porque el gate es lo que corre ANTES de cada push.
+#
+# EL SUJETO es UN fichero, no una enumeracion escrita a mano: por eso las
+# frases se derivan de la propia skill en vez de tener una lista de sujetos
+# que alguien pueda vaciar en silencio.
+
+_SKILL_DEL_MOTOR = os.path.join(".agents", "skills", "id-pipeline", "SKILL.md")
+
+# Las tres mitades del paso, y se exigen JUNTAS porque cada una sola es
+# vaciable: sin la ORDEN no hay push, sin el COMANDO no hay a donde, y sin la
+# COMPROBACION no hay forma de saber que salio.
+_ORDEN_DE_PUBLICACION = "publicas el ciclo en `beta`"
+_COMANDO_DE_PUBLICACION = "git push origin beta"
+_COMPROBACION_DE_PUBLICACION = "origin/beta"
+
+
+def _lineas_que_el_motor_lee(cuerpo):
+    """`(numero, linea)` de las lineas que el motor lee como INSTRUCCION.
+
+    Se quedan fuera las vallas ``` (son literales: un ejemplo de comando) y
+    los comentarios HTML (no los renderiza nada, luego no pueden ser una
+    instruccion). Es el mismo recorte que usa el guard de la regla de rama.
+    """
+    dentro_de_valla = False
+    dentro_de_comentario = False
+    for numero, linea in enumerate(cuerpo.splitlines(), 1):
+        if linea.lstrip().startswith("```"):
+            dentro_de_valla = not dentro_de_valla
+            continue
+        if dentro_de_valla:
+            continue
+        if dentro_de_comentario:
+            if "-->" in linea:
+                dentro_de_comentario = False
+            continue
+        if "<!--" in linea:
+            if "-->" not in linea.split("<!--", 1)[1]:
+                dentro_de_comentario = True
+                continue
+            # comentario cerrado en la misma linea: se mira el resto
+            antes, _, despues = linea.partition("<!--")
+            _, _, cola = despues.partition("-->")
+            yield numero, antes + cola
+            continue
+        yield numero, linea
+
+
+def _comprobar_el_paso_de_publicacion(root, errors, ok, saltados):
+    """Check 12: la skill MANDA publicar, y lo manda como contenido.
+
+    Sin defaults en los argumentos, por el motivo de siempre (D1, D2, D3): un
+    default convierte un cableado roto en un `None` que se lee como "no hay
+    nada que comprobar", que es el falso verde que este check viene a cerrar.
+    """
+    ruta = os.path.join(root, _SKILL_DEL_MOTOR)
+    if not os.path.exists(ruta):
+        # SKIP y no FAIL. MEDIDO: en modo FAIL el check rompia
+        # `test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador`,
+        # que cuenta los errores de una fixture MINIMA (sin `.agents/`) y cuyo
+        # unico error esperado es el del journal. Un guard que acusa a la
+        # fixture es un rojo mas caro que el mutante que tapa, y el validador
+        # tiene su TERCER canal para esto: `saltados`. El repo real tiene la
+        # skill, y ahi el check mide de verdad.
+        saltados.append(
+            f"check 12 (paso de publicacion): este arbol no tiene "
+            f"{_SKILL_DEL_MOTOR}, luego no hay motor que verificar"
+        )
+        return errors, ok, saltados
+    with open(ruta, encoding="utf-8") as fh:
+        cuerpo = fh.read()
+
+    leidas = list(_lineas_que_el_motor_lee(cuerpo))
+    plano = " ".join(l.strip() for _n, l in leidas)
+
+    faltan = []
+    for nombre, frase in (("orden", _ORDEN_DE_PUBLICACION),
+                           ("comando", _COMANDO_DE_PUBLICACION),
+                           ("comprobacion", _COMPROBACION_DE_PUBLICACION)):
+        if frase not in plano:
+            faltan.append((nombre, frase))
+    if faltan:
+        errors.append(
+            "check 12 (paso de publicacion): la skill del motor NO manda "
+            "publicar. Faltan: "
+            + ", ".join(f"{n} ({f!r})" for n, f in faltan)
+            + ". Sin un paso que mande el push, el trabajo se queda en el disco "
+            "del host aunque el bucle termine el ciclo"
+        )
+    else:
+        ok.append(
+            "check 12 (paso de publicacion): la skill del motor manda publicar "
+            f"en `beta` ({len(leidas)} linea(s) de contenido leidas)"
+        )
+
+    # --- LOS TRES CONTROLES, y sin ellos el guard no miraria nada ------------
+    # Un guard que solo busca la frase pasa con la frase dentro de un
+    # comentario o de una valla: eso es la confusion entre estar escrito y
+    # ser operativo, y es exactamente el agujero que el guard de la regla de
+    # rama ya cerro para la regla de rama.
+    controles = [
+        ("comentario HTML",
+         "<!-- nota: " + _ORDEN_DE_PUBLICACION + " y " + _COMANDO_DE_PUBLICACION +
+         ". -->\n"),
+        ("valla",
+         "```bash\n" + _COMANDO_DE_PUBLICACION + "\n```\n"),
+    ]
+    for nombre, trozo in controles:
+        leidas_control = list(_lineas_que_el_motor_lee(trozo))
+        plano_control = " ".join(l.strip() for _n, l in leidas_control)
+        if _ORDEN_DE_PUBLICACION in plano_control or \
+                _COMANDO_DE_PUBLICACION in plano_control:
+            errors.append(
+                f"check 12 (paso de publicacion): el control de {nombre} FALLA: "
+                "una instruccion escrita solo dentro de "
+                f"{nombre} no es una instruccion que el motor lea, y el recorte "
+                f"la da por presente. Control: {plano_control!r}"
+            )
+    # Y el control POSITIVO: la prosa real se conserva.
+    prosa = "PUBLICAR ES PARTE DEL CICLO\n" + _ORDEN_DE_PUBLICACION + "\n"
+    plano_prosa = " ".join(l.strip() for _n, l in _lineas_que_el_motor_lee(prosa))
+    if _ORDEN_DE_PUBLICACION not in plano_prosa:
+        errors.append(
+            "check 12 (paso de publicacion): el control POSITIVO falla: la prosa "
+            "real tiene que conservarse, y el recorte se la come"
+        )
+    return errors, ok, saltados
+
 
 if __name__ == "__main__":
     main()
