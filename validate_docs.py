@@ -2852,14 +2852,14 @@ def main(argv=None):
 #   (f) que el gate NO ESTE CIEGO, es decir, que su CUERPO compruebe algo. El
 #       validador, POR SI SOLO, NO detecta un gate ciego: MEDIDO en camara
 #       desechable, con el CUERPO de `_comprobar_veredictos_de_mutacion`
-#       vaciado y el REGISTRO puesto, el validador seguia dando **0 FAIL** sobre
-#       un catalogo que se contradice a si mismo (el agujero D-B): el REGISTRO
-#       sale, el cableado sigue vivo y el gate no comprueba NADA. Lo que lo
-#       detecta es la SUITE, con un guard de PRODUCTO: la seccion (D) de
-#       `test_el_check_9_se_cablea_en_el_camino_real_del_validador` monta un
-#       corpus SINTETICO con un centinela COHERENTE y otro CONTRADICTORIO y
-#       exige que el gate ACUSE al segundo y CALLE sobre el primero, y que con
-#       el cuerpo vaciado ese `[FAIL]` DESAPAREZCA (el REGISTRO sigue).
+#       vaciado y el REGISTRO puesto, el validador seguia dando **0 FAIL**
+#       sobre un catalogo que se contradice a si mismo (el agujero D-B).
+#       Lo que lo detecta es la SUITE, con un guard de PRODUCTO: la seccion (D)
+#       de `test_el_check_9_se_cablea_en_el_camino_real_del_validador` monta
+#       un corpus SINTETICO (DOS entradas de journal y CINCO sentinelas: dos
+#       COHERENTES y tres CONTRADICTORIOS), exige que el gate ACUSE a los tres
+#       y CALLE sobre los dos y que con el cuerpo vaciado ese `[FAIL]` muera;
+#       el guard cubre SOLO las formas de ceguera que el corpus EJERCITA.
 #
 # ESTA LISTA **NO ES EXHAUSTIVA**: es lo que se ha MEDIDO hasta ahora (ciclos
 # 70 y 71: mutantes K-1..K-17 y el limite D-B). Un limite que nadie ha medido

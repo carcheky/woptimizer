@@ -22319,17 +22319,17 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
         el CUERPO del gate VACIO y el REGISTRO puesto, el validador seguia
         dando 0 FAIL sobre un catalogo que se contradice a si mismo, y NINGUN
         `test_*` lo notaba (el agujero D-B). Aqui el guard es de PRODUCTO: un
-        corpus SINTETICO con un sentinela COHERENTE y otro CONTRADICTORIO, y
-        el gate tiene que ACUSAR al segundo y CALLAR sobre el primero (D1). La
-        CONTRAPROUEBA (D2) vacia el CUERPO del gate, con el REGISTRO puesto, y
-        exige que el `[FAIL]` del contradictorio DESAPARECER y que el REGISTRO
-        SIGA: sin D2, la D1 podria cumplirse por un motivo equivocado. Y D3
-        restaura el esqueleto. El RECUENTO NO SE MUEVE (sigue en 235 = 159 + 76)
-        porque no se anade ningun `test_*` nuevo: se extiende este.
-        COSTE MEDIDO (2026-10-22): 8,73 s por el guard, que son DOS corridas del
-        validador sobre el esqueleto (4,48 s con el gate sano + 4,25 s con el
-        cuerpo vaciado): un 1,19 % de la suite de 735 s. El coste MARGINAL del
-        validador no cambia (10,3 ms el check 11: el limite (f) son comments).
+        corpus SINTETICO con DOS entradas de journal y CINCO sentinelas (dos
+        COHERENTES y tres CONTRADICTORIOS: uno por cada sentido de la
+        contradiccion y uno con el motivo equivocado), y el gate tiene que
+        ACUSAR a los tres y CALLAR sobre los dos (D1). La CONTRAPROUEBA (D2)
+        vacia el CUERPO del gate, con el REGISTRO puesto, y exige que la
+        acusacion del contradictorio DESAPARECER y que el REGISTRO SIGA: sin
+        D2, la D1 podria cumplirse por un motivo equivocado. Y D3 restaura el
+        esqueleto. El RECUENTO NO SE MUEVE (235 = 159 + 76): se extiende este.
+        COSTE MEDIDO (2026-10-22): dos corridas del validador sobre el esqueleto
+        (una con el gate sano y otra con el cuerpo vaciado): un 1,2 % de la
+        suite de 735 s. El coste MARGINAL del validador no cambia (10,3 ms).
     """
     print("Check 9 en el camino real del validador, con su mutante de cableado...")
     import json
@@ -22590,12 +22590,12 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
         # (el agujero D-B). El cableado lo vigila el mutante D-A; el CONTENIDO
         # no lo vigilaba nadie.
         #
-        # El guard es de PRODUCTO, no de FORMA: el corpus lleva un mutante
-        # COHERENTE y otro CONTRADICTORIO, y el gate tiene que ACUSAR al segundo
-        # y CALLAR sobre el primero. Un guard de FORMA no puede: el mutante
-        # M-93 (calcula el veredicto y lo tira) conserva el bucle, la llamada y
-        # la comparacion del cuerpo original, luego cualquier guarda de forma
-        # razonable lo acepta y el gate sigue ciego.
+        # El guard es de PRODUCTO, no de FORMA: el corpus lleva sentinelas
+        # COHERENTES y CONTRADICTORIOS, y el gate tiene que ACUSAR a los
+        # contradictorios y CALLAR sobre los coherentes. Un guard de FORMA no
+        # puede: el mutante M-93 (calcula el veredicto y lo tira) conserva el
+        # bucle, la llamada y la comparacion del cuerpo original, luego
+        # cualquier guard de forma razonable lo acepta y el gate sigue ciego.
         #
         # El corpus es SINTETICO y va en el esqueleto que la seccion (A) ya
         # copio (D-4: el coste marginal son DOS corridas del validador, no una
@@ -22605,6 +22605,28 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
         # de ese arbol, porque el gate lo comprueba con `ast`: un centinela con
         # un nombre inventado seria acusado por OTRA razon y el guard mediria
         # otra cosa.
+        #
+        # EL CORPUS EJERCITA TODAS LAS RAMAS QUE EL GUARD DICE VIGILAR. Con una
+        # sola contradiccion, un solo orden y una sola entrada de journal,
+        # cuatro mutantes del gate se comportan IGUAL que el gate sano y el
+        # guard no tiene por donde verlos (MEDIDO en la auditoria del ciclo 71:
+        # M-94, M-95, M-99 y M-100). Por eso el corpus lleva:
+        #
+        #   - DOS entradas de journal, y las contradicciones estan en la
+        #     SEGUNDA: un gate que solo mire la PRIMERA (M-95) no ve ninguna.
+        #   - la CONTRADICCION en las DOS direcciones: declarada SOBREVIVIENTE
+        #     con evidencia MUERTO (M-FIX-MAL) y declarada MUERTO con evidencia
+        #     SOBREVIVIENTE (M-FIX-ALREV): un gate que decida por la
+        #     DECLARACION y no por la EVIDENCIA (M-99) solo ve la primera.
+        #   - el CONTRADICTORIO al PRINCIPIO de su catalogo (M-FIX-MAL) y el
+        #     COHERENTE al FINAL: un gate que mire solo el ULTIMO (M-94) no ve
+        #     el contradictorio, y uno que mire solo el PRIMERO (M-92) no ve el
+        #     que le sigue.
+        #   - un sentinela con el MOTIVO equivocado (M-FIX-MOTIVO): su
+        #     evidencia obliga a NO MEDIDO, y un gate que no compruebe el
+        #     motivo (M-100) lo certificaria MUERTO.
+        #   - dos sentinelas COHERENTES (M-FIX-BIEN y M-FIX-SANO): el gate no
+        #     puede ACUSAR EN LO QUE NO PUEDE (M-91).
         #
         # El esqueleto queda con el validador MUTADO por la seccion (A) (la
         # llamada del check 11 sustituida por `pass`): se restaura el validador
@@ -22643,10 +22665,38 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
             lineas = fuente_texto.splitlines(keepends=True)
             return "".join(lineas[primeros[0].lineno - 1:nodo.end_lineno])
 
-        def fallos_que_nombran(informe, identificador):
-            """Los `[FAIL]` del informe que NOMBRAN a este centinela."""
+        def acusaciones_que_nombran(informe, identificador):
+            """Los `[FAIL]` del informe que ACUSAN a este centinela.
+
+            Se apartan de los fallos ESTRUCTURALES (una linea canonica que
+            falta, un mutante que no esta en el catalogo): el guard juzga el
+            JUICIO del gate, no su estructura. Y TIENEN que apartarse: una
+            mutacion que TRUNCA el catalogo produce fallos estructurales que
+            nombran al sentinela que se queda fuera, y el guard no puede morir
+            por esos (su motivo seria el equivocado y el veredicto, NO MEDIDO).
+            """
+            marca = f"el mutante {identificador} esta declarado como "
             return [l for l in informe.splitlines()
-                    if l.strip().startswith("[FAIL]") and identificador in l]
+                    if l.strip().startswith("[FAIL]") and marca in l]
+
+        def exigir_la_acusacion(informe, identificador, declarado, obliga, por_que):
+            """El gate TIENE que ACUSAR a este sentinela, con estos dos datos.
+
+            El motivo del fallo es SIEMPRE el mismo ("EL GATE NO DISTINGUE"),
+            porque las tres ramas que se vigilan aqui son tres maneras de que
+            el gate calle donde tiene que hablar, y el `motivo` que el gate
+            re-deriva del log tiene que ser el mismo en las tres.
+            """
+            nombran = acusaciones_que_nombran(informe, identificador)
+            assert [l for l in nombran if declarado in l and obliga in l], (
+                f"EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el "
+                f"validador tiene que ACUSAR al sentinela {identificador} (el "
+                f"journal lo declara {declarado} y la evidencia commiteada obliga "
+                f"a {obliga}: {por_que}) y no lo ha hecho. Sin esta asercion un "
+                f"gate ciego en ESTA rama pasaria por sano: con el cuerpo del "
+                f"gate VACIO el validador tambien daria 0 FAIL. Fallos que lo "
+                f"nombran: {nombran!r}. Informe:\n{informe[-2000:]}\n"
+                "EL GATE NO DISTINGUE")
 
         def ejecutar_el_validador_del_esqueleto():
             """`(rc, informe)` del validador del esqueleto.
@@ -22672,145 +22722,182 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
         # (D1) EL CORPUS SINTETICO --------------------------------------------
         sha_sintetico = "0" * 40
         coherente = "M-FIX-BIEN"
+        sano = "M-FIX-SANO"
         contradictorio = "M-FIX-MAL"
-        # El COHERENTE va PRIMERO a proposito: un gate que solo mirara el
-        # PRIMER mutante del catalogo quedaria cogido (mutante M-92, medido).
-        # Y la evidencia de los dos tiene la MISMA forma (RC=1 + frame del
-        # `asa` + `AssertionError`), para que un gate que solo mirara el
-        # primero pasara el D1.
-        centinelas = (
+        invertido = "M-FIX-ALREV"
+        motivo_equivocado = "M-FIX-MOTIVO"
+        # (id, asa, motivo, estado_declarado)
+        centinelas_a = (
             (coherente,
              "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
              "LA ASERCION DEL SENTINELA COHERENTE", "MUERTO"),
+        )
+        # El CONTRADICTORIO va PRIMERO en este catalogo (mutante M-94: un gate
+        # que solo mire el ULTIMO no lo ve) y el COHERENTE al FINAL (mutante
+        # M-92: uno que solo mire el PRIMERO no ve al que le sigue). Los dos
+        # sentidos de la contradiccion estan, y el del medio (M-FIX-ALREV) es
+        # el que ve el gate que decide por la DECLARACION (mutante M-99).
+        centinelas_b = (
             (contradictorio,
              "test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real",
              "LA ASERCION DEL SENTINELA CONTRADICTORIO", "SOBREVIVIENTE"),
+            (invertido,
+             "test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real",
+             "LA ASERCION DE LA CONTRADICCION INVERTIDA", "MUERTO"),
+            (motivo_equivocado,
+             "test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real",
+             "EL MOTIVO DECLARADO NO ES EL DE LA EVIDENCIA", "SOBREVIVIENTE"),
+            (sano,
+             "test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real",
+             "LA ASERCION DEL SENTINELA SANO", "MUERTO"),
         )
-        cambio_relativo = "openspec/changes/2026-10-22-corpus-sintetico-del-guard"
-        dir_cambio = os.path.join(tmp, *cambio_relativo.split("/"))
-        os.makedirs(os.path.join(dir_cambio, "evidencia"), exist_ok=True)
-        lineas_canonicas = [f"WOPT_VEREDICTO {i} {e} {sha_sintetico}"
-                            for (i, _asa, _motivo, e) in centinelas]
-        # El INFORME del ciclo: el segundo testigo del veredicto. Lleva el
-        # bloque de maquina con las MISMAS lineas que el journal (el gate
-        # compara los dos conjuntos con `!=`).
-        lineas_informe = ["# Informe del ciclo sintetico del guard (D)", "",
-                          "<!-- WOPT_VEREDICTOS -->"]
-        lineas_informe.extend(lineas_canonicas)
-        lineas_informe.append("<!-- /WOPT_VEREDICTOS -->")
-        with open(os.path.join(dir_cambio, "mutation-report.md"), "w",
-                  encoding="utf-8", newline="\n") as fh:
-            fh.write("\n".join(lineas_informe) + "\n")
-        # El `proposal.md` del cambio: un cambio ACTIVO lo declara obligatorio,
-        # luego sin el el validador mete un `[FAIL]` que no es del sujeto. No
-        # afecta al guard (que filtra por centinela), pero un corpus que se
-        # parece al producto mide mejor que uno que se parece a otra cosa.
-        with open(os.path.join(dir_cambio, "proposal.md"), "w",
-                  encoding="utf-8", newline="\n") as fh:
-            fh.write("# Corpus sintetico del guard (D)\n\n"
-                     "Cambio SINTETICO que solo existe dentro del esqueleto "
-                     "temporal del test: no esta commiteado en ningun arbol.\n")
-        for (identificador, asa, motivo, _estado) in centinelas:
-            with open(os.path.join(dir_cambio, "evidencia",
-                                   f"{identificador}.cola"), "w",
-                      encoding="utf-8", newline="\n") as fh:
-                fh.write("=== WOPT_RUN 1 RC=1 ===\n"
-                        "Traceback (most recent call last):\n"
-                        '  File "C:\\camara\\run_tests.py", line 1, in <module>\n'
-                        f'  File "C:\\camara\\run_tests.py", line 1, in {asa}\n'
-                        "    assert False, (\n"
-                        f"AssertionError: {motivo}\n")
-        # El CATALOGO del corpus. El `mutacion` de cada centinela declara un
-        # fichero y una linea que EXISTEN en el arbol del corpus (el informe del
-        # ciclo), para que el arreglo de D-H (TASK-091) no rompa este guard: si
-        # el `mutacion` fuese incoherente, el FAIL de D-H NOMBRARIA al
-        # centinela y la celda D1 se romperia por un motivo que no es el suyo.
-        catalogo_sintetico = {"cambio": cambio_relativo + "/", "ciclo": 70,
-                              "mutaciones": []}
-        estado_hermano = {"MUERTO": "SOBREVIVIENTE",
-                          "SOBREVIVIENTE": "MUERTO"}
-        for indice, (identificador, asa, motivo, estado) in enumerate(centinelas):
-            original = lineas_canonicas[indice]
-            catalogo_sintetico["mutaciones"].append({
-                "id": identificador,
-                "asa": asa,
-                "motivo": motivo,
-                "mutacion": {
-                    "fichero": cambio_relativo + "/mutation-report.md",
-                    "linea": 4 + indice,
-                    "original": original,
-                    "sustituto": original.replace(f" {estado} ",
-                                                  f" {estado_hermano[estado]} "),
-                },
-                "sha_arbol_auditado": sha_sintetico,
-            })
-        with open(os.path.join(dir_cambio, "mutaciones.json"), "w",
-                  encoding="utf-8", newline="\n") as fh:
-            json.dump(catalogo_sintetico, fh, ensure_ascii=False, indent=2)
-        # El JOURNAL: una entrada del ciclo 70 (el origen del contrato) que
-        # apunta al cambio sintetico y declara los dos veredictos. El
-        # CONTRADICTORIO queda declarado SOBREVIVIENTE mientras su evidencia
-        # obliga a MUERTO: esa es exactamente la contradiccion que el gate
-        # tiene que ver, y el COHERENTE queda declarado MUERTO (su evidencia
-        # tambien obliga a MUERTO), luego no hay nada que acusar de el.
-        entrada_sintetica = {
-            "cycle": 70,
-            "date": "2026-10-22",
-            "slug": "corpus-sintetico-del-guard",
-            "task": "TASK-090",
-            "area": "Tooling / Testing",
-            "change": cambio_relativo + "/",
-            "status": "CORPUS SINTETICO del guard (D): el gate tiene que acusar "
-                      "al sentinela contradictorio y callar sobre el coherente.",
-            "veredictos": lineas_canonicas,
+        # La EVIDENCIA de cada sentinela, que es lo que el gate va a re-derivar:
+        # "verde" = la suite termino en VERDE (obliga a SOBREVIVIENTE);
+        # "motivo_equivocado" = la cola muere por el asa, pero su ULTIMA linea
+        # no nombra el motivo declarado (obliga a NO MEDIDO).
+        tipos_de_evidencia = {
+            coherente: "muerto",
+            contradictorio: "muerto",
+            invertido: "verde",
+            motivo_equivocado: "motivo_equivocado",
+            sano: "muerto",
         }
+        entradas_sinteticas = []
+        for nombre, ciclo, centinelas in (
+                ("2026-10-22-corpus-sintetico-del-guard", 70, centinelas_a),
+                ("2026-10-22-corpus-sintetico-del-guard-b", 71, centinelas_b)):
+            relativo = "openspec/changes/" + nombre
+            directorio = os.path.join(tmp, *relativo.split("/"))
+            os.makedirs(os.path.join(directorio, "evidencia"), exist_ok=True)
+            lineas_canonicas = [f"WOPT_VEREDICTO {i} {e} {sha_sintetico}"
+                                for (i, _asa, _motivo, e) in centinelas]
+            # El INFORME del ciclo: el segundo testigo del veredicto. Lleva el
+            # bloque de maquina con las MISMAS lineas que el journal (el gate
+            # compara los dos conjuntos con `!=`).
+            lineas_informe = ["# Informe del ciclo sintetico del guard (D)", "",
+                              "<!-- WOPT_VEREDICTOS -->"]
+            lineas_informe.extend(lineas_canonicas)
+            lineas_informe.append("<!-- /WOPT_VEREDICTOS -->")
+            with open(os.path.join(directorio, "mutation-report.md"), "w",
+                      encoding="utf-8", newline="\n") as fh:
+                fh.write("\n".join(lineas_informe) + "\n")
+            # El `proposal.md` del cambio: un cambio ACTIVO lo declara
+            # obligatorio, luego sin el el validador mete un `[FAIL]` que no es
+            # del sujeto. No afecta al guard (que filtra por centinela), pero
+            # un corpus que se parece al producto mide mejor que uno que se
+            # parece a otra cosa.
+            with open(os.path.join(directorio, "proposal.md"), "w",
+                      encoding="utf-8", newline="\n") as fh:
+                fh.write(f"# Corpus sintetico del guard (D) ({nombre})\n\n"
+                         "Cambio SINTETICO que solo existe dentro del esqueleto "
+                         "temporal del test: no esta commiteado en ningun arbol.\n")
+            for (identificador, asa, motivo, _estado) in centinelas:
+                tipo = tipos_de_evidencia[identificador]
+                if tipo == "verde":
+                    cola = "=== WOPT_RUN 1 RC=0 ===\nALL TESTS PASSED.\n"
+                else:
+                    ultimo = ("AssertionError: UN MOTIVO QUE NO ES EL DECLARADO"
+                              if tipo == "motivo_equivocado"
+                              else f"AssertionError: {motivo}")
+                    cola = ("=== WOPT_RUN 1 RC=1 ===\n"
+                            "Traceback (most recent call last):\n"
+                            '  File "C:\\camara\\run_tests.py", line 1, in <module>\n'
+                            f'  File "C:\\camara\\run_tests.py", line 1, in {asa}\n'
+                            "    assert False, (\n"
+                            f"{ultimo}\n")
+                with open(os.path.join(directorio, "evidencia",
+                                       f"{identificador}.cola"), "w",
+                          encoding="utf-8", newline="\n") as fh:
+                    fh.write(cola)
+            # El CATALOGO del corpus. El `mutacion` de cada centinela declara un
+            # fichero y una linea que EXISTEN en el arbol del corpus (el
+            # informe del ciclo), para que el arreglo de D-H (TASK-091) no rompa
+            # este guard: si el `mutacion` fuese incoherente, el FAIL de D-H
+            # NOMBRARIA al centinela y la celda D1 se romperia por un motivo
+            # que no es el suyo.
+            catalogo_sintetico = {"cambio": relativo + "/", "ciclo": ciclo,
+                                  "mutaciones": []}
+            for indice, (identificador, asa, motivo, estado) in enumerate(centinelas):
+                original = lineas_canonicas[indice]
+                catalogo_sintetico["mutaciones"].append({
+                    "id": identificador,
+                    "asa": asa,
+                    "motivo": motivo,
+                    "mutacion": {
+                        "fichero": relativo + "/mutation-report.md",
+                        "linea": 4 + indice,
+                        "original": original,
+                        "sustituto": original.replace(f" {estado} ", " OTRO "),
+                    },
+                    "sha_arbol_auditado": sha_sintetico,
+                })
+            with open(os.path.join(directorio, "mutaciones.json"), "w",
+                      encoding="utf-8", newline="\n") as fh:
+                json.dump(catalogo_sintetico, fh, ensure_ascii=False, indent=2)
+            # La ENTRADA del journal: un `change` al cambio sintetico y las
+            # lineas canonicas que lo declaran.
+            entradas_sinteticas.append({
+                "cycle": ciclo,
+                "date": "2026-10-22",
+                "slug": nombre,
+                "task": "TASK-090",
+                "area": "Tooling / Testing",
+                "change": relativo + "/",
+                "status": f"CORPUS SINTETICO del guard (D): la entrada del ciclo "
+                          f"{ciclo} del corpus.",
+                "veredictos": lineas_canonicas,
+            })
+        # El JOURNAL del corpus: DOS entradas. La primera (ciclo 70) es la que
+        # veria un gate que solo mire la PRIMERA, y no tiene ninguna
+        # contradiccion: la segunda (ciclo 71) las tiene todas.
         with open(os.path.join(tmp, ".taskmaster", "rd_journal.json"), "w",
                   encoding="utf-8", newline="\n") as fh:
-            json.dump([entrada_sintetica], fh, ensure_ascii=False, indent=2)
+            json.dump(entradas_sinteticas, fh, ensure_ascii=False, indent=2)
 
-        # (D1) EL VALIDADOR SANO ACUSA AL CONTRADICTORIO Y CALLA SOBRE EL
-        # COHERENTE ------------------------------------------------------
-        # EL ORDEN DE LAS DOS ASERCIONES ES NORMATIVO, y por que: la primera
-        # que salta es la que deja su mensaje al final del log, y ese mensaje
-        # es el `motivo` que el gate re-deriva. Con el COHERENTE primero, el
-        # mutante M-91 (la comparacion invertida) muere con SU motivo ("acusa
-        # en lo que no puede") y los otros tres (M-90, M-92, M-93) mueren con
-        # el suyo ("no distingue"). Al reves, los cuatro moririan con el
-        # motivo equivocado y el veredicto seria NO MEDIDO.
+        # (D1) EL VALIDADOR SANO ACUSA A LOS CONTRADICTORIOS Y CALLA SOBRE LOS
+        # COHERENTES ------------------------------------------------------
+        # EL ORDEN DE LAS ASERCIONES ES NORMATIVO, y por que: la primera que
+        # salta es la que deja su mensaje al final del log, y ese mensaje es el
+        # `motivo` que el gate re-deriva. La de los COHERENTES va PRIMERA: es
+        # la que mata al mutante M-91 (la comparacion invertida), que ACUSA EN
+        # LO QUE NO PUEDE. Las tres de los CONTRADICTORIOS van detras, cada una
+        # con su rama: M-92 y M-94 (el catalogo truncado) no pueden pasar las
+        # dos a la vez, y por eso cada una mira un sentinela distinto.
         rc_sano, informe_sano = ejecutar_el_validador_del_esqueleto()
         assert "Resumen:" in informe_sano, (
             "el validador del esqueleto tiene que LLEGAR AL FINAL y printar su "
             "informe: si no, esta celda esta probando una excepcion, no el "
             f"gate. rc={rc_sano}. Informe:\n{informe_sano[-2000:]}")
-        fallos_del_coherente = fallos_que_nombran(informe_sano, coherente)
         assert "[REGISTRO] check 11 (veredicto de mutacion)" in informe_sano, (
             "el REGISTRO del check 11 tiene que estar en el informe: es lo que "
             "hace visible que el gate CORRIO, y el mutante D-B lo CONSERVA "
-            f"mientras vacia el cuerpo. rc={rc_sano}. Informe:\n{informe_sano[-2000:]}")
+            "mientras vacia el cuerpo. rc={rc_sano}. Informe:\n"
+            f"{informe_sano[-2000:]}\nEL GATE NO DISTINGUE")
+        fallos_del_coherente = (acusaciones_que_nombran(informe_sano, coherente)
+                                 + acusaciones_que_nombran(informe_sano, sano))
         assert not fallos_del_coherente, (
-            "EL GATE ACUSA EN LO QUE NO PUEDE: el sentinela "
-            f"{coherente} declara MUERTO y su evidencia commiteada obliga a "
-            "MUERTO, luego no hay nada que acusar, y el gate lo ha acusado. Un "
-            "gate que acusa en lo que no puede es tan ciego como uno que no "
-            "acusa nada (mutante M-91). Fallos que lo nombran: "
+            "EL GATE ACUSA EN LO QUE NO PUEDE: los sentinelas "
+            f"{coherente} y {sano} declaran MUERTO y su evidencia commiteada "
+            "obliga a MUERTO, luego no hay nada que acusar, y el gate los ha "
+            "acusado. Un gate que acusa en lo que no puede es tan ciego como "
+            "uno que no acusa nada (mutante M-91). Fallos que los nombran: "
             f"{fallos_del_coherente!r}. Informe:\n{informe_sano[-2000:]}\n"
             "EL GATE ACUSA EN LO QUE NO PUEDE")
-        fallos_del_contradictorio = fallos_que_nombran(informe_sano, contradictorio)
-        acusacion_buena = [l for l in fallos_del_contradictorio
-                           if "esta declarado como SOBREVIVIENTE" in l
-                           and "obliga a MUERTO" in l]
-        assert len(acusacion_buena) >= 1, (
-            "EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el "
-            "validador tiene que ACUSAR al sentinela "
-            f"{contradictorio} (su evidencia commiteada obliga a MUERTO y el "
-            "journal lo declara SOBREVIVIENTE) y no lo ha hecho. Con el cuerpo "
-            "del gate VACIO el validador tambien daria 0 FAIL, luego sin esta "
-            "asercion el D-B seguiria abierto. Fallos que lo nombran: "
-            f"{fallos_del_contradictorio!r}. Informe:\n{informe_sano[-2000:]}\n"
-            "EL GATE NO DISTINGUE")
+        exigir_la_acusacion(informe_sano, contradictorio, "SOBREVIVIENTE",
+                            "MUERTO",
+                            "el journal lo declara SOBREVIVIENTE y su evidencia "
+                            "commiteada obliga a MUERTO")
+        exigir_la_acusacion(informe_sano, invertido, "MUERTO", "SOBREVIVIENTE",
+                            "el journal lo declara MUERTO y su evidencia (una "
+                            "suite en VERDE) obliga a SOBREVIVIENTE")
+        exigir_la_acusacion(informe_sano, motivo_equivocado, "SOBREVIVIENTE",
+                            "NO MEDIDO",
+                            "el journal lo declara SOBREVIVIENTE y su evidencia "
+                            "obliga a NO MEDIDO porque su ultima linea no nombra "
+                            "el motivo declarado")
 
         # (D2) LA CONTRAPROUEBA: con el CUERPO del gate VACIO (y el REGISTRO
-        # puesto, que es lo UNICO que el guard de cableado mira), el `[FAIL]`
+        # puesto, que es lo UNICO que el guard de cableado mira), la acusacion
         # del CONTRADICTORIO tiene que DESAPARECER y el REGISTRO tiene que
         # SEGUIR. Sin esta celda, la D1 podria cumplirse por un motivo
         # equivocado (un gate que acusa SIEMPRE tambien la cumpliria): esta
@@ -22837,18 +22924,20 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
             "el validador mutado tiene que LLEGAR AL FINAL y printar su "
             f"informe: si no, esta celda esta probando una excepcion. "
             f"rc={rc_mudo}. Informe:\n{informe_mudo[-2000:]}")
-        fallos_del_contradictorio_mudo = fallos_que_nombran(informe_mudo,
-                                                            contradictorio)
+        fallos_del_contradictorio_mudo = acusaciones_que_nombran(informe_mudo,
+                                                                contradictorio)
         assert not fallos_del_contradictorio_mudo, (
             "el MUTANTE (el CUERPO del gate vaciado y el REGISTRO puesto) tiene "
-            f"que hacer DESAPARECER el `[FAIL]` del sentinela {contradictorio}: "
+            f"que hacer DESAPARECER la acusacion del sentinela {contradictorio}: "
             "si sigue ahi, la celda D1 no esta mirando el COMPORTAMIENTO del "
             "gate sino su forma. Fallos que lo nombran: "
-            f"{fallos_del_contradictorio_mudo!r}. Informe:\n{informe_mudo[-2000:]}")
+            f"{fallos_del_contradictorio_mudo!r}. Informe:\n{informe_mudo[-2000:]}\n"
+            "EL GATE NO DISTINGUE")
         assert "[REGISTRO] check 11 (veredicto de mutacion)" in informe_mudo, (
             "el REGISTRO tiene que SEGUIR con el cuerpo vaciado: es lo que "
             "hace que este mutante sea INVISIBLE para el guard de cableado "
-            "(D-A) y solo lo vea el de PRODUCTO (D). Informe:\n{informe_mudo[-2000:]}")
+            "(D-A) y solo lo vea el de PRODUCTO (D). Informe:\n"
+            f"{informe_mudo[-2000:]}\nEL GATE NO DISTINGUE")
 
         # (D3) LA RESTAURACION: el esqueleto no puede quedar mutado para las
         # secciones que vienen despues.
@@ -22869,9 +22958,9 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
           "mutante de cableado lo hace desaparecer. Y ademas: el check 11 sale "
           "cableado con su REGISTRO (y su mutante lo borra), el gate declara los "
           "seis limites que no prueba y el emisor no pisa la evidencia ajena. "
-          "Y el gate DISTINGUE: acusa al sentinela contradictorio, calla sobre "
-          "el coherente, y con el cuerpo vaciado el FAIL desaparece (y el "
-          "REGISTRO sigue).")
+          "Y el gate DISTINGUE: acusa a los TRES contradictorios (uno por cada "
+          "sentido y uno con el motivo equivocado), calla sobre los DOS "
+          "coherentes, y con el cuerpo vaciado la acusacion muere (REGISTRO sigue).")
 
 
 def test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real():
@@ -23940,7 +24029,7 @@ def _fixture_con_reloj_clavado(directorio, asunto, fecha_iso):
     `_repo_temporal_de_un_commit`:** esa helper la comparten 21 call sites y
     anadirle un parametro opcional por una necesidad de UN test seria un
     cambio con 21 consumidores; y ademas moveria el numero de linea de
-    `run_tests.py:23629`, que cuatro afirmaciones citan POR NUMERO (lo vigila
+    `run_tests.py:23718`, que cuatro afirmaciones citan POR NUMERO (lo vigila
     `test_las_citas_de_sandbox_rules_siguen_siendo_ciertas`). Clavar el reloj
     aqui resuelve el problema sin tocar nada compartido y sin mover ninguna
     cita.
@@ -29517,7 +29606,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
 
     **POR QUE ESTE GUARD EXISTE Y POR QUE NO SE PONE EN ROJO.** Cuatro sitios
     citan esas dos lineas POR NUMERO: `validate_docs.py:1429`,
-    `validate_docs.py:1924`, `run_tests.py:23629` y
+    `validate_docs.py:1924`, `run_tests.py:23718` y
     `docs/ai/sandbox-rules.md:1133`, y las cuatro dicen que son las dos filas del
     `0` de la tabla de codigos de salida. MEDIDO: `_declara_el_codigo_sobrecargado`
     (`validate_docs.py:1935`) compila el patron con `re.MULTILINE` sobre el
@@ -29560,7 +29649,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     # numero de una y olvidar las otras tres deja tres mentiras nuevas.
     cita = "sandbox-rules.md:55-56"
     for relativo, numeros in (("validate_docs.py", ("1429", "1924")),
-                              ("run_tests.py", ("23629",)),
+                              ("run_tests.py", ("23718",)),
                               ("docs/ai/sandbox-rules.md", ("1133",))):
         texto = _texto_de(os.path.join(raiz, *relativo.split("/"))).splitlines()
         for numero in numeros:

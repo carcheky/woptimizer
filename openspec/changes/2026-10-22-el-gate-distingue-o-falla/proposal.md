@@ -12,7 +12,7 @@ extrajo con `ast` y se ejecuto suelto.
 
 El check 11 de `validate_docs.py` **re-deriva** el veredicto de mutacion desde la
 evidencia commiteada, y su **cableado** esta vigilado (el mutante D-A muere por su
-asercion, `run_tests.py:22400-22432`). Lo que **no** esta vigilado es su
+asercion, `run_tests.py:22417-22449`). Lo que **no** esta vigilado es su
 **contenido**: se puede dejar el cuerpo del gate **vacio, con el REGISTRO
 intacto**, y el validador sigue dando **0 FAIL** sobre un catalogo que se contradice
 a si mismo. La respuesta es **un guard de PRODUCTO**: un corpus sintetico con un
@@ -38,7 +38,7 @@ desaparecer** ese FAIL.
 
 ### 2.1 Lo que el gate hace y lo que nadie vigila
 
-El gate vive en `validate_docs.py:3138` (`_comprobar_veredictos_de_mutacion`) y esta
+El gate vive en `validate_docs.py:3150` (`_comprobar_veredictos_de_mutacion`) y esta
 cableado en `validar()` (`validate_docs.py:2617`). Imprime su **REGISTRO**
 (`validate_docs.py:3350-3359`, impreso en `main()`, `validate_docs.py:2789-2795`).
 
@@ -47,9 +47,9 @@ mira el contenido.**
 
 | Referencia | Que mira | Que NO mira |
 |---|---|---|
-| `run_tests.py:22375` | que el **REGISTRO** aparezca en el informe | que el gate **haga** algo |
-| `run_tests.py:22428` | que el **mutante de cableado** borre el REGISTRO | lo mismo |
-| `run_tests.py:22434-22475` | el **TEXTO** del bloque «LO QUE ESTE GATE **NO** PRUEBA» | el comportamiento |
+| `run_tests.py:22392` | que el **REGISTRO** aparezca en el informe | que el gate **haga** algo |
+| `run_tests.py:22445` | que el **mutante de cableado** borre el REGISTRO | lo mismo |
+| `run_tests.py:22451-22492` | el **TEXTO** del bloque «LO QUE ESTE GATE **NO** PRUEBA» | el comportamiento |
 
 ⇒ Un cuerpo **vacio** conserva las tres cosas: el REGISTRO sale, el cableado sigue
 vivo y el bloque de limites sigue escrito. **El D-B no tiene por donde morir.**
@@ -273,9 +273,9 @@ cableado (D-A) **no** los ve y hace falta el de contenido.
 
 | id | Mutacion (receta textual) | Que rompe | Por que **no** es EQUIVALENTE | Asercion por la que muere | Contraprueba |
 |---|---|---|---|---|---|
-| **M-90** | sustituir el cuerpo de `_comprobar_veredictos_de_mutacion` (`validate_docs.py:3138`) por el stub que **solo deja el REGISTRO** | el gate **no comprueba nada** | **MEDIDO**: el `[FAIL]` que nombraba `M-FIX-MAL` **desaparece** (P1 → P2): el veredicto sobre el corpus **cambia** | la de la celda D1 sobre el contradictorio: *«... EL GATE NO DISTINGUE ...»* | D2: el guard exige que ese FAIL **desaparezca** cuando el cuerpo se vacia, y que el REGISTRO **siga** |
-| **M-91** | `validate_docs.py:3310`: `if estado_derivado != estado_declarado:` → `if estado_derivado == estado_declarado:` | el gate **acusa en lo que no puede** (da FAIL del coherente) | **MEDIDO**: `FAIL(M-FIX-BIEN)` pasa de **0** a **1** (P6): el veredicto sobre el corpus cambia | la de la celda D1 sobre el coherente: *«... EL GATE ACUSA EN LO QUE NO PUEDE ...»* | la misma celda D1: el coherente tiene que dar **0** FAIL |
-| **M-92** | `validate_docs.py:3276`: `for ... in mutantes:` → `for ... in mutantes[:1]:` | el gate mira **solo el primer** mutante del catalogo | **MEDIDO**: `FAIL(M-FIX-MAL)` pasa de **1** a **0** (P7): el contradictorio es el **segundo** a proposito | la de la celda D1 sobre el contradictorio | la celda D1 con el coherente **primero** y el contradictorio **segundo** |
+| **M-90** | sustituir el cuerpo de `_comprobar_veredictos_de_mutacion` (`validate_docs.py:3150`) por el stub que **solo deja el REGISTRO** | el gate **no comprueba nada** | **MEDIDO**: el `[FAIL]` que nombraba `M-FIX-MAL` **desaparece** (P1 → P2): el veredicto sobre el corpus **cambia** | la de la celda D1 sobre el contradictorio: *«... EL GATE NO DISTINGUE ...»* | D2: el guard exige que ese FAIL **desaparezca** cuando el cuerpo se vacia, y que el REGISTRO **siga** |
+| **M-91** | `validate_docs.py:3327`: `if estado_derivado != estado_declarado:` → `if estado_derivado == estado_declarado:` | el gate **acusa en lo que no puede** (da FAIL del coherente) | **MEDIDO**: `FAIL(M-FIX-BIEN)` pasa de **0** a **1** (P6): el veredicto sobre el corpus cambia | la de la celda D1 sobre el coherente: *«... EL GATE ACUSA EN LO QUE NO PUEDE ...»* | la misma celda D1: el coherente tiene que dar **0** FAIL |
+| **M-92** | `validate_docs.py:3293`: `for ... in mutantes:` → `for ... in mutantes[:1]:` | el gate mira **solo el primer** mutante del catalogo | **MEDIDO**: `FAIL(M-FIX-MAL)` pasa de **1** a **0** (P7): el contradictorio es el **segundo** a proposito | la de la celda D1 sobre el contradictorio | la celda D1 con el coherente **primero** y el contradictorio **segundo** |
 | **M-93** | sustituir el cuerpo por uno que **calcula el veredicto y lo tira** (`_estado_de_una_corrida(...)` sin comparar) | el gate **calcula bien y no dice nada** | **MEDIDO**: `FAIL(M-FIX-MAL)` pasa de **1** a **0** (P8). **Es el mutante que refuta el guard de FORMA**: su cuerpo conserva bucle, llamada y comparacion | la de la celda D1 sobre el contradictorio | M-93 es, precisamente, la **contraprueba del AC-1** frente a un guard de forma |
 
 **Los cuatro mueren por una ASERCION, no por una excepcion**: el guard lee el
@@ -330,3 +330,65 @@ recuento. La linea viva es **`STATUS.md:132`** («4. **Tests:** `python run_test
 **P2** del panel (una cita por numero de linea que se caduca): la fifth declaracion
 es `STATUS.md:132`, y las cinco son `AGENTS.md:70`, `README.md:63`,
 `STATUS.md:12`, `STATUS.md:132`, `docs/ai/testing-guide.md:57`.
+
+
+---
+
+## 9. NOTA DEL DEV (segunda vuelta del ciclo 71, TASK-090)
+
+**POR QUE EXISTE ESTA NOTA.** La auditoria del ciclo 71 dio **VERDICT: FAIL** al
+guard que este cambio construye: los cuatro mutantes declarados (M-90..M-93)
+morian, pero siete mutantes NUEVOS, que atacan al **GUARD** (no al gate),
+dejaron **cuatro supervivientes** (M-94, M-95, M-99 y M-100). La causa era UNA,
+y era el **corpus**: con una sola contradiccion, un solo orden y una sola
+entrada de journal, esos cuatro se comportan **igual que el gate sano**, luego
+el guard no tenia por donde verlos. El informe completo esta en
+`mutation-report.md` (§7.3 dice exactamente que hay que cambiar).
+
+**LO QUE SE HIZO: EL GATE NO SE TOCA.** Los cuatro supervivientes son problema
+del **corpus**, no del gate (`validate_docs.py` sigue igual, byte a byte). Se
+**amplio** el corpus de la seccion (D) de `run_tests.py`, que ahora ejercita
+**todas** las ramas que el guard dice vigilar:
+
+| Pieza del corpus | Ramo del gate que ejercita | Mutante que mata |
+|---|---|---|
+| **DOS entradas** de journal, con las contradicciones en la **SEGUNDA** | el gate que solo mira la PRIMERA entrada | M-95 |
+| la contradiccion en los **DOS sentidos**: declarada SOBREVIVIENTE con evidencia MUERTO, y declarada MUERTO con evidencia SOBREVIVIENTE | el gate que decide por la DECLARACION y no por la EVIDENCIA | M-99 |
+| el contradictorio al **PRINCIPIO** de su catalogo y el coherente al **FINAL** | el gate que mira solo el ULTIMO, y el que mira solo el PRIMERO | M-94 y M-92 |
+| un sentinela con el **MOTIVO equivocado** (su evidencia obliga a NO MEDIDO) | el gate que no comprueba el motivo | M-100 |
+| **DOS** sentinelas coherentes | el gate que ACUSA EN LO QUE NO PUEDE | M-91 |
+
+Y el guard exige, **en la misma corrida**, que el gate acuse a los TRES
+contradictorios y calle sobre los DOS coherentes. El RECUENTO NO SE MUEVE
+(**235 = 159 + 76**): no hay ningun `test_*` nuevo, la seccion (D) se extiende.
+
+**LO QUE ESTO CAMBIA DE ESTE CONTRATO.** El §5.3 (la tabla del corpus) y el §2.2
+quedan **superados por esta nota**: el corpus ya no lleva dos sentinelas, sino
+**cinco** (dos coherentes y tres contradictorios) y **dos entradas de journal**.
+El resto del contrato (D-1..D-5, los AC) se sostiene sin cambios.
+
+**LO QUE SE MEDIO (arbol final, camaras desechables, el repo real sin mutar).**
+Los **once** mutantes (M-90..M-100) mueren **por su asercion**, cada uno con su
+`motivo` LITERAL, y los **once** conservan el REGISTRO. La contraprueba de los
+cuatro que estaban vivos es la diferencia de **comportamiento** (el conjunto de
+acusaciones del gate): el gate sano acusa a los tres contradictorios; M-94 deja
+de acusar al primero, M-95 no acusa a ninguno, M-99 deja de acusar al de
+contradiccion invertida, y M-100 lo certifica como MUERTO en vez de NO MEDIDO.
+Ninguno es equivalente al gate sano, luego el guard los ve.
+
+**EL COSTE NO SE MULTIPLICA.** El corpus ampliado va en la **misma** corrida del
+validador (las aserciones extra no cuestan nada): la seccion (D) sigue costando
+**8,8 s** (las DOS corridas del validador sobre el esqueleto), un **1,2 %** de la
+suite de 735 s. El A/B **intercalado** contra HEAD (el corpus viejo) da
+**9,73 s** frente a **10,09 s** (delta **-0,36 s**, dentro del ruido del host:
+las muestras individuales van de 8,80 a 11,09 s). El test entero con la seccion
+(D) mide **31,9 s**.
+
+**LAS CITAS.** Corregidas **POR CONTENIDO** (la linea cuyo texto se cita, leida
+de su numero real; nunca por aritmetica): `validate_docs.py:3138` (dos veces) ->
+**3150**, `validate_docs.py:3310` -> **3327**, `validate_docs.py:3276` -> **3293**;
+`run_tests.py:22375` -> **22392**, `run_tests.py:22428` -> **22445** y el rango
+`run_tests.py:22434-22475` -> **`22451-22492`**. Y **dos mas** que nadie habia
+listado: el rango del mutante D-A `run_tests.py:22400-22432` -> **`22417-22449`**
+(movido por el mismo +17 del docstring) y las citas vivas del panel y de la
+guia, renumeradas por el mismo motivo (el `+89` de la ampliacion del corpus).

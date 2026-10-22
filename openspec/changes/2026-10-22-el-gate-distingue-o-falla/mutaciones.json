@@ -1,7 +1,7 @@
 {
   "cambio": "openspec/changes/2026-10-22-el-gate-distingue-o-falla/",
   "ciclo": 71,
-  "nota": "Los cuatro mutantes del GUARD NUEVO (seccion (D) de `test_el_check_9_se_cablea_en_el_camino_real_del_validador`). El `asa` (el test que DEBE morir) y el `motivo` (el substring del mensaje de la asercion) los DECLARA quien muta; el gate los re-deriva del log commiteado: el log dice quien murio, nunca quien debia. Los cuatroLogs son REALES, capturados en camaras desechables (%TEMP%\\wopt_c71_M-9x) con el test afectado corrido SUELTO; el `sha_arbol_auditado` es el commit de la camara donde se midio (NO el del repo, y el gate no lo resuelve: es el limite (e)).",
+  "nota": "Once mutantes: los CUATRO del dev (M-90..M-93, que matan el gate) y SIETE de la AUDITORIA (M-94..M-100, que atacan el GUARD NUEVO: la seccion (D) de `test_el_check_9_se_cablea_en_el_camino_real_del_validador`). El `asa` (el test que DEBE morir) y el `motivo` (el substring del mensaje de la asercion) los DECLARA quien muta; el gate los re-deriva del log commiteado: el log dice quien murio, nunca quien debia. Los logs de los SIETE de la auditoria son REALES, capturados en camaras desechables (%TEMP%\\wopt_c71_aud\\camara_base, con su PROPIO `.git` y su `origin` desviado a un dummy: el repo real no se toca) corrriendo la SUITE COMPLETA; el `sha_arbol_auditado` de M-94..M-100 es el commit de la camara donde se midio (NO el del repo, y el gate no lo resuelve: es el limite (e)); el de M-90..M-93 se conserva el del dev, que es el commit de SU camara (limite (e) tambien). Los supervivientes (M-94, M-95, M-99, M-100) tienen el log VERDE y su rc lo pone el RUNNER: en M-99 y M-100 el log lleva `RC=0` en la PRIMERA linea, y en M-94 y M-95 el rc se le pasa al emisor con `--rc` (la convencion del repo). POR QUE hace falta: el log VERDE de esta suite contiene una TRAZA CAPTURADA (el UnicodeDecodeError de un hilo que lee la salida de un subproceso) y el emisor inferiria `rc=1` de cualquier log con un \"Traceback\".",
   "mutaciones": [
     {
       "id": "M-90",
@@ -54,6 +54,100 @@
       },
       "sha_arbol_auditado": "8c69ddadbef71e0002c8f646b7659f5850dafdfb",
       "origen": "el veredicto se CALCULA y se TIRA: el bucle, la llamada y la comparacion se conservan (por eso un guard de FORMA lo acepta) y el gate no dice NADA"
+    },
+    {
+      "id": "M-94",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3293,
+        "original": "        for identificador, asa, motivo, sha_del_catalogo in mutantes:",
+        "sustituto": "        for identificador, asa, motivo, sha_del_catalogo in mutantes[1:]:"
+      },
+      "sha_arbol_auditado": "ea1561eb59b37cbb917d64433d7b091b4c29cc5c",
+      "origen": "el gate solo mira el ULTIMO mutante del catalogo (el espejo de M-92). Con el corpus de la seccion (D) el contradictorio es el ultimo, luego el gate acierta POR POSICION y el guard no lo nota: el guard mide el COMPORTAMIENTO sobre un corpus con el contradictorio SIEMPRE al final"
+    },
+    {
+      "id": "M-95",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3196,
+        "original": "    entradas = [e for e in journal if _ciclo_de(e) >= CICLO_ORIGEN_VEREDICTO]",
+        "sustituto": "    entradas = [e for e in journal if _ciclo_de(e) >= CICLO_ORIGEN_VEREDICTO][:1]"
+      },
+      "sha_arbol_auditado": "7cbc693a48bcde18e84cbf35ecacf1d6604c643c",
+      "origen": "el gate solo mira la PRIMERA entrada del journal. El corpus de la seccion (D) tiene UNA sola entrada, luego el gate no pierde nada AHORA y es ciego para todos los ciclos posteriores: en el repo real el journal tiene una entrada por ciclo y el check 11 dejaria de re-derivar los veredictos de los ultimos"
+    },
+    {
+      "id": "M-96",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "run_tests.py",
+        "linea": 22855,
+        "original": "            json.dump(entradas_sinteticas, fh, ensure_ascii=False, indent=2)",
+        "sustituto": "            pass  # MUTANTE M-96: el corpus NO se monta"
+      },
+      "sha_arbol_auditado": "69164c19a29ab7b591a8bab90adc0272509e9ffc",
+      "origen": "el corpus NO se monta (el journal del corpus no se escribe): la seccion (D) se queda sin sujeto, el gate no acusa a nadie y D1 tiene que morir",
+      "nota_del_dev": "SEGUNDA VUELTA DEL CICLO 71 (TASK-090): la SECCION (D) se AMPLIO (el corpus ahora tiene DOS entradas de journal y CINCO sentinelas, para que el guard mate tambien a M-94, M-95, M-99 y M-100), luego el volcado del journal pasa de `[entrada_sintetica]` a `entradas_sinteticas`: la SEMANTICA del mutante NO cambia (el corpus no se monta), pero el `original` y la `linea` se han medido de nuevo sobre el arbol final. El `sha_arbol_auditado` y las lineas canonicas los reemite el `mutation-auditor` sobre ese arbol."
+    },
+    {
+      "id": "M-97",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE ACUSA EN LO QUE NO PUEDE",
+      "mutacion": {
+        "fichero": "run_tests.py",
+        "linea": 22733,
+        "original": "             \"LA ASERCION DEL SENTINELA COHERENTE\", \"MUERTO\"),",
+        "sustituto": "             \"LA ASERCION DEL SENTINELA COHERENTE\", \"SOBREVIVIENTE\"),"
+      },
+      "sha_arbol_auditado": "061d7cc6b118aee29516aa13dbbf2d5bc4465c15",
+      "origen": "el sentinela COHERENTE deja de ser coherente (su journal lo declara SOBREVIVIENTE y su evidencia obliga a MUERTO): el gate le acusa y la celda D1 tiene que morir en la asercion del coherente",
+      "nota_del_dev": "SEGUNDA VUELTA DEL CICLO 71: la `linea` se ha vuelto a medir (el `original` y el `sustituto` siguen siendo LITERALES en el arbol final: el sentinela coherente M-FIX-BIEN conserva su tupla). El `sha_arbol_auditado` lo reemite el `mutation-auditor`."
+    },
+    {
+      "id": "M-98",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "copia mutada contaminaria las secciones que vienen despues",
+      "mutacion": {
+        "fichero": "run_tests.py",
+        "linea": 22945,
+        "original": "            f.write(fuente_del_esqueleto)\n        with open(ruta_validador, encoding=\"utf-8\") as f:\n            assert f.read() == fuente_del_esqueleto, (",
+        "sustituto": "            pass  # MUTANTE M-98: D3 NO restaura el esqueleto\n        with open(ruta_validador, encoding=\"utf-8\") as f:\n            assert f.read() == fuente_del_esqueleto, ("
+      },
+      "sha_arbol_auditado": "3785a7af5036f80e01da9dd4d284806868b6ca81",
+      "origen": "D3 NO restaura el esqueleto: la copia mutada se queda y contamina lo que venga despues. La celda D3 tiene que morir en su asercion",
+      "nota_del_dev": "SEGUNDA VUELTA DEL CICLO 71: la `linea` se ha vuelto a medir (el `original` y el `sustituto` siguen siendo LITERALES en el arbol final). El `sha_arbol_auditado` lo reemite el `mutation-auditor`."
+    },
+    {
+      "id": "M-99",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3327,
+        "original": "            if estado_derivado != estado_declarado:",
+        "sustituto": "            if estado_declarado == \"SOBREVIVIENTE\":"
+      },
+      "sha_arbol_auditado": "a3ffb222310a3dfaff03a741e2f7948a4171fdb6",
+      "origen": "el gate decide por la DECLARACION y no por la EVIDENCIA: acusa a todo mutante declarado SOBREVIVIENTE sin mirar la evidencia commiteada. El corpus de la seccion (D) lo pasa (el contradictorio esta declarado SOBREVIVIENTE y el coherente MUERTO), luego el guard no lo nota"
+    },
+    {
+      "id": "M-100",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3050,
+        "original": "    if motivo and motivo not in ultima:",
+        "sustituto": "    if False and motivo and motivo not in ultima:"
+      },
+      "sha_arbol_auditado": "7e42482de4e4d7d6fd4c92385bda6265c7243fea",
+      "origen": "el motivo literal de la evidencia YA NO se comprueba: el gate acepta cualquier cola con el frame del asa. El corpus de la seccion (D) lo pasa porque su evidencia esta bien escrita"
     }
   ]
 }

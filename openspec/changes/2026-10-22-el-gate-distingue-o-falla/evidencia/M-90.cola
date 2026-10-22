@@ -1,10 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
-Check 9 en el camino real del validador, con su mutante de cableado...
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_trabajo\solo.py", line 6, in <module>
-    run_tests.test_el_check_9_se_cablea_en_el_camino_real_del_validador()
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_M-90_24024\run_tests.py", line 22802, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud\camara_base\run_tests.py", line 31741, in <module>
+    test_el_check_9_se_cablea_en_el_camino_real_del_validador()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud\camara_base\run_tests.py", line 22802, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     assert len(acusacion_buena) >= 1, (
            ^^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR al sentinela M-FIX-MAL (su evidencia commiteada obliga a MUERTO y el journal lo declara SOBREVIVIENTE) y no lo ha hecho. Con el cuerpo del gate VACIO el validador tambien daria 0 FAIL, luego sin esta asercion el D-B seguiria abierto. Fallos que lo nombran: []. Informe:
