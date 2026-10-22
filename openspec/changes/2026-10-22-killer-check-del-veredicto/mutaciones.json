@@ -1,0 +1,20 @@
+{
+  "cambio": "openspec/changes/2026-10-22-killer-check-del-veredicto/",
+  "ciclo": 70,
+  "nota": "El `asa` (el test que DEBE morir) y el `motivo` (el substring del mensaje de la asercion) los DECLARA quien muta. El gate los re-deriva del log commiteado: el log dice quien murio, nunca quien debia.",
+  "mutaciones": [
+    {
+      "id": "M-3",
+      "asa": "test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe",
+      "motivo": "EL RELOJ DE LA FIXTURE NO ESTA CLAVADO",
+      "mutacion": {
+        "fichero": "run_tests.py",
+        "linea": 23459,
+        "original": "    for v in variables:\n        os.environ[v] = fecha_iso",
+        "sustituto": "    for v in variables:\n        os.environ.pop(v, None)"
+      },
+      "sha_arbol_auditado": "e811115886a8de68bbcd338c11aaa426477caeb5",
+      "origen": "el reloj de la fixture sin clavar: la fecha del commit no se fija, luego el sha de la fixture varia y el hash MUERTO puede coincidir con un objeto real"
+    }
+  ]
+}

@@ -1378,3 +1378,68 @@ Consecuencia práctica: al añadir cobertura, **editar siempre `run_tests.py`**.
 | 233 | `test_una_vista_nueva_se_audita_aunque_nadie_la_apunte` | **TASK-082 (AC-2): una vista NUEVA se audita aunque nadie la apunte.** Se EJECUTA el guard de workers sobre una camara en `%TEMP%` con `src/` real y una vista nueva, y se exigen las dos mitades del veredicto: el codigo de salida Y que la salida NOMBRE la infraccion. Tres veredictos: la vista con la infraccion da ROJO que la nombra; la MISMA sin infraccion da VERDE (control positivo: sin el, un guard que siempre da ROJO cumpliria el AC); y la MISMA en el disco y SIN declarar da ROJO que nombra la vista nueva. El tercero es el que mata a M-V5 por PRODUCTO y no por efecto colateral: con la derivacion falsa la comparacion es tautologica, no hay rojo, y la vista nueva deja de auditarse sin que nadie lo note. **MATA** M-V1 y M-V5. |
 | 234 | `test_el_derivado_de_vistas_es_el_disco_y_abre_algo` | **TASK-082 (AC-3): el derivado ES el disco, y abre algo.** El derivado se compara con un `os.listdir` del directorio de vistas --OTRA API que la del helper (`glob`), para que las dos derivaciones no den el mismo resultado por casualidad--; el derivado NO esta vacio y cada nombre es un fichero de verdad (un derivado vacio es "cero infracciones sobre cero ficheros"); y un derivado VACIO da ROJO, medido en camara (se vacian las vistas y el guard tiene que caer). **MATA** M-V3. |
 | 235 | `test_el_hash_muerto_se_deriva_por_construccion_y_no_por_concatenacion` | **TASK-083 (AC-4): el tripwire que vigila la CONSTRUCCIÓN del hash muerto.** Con `ast` sobre la suite, dos reglas DERIVADAS del código: (1) NINGÚN `BinOp(Add)` puede concatenar una expresión que parece un hash (`hash`, `sha`, `digest`, `hex`, `short`) con un literal hex de 1 a 8 dígitos — con el arreglo, **0 hallazgos**; si alguien vuelve a `hash_real + "0"`, el guard da ROJO nombrando **fichero y línea** (MEDIDO en cámara desechable: `run_tests.py:23605: hash_real + '0'`). (2) El hash bajo prueba tiene que VENIR de la derivación por construcción (`_hash_muerto_por_construccion`), que tiene que estar VIVA (la llama alguien) y LLEGAR al uso de hash bajo prueba; un literal fijo en su lugar da ROJO (`la derivación por construcción no la llama nadie`). El guard se prueba A SÍ MISMO con casos SINTÉTICOS: un `sha real + dígito` que SÍ existe queda FUERA de los dígitos libres, uno que NO existe da 0 hallazgos, y sin ningún dígito libre la derivación REVIENTA (nunca una lista vacía en silencio). **Es un `test_*` CONTADO a propósito** (lección A-C68-1: un guard que nadie cuenta se puede borrar sin que nada se entere). |
+
+
+---
+
+## El veredicto de mutación es comprobable (TASK-087, ciclo 70)
+
+Desde el ciclo 70 el veredicto por mutante **deja de ser prosa**. Antes lo
+escribía a mano el `mutation-auditor` en el `mutation-report.md`, y nadie
+podía volver a comprobarlo: MEDIDO, **borrar el veredicto del journal daba
+0 FAIL** y **borrar el `mutation-report.md` entero daba 0 FAIL**, mientras que
+borrar una *fila* del journal daba 1 FAIL. La fila estaba vigilada; el
+veredicto y el informe, no.
+
+Ahora el veredicto es una **línea canónica** que un programa escribe y que el
+validador **re-deriva** desde la evidencia commiteada:
+
+```
+WOPT_VEREDICTO <mutante> <MUERTO|SOBREVIVIENTE|NO MEDIDO> <sha>
+```
+
+### Los tres estados
+
+| Estado | Condición mecánica | Qué hace el bucle |
+|---|---|---|
+| **MUERTO** | el log está en ROJO, el test que murió —derivado del *frame* del *traceback*— es **exactamente** el `asa` declarado, y el motivo literal de la aserción contiene el `motivo` declarado | el fix está verificado |
+| **SOBREVIVIENTE** | la suite completa terminó en VERDE (`rc=0` y la última línea es `ALL TESTS PASSED.`) | el fix **no** está verificado: es un FAIL |
+| **NO MEDIDO** | todo lo demás: log cortado, murió otro test, el motivo no nombra la infracción, o dos corridas del mismo mutante dan veredictos distintos | el mutante **se encola como tarea** y el ciclo sigue a Paso 1 |
+
+El texto íntegro del contrato está en `.agents/agents/mutation-auditor/agent.md`
+—la fuente de verdad del agente— y la parte automatizable en el código:
+
+| Pieza | Dónde | Qué hace |
+|---|---|---|
+| Emisor | `.taskmaster/veredicto.py` | del catálogo + las colas de los logs deriva el estado y escribe la línea canónica y la evidencia |
+| Gate | `validate_docs.py`, **check 11** | **re-deriva** cada veredicto desde la evidencia commiteada y falla si la línea no cuadra |
+| Catálogo | `openspec/changes/<id>/mutaciones.json` | lo declara **quien muta**: el `asa` (el `test_*` exacto que tiene que morir) y el `motivo` |
+| Evidencia | `openspec/changes/<id>/evidencia/<mutante>.cola` | la cola del log (desde el `Traceback` hasta el final, o las últimas 200 B si no hay traza) |
+
+El gate **deriva** el conjunto de sujetos (las entradas del journal con
+`cycle >= 70`, y el cambio de cada entrada por su campo `change`), así que
+**no se puede vaciar**: borrarle la línea a una entrada, o borrar el informe
+del ciclo, es un FAIL.
+
+### Por qué el gate vive en `validate_docs.py` y no en la suite
+
+El journal y los changelogs se escriben **después** del Paso 4, luego un
+`test_*` de la suite solo vería el veredicto del ciclo **anterior**. Y añadir
+un `test_*` obligaría a subir el recuento a 236 y a mover cinco declaraciones
+escritas a mano. El gate va en el validador, el **recuento se queda en
+235 = 159 + 76**, y las cinco declaraciones no se mueven.
+
+### Lo que el gate NO prueba
+
+Que el `asa` declarada sea la guard **semánticamente** correcta para esa
+mutación: el log dice *quién murió*, nunca *quién debía*, y la spec no
+contiene el nombre de la función. Lo que sí prueba es que el veredicto es
+**re-derivable** desde la evidencia commiteada, y que **no se puede escribir
+sin la línea canónica**.
+
+### Por qué no se repite la suite N veces
+
+Repetir cuesta **N × 734,9 s por mutante** (N=3 → **8,0 h por ciclo**), y
+repetir **sin** exigir consistencia **empeora** el veredicto falso:
+`1-(1-p)^N` con p=1/16 da 6,25 % (N=1) → **17,6 % (N=3)** → 27,5 % (N=5).
+El killer-check cuesta **cero** corridas extra: el harness ya captura el log.

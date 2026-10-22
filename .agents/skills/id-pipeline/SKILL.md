@@ -267,6 +267,53 @@ El agente tiene la tabla de mutaciones canónicas de este repo (barrera de categ
 - ✅ **Registra el resultado en el changelog** con la tabla fix → mutación → veredicto. Sin ese registro, el paso no se hizo.
 - ✅ **El informe del Paso 4 vive EN EL REPO, no en la conversación.** Escribe `openspec/changes/<change-id>/mutation-report.md` con **un identificador por mutante** (mínimo una letra: `S1`, `A2`, `M3`) junto a su veredicto y su motivo. Sin ese fichero, un `FAIL` no es re-auditable: el ciclo 47 discovers sus 12 supervivientes por número y tres ciclos después nadie puede comprobar cuáles eran, y el mismo hallazgo se reinventa. Precedente: `openspec/changes/2026-10-01-multi-favorites-and-db-download/mutation-plan.md`. La tabla del changelog es el resumen legible; este fichero es el registro con nombres, y los dos se escriben.
 
+### El veredicto de mutación es una LÍNEA CANÓNICA (TASK-087, ciclo 70)
+
+Desde el ciclo 70 el veredicto por mutante **deja de ser prosa**: es una línea que un
+programa escribe y que `validate_docs.py` (check 11) **re-deriva** desde la evidencia
+commiteada. MEDIDO por el arquitecto: borrar el veredicto del journal daba **0 FAIL** y
+borrar el `mutation-report.md` entero daba **0 FAIL**, luego el veredicto no tenía forma
+de volver a comprobarse.
+
+```
+WOPT_VEREDICTO <mutante> <MUERTO|SOBREVIVIENTE|NO MEDIDO> <sha>
+```
+
+Hay **tres** estados, no dos (el texto íntegro del contrato está en
+`.agents/agents/mutation-auditor/agent.md`, que es la fuente de verdad):
+
+| Estado | Qué significa | Qué hace el bucle |
+|---|---|---|
+| **MUERTO** | el log está en ROJO, el test que murió (derivado del frame del traceback) es EXACTAMENTE el `asa` declarado, y el motivo literal nombra la infracción | el fix está verificado |
+| **SOBREVIVIENTE** | la suite terminó en VERDE (`rc=0` y la última línea es `ALL TESTS PASSED.`) | el fix NO está verificado: es un FAIL |
+| **NO MEDIDO** | todo lo demás: log cortado, murió otro test, el motivo no nombra la infracción, o dos corridas discrepan | **el mutante se ENCOLA COMO TAREA** y el ciclo sigue a Paso 1 |
+
+**NO MEDIDO es accionable, y no es un FAIL.** Un NO MEDIDO no es un fallo del ciclo: es
+un mutante que **no se ha podido medir**, y su tratamiento es el de una tarea:
+
+- **Se encola como tarea** con su métrica (el `asa` declarado, el `motivo` y el log que lo
+  deja en NO MEDIDO), y el ciclo sigue a **Paso 1**.
+- **Si el NO MEDIDO toca SEGURIDAD o DATOS, el ciclo NO se cierra** (la misma regla del
+  `PARTIAL` de arriba): un mutante de seguridad sin medir es un agujero con la etiqueta de
+  "medido", que es peor que un agujero sin etiqueta.
+
+**Quién escribe qué** (el orquestador copia, el auditor produce):
+
+| Artefacto | Quién |
+|---|---|
+| `openspec/changes/<id>/mutaciones.json` (el `asa` y el `motivo` los declara el auditor) | el auditor |
+| `openspec/changes/<id>/evidencia/<mutante>.cola` (la cola del log) | `.taskmaster/veredicto.py` |
+| `openspec/changes/<id>/mutation-report.md`, con el **bloque de máquina** | el auditor |
+| la entrada del journal, con el campo **`veredictos`** (las líneas canónicas) | el orquestador |
+| las dos entradas de changelog con las líneas canónicas | el orquestador |
+
+El gate **deriva** el conjunto de sujetos (entradas del journal con `cycle >= 70` y su
+campo `change`), **re-deriva** cada estado desde la evidencia commiteada y **falla** si
+la línea no cuadra. No es un `test_*` de la suite a propósito: el journal se escribe
+**después** del Paso 4, luego un test de la suite solo vería el ciclo **anterior**, y
+añadirlo obligaría a subir el recuento a 236 y a mover cinco declaraciones escritas a
+mano.
+
 ---
 
 ## 3. Protocolo de Resiliencia: Circuit Breaker y Auto-Rollback
@@ -411,7 +458,11 @@ CONTEXTO:
 ### Mutaciones auditadas (Paso 4)
 | Fix | Mutación | Veredicto | Motivo del fallo |
 |---|---|---|---|
-| [fix] | [qué se rompió] | killed / survived | [aserción que lo detectó, o "ninguna"] |
+| [fix] | [qué se rompió] | MUERTO / SOBREVIVIENTE / NO MEDIDO | [aserción que lo detectó, o "ninguna"] |
+
+<!-- WOPT_VEREDICTOS -->
+WOPT_VEREDICTO <mutante> <MUERTO|SOBREVIVIENTE|NO MEDIDO> <sha>
+<!-- /WOPT_VEREDICTOS -->
 
 ### What
 - <bullets cortos concretos, 1 frase cada uno>

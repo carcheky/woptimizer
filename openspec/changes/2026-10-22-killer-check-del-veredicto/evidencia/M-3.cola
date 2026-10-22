@@ -1,0 +1,36 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c70_m3\camara_m3_20261022_120137\run_tests.py", line 31511, in <module>
+    test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe()       # AC-3
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c70_m3\camara_m3_20261022_120137\run_tests.py", line 23693, in test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe
+    assert instante_real == instante_declarado, (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: el commit de la fixture tiene que llevar el INSTANTE que la fixture declara (2025-01-01T00:00:43+00:00 = 1735689643 s) y el commit REAL lleva 1792663532 s: EL RELOJ DE LA FIXTURE NO ESTA CLAVADO. Sin esta asercion el pre-vuelo vuelve a ser una moneda al aire, porque con el reloj suelto el sha es aleatorio y la 8.a cifra solo acierta con P = 1/16
+=== WOPT_RUN 2 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c70_m3\camara_m3_20261022_120137\run_tests.py", line 31366, in <module>
+    test_el_hash_muerto_se_deriva_por_construccion_y_no_por_concatenacion()  # AC-4
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c70_m3\camara_m3_20261022_120137\run_tests.py", line 24014, in test_el_hash_muerto_se_deriva_por_construccion_y_no_por_concatenacion
+    assert sha_completo[7] == "0", (
+           ^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: el sha de la fixture (ba26b819deff2514a79bbde76c87dc0a355c3fbb) tiene que tener '0' en la 8.a cifra hexadecimal: sin eso el caso que el tripwire tiene que rechazar no se da en ninguna fixture
+=== WOPT_RUN 3 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c70_m3\camara_m3_20261022_120137\run_tests.py", line 31366, in <module>
+    test_el_hash_muerto_se_deriva_por_construccion_y_no_por_concatenacion()  # AC-4
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c70_m3\camara_m3_20261022_120137\run_tests.py", line 24014, in test_el_hash_muerto_se_deriva_por_construccion_y_no_por_concatenacion
+    assert sha_completo[7] == "0", (
+           ^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: el sha de la fixture (752f585d23970a9175edaa896b36dd4ddcfe31a2) tiene que tener '0' en la 8.a cifra hexadecimal: sin eso el caso que el tripwire tiene que rechazar no se da en ninguna fixture
+=== WOPT_RUN 4 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c70_m3\camara_m3_20261022_120137\run_tests.py", line 31366, in <module>
+    test_el_hash_muerto_se_deriva_por_construccion_y_no_por_concatenacion()  # AC-4
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c70_m3\camara_m3_20261022_120137\run_tests.py", line 24014, in test_el_hash_muerto_se_deriva_por_construccion_y_no_por_concatenacion
+    assert sha_completo[7] == "0", (
+           ^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: el sha de la fixture (aec78c1e52125001bac85b74ae869d934f4cc7c7) tiene que tener '0' en la 8.a cifra hexadecimal: sin eso el caso que el tripwire tiene que rechazar no se da en ninguna fixture

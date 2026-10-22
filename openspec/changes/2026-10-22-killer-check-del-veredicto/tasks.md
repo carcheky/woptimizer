@@ -55,4 +55,49 @@
 
 ## Avance — TASK-087 (ciclo 70, dev)
 
-**Estado:** PENDIENTE.
+**Estado:** HECHO. Todo lo de arriba esta implementado, medido en camara y
+committeado en `beta`.
+
+### Lo que hay
+
+| # | Que | Donde | Hecho |
+|---|---|---|---|
+| 1 | Emisor | `.taskmaster/veredicto.py` (nuevo) | si. Escribe la linea canonica y la evidencia. **MEDIDO: 7,1 ms** para 13 mutantes (presupuesto: 10 ms) |
+| 2 | Catalogo (`asa` + `motivo`) | `openspec/changes/2026-10-22-killer-check-del-veredicto/mutaciones.json` | si. Lo declara quien muta |
+| 3 | Evidencia commiteada | `openspec/changes/2026-10-22-killer-check-del-veredicto/evidencia/M-3.cola` | si. **3 395 B** por mutante (4 corridas), ~11 KB por ciclo de 13 |
+| 4 | Gate | `validate_docs.py`, **check 11** | si. Re-deriva, falla si no cuadra e imprime el REGISTRO. **MEDIDO: 27,2 ms** de coste marginal |
+| 5 | El contrato en la prosa | `.agents/agents/mutation-auditor/agent.md` | si. El texto de `proposal.md` §3.6 va **LITERAL** |
+| 6 | NO MEDIDO accionable | `mutation-auditor/agent.md` + `.agents/skills/id-pipeline/SKILL.md` | si. Se encola como tarea; si toca seguridad o datos el ciclo no se cierra |
+| 7 | Sincronizacion del agente | `python .taskmaster/sync_agents.py` + `--check` | si. `--check` sale con **0**. **OJO: `sync_agents.py` NO cubre los skills** (solo los cuatro `agent.md`), y `~/.minimax/skills` no existe: el `SKILL.md` vive **solo en el repo** |
+
+### Desviaciones del encargo, y por que
+
+- **El gate es el check 11, no el check 10.** El 10 ya estaba ocupado por el
+  contrato de persistencia (`validate_docs.py:2600`). Numerarlo 11 no cambia
+  el diseno: lo pedido era «el gate va en `validate_docs.py` y no en la suite».
+- **El gate no anade nada a la lista de saltados, ni en el caso del conjunto
+  de sujetos VACIO.** MEDIDO en la suite: `test_el_informe_nombra_el_repositorio_del_anclaje`
+  exige `assert not saltados` en una corrida SIN `--sin-ancla-de-git`, y
+  `test_sin_ancla_de_git_no_se_parece_a_un_verde` exige **exactamente 3** saltados
+  con el flag. El conjunto vacio se anuncia con un **REGISTRO impreso**
+  (`entradas cubiertas=0, mutantes re-derivados=0`) y **sin** linea de `[OK]`,
+  que es lo que haria verde por omision.
+- **El `ast.parse` de `run_tests.py` (3 459 ms) se paga UNA vez.**
+  MEDIDO: el validador lo parseaba DOS veces (el recuento y el reparto) y el
+  gate lo necesitaba una tercera. Con una cache por contenido, el validador
+  entero baja de **11 401 ms a ~4 400 ms** y el gate no paga el arbol.
+
+### La reproduccion real de M-3 (AC-3)
+
+Camara nueva de este ciclo (indice del repo real replicado), mutacion REAL
+aplicada (`run_tests.py:23459-23460`, el reloj de la fixture sin clavar), la
+suite COMPLETA cuatro veces: **1 de 4 muere por el asa** (el pre-vuelo, con el
+motivo que nombra la infraccion) y **3 de 4 por el tripwire**. El veredicto del
+mutante es **NO MEDIDO**, y el gate lo dice (K-6 lo mata).
+
+### Lo que falta (y es de otro ciclo)
+
+`TASK-088` (el guard DERIVADO de la familia de las 21 fixtures) y `TASK-089`
+(el guard de suite que detecte que el arbol se movio durante la corrida) siguen
+abiertos: no son de este encargo.
+

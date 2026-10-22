@@ -41,7 +41,7 @@ def _recuento_de_tests(ruta_run_tests):
     except OSError:
         return None
     try:
-        arbol = ast.parse(fuente, filename=ruta_run_tests)
+        arbol = _parsear_fuente(fuente, ruta_run_tests)
     except SyntaxError:
         # `SyntaxError` y NO `IndentationError`. Medido, no es una cuestion de
         # gusto: la sangria inesperada lanza `IndentationError` y el tabulador
@@ -1152,7 +1152,7 @@ def _reparto_de_tests(root):
     except OSError:
         return None
     try:
-        arbol = ast.parse(fuente, filename=ruta)
+        arbol = _parsear_fuente(fuente, ruta)
     except SyntaxError:
         return None
     cuerpo_main = None
@@ -2605,6 +2605,17 @@ def validar(root, git_dir=None, sin_ancla_de_git=False):
     # vive en la suite se queda en verde mientras no corra, que es al reves de
     # como funciona una guarda.
     _comprobar_contrato_de_persistencia(root, errors, ok)
+    # 11. El VEREDICTO DE MUTACION es comprobable (TASK-087, ciclo 70). Delegado
+    # a `_comprobar_veredictos_de_mutacion(root, errors, ok, saltados)`, con raiz
+    # y SIN defaults por el motivo de siempre (D1, D2 y D3): un default
+    # convierte un cableado roto en un `None` que se lee como "no hay nada que
+    # comprobar", que es el falso verde que este check viene a cerrar. Y va
+    # aqui, y NO como un `test_*` de la suite, porque el journal se escribe
+    # DESPUES del Paso 4: un test de la suite solo veria el veredicto del ciclo
+    # ANTERIOR, y anadirlo obligaria a subir el recuento a 236 y a mover cinco
+    # declaraciones escritas a mano.
+    _comprobar_veredictos_de_mutacion(root, errors, ok, saltados,
+                                       sin_ancla_de_git)
     return errors, ok, saltados
 
 
@@ -2775,10 +2786,592 @@ def main(argv=None):
         print()
         for line in errors:
             print(f"  [FAIL] {line}")
+    if _REGISTRO_DE_VEREDICTOS:
+        # El REGISTRO del check 11 va FUERA de las tres listas a proposito: el
+        # caso de un conjunto de sujetos VACIO no puede ser un [OK] (seria
+        # verde por omision) ni un [SKIP] (la lista de saltados esta
+        # CONTRACTADA como vacia sin el flag). Se imprime, y su numero dice 0.
+        print()
+        print(f"  [REGISTRO] {_REGISTRO_DE_VEREDICTOS}")
     print()
     print(f"Resumen: {len(ok)} OK, {len(errors)} FAIL, {len(saltados)} SKIP")
     sys.exit(0 if not errors else 1)
 
+
+# --- Check 11 (TASK-087, ciclo 70): el VEREDICTO DE MUTACION es comprobable ---
+#
+# QUE CIERRA. MEDIDO por el arquitecto en camara desechable: borrar el
+# VEREDICTO del journal daba 0 FAIL y borrar el `mutation-report.md` entero
+# daba 0 FAIL, mientras que borrar una FILA del journal daba 1 FAIL. O sea:
+# la fila estaba vigilada, el veredicto que va DENTRO de la fila y el fichero
+# del informe no los vigilaba nadie. El agujero no era el mecanismo: era el
+# CONJUNTO DE SUJETOS, que no era derivable.
+#
+# Ahora el veredicto es una LINEA CANONICA que un programa escribe y que este
+# gate RE-DERIVA desde la evidencia commiteada:
+#
+#     WOPT_VEREDICTO <mutante> <MUERTO|SOBREVIVIENTE|NO MEDIDO> <sha>
+#
+# LO QUE ESTE GATE PRUEBA:
+#   (1) que la linea obeyezca la gramatica estricta (tres campos, estado
+#       cerrado, sha de 7-40 hex);
+#   (2) que el mutante exista en el CATALOGO commiteado del cambio;
+#   (3) que el estado MUERTO solo sea aceptable si el log esta en ROJO, si el
+#       test que murio --DERIVADO del frame del traceback de la cola-- es
+#       EXACTAMENTE el `asa` declarado y si el motivo literal contiene el
+#       `motivo` declarado;
+#   (4) que el `asa` declarado sea un `test_*` DEFINIDO en `run_tests.py`;
+#   (5) que el conjunto de sujetos NO este vacio (el REGISTRO lo imprime).
+#
+# LO QUE ESTE GATE **NO** PRUEBA, y por eso lo dice en voz alta:
+#   (a) que el `asa` declarada sea la guard SEMANTICAMENTE correcta para esa
+#       mutacion: el gate no puede saberlo, porque "quien DEBE morir" no es
+#       derivable de nada (ni del log, que dice quien murio, ni de la suite,
+#       que no tiene ningun enlace mecanico entre una linea mutada y su
+#       guard, ni de la spec, que no contiene el nombre de la funcion). El `asa`
+#       la DECLARA quien muta, en un catalogo commiteado: ajustarla despues
+#       deja rastro en git, pero la INTENCION no es verificable.
+#   (b) que el `asa` no se ajustara DESPUES de ver el log, mas alla del rastro
+#       que deja el catalogo commiteado.
+#   (c) que los changelogs LLEVEN las lineas: se comprueban si estan, pero su
+#       ausencia no es un FAIL (el journal y el informe son los dos anclajes).
+#
+# POR QUE NO SE REPITE LA SUITE N VECES, con las cifras. Repetir cuesta
+# N x 734,9 s por mutante: N=3 son 8,0 h POR CICLO, y el killer-check cuesta
+# CERO corridas extra porque el harness ya captura el log. Y repetir SIN
+# exigir consistencia EMPEORA el veredicto falso: `1-(1-p)^N` con p=1/16 da
+# 6,25 % (N=1) -> 17,6 % (N=3) -> 27,5 % (N=5). Sin estas dos frases el
+# arreglo se puede deshacer sin que nadie lo note.
+#
+# POR QUE ESTE GATE NO ES UN `test_*` DE LA SUITE. El journal y los changelogs
+# se escriben DESPUES del Paso 4, luego un test de la suite solo veria el
+# veredicto del ciclo ANTERIOR (un ciclo de retardo) mientras que este gate ve
+# el del ciclo en curso. Y anadir un `test_*` obligaria a subir el recuento a
+# 236 y a mover CINCO declaraciones escritas a mano. El recuento se queda en
+# 235 = 159 + 76.
+#
+# INDEPENDENCIA CON EL EMISOR. El emisor es `.taskmaster/veredicto.py` y este
+# gate NO lo importa: re-deriva el estado con su PROPIA implementacion. Si
+# compartieran la derivacion, un mutante en ella moveria los dos y el gate no
+# podria ver al emisor mentir, que es justo lo que tiene que poder hacer.
+
+# El CICLO en el que empieza el contrato. Es el UNICO dato escrito a mano de
+# todo el gate, y se DECLARA con su motivo: los ciclos anteriores a este no
+# tienen linea canonica (el veredicto lo escribia a mano el mutation-auditor
+# en el `mutation-report.md`), luego exigirlos a ellos seria fabricar FAILs
+# historicos sobre un contrato que todavia no existia. El gate deriva del
+# journal las entradas con `cycle >= CICLO_ORIGEN_VEREDICTO` y de cada entrada
+# el cambio, por su campo `change`: el conjunto de sujetos es DERIVADO, nunca
+# una enumeracion escrita a mano.
+CICLO_ORIGEN_VEREDICTO = 70
+
+# El REGISTRO del check 11. Lo escribe el check y lo imprime `main()`.
+#
+# POR QUE NO VA EN LAS TRES LISTAS. En una corrida SIN `--sin-ancla-de-git` la
+# lista de saltados esta CONTRATADA como vacia (un skip sin pedirlo es un
+# verde indistinguible del verde real), y el `[OK]` tampoco vale para el caso
+# de un conjunto de sujetos VACIO: un `[OK]` que no ha comprobado nada es
+# verde POR OMISION, que es justo lo que este check viene a cerrar. El
+# REGISTRO se IMPRIME, que es lo que lo hace visible sin disfrazarlo de
+# comprobacion.
+_REGISTRO_DE_VEREDICTOS = None
+
+# La gramatica ESTRICTA de la linea canonica. `fullmatch` y NO `search`: una
+# linea que TRAIGA una linea canonica no es una linea canonica.
+RE_LINEA_CANONICA = re.compile(
+    r"WOPT_VEREDICTO (?P<mutante>[A-Za-z][A-Za-z0-9_.-]*) "
+    r"(?P<estado>MUERTO|SOBREVIVIENTE|NO MEDIDO) "
+    r"(?P<sha>[0-9a-f]{7,40})"
+)
+
+# La marca de bloque de la evidencia commiteada: una corrida = un bloque.
+RE_MARCA_DE_RUN = re.compile(r"^=== WOPT_RUN (?P<run>\d+) RC=(?P<rc>-?\d+) ===$")
+
+# El frame del traceback: de aqui sale el nombre del test que murio.
+# `re.MULTILINE` es OBLIGATORIO: sin el, `^` y `$` solo casan al principio y al
+# final de la cola entera, y los frames del medio (que son los del test) no
+# casarian nunca: el gate veria un test que no se murio, o ninguno.
+RE_FRAME = re.compile(
+    r'^  File "(?P<fichero>.+?)", line (?P<linea>\d+), in (?P<funcion>.+)$',
+    re.MULTILINE)
+
+# La ultima linea verde de la suite: el unico sitio donde se lee el VERDE.
+LINEA_VERDE = "ALL TESTS PASSED."
+
+# Los marcadores del BLOQUE DE MAQUINA, con el que el informe del ciclo y los
+# changelogs llevan las lineas canonicas. Un bloque explicito, y no un grep
+# sobre el prosa: la PROSA cita el FORMATO (`WOPT_VEREDICTO <mutante> ...`) y
+# un grep la convertiria en un veredicto falso.
+APERTURA_DE_BLOQUE = "<!-- WOPT_VEREDICTOS -->"
+CIERRE_DE_BLOQUE = "<!-- /WOPT_VEREDICTOS -->"
+
+# La cache de los `ast.parse`. MEDIDO: parsear `run_tests.py` (1,64 MB) cuesta
+# 3459 ms, y el validador lo parsea DOS veces (el recuento y el reparto). Con
+# la cache, el gate que necesita el ARBOL para comprobar que el `asa` exista
+# no paga una tercera vez: paga la que ya estaba pagada.
+_PARSEOS = {}
+
+
+def _parsear_fuente(fuente, nombre):
+    """`ast.parse` memoizado por (fichero, contenido). -> `ast.Module`
+
+    La clave es el CONTENIDO, no la ruta: dos contenidos distintos producen
+    dos arboles, y el mismo contenido produce el MISMO arbol, que es lo que
+    hacen los dos consumidores que ya lo parseaban.
+    """
+    clave = (nombre, hash(fuente))
+    if clave not in _PARSEOS:
+        _PARSEOS[clave] = ast.parse(fuente, filename=nombre)
+    return _PARSEOS[clave]
+
+
+def _leer_el_journal(root):
+    """Las entradas de `rd_journal.json`. -> `list[dict]` o `None`"""
+    ruta = os.path.join(root, ".taskmaster", "rd_journal.json")
+    try:
+        with open(ruta, encoding="utf-8") as fh:
+            datos = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(datos, list):
+        return None
+    return [e for e in datos if isinstance(e, dict)]
+
+
+def _ciclo_de(entrada):
+    """El ciclo de una entrada del journal, o -1 si no lo dice."""
+    try:
+        return int(entrada.get("cycle"))
+    except (TypeError, ValueError):
+        return -1
+
+
+def _bloques_de_maquina(texto):
+    """Las lineas de los bloques `WOPT_VEREDICTOS` de un texto. -> `[str, ...]`"""
+    salida = []
+    dentro = False
+    for linea in (texto or "").splitlines():
+        if linea.strip() == APERTURA_DE_BLOQUE:
+            dentro = True
+            continue
+        if linea.strip() == CIERRE_DE_BLOQUE:
+            dentro = False
+            continue
+        if dentro:
+            salida.append(linea.rstrip())
+    return salida
+
+
+def _lineas_canonicas_de_un_texto(texto):
+    """Las lineas que INTENTAN ser un veredicto. -> `[str, ...]`
+
+    Se cogen las del bloque de maquina y las que empiezan por el prefijo. Una
+    linea con marcadores de plantilla (`<mutante>`) es DOCUMENTACION del
+    formato, no un veredicto, y se descarta: si no, el propio texto que
+    explica el contrato seria un FAIL.
+    """
+    salida = []
+    for linea in _bloques_de_maquina(texto):
+        if linea.strip():
+            salida.append(linea.strip())
+    for linea in (texto or "").splitlines():
+        limpia = linea.strip()
+        if not limpia.startswith("WOPT_VEREDICTO"):
+            continue
+        if "<" in limpia or ">" in limpia:
+            continue
+        salida.append(limpia)
+    vistas = set()
+    unicas = []
+    for linea in salida:
+        if linea not in vistas:
+            vistas.add(linea)
+            unicas.append(linea)
+    return unicas
+
+
+def _estado_de_una_corrida(cola, rc, asa, motivo):
+    """El estado que la EVIDENCIA obliga. -> `(estado, por_que)`
+
+    Implementacion PROPIA, distinta de la del emisor `.taskmaster/veredicto.py`
+    a proposito: el gate tiene que poder CONTRASTAR al emisor, y dos
+    implementaciones que compartieran codigo moverian los dos si alguien
+    mutara ese codigo.
+    """
+    lineas = [l for l in cola.splitlines() if l.strip()]
+    ultima = lineas[-1].strip() if lineas else ""
+    if rc == 0:
+        if ultima == LINEA_VERDE:
+            return ("SOBREVIVIENTE", "la suite termino en VERDE")
+        return ("NO MEDIDO", "log cortado: rc=0 pero la ultima linea no es "
+                             f"'{LINEA_VERDE}'")
+    muerto = None
+    for m in RE_FRAME.finditer(cola):
+        funcion = m.group("funcion").strip()
+        if funcion.startswith("test_"):
+            muerto = funcion
+    if muerto is None:
+        return ("NO MEDIDO", "la suite esta en ROJO pero la cola no tiene el "
+                             "frame de un test")
+    if muerto != asa:
+        return ("NO MEDIDO", f"murio `{muerto}` y el asa declarada es `{asa}`")
+    if motivo and motivo not in ultima:
+        return ("NO MEDIDO", "el motivo literal no nombra la infraccion "
+                             "declarada")
+    return ("MUERTO", f"murio `{asa}` por su asercion")
+
+
+def _estado_del_mutante(bloques, asa, motivo):
+    """El estado del MUTANTE, agregado sobre sus corridas. -> `(estado, por_que)`
+
+    MUERTO solo si TODAS las corridas mueren por el asa; SOBREVIVIENTE solo si
+    TODAS son verdes; cualquier otra cosa (una corrida NO MEDIDA, o dos
+    corridas que discrepan) es NO MEDIDO. Un test NO DETERMINISTA no puede
+    aportar la muerte de un mutante.
+    """
+    if not bloques:
+        return ("NO MEDIDO", "no hay ninguna corrida: sin evidencia no hay "
+                             "veredicto")
+    estados = [_estado_de_una_corrida(cola, rc, asa, motivo)
+               for rc, cola in bloques]
+    nombres = [e for e, _ in estados]
+    if len(set(nombres)) != 1:
+        return ("NO MEDIDO", "dos corridas del mismo mutante dan veredictos "
+                             f"distintos ({', '.join(nombres)})")
+    estado = nombres[0]
+    if estado == "NO MEDIDO":
+        return ("NO MEDIDO", estados[0][1])
+    return (estado, estados[0][1])
+
+
+def _bloques_de_evidencia(texto):
+    """Los bloques de una evidencia commiteada. -> `[(rc, cola), ...]`"""
+    bloques = []
+    rc_actual = None
+    lineas = []
+    for linea in texto.splitlines():
+        m = RE_MARCA_DE_RUN.match(linea.strip())
+        if m:
+            if rc_actual is not None:
+                bloques.append((rc_actual, "\n".join(lineas).strip("\n")))
+            rc_actual = int(m.group("rc"))
+            lineas = []
+            continue
+        if rc_actual is not None:
+            lineas.append(linea)
+    if rc_actual is not None:
+        bloques.append((rc_actual, "\n".join(lineas).strip("\n")))
+    return bloques
+
+
+def _tests_definidos(root):
+    """Los `test_*` DEFINIDOS en `run_tests.py`. -> `set[str]`
+
+    Mismo criterio que el check del recuento (`ast.Module.body`): los tests de
+    esta suite son de modulo. El arbol sale de la cache, luego no se paga un
+    parseo extra.
+    """
+    ruta = os.path.join(root, "run_tests.py")
+    try:
+        with open(ruta, encoding="utf-8") as fh:
+            fuente = fh.read()
+    except OSError:
+        return set()
+    try:
+        arbol = _parsear_fuente(fuente, ruta)
+    except SyntaxError:
+        return set()
+    return {nodo.name for nodo in arbol.body
+            if isinstance(nodo, ast.FunctionDef) and nodo.name.startswith("test_")}
+
+
+def _leer_el_catalogo(ruta):
+    """Los mutantes del catalogo. -> `[(id, asa, motivo, sha), ...]`"""
+    with open(ruta, encoding="utf-8") as fh:
+        datos = json.load(fh)
+    if isinstance(datos, dict):
+        lista = datos.get("mutaciones", [])
+    else:
+        lista = datos
+    salida = []
+    for entrada in lista:
+        if not isinstance(entrada, dict):
+            raise ValueError("el catalogo tiene una entrada que no es un objeto")
+        for campo in ("id", "asa", "motivo"):
+            if not entrada.get(campo):
+                raise ValueError(f"el mutante {entrada.get('id')!r} no declara "
+                                 f"`{campo}`")
+        salida.append((entrada["id"], entrada["asa"], entrada["motivo"],
+                       entrada.get("sha_arbol_auditado")))
+    return salida
+
+
+def _dentro_del_arbol(root, relativo):
+    """`relativo` dentro de `root`. -> `str` o `None` si se sale."""
+    raiz = os.path.abspath(root)
+    destino = os.path.abspath(os.path.join(raiz, relativo))
+    if os.path.commonpath([raiz, destino]) != raiz:
+        return None
+    return destino
+
+
+def _comprobar_veredictos_de_mutacion(root, errors, ok, saltados,
+                                       sin_ancla_de_git):
+    """Check 11: el veredicto de mutacion se RE-DERIVA de la evidencia.
+
+    El conjunto de sujetos es DERIVADO: las entradas del journal con
+    `cycle >= CICLO_ORIGEN_VEREDICTO`, y el cambio de cada entrada por su
+    campo `change`. Si el conjunto sale VACIO, el gate lo dice con su REGISTRO
+    (entradas cubiertas=0, mutantes re-derivados=0) y NO se imprime como un
+    [OK]: un conjunto vacio que parece verde es el falso verde que este check
+    viene a cerrar.
+
+    Con `--sin-ancla-de-git` el check NO se ejecuta: su materia prima es el
+    journal, que es el otro testigo del ancla, y el flag declara que este
+    informe no comprueba el ancla. Ademas, el contrato del flag son TRES
+    saltados (el repositorio, el historial y las reglas R2/R4 del journal), y
+    un cuarto haria que ese numero dejar de ser un contrato.
+    """
+    global _REGISTRO_DE_VEREDICTOS
+    _REGISTRO_DE_VEREDICTOS = None
+    if sin_ancla_de_git:
+        return
+    journal = _leer_el_journal(root)
+    if journal is None:
+        # El journal ilegible YA lo acusa el ancla, y una segunda acusacion del
+        # mismo hecho es ruido: el ruido entrena al lector a ignorar el
+        # semaforo. Aqui no se acusa: se dice que no se pudo comprobar.
+        _REGISTRO_DE_VEREDICTOS = (
+            "check 11 (veredicto de mutacion): REGISTRO no disponible, el "
+            "journal no se pudo leer, luego no hay ningun veredicto que "
+            "re-derivar. La ILEGIBILIDAD del journal ya la acusa el ancla")
+        return
+    entradas = [e for e in journal if _ciclo_de(e) >= CICLO_ORIGEN_VEREDICTO]
+    if not entradas:
+        # El conjunto de sujetos es VACIO. No hay nada que comprobar, luego no
+        # hay nada que acusar y tampoco nada que certificar: un `[OK]` aqui
+        # seria verde POR OMISION. El REGISTRO se imprime (lo imprime `main()`)
+        # y dice 0, que es lo que hace visible el conjunto vacio.
+        _REGISTRO_DE_VEREDICTOS = (
+            f"check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=0, "
+            f"mutantes re-derivados=0. El contrato de la linea canonica "
+            f"empieza en el ciclo {CICLO_ORIGEN_VEREDICTO} y todavia no hay "
+            f"ninguna entrada del journal en ese rango: este REGISTRO dice 0 "
+            f"a proposito, y no hay ninguna linea de [OK] para este check, "
+            f"porque un [OK] que no ha comprobado nada es verde por omision")
+        return
+
+    definidos = None
+    mutantes_re_derivados = 0
+    estados = {}
+    for entrada in entradas:
+        ciclo = _ciclo_de(entrada)
+        cambio = entrada.get("change")
+        if not cambio:
+            errors.append(
+                f"rd_journal.json: la entrada del ciclo {ciclo} NO declara el "
+                f"campo `change`, que es el ancla del cambio que hay que "
+                f"comprobar. Desde el ciclo {CICLO_ORIGEN_VEREDICTO} es "
+                f"obligatorio"
+            )
+            continue
+        directorio = _dentro_del_arbol(root, cambio)
+        if directorio is None or not os.path.isdir(directorio):
+            errors.append(
+                f"rd_journal.json: la entrada del ciclo {ciclo} apunta a "
+                f"`{cambio}` y ese directorio NO EXISTE (o se sale del arbol)"
+            )
+            continue
+        catalogo_ruta = os.path.join(directorio, "mutaciones.json")
+        if not os.path.exists(catalogo_ruta):
+            errors.append(
+                f"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/: "
+                f"NO declara el catalogo `mutaciones.json`, luego sus "
+                f"veredictos no se pueden re-derivar"
+            )
+            continue
+        informe_ruta = os.path.join(directorio, "mutation-report.md")
+        if not os.path.exists(informe_ruta):
+            errors.append(
+                f"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/"
+                f"mutation-report.md: NO EXISTE. El informe del ciclo es el "
+                f"segundo testigo del veredicto: sin el, el veredicto no es "
+                f"re-auditable"
+            )
+            continue
+        try:
+            mutantes = _leer_el_catalogo(catalogo_ruta)
+        except (OSError, ValueError) as exc:
+            errors.append(
+                f"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/"
+                f"mutaciones.json: NO SE PUEDE LEER ({exc})"
+            )
+            continue
+
+        # (a) LAS LINEAS CANONICAS de la entrada del journal.
+        lineas = _lineas_canonicas_de_un_texto(entrada.get("status") or "")
+        campo = entrada.get("veredictos")
+        if isinstance(campo, str):
+            lineas.extend([l.strip() for l in campo.splitlines() if l.strip()])
+        elif isinstance(campo, list):
+            for elemento in campo:
+                if isinstance(elemento, str):
+                    lineas.extend([l.strip() for l in elemento.splitlines()
+                                   if l.strip()])
+        vistas = set()
+        unicas = []
+        for linea in lineas:
+            if linea not in vistas:
+                vistas.add(linea)
+                unicas.append(linea)
+        lineas = unicas
+
+        por_mutante = {}
+        for linea in lineas:
+            m = RE_LINEA_CANONICA.fullmatch(linea)
+            if not m:
+                errors.append(
+                    f"rd_journal.json: la entrada del ciclo {ciclo} tiene una "
+                    f"linea de veredicto que NO obeyece la gramatica: {linea!r}. "
+                    f"La forma es `WOPT_VEREDICTO <mutante> "
+                    f"<MUERTO|SOBREVIVIENTE|NO MEDIDO> <sha>`"
+                )
+                continue
+            por_mutante[m.group("mutante")] = (m.group("estado"),
+                                                m.group("sha"))
+
+        # (b) EL CATALOGO manda: cada mutante tiene linea y la linea cuadra.
+        if definidos is None:
+            definidos = _tests_definidos(root)
+        for identificador, asa, motivo, sha_del_catalogo in mutantes:
+            if identificador not in por_mutante:
+                errors.append(
+                    f"rd_journal.json: la entrada del ciclo {ciclo} NO tiene "
+                    f"linea canonica para el mutante {identificador}, que si "
+                    f"esta en el catalogo del cambio"
+                )
+                continue
+            estado_declarado, sha_declarado = por_mutante[identificador]
+            if sha_del_catalogo and sha_declarado != sha_del_catalogo:
+                errors.append(
+                    f"rd_journal.json: el mutante {identificador} cita el sha "
+                    f"{sha_declarado} y el catalogo declara "
+                    f"{sha_del_catalogo}: la linea no apunta al arbol auditado"
+                )
+            if asa not in definidos:
+                errors.append(
+                    f"mutaciones.json: el asa declarada por {identificador} "
+                    f"(`{asa}`) NO es un test definido en run_tests.py"
+                )
+            evidencia_ruta = os.path.join(directorio, "evidencia",
+                                          f"{identificador}.cola")
+            if not os.path.exists(evidencia_ruta):
+                errors.append(
+                    f"evidencia/{identificador}.cola: NO EXISTE. Sin la "
+                    f"evidencia commiteada el veredicto no se puede re-derivar"
+                )
+                continue
+            with open(evidencia_ruta, encoding="utf-8") as fh:
+                texto_evidencia = fh.read()
+            bloques = _bloques_de_evidencia(texto_evidencia)
+            estado_derivado, por_que = _estado_del_mutante(bloques, asa, motivo)
+            mutantes_re_derivados += 1
+            estados[identificador] = estado_derivado
+            if estado_derivado != estado_declarado:
+                errors.append(
+                    f"rd_journal.json: el mutante {identificador} esta "
+                    f"declarado como {estado_declarado} y la evidencia "
+                    f"commiteada obliga a {estado_derivado} ({por_que})"
+                )
+
+        # (c) LAS LINEAS DE MAS: un mutante que no esta en el catalogo.
+        ids_del_catalogo = {m[0] for m in mutantes}
+        for identificador in por_mutante:
+            if identificador not in ids_del_catalogo:
+                errors.append(
+                    f"rd_journal.json: la entrada del ciclo {ciclo} declara el "
+                    f"mutante {identificador}, que NO esta en el catalogo "
+                    f"`mutaciones.json` del cambio"
+                )
+
+        # (d) EL INFORME tiene el bloque de maquina con las mismas lineas.
+        with open(informe_ruta, encoding="utf-8") as fh:
+            cuerpo_informe = fh.read()
+        lineas_del_informe = _lineas_canonicas_de_un_texto(cuerpo_informe)
+        if not lineas_del_informe:
+            errors.append(
+                f"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/"
+                f"mutation-report.md: NO tiene el bloque de maquina "
+                f"`{APERTURA_DE_BLOQUE}` con las lineas canonicas, luego el "
+                f"informe no es el segundo testigo del veredicto"
+            )
+        else:
+            del_informe = {l for l in lineas_del_informe
+                           if RE_LINEA_CANONICA.fullmatch(l)}
+            del_journal = {l for l in lineas
+                           if RE_LINEA_CANONICA.fullmatch(l)}
+            if del_informe != del_journal:
+                errors.append(
+                    f"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/"
+                    f"mutation-report.md: el bloque de maquina NO lleva las "
+                    f"mismas lineas canonicas que el journal del ciclo {ciclo}"
+                )
+
+    ok.append(
+        f"check 11 (veredicto de mutacion): REGISTRO entradas cubiertas="
+        f"{len(entradas)}, mutantes re-derivados={mutantes_re_derivados}, "
+        f"origen del contrato: ciclo {CICLO_ORIGEN_VEREDICTO}"
+    )
+    _REGISTRO_DE_VEREDICTOS = (
+        f"check 11 (veredicto de mutacion): REGISTRO entradas cubiertas="
+        f"{len(entradas)}, mutantes re-derivados={mutantes_re_derivados}, "
+        f"origen del contrato: ciclo {CICLO_ORIGEN_VEREDICTO}"
+    )
+    _comprobar_veredictos_en_los_changelogs(root, estados, errors, ok)
+
+
+def _comprobar_veredictos_en_los_changelogs(root, estados, errors, ok):
+    """Las lineas canonicas de los DOS changelogs, si las hay.
+
+    El changelog es la COPIA LEGIBLE del veredicto: si lleva el bloque de
+    maquina, sus lineas tienen que obeying la gramatica y tener el MISMO
+    estado que la evidencia. Si NO lleva el bloque, no sedice nada: los dos
+    anclajes del veredicto son el journal y el informe del ciclo, y exigir la
+    copia legible seria inventar un requisito que el contrato no tiene.
+
+    Una linea de un mutante que NO esta entre los cubiertos NO se comprueba: no
+    hay evidencia commiteada que la re-derive, y el gate no puede afirmar lo
+    que no mide.
+    """
+    comprobado = 0
+    for relativo in ("CHANGELOG.md", os.path.join(".taskmaster", "CHANGELOG.md")):
+        ruta = os.path.join(root, relativo)
+        if not os.path.exists(ruta):
+            continue
+        with open(ruta, encoding="utf-8") as fh:
+            cuerpo = fh.read()
+        for linea in _lineas_canonicas_de_un_texto(cuerpo):
+            m = RE_LINEA_CANONICA.fullmatch(linea)
+            if not m:
+                errors.append(
+                    f"{relativo}: hay una linea de veredicto que NO obeyece la "
+                    f"gramatica: {linea!r}"
+                )
+                continue
+            identificador = m.group("mutante")
+            if identificador not in estados:
+                continue
+            comprobado += 1
+            if m.group("estado") != estados[identificador]:
+                errors.append(
+                    f"{relativo}: el mutante {identificador} aparece como "
+                    f"{m.group('estado')} y la evidencia commiteada obliga a "
+                    f"{estados[identificador]}"
+                )
+    if comprobado:
+        ok.append(f"check 11 (veredictos de mutacion): {comprobado} linea(s) "
+                  f"canonica(s) de los changelogs comprobadas contra la "
+                  f"evidencia commiteada")
 
 if __name__ == "__main__":
     main()

@@ -68,6 +68,99 @@ salen de haber fallado:
 5. **Distingue el motivo del fallo.** Un test que falla por un `ImportError` o un error de sintaxis **no** prueba nada: hay que confirmar que falla **por la asercion que ese test dice comprobar**.
 6. **Restaura** entre mutaciones y comprueba que la copia vuelve a verde al final.
 
+## El veredicto de mutacion: TRES estados (TASK-087, ciclo 70)
+
+El veredicto deja de ser prosa: es una **linea canonica** que un programa escribe y que
+`validate_docs.py` (check 11) **RE-DERIVA** desde la evidencia commiteada. Por eso el
+veredicto, a partir de este ciclo, tiene tres estados y no dos.
+
+El bloque siguiente va **LITERAL**, y es el contrato: lo que no esta aqui no cuenta.
+
+```
+VEREDICTO DE MUTACION. Hay TRES estados, no dos, y solo el primero cuenta como
+deteccion:
+
+  MUERTO        la suite quedo en ROJO, el test que murio es EL ASA ESPERADA de la
+                mutacion (el guard que esa mutacion tiene que activar) y el motivo
+                literal nombra la infraccion.
+  SOBREVIVIENTE la suite completa termino en VERDE (rc=0 y la ultima linea es
+                'ALL TESTS PASSED.') sin ningun [FAIL].
+  NO MEDIDO     TODO lo demas. En particular:
+                  * log cortado (sin linea final o sin el .meta)        -> NO MEDIDO
+                  * la suite muere por un test que NO es el asa esperada -> NO MEDIDO
+                  * el motivo literal no nombra la infraccion           -> NO MEDIDO
+                  * dos corridas del mismo mutante dan veredictos distintos -> NO MEDIDO
+
+  EL ASA ESPERADA LA DECLARA QUIEN MUTA, en el catalogo commiteado
+  (mutaciones.json). NO se deduce de la suite: la suite dice quien murio, nunca
+  quien debia. El gate comprueba que el asa exista (ast sobre run_tests.py) y que
+  el veredicto sea RE-DERIVABLE desde la evidencia commiteada.
+
+  UN TEST NO DETERMINISTA NO PUEDE APORTAR LA MUERTE DE UN MUTANTE. Un rojo que
+  viene de un test flaky es NO MEDIDO, jamas MUERTO: repetir la medicion N veces SIN
+  exigir consistencia hace la probabilidad de veredicto falso MAS ALTA
+  (1-(1-p)^N; con p=1/16: N=3 -> 17,6 %, N=5 -> 27,5 %), y exigir consistencia
+  cuesta N Suite (N=3 -> 2 205 s por mutante) sin tapar el agujero de fondo.
+
+  LO QUE ESTE CONTRATO NO PRUEBA: que el asa declarada sea la guard
+  SEMANTICAMENTE correcta para esa mutacion. Lo que si prueba es que el veredicto
+  es coherente con la evidencia y que no se puede escribir sin la linea canonica.
+```
+
+La parte **automatizable** de ese bloque vive en el codigo, no en la prosa:
+`.taskmaster/veredicto.py` (el emisor) y el check 11 de `validate_docs.py` (el gate).
+El gate **no importa** el emisor: re-deriva el estado con su propia implementacion,
+porque si compartieran la derivacion, un mutante en ella moveria los dos y el gate no
+podria ver al emisor mentir.
+
+### Que escribes, y donde
+
+| Artefacto | Quien lo escribe | Donde |
+|---|---|---|
+| `mutaciones.json` | tu, a mano | `openspec/changes/<id>/mutaciones.json` |
+| `evidencia/<mutante>.cola` | `.taskmaster/veredicto.py` | `openspec/changes/<id>/evidencia/` |
+| `mutation-report.md` | tu, con el bloque de maquina | `openspec/changes/<id>/mutation-report.md` |
+| la linea canonica | `.taskmaster/veredicto.py` | el bloque de maquina del informe, el journal (campo `veredictos`) y los dos changelogs |
+
+El catalogo declara, por mutante: `id`, `asa` (el nombre **EXACTO** del `test_*` que
+tiene que morir), `motivo` (el substring del mensaje de la asercion), `mutacion` (el
+cambio exacto que hiciste) y `sha_arbol_auditado` (el sha del arbol que auditaste).
+
+El flujo:
+
+```
+1. escribes mutaciones.json (id, asa, motivo, mutacion, sha_arbol_auditado)
+2. mutas, corres la suite, guardas el log
+3. python .taskmaster/veredicto.py emitir --catalogo <cambio>/mutaciones.json \
+       --evidencia <cambio>/evidencia --sha <sha> --log M-1=<log> [--log M-1=<otro>]
+   -> escribe evidencia/<mutante>.cola, imprime las lineas WOPT_VEREDICTO
+4. pegas esas lineas en el BLOQUE DE MAQUINA del mutation-report.md
+5. el orquestador las copia al journal (campo `veredictos`) y a los dos changelogs
+```
+
+El bloque de maquina va **delimitado**, para que la prosa que cita el FORMATO no se
+confunda con un veredicto:
+
+```
+<!-- WOPT_VEREDICTOS -->
+WOPT_VEREDICTO M-3 NO MEDIDO 61ee855
+<!-- /WOPT_VEREDICTOS -->
+```
+
+### NO MEDIDO es ACCIONABLE, y no es un FAIL
+
+Un NO MEDIDO **no** es un FAIL del ciclo: es un mutante que **no se ha podido medir**, y
+su tratamiento es el de una Tarea, no el de un veredicto:
+
+- **El mutante se encola como tarea**, con su metrica (el `asa` declarado, el `motivo` y
+  el log que lo deja en NO MEDIDO), y el ciclo sigue a **Paso 1**.
+- **Si el NO MEDIDO toca SEGURIDAD o DATOS, el ciclo NO se cierra** (la misma regla del
+  `PARTIAL`: `SKILL.md:266`). Un mutante de seguridad sin medir es un agujero con la
+  etiqueta de "medido", que es peor que un agujero sin etiqueta.
+
+Esto queda **escrito**, no practicado: si el NO MEDIDO no se encola, el mutante se
+pierde, y un mutante perdido es un superviviente que nadie va a buscar.
+
 ## Mutaciones canonicas de este repo
 
 Estas son las que ya han unbroken el proyecto. Empieza por aqui:
@@ -113,8 +206,9 @@ Estas son las que ya han unbroken el proyecto. Empieza por aqui:
 
 ## Stop when
 
-- Cada fix del ciclo tiene su mutacion ejecutada, con el veredicto literal (`killed` / `survived`) y el motivo real del fallo.
+- Cada fix del ciclo tiene su mutacion ejecutada, con el veredicto literal (**MUERTO** / **SOBREVIVIENTE** / **NO MEDIDO**, los TRES estados del contrato de arriba) y el motivo real del fallo. Un veredicto de dos estados (`killed` / `survived`) ya no vale: `NO MEDIDO` es un tercer estado con su propio tratamiento.
 - Los **supervivientes** estan listados por severidad, cada uno con la mutacion exacta que lo produjo.
+- Los **NO MEDIDO** estan encolados como tarea, con su metrica, y el ciclo dice si el ciclo se cierra o vuelve a Paso 1.
 - La copia de `%TEMP%` quedo restaurada y verde, y confirmas que el repo NO fue tocado.
 - Informe con: tabla fix → mutacion → veredicto → motivo, supervivientes con el arreglo que necesitan, y **VERDICT: PASS | FAIL | PARTIAL**.
 
