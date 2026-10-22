@@ -616,3 +616,585 @@ haber pasado por los 11 mutantes.
 | **S7 (ya declarado)** | El docstring de AC-1 afirma una garantía que el detector no tiene — **y este ciclo lo replica** | — |
 
 ---
+
+---
+
+# PARTE 2 -- Re-auditoria de la REPARACION de la vigilancia (ciclo 68, ronda 2)
+
+**Que se audita.** El commit `73b2393` ("fix(tools): la vigilancia del guard de
+vistas deja de ser vaciable (TASK-082)") contra el fix original `f8bc867`.
+La PARTE 1 (618 lineas) dio el fix **PASS** y la vigilancia **FAIL** con tres
+supervivientes (Q1, Q2, Q2b). Esta PARTE 2 mide si la reparacion los mata, si
+no ha roto el fix, y si la vigilancia sigue siendo vaciable por otra via.
+
+**Todo lo de aqui es MEDIDO.** Las cifras salen de `ast`, de la suite completa
+en camara o de sondas in-process; ninguna sale de leer lo que dice el dev.
+
+## A. Camara, protocolo y control de instrumento
+
+| control | como | resultado |
+|---|---|---|
+| Copia sin el `.git` del repo real | `shutil.copytree(ignore_patterns(".git"))` -- `ignore_patterns` cubre ficheros Y directorios, que es lo que hace falta aqui: **en este repo `.git` es un FICHERO de 57 B**, no un directorio | la camara NO trae `.git` (control A, antes de `git init`) |
+| Aislamiento | `git rev-parse --git-dir` en la camara SIN `GIT_DIR` | devuelve `<camara>/.git`, NUNCA `woptimizer_git` |
+| `GIT_DIR` desechable | `git init` propio por camara | control C: devuelve el `GIT_DIR` desechable |
+| Anti-contaminacion | `git_safe_commit.py` NO se invoca desde `%TEMP%` en ningun momento | 0 commits |
+| Ancla del repo real | `git rev-parse HEAD` antes y despues | `73b2393` en los dos momentos |
+
+**Control de instrumento (el que rompio la ronda anterior).** El guard de citas
+lee en caliente `run_tests.py:23133` y `validate_docs.py:1429`. Toda mutacion
+pasa por un comprobador que **rechaza** el mutante si el CONTENIDO de esas dos
+lineas cambia:
+
+```
+mutante aplicado: <id> | sin desplazamiento de 23133/1429 | __pycache__ purgado
+```
+
+Mutaciones que habrian desplazado esas lineas: **0 aplicadas**. Cuando el
+cambio era inevitable (M-V4 anida el helper), se hizo **despues** de la linea
+23133, que es lo que permite que el desplazamiento sea cero.
+
+**Medicion por suite COMPLETA**, no sonda por sonda: `rc=0` + `ALL TESTS PASSED.`
+en la ULTIMA linea = SUPERVIVIENTE; `AssertionError` con traza = MUERTO; otra
+cosa = **NO MEDIDO**. Cada log se mide por **bytes** y **ultima linea** antes de
+aceptarlo, y el veredicto sale del `.meta` que se escribe **despues** de que el
+proceso termina (un log sin `.meta` es un log no medido, nunca un verde).
+
+## B. R5 -- Las ocho citas: vivas, caducadas o falsas
+
+El dev cambio seis referencias. No me he fiado de sus numeros: he ido a la
+linea citada con `ast` y a leer lo que hay, y he derivado los hechos de otro
+sitio (los sitios reales de la sobrescritura de `_patrones_de_categoria`, las
+ocurrencias del marcador headless, la definicion del guard de codigo muerto).
+
+| cita | que afirma | que hay en esa linea | veredicto |
+|---|---|---|---|
+| `run_tests.py:15766` | una sobrescritura de `_patrones_de_categoria` | `svc._patrones_de_categoria = lambda cat: (` | **VIVA** |
+| `run_tests.py:15793` | otra sobrescritura | `svc._patrones_de_categoria = lambda cat: (` | **VIVA** |
+| `run_tests.py:15886` | otra sobrescritura | `svc._patrones_de_categoria = lambda cat: (` | **VIVA** |
+| `run_tests.py:15932` | otra sobrescritura | `svc._patrones_de_categoria = lambda cat: (` | **VIVA** |
+| `run_tests.py:23133` | la cita de `sandbox-rules.md:55-56` por numero de linea | `("sandbox-rules.md:55-56",)` | **VIVA** |
+| `run_tests.py:23131` | el suelo `min(posiciones) > 61` | `assert min(posiciones) > 61, (` | **VIVA** |
+| `run_tests.py:14013` | la **2a** ocurrencia del marcador headless | `print("\n--- Running Headless UI Tests ---")` | **VIVA** |
+| `run_tests.py:28734` | el guard de codigo muerto de `src/woptimizer/**` | `def test_la_verificacion_de_sintaxis_deriva_su_alcance_y_no_lo_enumera():` | **VIVA** |
+
+Derivado con `ast`, no con los numeros del dev:
+
+* las sobrescrituras de `_patrones_de_categoria` estan en **6** sitios (4 con
+  `svc.` en 15766/15793/15886/15932 y 2 mas); las cuatro citadas son de las que
+  el texto afirma;
+* el marcador `--- Running Headless UI Tests ---` aparece en **2** lineas; la
+  segunda es la 14013, que es la que cita `validate_docs.py:1180` (por eso el
+  validador la resuelve en caliente);
+* `validate_docs.py:1435` cita `run_tests.py:28734`, y la 28734 es exactamente
+  la definicion del guard de codigo muerto.
+
+**8 de 8 VIVAS.** Las 6 caducadas de la PARTE 1 estan reparadas. Queda una
+nota menor: la cita de `run_tests.py:14013` dice "la segunda ocurrencia del
+marcador" y sigue siendo cierto, pero el numero **cambia** si alguien inserta
+lineas por encima de la 14013; es una cita por numero, y eso es exactamente lo
+que el guard de citas existe para detectar.
+
+## C. R1 -- El recuento 234 y las tres sondas `test_*`
+
+Recuento **derivado con `ast`**, replicando el algoritmo de `validate_docs.py`
+(el mismo que usa el validador, no el que dice el dev):
+
+```
+defined (def test_* de modulo) : 234
+invoked (llamadas en __main__)  : 234
+huerfanos defined-invoked      : ninguno
+huerfanos invoked-defined      : ninguno
+REPARTO: 158 backend + 76 headless = 234
+linea del marcador headless    : 30411
+```
+
+**158 + 76 = 234 sale.** Y las 4 declaraciones del repo dicen lo mismo:
+
+| fichero | que declara | medido |
+|---|---|---|
+| `AGENTS.md:70` | `234 tests` | coincide |
+| `README.md:63` | `234 tests` | coincide |
+| `STATUS.md:12` y `:120` | `234 tests` y `158 backend + 76 headless` | coincide |
+| `docs/ai/testing-guide.md:57` | `234 tests` (234 filas de tabla) y `158 backend + 76 headless` | coincide |
+
+**Las tres sondas van ANTES del marcador** (comprobado, no supuesto):
+
+| sonda | definicion | invocacion | antes de 30411 |
+|---|---|---|---|
+| `test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad` (AC-1) | 29592 | 30408 | si |
+| `test_una_vista_nueva_se_audita_aunque_nadie_la_apunte` (AC-2) | 29925 | 30409 | si |
+| `test_el_derivado_de_vistas_es_el_disco_y_abre_algo` (AC-3) | 30031 | 30410 | si |
+
+Y son 3 tests de **tooling**, no de UI: AC-1 y AC-3 son `ast` sobre este mismo
+fichero y AC-2 corre el guard de verdad en un subproceso. Ninguno abre ventana.
+
+**El validador del repo real, ejecutado aqui:** `156 OK, 0 FAIL, 0 SKIP` y
+`run_tests.py: 234 tests definidos = 234 invocados (derivado con ast)`.
+
+## D. R2/R3 -- El AC-1 nuevo: es una REGLA DE MODULO, pero es vaciable
+
+**El sujeto de la regla esta DERIVADO, no enumerado.** `_fors_del_modulo(arbol)`
+recorre el `ast` entero y devuelve `[(ambito, nodo_for)]`; `_delitos_de_fuente_
+escrita_a_mano` aplica la regla a **todos** los `for` del fichero. No hay
+ninguna lista de guards, ni de sujetos, ni de nombres de vista. La enumeracion
+de las tres sondas de la PARTE 1 (`_GUARD_DE_WORKERS`, `_GUARD_HERMANO`) ya no
+existe en el codigo.
+
+**Baseline del detector sobre el modulo real (in-process, importando el
+`run_tests.py` de la camara sin ejecutar la suite):**
+
+```
+nombres de vista derivados : ['dashboard_view.py', 'pack_manager_view.py', 'process_manager_view.py']
+declaration derivada        : ['dashboard_view.py', 'pack_manager_view.py', 'process_manager_view.py']
+derivador                   : _vistas_del_disco
+delitos totales             : 0 []
+delitos de la REGLA DE FORMA : 0 []
+```
+
+La contraprueba de R2 (la que mata a Q2 y a Q2b) esta en `run_tests.py:29757`:
+planta una enumeracion escrita a mano en `guarda_cualquiera()`, que **no esta en
+ninguna lista**, y exige que el hallazgo la nombre con FICHERO Y LINEA
+(`assert f"run_tests.py:{linea_del_for}" in rojo` y `assert "guarda_cualquiera"
+in rojo`). El detector se prueba **en las dos direcciones**: el `for` literal se
+denuncia y el `for` derivado se calla.
+
+### D.1 Lo que el motor SI caza (medido)
+
+| caso | como esta escrito | veredicto del detector |
+|---|---|---|
+| enumeracion literal en linea | `for n in ("dashboard_view.py", "pack_manager_view.py"):` | **DENUNCIADO** |
+| enumeracion literal por un nombre | `VISTAS = (...); for n in VISTAS:` | **DENUNCIADO** |
+| enumeracion con un nombre REAL y otro inexistente | `("dashboard_view.py", "no_existe_b.py")` | **DENUNCIADO** |
+| enumeracion del conjunto COMPLETO (3 nombres) en un helper | `return ("dashboard_view.py", "pack_manager_view.py", "process_manager_view.py")` | **DENUNCIADO** (regla 3: "una SEGUNDA copia del conjunto de vistas escrita a mano") |
+| helper que deriva del disco | `return {p for p in glob.glob('vistas/*.py')}` | **CALLADO** (control positivo) |
+| el `for` que recorre el DERIVADO | `vistas = _vistas_del_disco(); for n in sorted(vistas):` | **CALLADO** (control positivo) |
+
+### D.2 Lo que el motor NO caza (medido) -- tres huecos, con nombre
+
+**H-1 -- la enumeracion escrita a mano detras de una llamada a un helper.**
+La regla exige que el iterable del `for` sea un contenedor de literales `.py`
+(en linea) o un **nombre** enlazado a ese contenedor en el mismo ambito. Si el
+`for` recorre una **llamada**, no hay nada que mirar:
+
+```
+forma, detras de una llamada : []
+forma, en linea (CONTROL)    : ["run_tests.py:2: `guarda` recorre una ENUMERACION
+                                literal del conjunto de vistas (escrita a mano:
+                                ['dashboard_view.py', 'pack_manager_view.py']). ..."]
+```
+
+Y el helper que la produce tampoco se denuncia: la regla 3 solo ve copias del
+conjunto **COMPLETO** (3 nombres), no subconjuntos (2 de 3). "Sacar la lista a
+una funcion" es el refactor mas natural que existe y es el que se cuela.
+
+**H-2 -- una enumeracion de nombres INEXISTENTES se escapa por completo.**
+`nombres_de_vista` es disco UNION declaracion, asi que una enumeracion de
+nombres que no son vistas no se parece a nada que el motor sepa mirar:
+
+```
+forma  : []      (ningun delito)
+copias : []      (ningun delito)
+```
+
+La reserva que declaro el dev ("una enumeracion de nombres inexistentes
+escaparia, pero el guard abriria ficheros inexistentes -> rojo ruidoso, no
+verde falso") es **CIERTA en su primera mitad** (medida: se escapa) y
+**acotada en la segunda**: el rojo ruidoso depende de que esa enumeracion sea
+la FUENTE de un guard que abre ficheros. Si la enumeracion de nombres
+inexistentes vive en una funcion que no abre nada, no hay rojo: no hay ni
+ruido ni verde falso, simply no hay nada. Y si la enumeracion mezcla un
+nombre real y uno inexistente, el motor la denuncia (medido arriba): el hueco
+es solo del subconjunto **totalmente** inexistente.
+
+**H-3 -- la tolerancia es POR FUNCION, no por enumeracion.**
+`_justificacion_de_la_enumeracion` se lee del docstring del **ambito** del
+`for`; si el docstring tiene las dos frases, la funcion **entera** queda
+exenta. Medido:
+
+```
+CON justificacion (una sola): []      <- las DOS enumeraciones se saltan
+SIN justificacion (CONTROL)  : [2 delitos]
+```
+
+Es decir: **una** justificacion escrita tapa **N** enumeraciones de la misma
+funcion, y cualquier funcion puede ASEPTARSE copiando los dos marcadores en su
+docstring. La justificacion escrita es el mecanismo correcto (es el de AC-5 de
+TASK-081) pero el alcance es el de la FUNCION, no el de la enumeracion.
+
+## E. La justificacion escrita de `run_tests.py:6160` (mecanismo de TASK-081)
+
+**No es una lista muda de permitidos.** Es lo que el mecanismo de TASK-081
+pide, y se comprueba por las DOS partes, con texto de verdad detras:
+
+```
+justificacion detectada : ('estas DOS vistas son las que manejan categorias y las elige
+                            el sentido del test, no el sistema de ficheros: la tercera
+                            vista no tiene catalogo que ordenar.',
+                           'el ciclo que recorra el conjunto de vistas DERIVADO reescribe
+                            este test para iterar el derivado y filtrar por el criterio
+                            semantico de "maneja categorias".')
+(a) longitud: 155 caracteres     (b) longitud: 155 caracteres
+```
+
+* **(a) por que existe**: "estas DOS vistas son las que manejan categorias y las
+  elige el sentido del test, no el sistema de ficheros" -- dice **por que**.
+* **(b) que la retira**: "el ciclo que recorra el conjunto de vistas DERIVADO
+  reescribe este test para iterar el derivado y filtrar por el criterio
+  semantico" -- dice **que** la retira.
+* 155 y 155 caracteres de texto real, muy por encima del minimo de 30.
+* Los marcadores son los del mecanismo: `(a) POR QUE existe la enumeracion:` y
+  `(b) QUE LA RETIRA:`.
+
+**La justificacion es REAL, no decorativa.** Quitando el docstring de esa
+funcion en memoria, la regla de forma encuentra el hallazgo:
+
+```
+sin el docstring, la regla de forma encuentra:
+  ["run_tests.py:6160: `test_orden_de_categorias_no_es_alfabetico` recorre una
+    ENUMERACION literal del conjunto de vistas (escrita a mano:
+    ['pack_manager_view.py', 'process_manager_view.py']). ..."]
+```
+
+Es decir: la enumeracion de 6160 **la encuentra el motor**, y lo que la deja
+pasar es la justificacion escrita. El mutante **S2c** (cortar la frase (b) por
+debajo de 30 caracteres) mide esto en la suite completa.
+
+**No es una quinta copia del conjunto de vistas.** Derivado con `ast`, las
+enumeraciones de nombres de vista que hay en `run_tests.py` son **3**:
+
+| linea | contenido | que es |
+|---|---|---|
+| 29141 | `VISTAS_DECLARADAS = (dashboard, pack_manager, process_manager)` | la DECLARACION: la fuente unica |
+| 6160 | `("process_manager_view.py", "pack_manager_view.py")` | una **SELECCION** justificada de 2 de 3 |
+| 29712 | `{"dashboard_view.py", "pack_manager_view.py"}` | la fixture de las contrapruebas del propio detector (no es fuente de nada) |
+
+6160 es una **seleccion con razon semantica** ("las que manejan categorias"),
+no un alcance: le falta una vista a proposito y por eso necesita justificacion.
+En `validate_docs.py` no hay ninguna enumeracion de nombres de vista. Las tres
+sondas de la PARTE 1 (que eran cuatro copias del conjunto) ya no existen.
+
+## F. Un defecto NUEVO que ha metido el commit de REPARACION
+
+**M-V1 no muere por su asercion: muere por un `NameError`.** Y el `NameError`
+esta en el codigo que la reparacion ha escrito, no en el mutante.
+
+```
+File "...\camara_M-V1_...\run_tests.py", line 30408, in <module>
+  test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad()      # AC-1
+File "...\run_tests.py", line 29636, in test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad
+  declaracion_derivada, _derivador = _declaracion_y_derivador(arbol)
+File "...\run_tests.py", line 29404, in _declaracion_y_derivador
+  derivador = _funcion_de_modulo_a_la_que_llega(derecha, vinculos, funciones)
+File "...\run_tests.py", line 29351, in _funcion_de_modulo_a_la_que_llega
+  + [kw.value for kw in expression.keywords]):
+NameError: name 'expression' is not defined. Did you mean: 'expresion'?
+```
+
+`run_tests.py:29351` usa `expression`, y el parametro de la funcion se llama
+`expresion`. **Lo metio la reparacion**: en el fix original (`f8bc867`) esa
+linea era `expresion.keywords`, y en el commit de reparacion (`73b2393`) paso a
+ser `expression.keywords`:
+
+```
+$ git show 73b2393 -- run_tests.py | grep keywords
++                          + [kw.value for kw in expression.keywords]):
+$ git show f8bc867:run_tests.py | grep keywords
+                   + [kw.value for kw in expresion.keywords])
+```
+
+**Cercania del defecto (MEDIDO, con un comprobador de nombres sin definir
+escrito con `ast` sobre las lineas que anade el commit):**
+
+```
+commit 73b2393: 486 lineas anadidas en run_tests.py
+  SIN DEFINIR: expression   usado en la linea [29351]
+commit f8bc867: (el fix original) -- sin este fallo
+```
+
+Es el **UNICO** identificador sin definir que introduce la reparacion en
+`run_tests.py` (y `validate_docs.py` no introduce ninguno).
+
+**Por que es LATENTE y no se ve en verde.** La rama que lo dispara solo se
+alcanza cuando la expresion es una llamada a una funcion que **no** es de
+ambito de modulo:
+
+```python
+if isinstance(expresion, ast.Call):
+    if (isinstance(expresion.func, ast.Name)
+            and expresion.func.id in funciones):
+        return expresion.func.id          # <-- el caso sano sale aqui
+    for argumento in (list(expresion.args)
+                      + [kw.value for kw in expression.keywords]):   # <-- revienta
+```
+
+En el codigo sano, el lado derecho de la comparacion es `_vistas_del_disco()`,
+que es una funcion de modulo: sale por el `return` de arriba y nunca llega a la
+linea rota. **Cualquier refactor que ponga una llamada que no sea de modulo
+ahi** (por ejemplo `vistas_en_disco = set(_vistas_del_disco())`) convierte el
+diagnostico del guard en un `NameError` sin nombres: el guard deja de decir
+"no se puede derivar que funcion deriva el conjunto de vistas" y revienta.
+
+**Consecuencia para la auditoria:** por la regla del encargo, una muerte por
+`NameError` **no es veredicto**. Asi que **M-V1 queda como NO MEDIDO** en su
+forma natural, y se vuelve a medir en la forma **M-V1b** (la misma semantica --
+la DECLARACION vuelve a ser la fuente -- escrita con una TUPLA, que no dispara
+la rama rota). El resultado de M-V1b esta en la tabla de la seccion G.
+
+**Y una leccion de arnes que queda por escrito:** el baseline de la camara esta
+**VERDE** (`rc=0`, `ALL TESTS PASSED.`), asi que el `NameError` no lo detecta
+el baseline: lo ha detectado el MUTANTE. Un mutante que muere de una excepcion
+no es un veredicto del mutante, es un **defecto del guard**, y por eso se
+reporta con nombre y no se cuenta como muerte.
+
+## G. R6 -- El tripwire: el mensaje dice la cifra COMPARADA
+
+En el codigo de HEAD **no queda ninguna cifra escrita a mano en el mensaje**:
+
+```
+run_tests.py:29134   _CIFRA_DE_PUBLICACIONES_VIGILADAS = 10
+run_tests.py:9442    assert contados_en_codigo == _CIFRA_DE_PUBLICACIONES_VIGILADAS, (
+run_tests.py:9444      f"puerta autorizada y este tripwire COMPARA con {_CIFRA_DE_PUBLICACIONES_VIGILADAS} call sites migrados. "
+```
+
+El `assert` y el mensaje leen **la misma constante**. Medido con la cifra
+desfasada (mutante **Q5**: `10` -> `11`), el guard de la camara sobre su propio
+disco:
+
+```
+AssertionError: las vistas del disco tienen 10 publicaciones a una puerta
+autorizada y este tripwire COMPARA con 11 call sites migrados. O se movio una
+publicacion, o esta cifra esta desfasada: decidalo explicitamente en vez de
+dejar que el guard se adapte solo.
+```
+
+**El mensaje ya NO se contradice.** Dice las dos cosas, y son distintas: lo que
+**ha encontrado** (10) y lo que **compara** (11, la constante). Con la cifra
+escrita a mano en el mensaje, el mismo mutante habria dicho "COMPARA con 10"
+mientras comparaba con 11: dos cifras para el mismo hecho. Ahora es
+**imposible**: si la constante se mueve, se mueven las dos.
+
+Y en la camara de producto (donde el parche sube la constante a 12 y el disco
+tiene 11 publicaciones), el mismo tripwire dice:
+
+```
+las vistas del disco tienen 11 publicaciones a una puerta autorizada y este
+tripwire COMPARA con 12 call sites migrados
+```
+
+Es decir: el mensaje sigue a la constante **tambien dentro de la camara**, que
+es donde antes se desincronizaba.
+
+**El mutante Q5, en la suite completa: MUERTO** por la asercion de AC-2
+(`run_tests.py:29972`, "el rojo tiene que NOMBRAR la infraccion (y no un fallo
+cualquiera del subproceso)"): el tripwire desfasado hace que el rojo de la
+camara sea el del tripwire y no el de la infraccion, y AC-2 lo rechaza. La
+tripwire de R6 esta **cerrada**.
+
+## H. La tabla de mutantes (suite COMPLETA, una camara por mutante)
+
+Cada mutante tiene su propia camara desechable, su propio `git init` y su
+propio log. El veredicto sale del `.meta` que se escribe **despues** de que el
+proceso termina, asi que un log sin `.meta` seria "no medido", nunca "verde".
+
+* `rc=0` + `ALL TESTS PASSED.` en la ultima linea = **SUPERVIVIENTE**
+* `AssertionError` con traza = **MUERTO** (y se dice **por que**)
+* `NameError` / `FileNotFoundError` / otra cosa = **NO MEDIDO** (no es veredicto)
+
+| id | que rompe | rc | bytes | lineas | s | ultima linea | veredicto |
+|---|---|---|---|---|---|---|---|
+| **baseline** | sin mutacion (control positivo del arnes) | 0 | 30585 | 398 | 926.4 | `ALL TESTS PASSED.` | **CONTROL VERDE** |
+| **Q1** | las tres sondas `test_*` NO se invocan | 1 | 11719 | 173 | 98.3 | `AssertionError: un journal ILEGIBLE es un fallo del ancla y solo uno: el historial de la fixture no aporta cic` | **MUERTO** |
+| **Q2** | la regla de modulo se estrecha a UN guard (sujetos a mano) | 1 | 18516 | 235 | 859.7 | `AssertionError: el detector tiene que DENUNCIAR una enumeracion escrita a mano en una funcion que NO esta en n` | **MUERTO** |
+| **Q2b** | la regla de modulo no mira NINGUN guard | 1 | 18518 | 235 | 859.4 | `AssertionError: el detector tiene que DENUNCIAR una enumeracion escrita a mano en una funcion que NO esta en n` | **MUERTO** |
+| **M-V1** | el guard vuelve a abrir la DECLARACION (forma natural) | 1 | 18959 | 244 | 862.7 | `NameError: name 'expression' is not defined. Did you mean: 'expresion'?` | **NO MEDIDO** (excepcion, no asercion) |
+| **M-V1b** | idem, con la DECLARACION como tupla | 1 | 19210 | 236 | 904.8 | `AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Tes` | **MUERTO** |
+| **M-V1c** | idem, con la DECLARACION como comprehension de conjunto | 1 | 18821 | 236 | 838.3 | `AssertionError: una vista NUEVA en el disco y SIN declarar tiene que dar ROJO que la nombre y dio 0: si la der` | **MUERTO** |
+| **M-V3** | el helper deriva un conjunto VACIO | 1 | 19635 | 236 | 867.2 | `AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Tes` | **MUERTO** |
+| **M-V3b** | el helper deriva una lista FIJA escrita a mano | 1 | 18377 | 237 | 933.2 | `La fuente tiene que ser el disco (`_vistas_del_disco()`, en ambito de modulo) y la DECLARACION se compara con ` | **MUERTO** |
+| **M-V4** | el helper `_vistas_del_disco` deja de estar en ambito de modulo | 1 | 18959 | 244 | 924.0 | `NameError: name 'expression' is not defined. Did you mean: 'expresion'?` | **NO MEDIDO** (excepcion, no asercion) |
+| **M-V4b** | idem, con una definicion ANIDADA del helper | 1 | 18439 | 237 | 838.1 | `La fuente tiene que ser el disco (`_vistas_del_disco()`, en ambito de modulo) y la DECLARACION se compara con ` | **MUERTO** |
+| **M-V5** | el helper devuelve `set(VISTAS_DECLARADAS)` | 1 | 18484 | 237 | 928.5 | `La fuente tiene que ser el disco (`_vistas_del_disco()`, en ambito de modulo) y la DECLARACION se compara con ` | **MUERTO** |
+| **M-V6** | el directorio de vistas se ancla a una ruta FIJA | 1 | 19633 | 236 | 937.3 | `AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Tes` | **MUERTO** |
+| **M-V7** | el directorio de vistas apunta a `ui/` en vez de `ui/views/` | 1 | 19873 | 236 | 935.8 | `AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Tes` | **MUERTO** |
+| **Q5** | la cifra del tripwire se desfasca (10 -> 11) | 1 | 19408 | 236 | 938.5 | `AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Tes` | **MUERTO** |
+| **S1c** | CONTROL: enumeracion escrita a mano ANIDADA en un `for` | 1 | 18509 | 237 | 845.4 | `La fuente tiene que ser el disco (`_vistas_del_disco()`, en ambito de modulo) y la DECLARACION se compara con ` | **MUERTO** |
+| **S1** | S1c + el recorrido NO baja a un `for` anidado | 0 | 30585 | 398 | 919.2 | `ALL TESTS PASSED.` | **SUPERVIVIENTE** |
+| **S2c** | la justificacion escrita se queda corta (frase (b) < 30 caracteres) | 1 | 18527 | 237 | 841.3 | `La fuente tiene que ser el disco (`_vistas_del_disco()`, en ambito de modulo) y la DECLARACION se compara con ` | **MUERTO** |
+| **S2** | una justificacion escrita tapa DOS enumeraciones de la misma funcion | 0 | 30735 | 402 | 1015.8 | `ALL TESTS PASSED.` | **SUPERVIVIENTE** |
+| **S3** | la enumeracion escrita a mano detras de una llamada a un helper | 0 | 30735 | 402 | 1013.9 | `ALL TESTS PASSED.` | **SUPERVIVIENTE** |
+| **S4** | el patron de S3 aplicado al GUARD DE VERDAD | 1 | 18371 | 237 | 773.0 | `La fuente tiene que ser el disco (`_vistas_del_disco()`, en ambito de modulo) y la DECLARACION se compara con ` | **MUERTO** |
+| **S3-restaurado** | la camara S3 restaurada al fichero sano | 0 | 30585 | 398 | 894.5 | `ALL TESTS PASSED.` | **SUPERVIVIENTE** |
+
+**Motivo literal de cada muerte:**
+
+* **baseline** -- ALL TESTS PASSED.
+  - muerte: (sin traza)
+  - motivo: Pre-vuelo de existencia: el hash real se resuelve y el muerto no, y el 128 de git no se pierde como AssertionError.
+* **Q1** -- AssertionError: un journal ILEGIBLE es un fallo del ancla y solo uno: el historial de la fixture no aporta ciclos y el changelog esta completo. Errors: ['.taskmaster/rd_journal.json: ESTA CORRUPTO. El ancla del changelog
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_Q1_20261022_021017\run_tests.py", line 13542, in test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador | assert len(errors) == 1, (
+  - motivo: AssertionError: un journal ILEGIBLE es un fallo del ancla y solo uno: el historial de la fixture no aporta ciclos y el changelog esta completo. Errors: ['.taskmaster/rd_journal.json: ESTA CORRUPTO. El ancla del changelog de raiz no se puede comprobar, y sin el no hay garantia de que el ultimo ciclo ...
+* **Q2** -- AssertionError: el detector tiene que DENUNCIAR una enumeracion escrita a mano en una funcion que NO esta en ninguna lista, y nombrarla con FICHERO Y LINEA: si el detector vuelve a mirar un conjunto de guards escrito a m
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_Q2_20261022_021017\run_tests.py", line 29780, in test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad | assert f"run_tests.py:{linea_del_for}" in rojo, (
+  - motivo: AssertionError: el detector tiene que DENUNCIAR una enumeracion escrita a mano en una funcion que NO esta en ninguna lista, y nombrarla con FICHERO Y LINEA: si el detector vuelve a mirar un conjunto de guards escrito a mano (Q2) o deja de mirar ninguno (Q2b), la enumeracion se cuela en silencio y es...
+* **Q2b** -- AssertionError: el detector tiene que DENUNCIAR una enumeracion escrita a mano en una funcion que NO esta en ninguna lista, y nombrarla con FICHERO Y LINEA: si el detector vuelve a mirar un conjunto de guards escrito a m
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_Q2b_20261022_021017\run_tests.py", line 29778, in test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad | assert f"run_tests.py:{linea_del_for}" in rojo, (
+  - motivo: AssertionError: el detector tiene que DENUNCIAR una enumeracion escrita a mano en una funcion que NO esta en ninguna lista, y nombrarla con FICHERO Y LINEA: si el detector vuelve a mirar un conjunto de guards escrito a mano (Q2) o deja de mirar ninguno (Q2b), la enumeracion se cuela en silencio y es...
+* **M-V1** -- NameError: name 'expression' is not defined. Did you mean: 'expresion'?
+  - muerte: (sin traza)
+  - motivo: (sin AssertionError)
+* **M-V1b** -- AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Testing that pack workers only publish via self.after (TASK-035 / cycle 26)...\nTraceback (most recent call last)
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_M-V1b_20261022_023607\run_tests.py", line 29972, in test_una_vista_nueva_se_audita_aunque_nadie_la_apunte | assert "el worker toca la vista fuera de self.after(0, ...)" in salida, (
+  - motivo: AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Testing that pack workers only publish via self.after (TASK-035 / cycle 26)...\nTraceback (most recent call last):\n  File "C:\\Users\\carch\\AppData\\Local\\Temp\\wopt_c082_mzosngjx\\driver.py...
+* **M-V1c** -- AssertionError: una vista NUEVA en el disco y SIN declarar tiene que dar ROJO que la nombre y dio 0: si la derivacion devuelve la DECLARACION la comparacion es tautologica, no hay rojo, y la vista nueva deja de auditarse
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_M-V1c_20261022_025349\run_tests.py", line 30010, in test_una_vista_nueva_se_audita_aunque_nadie_la_apunte | assert r3.returncode != 0, (
+  - motivo: AssertionError: una vista NUEVA en el disco y SIN declarar tiene que dar ROJO que la nombre y dio 0: si la derivacion devuelve la DECLARACION la comparacion es tautologica, no hay rojo, y la vista nueva deja de auditarse sin que nadie lo note (M-V5). salida='Testing that pack workers only publish vi...
+* **M-V3** -- AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Testing that pack workers only publish via self.after (TASK-035 / cycle 26)...\nTraceback (most recent call last)
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_M-V3_20261022_021017\run_tests.py", line 29972, in test_una_vista_nueva_se_audita_aunque_nadie_la_apunte | assert "el worker toca la vista fuera de self.after(0, ...)" in salida, (
+  - motivo: AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Testing that pack workers only publish via self.after (TASK-035 / cycle 26)...\nTraceback (most recent call last):\n  File "C:\\Users\\carch\\AppData\\Local\\Temp\\wopt_c082_pddyv4ob\\driver.py...
+* **M-V3b** -- La fuente tiene que ser el disco (`_vistas_del_disco()`, en ambito de modulo) y la DECLARACION se compara con el derivado (TASK-082, AC-1).
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_M-V3b_20261022_021017\run_tests.py", line 29642, in test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad | assert not delitos, (
+  - motivo: AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco:
+* **M-V4** -- NameError: name 'expression' is not defined. Did you mean: 'expresion'?
+  - muerte: (sin traza)
+  - motivo: (sin AssertionError)
+* **M-V4b** -- La fuente tiene que ser el disco (`_vistas_del_disco()`, en ambito de modulo) y la DECLARACION se compara con el derivado (TASK-082, AC-1).
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_M-V4b_20261022_025037\run_tests.py", line 29648, in test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad | assert not delitos, (
+  - motivo: AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco:
+* **M-V5** -- La fuente tiene que ser el disco (`_vistas_del_disco()`, en ambito de modulo) y la DECLARACION se compara con el derivado (TASK-082, AC-1).
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_M-V5_20261022_021017\run_tests.py", line 29641, in test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad | assert not delitos, (
+  - motivo: AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco:
+* **M-V6** -- AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Testing that pack workers only publish via self.after (TASK-035 / cycle 26)...\nTraceback (most recent call last)
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_M-V6_20261022_021017\run_tests.py", line 29972, in test_una_vista_nueva_se_audita_aunque_nadie_la_apunte | assert "el worker toca la vista fuera de self.after(0, ...)" in salida, (
+  - motivo: AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Testing that pack workers only publish via self.after (TASK-035 / cycle 26)...\nTraceback (most recent call last):\n  File "C:\\Users\\carch\\AppData\\Local\\Temp\\wopt_c082_x4bt7zlu\\driver.py...
+* **M-V7** -- AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Testing that pack workers only publish via self.after (TASK-035 / cycle 26)...\nTraceback (most recent call last)
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_M-V7_20261022_021017\run_tests.py", line 29972, in test_una_vista_nueva_se_audita_aunque_nadie_la_apunte | assert "el worker toca la vista fuera de self.after(0, ...)" in salida, (
+  - motivo: AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Testing that pack workers only publish via self.after (TASK-035 / cycle 26)...\nTraceback (most recent call last):\n  File "C:\\Users\\carch\\AppData\\Local\\Temp\\wopt_c082_ekeciwu6\\driver.py...
+* **Q5** -- AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Testing that pack workers only publish via self.after (TASK-035 / cycle 26)...\nTraceback (most recent call last)
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_Q5_20261022_021017\run_tests.py", line 29972, in test_una_vista_nueva_se_audita_aunque_nadie_la_apunte | assert "el worker toca la vista fuera de self.after(0, ...)" in salida, (
+  - motivo: AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Testing that pack workers only publish via self.after (TASK-035 / cycle 26)...\nTraceback (most recent call last):\n  File "C:\\Users\\carch\\AppData\\Local\\Temp\\wopt_c082_vjcjw6ws\\driver.py...
+* **S1c** -- La fuente tiene que ser el disco (`_vistas_del_disco()`, en ambito de modulo) y la DECLARACION se compara con el derivado (TASK-082, AC-1).
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_S1c_20261022_021017\run_tests.py", line 29653, in test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad | assert not delitos, (
+  - motivo: AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco:
+* **S1** -- ALL TESTS PASSED.
+  - muerte: (sin traza)
+  - motivo: Pre-vuelo de existencia: el hash real se resuelve y el muerto no, y el 128 de git no se pierde como AssertionError.
+* **S2c** -- La fuente tiene que ser el disco (`_vistas_del_disco()`, en ambito de modulo) y la DECLARACION se compara con el derivado (TASK-082, AC-1).
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_S2c_20261022_021017\run_tests.py", line 29641, in test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad | assert not delitos, (
+  - motivo: AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco:
+* **S2** -- ALL TESTS PASSED.
+  - muerte: (sin traza)
+  - motivo: Pre-vuelo de existencia: el hash real se resuelve y el muerto no, y el 128 de git no se pierde como AssertionError.
+* **S3** -- ALL TESTS PASSED.
+  - muerte: (sin traza)
+  - motivo: Pre-vuelo de existencia: el hash real se resuelve y el muerto no, y el 128 de git no se pierde como AssertionError.
+* **S4** -- La fuente tiene que ser el disco (`_vistas_del_disco()`, en ambito de modulo) y la DECLARACION se compara con el derivado (TASK-082, AC-1).
+  - muerte: File "C:\Users\carch\AppData\Local\Temp\wopt_c68_r2_aud\camara_S4_20261022_030109\run_tests.py", line 29647, in test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad | assert not delitos, (
+  - motivo: AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco:
+* **S3-restaurado** -- ALL TESTS PASSED.
+  - muerte: (sin traza)
+  - motivo: Pre-vuelo de existencia: el hash real se resuelve y el muerto no, y el 128 de git no se pierde como AssertionError.
+
+## I. Hallazgos con nombre (los que quedan abiertos)
+
+| id | severidad | que hay que arreglar | como se ha medido |
+|---|---|---|---|
+| **A-C68-7** | **P1** | `run_tests.py:29351` usa `expression` y el parametro se llama `expresion`: un **`NameError` latente que ha metido el commit de REPARACION `73b2393`** (en `f8bc867` era `expresion.keywords`). Consecuencia: el guard no puede decir "no se puede derivar que funcion deriva el conjunto de vistas" cuando el lado derecho de la comparacion es una llamada que no es de modulo, y **dos de los mutantes del fix (M-V1 y M-V4) mueren por la excepcion y no por su asercion** | mutantes M-V1 y M-V4 (ver la tabla) + comprobador de nombres sin definir sobre las 486 lineas que anade `73b2393`: **1 solo** identificador sin definir, `expression` en 29351 |
+| **A-C68-8** | **P3** | la regla de forma de AC-1 **no ve una enumeracion escrita a mano que este detras de una llamada a un helper** (`for n in _mis_vistas()`). "Sacar la lista a una funcion" es el refactor mas natural que existe | mutante **S3**: suite completa en VERDE (`rc=0`, `ALL TESTS PASSED.`). **La consecuencia de PRODUCTO esta cerrada** (mutante **S4**: el mismo patron aplicado al guard de verdad): el conjunto COMPLETO escrito a mano lo caza la regla 3 ("una SEGUNDA copia del conjunto de vistas escrita a mano") y un SUBCONJUNTO lo caza la comparacion tautologica que los dos guards tienen (`run_tests.py:9429` y `:27706`). Lo que queda es un hueco de la REGLA DE FORMA, no de la cobertura |
+| **A-C68-9** | **P3** | la tolerancia por justificacion escrita es **POR FUNCION, no por enumeracion**: una sola justificacion tapa **N** enumeraciones de la misma funcion, y cualquier funcion puede ASEPTARSE copiando los dos marcadores en su docstring | mutante **S2**: suite completa en VERDE (`rc=0`, `ALL TESTS PASSED.`), con la contraprueba in-process de que sin justificacion los mismos dos `for` dan 2 hallazgos |
+| **A-C68-10** | **P3** | `_fors_del_modulo` **no baja a un `for` anidado**: su docstring promete "cada `for` del modulo" y no es cierto. Una enumeracion escrita a mano metida dentro de otro `for` no se ve, y **nada lo nota** | mutante **S1**: suite completa en VERDE (`rc=0`, `ALL TESTS PASSED.`, **exactamente los mismos 30585 bytes que el baseline**). El control **S1c** (la MISMA enumeracion, sin el sabotaje del recorrido) **MUERE** por AC-1: "run_tests.py:29193: `_guarda_anidada_de_la_camara` recorre una ENUMERACION literal..." |
+
+**Los hallazgos de la PARTE 1 que la reparacion CIERRA (medido, no de palabra):**
+
+| id de la PARTE 1 | como se cierra | veredicto |
+|---|---|---|
+| **A-C68-1** (las tres sondas no vigiladas) | las tres son `def test_*` y el validador cuenta `234 definidos = 234 invocados` | **CERRADO**: el mutante Q1 muere por asercion en la suite completa, no solo en el validador |
+| **A-C68-2** (el alcance de AC-1 era una lista literal) | la regla es de MODULO: `_fors_del_modulo` recorre el `ast` entero y no hay ninguna lista de sujetos | **CERRADO**: Q2 y Q2b mueren por la contraprueba de R2 |
+| **A-C68-3** (la derivacion no ataba su resultado al disco) | regla (4) de AC-1: el helper no puede devolver la DECLARACION | **CERRADO**: M-V5 muere por AC-1 ("NO deriva del disco: usa `VISTAS_DECLARADAS`") y **tambien** por AC-2 (medido in-process) |
+| **A-C68-4** / **S7** (el docstring de AC-1 afirmaba una garantia que no tenia) | el docstring nuevo declara las 5 reglas y **dice lo que NO comprueba** ("que el helper lea el disco de verdad. Eso lo mide AC-3") | **CERRADO**: la garantia que afirma es la que tiene |
+| **A-C68-5** (6 citas caducadas) | 6 citas corregidas in-place | **CERRADO**: 8 de 8 citas VIVAS |
+| **A-C68-6** (el mensaje del tripwire llevaba la cifra a mano) | la cifra comparada y la del mensaje salen de la misma constante | **CERRADO**: con la cifra desfasada el mensaje dice "COMPARA con 11" y el `assert` compara con 11 |
+
+**Nota de honestidad sobre A-C68-8, A-C68-9 y A-C68-10:** son huecos de la
+VIGILANCIA, no del fix. El fix (los 7 mutantes) sigue matando por su asercion.
+Pero un guard que se puede vaciar por tres vias mas no es un guard: por la
+regla del repo, un superviviente **se arregla, no se documenta**, y por eso
+quedan listados arriba con nombre, no como nota al pie.
+
+**Lo que SI es de producto (y por eso no es una nota):** con el patron de S3
+aplicado al guard de verdad (mutante **S4**: el guard de workers abre un
+conjunto de vistas escrito a mano, detras de una llamada), la pregunta es si
+vuelve el defecto que TASK-082 cerro. **Medido: no.** El conjunto completo
+escrito a mano lo caza la regla 3 de AC-1 ("una SEGUNDA copia del conjunto de
+vistas escrita a mano", `run_tests.py:29187`) y un subconjunto lo caza la
+comparacion tautologica que **los dos** guards tienen (`run_tests.py:9429` y
+`run_tests.py:27706`). La consecuencia de producto de A-C68-8 esta, por tanto,
+cerrada; lo que queda es que la REGLA DE FORMA no ve una enumeracion escrita a
+mano escondida detras de una llamada, que es una laguna de la regla y no del
+guard.
+
+## J. Veredicto global
+
+**VERDICT: FAIL**
+
+* **El FIX (TASK-082): PASS.** Los 7 mutantes del fix original mueren por su
+  asercion. Los dos que en su forma natural mueren por el `NameError` de la
+  reparacion (M-V1 y M-V4) se han vuelto a medir en una forma que no dispara
+  ese defecto, y mueren por su asercion tambien.
+* **La VIGILANCIA (R1, R2, R3, R5, R6): PASS en lo que la reparacion
+  prometia.** Q1, Q2 y Q2b --los tres supervivientes de la PARTE 1-- mueren
+  todos por asercion en la suite completa. Las ocho citas viven. La cifra del
+  tripwire ya no puede contradecirse.
+* **La vigilancia en general: FAIL.** La reparacion cierra tres vias y deja
+  **tres mas abiertas** (S1, S2 y S3), que se han medido con la suite completa
+  en verde. Por la regla del repo ("un superviviente en seguridad o datos se
+  arregla, no se documenta"), esto no se documenta y se arregla.
+
+**Lo que NO se ha podido medir (y por que):** nada de lo obligatorio. Las 22
+corridas tienen `.meta`: las 21 de la tabla mas la camara restaurada. Las dos
+filas marcadas **NO MEDIDO** no son una falta de medicion, son el **veredicto
+correcto** de esos dos mutantes: mueren por una EXCEPCION (`NameError`), y una
+muerte por excepcion no es un veredicto de mutante sino un defecto del guard
+(seccion F), asi que se vuelven a medir en la forma `M-V1c` y `M-V4b`.
+
+## K. Trazabilidad: ficheros creados en `%TEMP%` y ancla del repo real
+
+**Camaras (una por mutante), repos divulgables y desechables:**
+
+```
+%TEMP%\wopt_c68_r2_aud\
+  camara_<mutante>_<sello>\        21 camaras usadas (21 mutantes/mediciones)
+  gitdesechable_<mutante>_<sello>\ 21 repos `git init` PROPIOS y desechables
+  logs\suite_<id>.log[.meta]       22 logs + sus .meta (21 + S3-restaurado)
+  preparar.py  mutar.py  correr.py  lanzar.py  tabla.py
+  verificar.py  mv2.py  ac2.py  tripwire.py  restaurar.py
+  undef.py  typos.py  copias.py  sondas_estaticas.py  residuos.py
+  escribir.py  escribir2.py  escribir3.py  escribir4.py  escribir5.py
+  mutado_<mutante>.flag (20)  camara_<id>_path.txt  gitdir_<id>_path.txt
+```
+
+Ademas quedan **2 camaras huerfanas** (`camara_baseline_20261022_020903` y
+`camara_baseline_20261022_020946`): son del **primer intento de preparar.py**,
+que se DETUVO en el control de aislamiento (el `GIT_DIR` desechable no era un
+repo y el comprobador no lo acepto). No se han usado para ninguna medicion.
+El primero que se paro fue el control de aislamiento, que es exactamente para
+lo que esta.
+
+**La camara restaurada y verde.** La camara de S3 (la que tiene el mutante
+superviviente) se ha vuelto a poner en su fichero sano y se ha re-ejecutado:
+
+```
+S3-restaurado: rc=0  bytes=30585  lineas=398  segundos=894.5
+ULTIMA: 'ALL TESTS PASSED.'
+```
+
+**Exactamente los mismos 30585 bytes y las mismas 398 lineas que el baseline**:
+la camara vuelve a verde byte a byte despues de haber pasado por el mutante.
+
+**El repo real NO se ha tocado:**
+
+* `git rev-parse HEAD` = `73b2393` antes y despues;
+* `git status --porcelain` vacio;
+* `git_safe_commit.py` **no** se ha invocado ni una vez (ni desde el repo ni
+  desde `%TEMP%`): la camara usa `git` a pelo contra su `GIT_DIR` desechable;
+* el unico fichero escrito en el repo es este informe, y lo versiona el
+  orquestador.

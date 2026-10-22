@@ -195,3 +195,184 @@ la regla de módulo lo tolera con la **justificación escrita** en su docstring
   escribe el orquestador.
 * `docs/ai/sandbox-rules.md`, `docs/ai/architecture.md`, `docs/ai/data-models.md` y
   `docs/ai/ui-design-system.md` — fuera de alcance.
+
+# PARTE 3 — cierre del ciclo 68 (tercera vuelta)
+
+La re-auditoría (`mutation-report.md`, **PARTE 2**) confirmó que el **fix** de
+TASK-082 es PASS (sus 7 mutantes mueren por su aserción) y que las tres
+**vigilancias** ya mueren (Q1 por la suite, Q2 y Q2b por la contraprueba de R2),
+pero dejó el **veredicto global en FAIL** por cuatro cosas. Esta parte las
+cierra tres y declara la cuarta con nombre.
+
+| id | Qué se repara | Dónde | Estado | Por qué |
+|---|---|---|---|---|
+| **R7** (A-C68-7) | El `NameError` latente: el parámetro se llama `expresion` y el código usaba `expression` | `run_tests.py:29363` (`_funcion_de_modulo_a_la_que_llega`) | **HECHO** | Con el nombre mal, la función reventaba **por excepción** —no por su aserción— en cuanto una `ast.Call` tenía argumentos con nombre. Por eso M-V1 y M-V4 morían "por la puerta de atrás": el mutante no probaba el fix, probaba el crash. Ahora **M-V1 y M-V4 en su forma ORIGINAL mueren por su propia aserción** |
+| **R8** (A-C68-8 / S1) | El recorrido de AC-1 baja a **todos** los bucles anidados (`for` y `while`, a cualquier profundidad), de forma **explícita** | `run_tests.py:29278` (`_fors_del_modulo`, docstring y `_bajar`) | **HECHO** | Un recorrido que se queda en el bucle exterior deja pasar una enumeración escrita a mano metida dentro, y la suite completa queda en **VERDE** sin que nadie lo note (mutante S1). Se baja explícitamente al cuerpo y al `orelse`, y se baja en cada nivel |
+| **R9** (A-C68-9 / S2) | La tolerancia escrita es **POR ENUMERACIÓN**, no por función: cada enumeración necesita **su** justificación, y una justificación no puede tapar dos | `run_tests.py:29518` (`_bloques_de_justificacion`), `:29540` (`_nombres_de_vista_en_una_frase`), `:29545` (`_enumeracion_justificada`), `:29580` (`_delitos_de_fuente_escrita_a_mano`) | **HECHO** | Con la tolerancia por función, **una** justificación tapaba **dos** enumeraciones de la misma función (mutante S2) y cualquier función se podía aseptar copiando los dos marcadores en su docstring. Ahora la justificación tiene que **nombrar** la enumeración que tolera (los nombres de sus vistas, y solo esa) |
+| **R4 bis** (A-C68-10) | El docstring de AC-1 dice lo que el guard **NO** vigila, con la medición que lo acota | `run_tests.py:29682` (docstring de AC-1) y `:29637` (docstring de `_delitos_de_forma_del_conjunto_de_vistas`) | **HECHO** | Mismo criterio que R4 (A-C68-4): un docstring que miente es deuda. El guard no puede afirmar más de lo que vigila |
+
+## R7 · el `NameError` latente, y cómo se ha comprobado que no queda ninguno
+
+La entrega anterior (`73b2393`) añadió `_funcion_de_modulo_a_la_que_llega` con
+una línea que usaba un identificador **que no existía** (`expression` en vez de
+`expresion`). Era un `NameError` **latente**: solo reventaba cuando la
+expresión era una `ast.Call` **con argumentos con nombre**.
+
+Cómo se ha comprobado que no queda **ningún** identificador sin definir (el
+método, no la afirmación):
+
+1. Se escribió un comprobador de ámbitos (`ast`): cada ámbito —módulo,
+   función, clase, `lambda` y *comprehension*— tiene sus enlaces, y un nombre
+   cargado se resuelve por la cadena local → cierre → módulo → `builtins`
+   (las clases no cierran sobre su ámbito, que es la regla de Python). Sin esa
+   regla, el comprobador da **541 falsos positivos** (una función anidada ve
+   los nombres de la que la contiene).
+2. Se comparó el fichero **actual** con el de `HEAD` (`73b2393`).
+3. Resultado medido: **`HEAD` → 1 nombre sin definir** (`expression`, uso en
+   `:29351`) y **actual → 0**. Los **nuevos** (los que no estaban en HEAD):
+   **0**.
+
+## R8 · el recorrido baja a los bucles anidados
+
+El recorrido `_bajar` de `_fors_del_modulo` baja ahora **de forma explícita**
+al cuerpo y al `orelse` de los bucles (`for` y `while`), y sigue bajando en
+cada nivel. No es un efecto colateral del recorrido genérico: está escrito, y
+el docstring lo afirma.
+
+La contraprueba que lo ata (celda nueva dentro de AC-1,
+`run_tests.py:29893`): una enumeración escrita a mano metida en un `for`
+dentro de un `for` dentro de un `while` tiene que ser **denunciada con
+fichero y línea**. Sin esa celda, R8 sería una declaración y no un cierre: el
+mutante S1 (el recorrido que no baja al `for` anidado) **sobrevive a la suite
+completa** —que es exactamente lo que midió la re-auditoría.
+
+## R9 · la tolerancia es por enumeración
+
+El mecanismo **sigue siendo el del ciclo 67**: la justificación es **prosa** en
+el docstring del infractor, con (a) por qué existe y (b) qué la retira. No hay
+lista muda de permitidos. Lo que cambia es **a qué** se aplica:
+
+- Antes: la justificación del docstring de la función toleraba **todas** las
+  enumeraciones de esa función.
+- Ahora: la justificación tiene que **nombrar** la enumeración que tolera (los
+  nombres de sus vistas), y **solo tolera esa**. El nombre tiene que ser
+  **exacto**: una justificación que nombra de más no tolera nada, que es lo que
+  impide que una justificación pueda tapar dos enumeraciones.
+
+Las dos frases van en **una línea** cada una y con 30 caracteres o más (la
+misma regla del mecanismo de TASK-081).
+
+Las contrapruebas que lo atan (celdas nuevas dentro de AC-1,
+`run_tests.py:29923` y `:29955`):
+
+- Una función con **una** justificación y **dos** enumeraciones → la segunda
+  tiene que salir en rojo. (Con la tolerancia por función, no salía.)
+- **Control positivo**: una justificación que **nombra** su enumeración la
+  tolera. Sin esta celda, "una justificación no tapa dos" se cumpliría con
+  "una justificación no tapa ninguna" y el guard no toleraría nada.
+
+La enumeración justificada que ya existía en el repo
+(`run_tests.py:6118-6122`, el test de orden de categorías) **se ha tenido que
+nombrar**: su frase (a) ahora dice cuáles son las dos vistas. Sin nombrarlas,
+la enumeración queda sin justificar y el guard la delata —que es lo que tiene
+que pasar.
+
+## La deuda con nombre: S3 (A-C68-10) — hueco de la HEURÍSTICA, no del guard
+
+**No se arregla en este ciclo, y la razón está medida.** S3 es una enumeración
+escrita a mano escondida **detrás de una llamada** (`for n in _mis_vistas()`):
+la regla de forma solo mira el iterable del `for` cuando es un contenedor de
+literales o un nombre enlazado a él, y una llamada no tiene nada que mirar.
+
+Lo que lo acota, medido:
+
+- **S3 sobrevive como mutante del detector**: la suite completa queda en verde.
+- **S4 demuestra que el guard real lo caza**: con ese patrón aplicado al guard
+  de verdad, el conjunto **completo** lo caza la regla 3 y un subconjunto lo
+  caza la comparación tautológica de los dos guards. Es decir: el hueco es de
+  la **heurística** del detector, no un verde falso del guard.
+
+Riesgo real bajo (escribir un conjunto de rutas a mano detrás de un `list(...)`
+no es una forma en que un dev escriba eso) y el arreglo **degradaría** el
+detector (aceptar literales en cualquier expresión → más falsos positivos).
+Queda como deuda **S3 (A-C68-10)**, con nombre, para su ciclo.
+
+Lo que sí se ha hecho con ella: **documentarla** en el docstring de AC-1 y en
+el de `_delitos_de_forma_del_conjunto_de_vistas`, para que el guard **no
+afirme** más de lo que vigila.
+
+## Dos deudas más que han salido al medir (declaradas, no arregladas)
+
+**S8 — la tolerancia por función sigue viva en el guard de AC-5 (TASK-081).**
+`_delitos_de_enumeracion` (`run_tests.py:28676`) calcula la justificación **una
+vez por ámbito** y salta **todas** las enumeraciones de ese ámbito: es la
+misma clase que S2. No se arregla aquí porque su enumeración justificada vive
+bajo `src/woptimizer/**` y este ciclo tiene **cero ediciones** ahí. Queda
+declarada.
+
+**S9 — `test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe` es
+FLAKY por construcción, y su muerte no dice nada del sujeto.**
+El test hace `hash_real = rev-parse --short HEAD` (7 hex) y comprueba que
+`hash_real + "0"` (8 hex) **no** existe. Pero si el octavo dígito del sha
+completo es "0", ese prefijo **sí** existe y el test revienta. **Medido:**
+3/60 fixtures (5,0 %, teórico 1/16 = 6,25 %) tienen `short + "0"` como prefijo
+del sha. Es decir: ~1 de cada 16 corridas de la suite puede morir ahí, en un
+test que no va de TASK-082. En este ciclo lo pilló la cámara de **S3**:
+S3 pasó las tres sondas de AC y murió en el pre-vuelo, así que **su muerte NO
+era un veredicto** (S3 es un superviviente, como está documentado).
+
+## Lo que NO se ha tocado
+
+- **`src/woptimizer/**`: cero ediciones** (invariante duro).
+- `mutation-report.md`, `.taskmaster/rd_journal.json`, `CHANGELOG.md`,
+  `.taskmaster/CHANGELOG.md`, `STATUS.md`, `AGENTS.md`, `README.md`,
+  `docs/ai/**`, `validate_docs.py`, `force_build.py`, `build.bat`,
+  `docs/ai/sandbox-rules.md`.
+- **Ninguna función `test_*` nueva**: el recuento sigue en **234** y las cuatro
+  declaraciones del repo (AGENTS.md, README.md, STATUS.md y la tabla de
+  `docs/ai/testing-guide.md`) siguen siendo ciertas. Las contrapruebas nuevas
+  son **celdas** dentro de AC-1, que ya es un `test_*` del módulo.
+- **Cero desplazamiento** de las dos líneas que el guard de citas lee en
+  caliente (`run_tests.py:23133` y `validate_docs.py:1429`): comprobado en
+  cada mutación, con el contenido de esas líneas comparado antes y después.
+
+## La tabla de mutantes medidos (suite COMPLETA en cámara, 22 corridas)
+
+Método: cámara desechable en `%TEMP%` (copia del repo **sin** `.git`, `git init
+-beta` **propio**, un commit), `python run_tests.py` entero, y el veredicto sale
+del log: `rc=0` + `ALL TESTS PASSED.` en la **última** línea = superviviente;
+`AssertionError` con traza = muerto. **Cero desplazamiento** de `run_tests.py:23133`
+y `validate_docs.py:1429` comprobado en cada mutación (contenido de esas dos
+líneas comparado antes y después). `git_safe_commit.py` **no** se invocó ni una
+vez desde la cámara.
+
+| id | Qué rompe | Motivo **literal** de la muerte | Veredicto |
+|---|---|---|---|
+| **baseline** | — (control positivo) | `ALL TESTS PASSED.` (398 líneas, 30 641 B, rc=0) | **VERDE** |
+| **M-V1** (forma ORIGINAL) | la DECLARACION vuelve a ser la fuente: `set(VISTAS_DECLARADAS)` | `AssertionError: una vista NUEVA en el disco y SIN declarar tiene que dar ROJO que la nombre y dio 0` (AC-2, `run_tests.py:30197`) | **MUERTO por su aserción** (antes moría por `NameError`) |
+| **M-V4** (forma ORIGINAL) | el helper `_vistas_del_disco` deja de estar en ambito de modulo | `AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco: - run_tests.py:29166: `_vistas_del_disco` esta ANIDADO dentro de una funcion... - run_tests.py:0: no se puede derivar la DECLARACION...` (AC-1) | **MUERTO por su aserción** (antes moría por `NameError`) |
+| **M-V3** | el derivado devuelve un conjunto vacio | `AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso)` (AC-2) | MUERTO |
+| **M-V3b** | el helper devuelve la DECLARACION escrita a mano | `AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco: - run_tests.py:29182: una SEGUNDA copia del conjunto de vistas escrita a mano` (AC-1) | MUERTO |
+| **M-V5** | el `return` del helper sale de la DECLARACION | `AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco: - run_tests.py:29164: `_vistas_del_disco` NO deriva del disco: usa `VISTAS_DECLARADAS`...` (AC-1) | MUERTO |
+| **M-V6** | la raiz del repo esta escrita a mano | `AssertionError: el rojo tiene que NOMBRAR la infraccion...` (AC-2) | MUERTO |
+| **M-V7** | el directorio de vistas esta escrito a mano | `AssertionError: el rojo tiene que NOMBRAR la infraccion...` (AC-2) | MUERTO |
+| **Q5** | la cifra de publicaciones vigiladas se mueve | `AssertionError: el rojo tiene que NOMBRAR la infraccion (y no un fallo cualquiera del subproceso): salida='Testing that pack workers only publish via self.after (TASK-035 / cycle 26)...` (AC-2) | MUERTO |
+| **Q1** | las tres sondas `test_*` dejan de invocarse | `AssertionError: un journal ILEGIBLE es un fallo del ancla y solo uno: el historial de la fixture no aporta ciclos y el changelog esta completo. Errors: ['.taskmaster/rd_journal.json: ESTA CORRUPTO...']` (`run_tests.py:13542`) | MUERTO |
+| **Q2** | AC-1 deja de mirar el guard hermano | `AssertionError: el detector tiene que DENUNCIAR una enumeracion escrita a mano en una funcion que NO esta en ninguna lista, y nombrarla con FICHERO Y LINEA: si el detector vuelve a mirar un conjunto de guards escrito a mano (Q2)...` (AC-1, `run_tests.py:29881`) | MUERTO |
+| **Q2b** | AC-1 no mira **ningún** guard | la misma asercion que Q2 (AC-1, `run_tests.py:29879`) | MUERTO |
+| **S1** | el recorrido **no baja** al cuerpo de un `for` | `AssertionError: el detector tiene que DENUNCIAR una enumeracion escrita a mano metida en un bucle ANIDADO, y nombrarla con FICHERO Y LINEA: si el recorrido no baja a los bucles anidados, la enumeracion se cuela en silencio (S1) y este AC no mide nada` (AC-1, `run_tests.py:29924`) | **MUERTO por la celda nueva de R8** |
+| **S1b** | el recorrido **no baja** al cuerpo de un `while` | `AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco: - run_tests.py:29193: `_guarda_anidada_de_la_camara` recorre una ENUMERACION literal...` (AC-1) | MUERTO |
+| **S1c** | el control positivo de S1 (la enumeracion anidada, sin sabotaje) | `AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco: - run_tests.py:29193: `_guarda_anidada_de_la_camara` recorre una ENUMERACION literal...` (AC-1) | MUERTO |
+| **S2** | **una** justificacion escrita tapa **dos** enumeraciones | `AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco: - run_tests.py:29194: `_guarda_con_justificacion` recorre una ENUMERACION literal... - run_tests.py:29197: ...` (AC-1) | **MUERTO** (con la tolerancia por funcion sobrevivía) |
+| **S2d2** | la justificacion **nombra** la primera enumeracion: la segunda sigue sin justificacion | `AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco: - run_tests.py:29195: `_guarda_con_justificacion_nombrada` recorre una ENUMERACION literal (escrita a mano: ['dashboard_view.py', 'process_manager_view.py'])` (AC-1) | **MUERTO**: sale **solo** la segunda enumeración, que es exactamente la propiedad de R9 |
+| **S2c** | la justificacion real pierde su frase (b) | `AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco:` (AC-1) | MUERTO |
+| **S4** | el patron de S3 aplicado al **guard de verdad** | `AssertionError: el conjunto de vistas que vigilan los guards NO esta derivado del disco:` (AC-1) | MUERTO: el guard real **sí** lo caza |
+| **S3** | la enumeracion escrita a mano detras de una **llamada** | `ALL TESTS PASSED.` (398 líneas, 30 641 B, rc=0) | **SUPERVIVIENTE por decision documentada** (deuda S3). Su log es **identico al baseline** salvo 17 lineas de ruido de tiempos/ids (latencia en ms y nombres con marca de tiempo) |
+| **M-V2** | no es un mutante: es el **escenario** (vista nueva en disco, sin declarar) | con el codigo sano da el rojo de la COMPARACION, que es el comportamiento esperado; lo que tiene que morir es el mutante (M-V1, que muere en AC-2) | **EQUIVALENTE** (se conserva) |
+
+**Nota sobre S3 en el lote 1:** la primera corrida de S3 murió en
+`test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe`, que **no
+va de TASK-082**: es un test **flaky por construcción** (medido: 3/60 fixtures,
+5,0 %, tienen `short + "0"` como prefijo del sha; teórico 1/16 = 6,25 %). La
+segunda corrida de S3 dio `rc=0`. Esa muerte **no era un veredicto** y queda
+declarada como deuda **S9**.

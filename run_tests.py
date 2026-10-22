@@ -6115,10 +6115,10 @@ def test_orden_de_categorias_no_es_alfabetico():
       * un `key=` en línea en vez de `ordenar_categorias` -> la guarda de uso,
         para que no se "arregle" duplicando la política en cada vista.
 
-    TASK-082 (AC-1, R2): ENUMERACION JUSTIFICADA de nombres de vista, y el
-    guard de forma del conjunto de vistas la DELATA cada vez que corre. No la
-    repara: repara es otro ciclo.
-    (a) POR QUE existe la enumeracion: estas DOS vistas son las que manejan categorias y las elige el sentido del test, no el sistema de ficheros: la tercera vista no tiene catalogo que ordenar.
+    TASK-082 (AC-1, R2 y R9): ENUMERACION JUSTIFICADA de nombres de vista, y el
+    guard de forma del conjunto de vistas la DELATA cada vez que corre. La
+    justificacion tiene que NOMBRAR la enumeracion que tolera (TASK-082, R9).
+    (a) POR QUE existe la enumeracion: `process_manager_view.py` y `pack_manager_view.py` son las DOS vistas que manejan categorias y las elige el sentido del test, no el sistema de ficheros: la tercera vista no tiene catalogo que ordenar.
     (b) QUE LA RETIRA: el ciclo que recorra el conjunto de vistas DERIVADO reescribe este test para iterar el derivado y filtrar por el criterio semantico de "maneja categorias".
     """
     import random
@@ -29285,6 +29285,14 @@ def _fors_del_modulo(arbol):
     El ambito es lo que permite que la regla sea DE MODULO: sin el, un detector
     que solo mira dos funciones puede cumplir en verde (TASK-082, R2: Q2 y Q2b
     sobrevivieron a la suite completa por eso).
+
+    **CADA `for` del modulo, a CUALQUIER profundidad** (TASK-082, R8): el
+    recorrido baja al cuerpo de los bucles anidados (`for` y `while`) y a su
+    `orelse`, y de ahi sigue bajando. MEDIDO: un recorrido que se queda en el
+    bucle exterior deja pasar una enumeracion escrita a mano metida dentro
+    (mutante S1, que sobrevivio a la suite completa porque NADA miraba que el
+    recorrido bajara). El descenso es EXPLICITO, no un efecto colateral del
+    recorrido generico.
     """
     salida = []
 
@@ -29293,6 +29301,10 @@ def _fors_del_modulo(arbol):
             if isinstance(nodo, ast.For):
                 salida.append((ambito, nodo))
             if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            if isinstance(nodo, (ast.For, ast.While)):
+                _bajar(nodo.body, ambito)
+                _bajar(nodo.orelse, ambito)
                 continue
             for hijo in ast.iter_child_nodes(nodo):
                 if isinstance(hijo, ast.stmt):
@@ -29348,7 +29360,7 @@ def _funcion_de_modulo_a_la_que_llega(expresion, vinculos, funciones,
                 and expresion.func.id in funciones):
             return expresion.func.id
         for argumento in (list(expresion.args)
-                          + [kw.value for kw in expression.keywords]):
+                          + [kw.value for kw in expresion.keywords]):
             encontrado = _funcion_de_modulo_a_la_que_llega(
                 argumento, vinculos, funciones, profundidad - 1)
             if encontrado:
@@ -29503,6 +29515,68 @@ def _delitos_del_helper_que_no_deriva(arbol, derivador, nombres_de_vista):
     return []
 
 
+def _bloques_de_justificacion(doc):
+    """`[(por_que, retirada)]`: un bloque por justificacion ESCRITA del docstring.
+
+    Un bloque es la pareja (a) POR QUE / (b) QUE LA RETIRA, con texto de verdad
+    detras de los dos marcadores. Se cuentan POR BLOQUE y no por funcion: con
+    la tolerancia por funcion, UNA justificacion tapaba TODAS las
+    enumeraciones de esa funcion (TASK-082, R9: mutante S2, que sobrevivio a
+    la suite completa).
+    """
+    if not doc:
+        return []
+    bloques = []
+    for trozo in doc.split(_MARCA_POR_QUE)[1:]:
+        por_que = trozo.split("\n", 1)[0].strip()
+        retirada = ""
+        if _MARCA_RETIRADA in trozo:
+            retirada = (trozo.split(_MARCA_RETIRADA, 1)[1]
+                        .split("\n", 1)[0].strip())
+        bloques.append((por_que, retirada))
+    return bloques
+
+
+def _nombres_de_vista_en_una_frase(frase, nombres):
+    """Los NOMBRES DE VISTA que una frase menciona."""
+    return {nombre for nombre in nombres if nombre and nombre in frase}
+
+
+def _enumeracion_justificada(doc, nombres, nombres_de_vista):
+    """True si la enumeracion `nombres` tiene SU justificacion escrita.
+
+    La tolerancia es POR ENUMERACION, no por funcion (TASK-082, R9): cada
+    enumeracion necesita la SUYA, y una justificacion no puede tapar dos.
+    MEDIDO: con la tolerancia por funcion, UNA justificacion tapaba DOS
+    enumeraciones de la misma funcion (mutante S2, que sobrevivio a la suite
+    completa), y cualquier funcion se podia aseptarse copiando los dos
+    marcadores en su docstring.
+
+    Por eso la justificacion tiene que NOMBRAR la enumeracion que tolera: los
+    nombres de SUS vistas, y solo esa. Y el nombre tiene que ser EXACTO (el
+    mismo conjunto): una justificacion que nombra de mas no tolera nada, que
+    es lo que impide que una justificacion pueda tapar dos enumeraciones.
+
+    No es una lista de permitidos: la justificacion sigue siendo PROSA en el
+    docstring del infractor, con (a) por que existe y (b) que la retira. Lo
+    que se exige ademas es que diga A CUAL de las enumeraciones se refiere.
+
+    Las dos frases van en UNA LINEA cada una (la misma regla del mecanismo de
+    TASK-081: el texto de verdad va detras del marcador, en la MISMA linea), y
+    las dos tienen que tener 30 caracteres o mas.
+    """
+    universo = set(nombres) | set(nombres_de_vista)
+    for por_que, retirada in _bloques_de_justificacion(doc):
+        if (len(por_que) < _LONGITUD_MINIMA_JUSTIFICACION
+                or len(retirada) < _LONGITUD_MINIMA_JUSTIFICACION):
+            continue
+        mencionados = _nombres_de_vista_en_una_frase(por_que + " " + retirada,
+                                                     universo)
+        if mencionados == set(nombres):
+            return True
+    return False
+
+
 def _delitos_de_fuente_escrita_a_mano(arbol, declaracion, nombres_de_vista):
     """`[(linea, motivo)]`: una enumeracion escrita a mano que es la FUENTE.
 
@@ -29514,6 +29588,11 @@ def _delitos_de_fuente_escrita_a_mano(arbol, declaracion, nombres_de_vista):
     La tolerancia NO es una lista muda de permitidos: es la JUSTIFICACION
     ESCRITA en el docstring de la funcion infractora --(a) por que existe y
     (b) que la retira--, el mismo mecanismo que el guard de AC-5 de TASK-081.
+
+    Y es POR ENUMERACION, no por funcion (TASK-082, R9): la justificacion
+    nombra la enumeracion que tolera y solo tolera esa. Con la tolerancia por
+    funcion, una justificacion tapaba DOS enumeraciones de la misma funcion
+    (mutante S2, que sobrevivio a la suite completa).
     """
     delitos = []
     for ambito, nodo_for in _fors_del_modulo(arbol):
@@ -29540,7 +29619,8 @@ def _delitos_de_fuente_escrita_a_mano(arbol, declaracion, nombres_de_vista):
                             "un `for` en ambito de modulo recorre una "
                             "ENUMERACION literal del conjunto de vistas"))
             continue
-        if _justificacion_de_la_enumeracion(_docstring_de(ambito)) != (None, None):
+        if _enumeracion_justificada(_docstring_de(ambito), nombres,
+                                     nombres_de_vista):
             continue
         delitos.append((nodo_for.lineno,
                         f"`{ambito.name}` recorre una ENUMERACION literal del "
@@ -29569,10 +29649,20 @@ def _delitos_de_forma_del_conjunto_de_vistas(arbol, nombres_de_vista):
       3. el helper que deriva NO devuelve la DECLARACION: su `return` sale
          del disco;
       4. NINGUNA funcion recorre una enumeracion escrita a mano del conjunto
-         de vistas: lo que se abre es el DERIVADO.
+         de vistas: lo que se abre es el DERIVADO. La tolerancia es la
+         JUSTIFICACION ESCRITA en el docstring del infractor, y es POR
+         ENUMERACION: nombra la enumeracion que tolera y solo tolera esa
+         (TASK-082, R9).
 
     Cada hallazgo lleva su LINEA, que es lo que lo hace deuda visible en vez
     de agujero invisible.
+
+    LO QUE LA REGLA (4) **NO** VE, y por que lo dice: una enumeracion escrita
+    a mano escondida DETRAS DE UNA LLAMADA (`for n in _mis_vistas()`). MEDIDO:
+    el hueco es de la REGLA y no del GUARD -- con ese patron aplicado al guard
+    de verdad (mutante S4), el conjunto COMPLETO lo caza la regla 2 y un
+    subconjunto lo caza la comparacion tautologica de los dos guards. Es la
+    deuda A-C68-8 (S3), pendiente de su ciclo.
     """
     delitos = list(_delitos_del_helper_anidado(arbol))
     declaracion, derivador = _declaracion_y_derivador(arbol)
@@ -29607,20 +29697,35 @@ def test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad():
       5. NINGUNA funcion recorre una enumeracion escrita a mano del conjunto de
          vistas: lo que se abre es el DERIVADO. La tolerancia es la
          JUSTIFICACION ESCRITA en el docstring del infractor --(a) por que
-         existe y (b) que la retira--, no una lista de permitidos.
+         existe y (b) que la retira--, no una lista de permitidos, y es POR
+         ENUMERACION: la justificacion nombra la enumeracion que tolera y solo
+         tolera esa (TASK-082, R9).
 
-    LO QUE ESTE GUARD **NO** COMPRUEBA, y por que lo dice: que el helper lea
-    el disco de verdad. Eso lo mide AC-3 (el derivado es el `os.listdir` de un
-    directorio). Aqui se comprueba la FORMA: que el `return` no venga de una
-    enumeracion escrita a mano. Antes esta sonda decia "recorre el DERIVADO"
-    y no era cierto: M-V5 demostraba que se podia recorrer la DECLARACION.
+    LO QUE ESTE GUARD **NO** COMPRUEBA, y por que lo dice:
+
+      * que el helper lea el disco de verdad. Eso lo mide AC-3 (el derivado es
+        el `os.listdir` de un directorio). Aqui se comprueba la FORMA: que el
+        `return` no venga de una enumeracion escrita a mano. Antes esta sonda
+        decia "recorre el DERIVADO" y no era cierto: M-V5 demostraba que se
+        podia recorrer la DECLARACION.
+      * una enumeracion escrita a mano escondida DETRAS DE UNA LLAMADA
+        (`for n in _mis_vistas()`): la regla de forma solo mira el iterable
+        del `for` cuando es un contenedor de literales o un nombre enlazado a
+        el, y una llamada no tiene nada que mirar. MEDIDO: el hueco es de la
+        REGLA, no del GUARD -- con ese patron aplicado al guard de verdad
+        (mutante S4), el conjunto COMPLETO lo caza la regla 3 y un subconjunto
+        lo caza la comparacion tautologica de los dos guards. Es la deuda
+        A-C68-8 (S3), pendiente de su ciclo: este docstring no afirma mas de
+        lo que el guard vigila.
 
     Y las CONTRAPRUEBAS del detector, que son lo que impide que un detector que
     no mira nada cumpla las reglas en verde: un helper anidado se denuncia, el
     derivado se calla, una segunda copia se denuncia, un helper que devuelve la
     declaracion se denuncia, y --la que mata a Q2 y a Q2b-- una enumeracion
     escrita a mano en una funcion que NO esta en ninguna lista se denuncia CON
-    SU FICHERO Y SU LINEA.
+    SU FICHERO Y SU LINEA. Y las dos que matan a S1 y a S2: una enumeracion
+    metida en un bucle ANIDADO se denuncia (R8), y UNA justificacion escrita no
+    tapa DOS enumeraciones de la misma funcion (R9).
 
     Cada hallazgo se nombra con FICHERO Y LINEA.
     """
@@ -29785,10 +29890,96 @@ def test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad():
         "el hallazgo tiene que NOMBRAR la funcion infractora, no solo su linea: "
         f"rojo={rojo!r}")
 
+    # -- (R8) LA CONTRAPRUEBA QUE MATA A S1 ---------------------------------
+    # Una enumeracion escrita a mano metida en un bucle ANIDADO (y dentro de un
+    # `while`) tiene que ser DENUNCIADA. MEDIDO en el ciclo 68: el recorrido
+    # que se queda en el bucle exterior la deja pasar, la suite completa queda
+    # en VERDE y NADIE lo nota (mutante S1). Sin esta celda, R8 no seria un
+    # cierre sino una declaracion: el recorrido tiene que BAJAR a los bucles
+    # anidados, a cualquier profundidad.
+    anidada = ast.parse(
+        "def guarda_anidada():\n"
+        '    for _externo in ("a",):\n'
+        '        for _medio in ("b",):\n'
+        "            while _medio:\n"
+        '                VISTAS = ("dashboard_view.py", "pack_manager_view.py")\n'
+        "                for _nombre in VISTAS:\n"
+        "                    pass\n"
+        "                break\n"
+    )
+    lineas_de_for = [nodo.lineno for nodo in ast.walk(anidada)
+                     if isinstance(nodo, ast.For)]
+    rojo_anidada = "\n".join(_redacto_de_delitos(
+        _delitos_de_fuente_escrita_a_mano(anidada, None, nombres)))
+    assert f"run_tests.py:{lineas_de_for[-1]}" in rojo_anidada, (
+        "el detector tiene que DENUNCIAR una enumeracion escrita a mano metida "
+        "en un bucle ANIDADO, y nombrarla con FICHERO Y LINEA: si el recorrido no "
+        "baja a los bucles anidados, la enumeracion se cuela en silencio (S1) y "
+        f"este AC no mide nada. rojo={rojo_anidada!r}")
+    assert "guarda_anidada" in rojo_anidada, (
+        "el hallazgo tiene que NOMBRAR la funcion infractora del bucle anidado: "
+        f"rojo={rojo_anidada!r}")
+
+    # -- (R9) LA CONTRAPRUEBA QUE MATA A S2 ---------------------------------
+    # La tolerancia es POR ENUMERACION: UNA justificacion escrita no tapa DOS
+    # enumeraciones de la misma funcion. MEDIDO en el ciclo 68: con la
+    # tolerancia por funcion, una sola justificacion tapaba las dos y la suite
+    # completa quedaba en VERDE (mutante S2).
+    dos_con_una = ast.parse(
+        "def guarda_dos():\n"
+        '    """Sonda: UNA justificacion para DOS enumeraciones.\n'
+        "\n"
+        "    (a) POR QUE existe la enumeracion: la primera la necesita el test "
+        "de las categorias y la segunda la necesita el test de las "
+        "publicaciones.\n"
+        "    (b) QUE LA RETIRA: el siguiente ciclo deriva el conjunto de vistas "
+        "del disco entero y estas dos enumeraciones desaparecen con ella.\n"
+        '    """\n'
+        '    VISTAS = ("dashboard_view.py", "pack_manager_view.py")\n'
+        "    for _nombre in VISTAS:\n"
+        "        pass\n"
+        '    OTRAS = ("dashboard_view.py", "process_manager_view.py")\n'
+        "    for _otro in OTRAS:\n"
+        "        pass\n"
+    )
+    lines_de_las_dos = [nodo.lineno for nodo in ast.walk(dos_con_una)
+                        if isinstance(nodo, ast.For)]
+    rojo_dos = "\n".join(_redacto_de_delitos(
+        _delitos_de_fuente_escrita_a_mano(dos_con_una, None, nombres)))
+    assert f"run_tests.py:{lines_de_las_dos[-1]}" in rojo_dos, (
+        "UNA justificacion escrita no puede tapar DOS enumeraciones de la misma "
+        "funcion: cada enumeracion necesita la SUYA, y la suya tiene que "
+        "NOMBRARLA. Con la tolerancia por funcion, la segunda enumeracion se "
+        f"cuela en silencio (S2). rojo={rojo_dos!r}")
+
+    # Y el CONTROL POSITIVO de R9: una justificacion que NOMBRA su enumeracion
+    # la tolera, y solo a esa. Sin esta celda, "una justificacion no tapa dos"
+    # se cumple con "una justificacion no tapa ninguna" y el guard no tolera
+    # nada: entonces la enumeracion justificada de este mismo fichero (la de
+    # las dos vistas que manejan categorias) seria un falso positivo.
+    justificada = ast.parse(
+        "def guarda_justificada():\n"
+        '    """Sonda: la justificacion NOMBRA la enumeracion que tolera.\n'
+        "\n"
+        "    (a) POR QUE existe la enumeracion: `dashboard_view.py` y "
+        "`pack_manager_view.py` son las dos vistas que este test necesita.\n"
+        "    (b) QUE LA RETIRA: el siguiente ciclo deriva el conjunto de vistas "
+        "del disco entero y esta enumeracion desaparece con ella.\n"
+        '    """\n'
+        '    VISTAS = ("dashboard_view.py", "pack_manager_view.py")\n'
+        "    for _nombre in VISTAS:\n"
+        "        pass\n"
+    )
+    assert _delitos_de_fuente_escrita_a_mano(justificada, None, nombres) == [], (
+        "una justificacion escrita que NOMBRA su enumeracion tiene que tolerarla: "
+        "si no, el guard no tolera nada y la enumeracion justificada de este "
+        "mismo fichero sale en rojo por su propia justificacion")
+
     print("guard de forma del conjunto de vistas OK (helper de ambito de modulo, "
           "la DECLARACION se deriva y es unica, el derivado sale del disco, "
           "ninguna funcion recorre una enumeracion escrita a mano; detector "
-          "probado en las dos direcciones) (TASK-082, AC-1).")
+          "probado en las dos direcciones, en bucles anidados y con la "
+          "tolerancia por enumeracion) (TASK-082, AC-1).")
 
 
 # --- AC-2: el PRODUCTO (la vista nueva se audita aunque nadie la apunte) ---
