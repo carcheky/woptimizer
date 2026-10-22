@@ -158,7 +158,7 @@ inventarlo a mano: **la clase exacta** que este repo lleva dos ciclos persiguien
 | 4 | «TRAMPA DEL GITLINK — **ya ha contaminado el repo real DOS VECES**» | `mutation-auditor/agent.md:50` | **2** eventos |
 | 5 | «al mutar, **purga `__pycache__`** entre mutaciones» | `mutation-auditor/agent.md:111` | «y asi es como se cuela un "sobreviviente" que no existe» → **1** evento |
 | 6 | la regla del veredicto en **prosa** | `proposal.md` del ciclo 69, **:260-262** | «en prosa **se aplico por suerte y por merito de quien la leyo**» → **1** evento |
-| 7 | la cifra de tests **escrita a mano** en 5 sitios | `AGENTS.md:70`, `README.md:63`, `STATUS.md:12`, `STATUS.md:127`, `docs/ai/testing-guide.md:57` | se caduca en silencio (deuda D2, `STATUS.md:99`) |
+| 7 | la cifra de tests **escrita a mano** en 5 sitios | `AGENTS.md:70`, `README.md:63`, `STATUS.md:12`, `STATUS.md:132`, `docs/ai/testing-guide.md:57` | se caduca en silencio (deuda D2, `STATUS.md:99`) |
 
 **La leccion del repo es por eso una regla de diseno, no una opinion:** una
 instruccion escrita que se ha incumplido mas de una vez **tiene que meterse en el
@@ -204,7 +204,7 @@ commit (`AGENTS.md:65`).
    ciclo **actual**.
 2. **El coste del recuento.** Un `test_*` contado obliga a subir la cifra
    (**235 → 236**) y a actualizar **cinco** declaraciones en **cuatro** ficheros
-   (`AGENTS.md:70`, `README.md:63`, `STATUS.md:12`, `STATUS.md:127`,
+   (`AGENTS.md:70`, `README.md:63`, `STATUS.md:12`, `STATUS.md:132`,
    `docs/ai/testing-guide.md:57`) mas la fila de la tabla de `testing-guide.md`.
    **Decision: NO hay `test_*` nuevo, luego la cifra se queda en 235 = 159 + 76 y
    las cinco declaraciones NO se mueven.** (Si el dev decidiera anadirlo, el
@@ -434,7 +434,7 @@ lineas canonicas seria justamente el que el gate no podria ver.
   **<= 10 ms** por ciclo de 13 mutantes (MEDIDO: **3,5 ms**). **Cero** corridas
   extra de la suite (**0 s**). El recuento de tests **NO cambia**: sigue en
   **235 = 159 backend + 76 headless**, y las **cinco** declaraciones
-  (`AGENTS.md:70`, `README.md:63`, `STATUS.md:12`, `STATUS.md:127`,
+  (`AGENTS.md:70`, `README.md:63`, `STATUS.md:12`, `STATUS.md:132`,
   `docs/ai/testing-guide.md:57`) **no se mueven**. `python run_tests.py` → verde,
   `python validate_docs.py` → **0 FAIL** (con el check 10 activo), `python
   verify_ui_syntax.py` → exit 0.

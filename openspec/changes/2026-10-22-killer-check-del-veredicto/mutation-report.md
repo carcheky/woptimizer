@@ -361,7 +361,7 @@ Comparación con **la misma entrada** (el árbol de `f5bec54`), el mismo
 |---|---|
 | identificadores sin definir (`symtable`, control positivo que **detecta** el nombre inyectado) | `run_tests.py`: 0 (63 falsos positivos de `__file__`), `validate_docs.py`: 0 (1 de `__file__`), **`.taskmaster/veredicto.py`: 0** |
 | recuento, derivado por el propio validador | `defined=235 invoked=235`, `solo_definidos=[]`, `solo_invocados=[]`; **235 = 159 + 76** |
-| las **cinco** declaraciones | `AGENTS.md:70`, `README.md`, `STATUS.md:12`, `STATUS.md:127`, `docs/ai/testing-guide.md:57`: las cinco dicen **235**; las dos que detallan el reparto, **159 + 76** |
+| las **cinco** declaraciones | `AGENTS.md:70`, `README.md`, `STATUS.md:12`, `STATUS.md:132`, `docs/ai/testing-guide.md:57`: las cinco dicen **235**; las dos que detallan el reparto, **159 + 76** |
 | residuos en los 10 ficheros del commit | **0** CJK, 0 hangul, 0 `U+FFFD`, 0 soft hyphen, 0 cirílico |
 | `git diff HEAD~1 HEAD -- src/ run_tests.py` | **vacío (0 bytes)** |
 | las dos líneas sensibles | `run_tests.py:23133` y `validate_docs.py:1429`, **MEDIDAS y vigentes** |
@@ -570,7 +570,7 @@ camara):
 | identificadores sin definir | **0** en `run_tests.py`, `validate_docs.py` y `.taskmaster/veredicto.py` (`symtable`, con control positivo: la sonda `_nombre_que_no_existe_12345` sale; los dunder que inyecta el interprete se excluyen) |
 | recuento | **235 definidos = 235 invocados**, 0 definidos-no-invocados, 0 invocados-no-definidos (derivado con `ast`) |
 | reparto | **235 = 159 + 76** |
-| las **cinco** declaraciones | `AGENTS.md` (1), `README.md` (1), `STATUS.md:12` (1), `STATUS.md:127` (1) y `docs/ai/testing-guide.md` (2 + la tabla de 235 filas = 235 tests): **intactas** |
+| las **cinco** declaraciones | `AGENTS.md` (1), `README.md` (1), `STATUS.md:12` (1), `STATUS.md:132` (1) y `docs/ai/testing-guide.md` (2 + la tabla de 235 filas = 235 tests): **intactas** |
 | residuos (CJK/hangul/U+FFFD/soft hyphen/cirilico) | **0 en los 10 ficheros del commit `423a96e`**. Hay **34 preexistentes** en `docs/archive/legacy-skills/`, `docs/known-issues.md`, `llms-full.txt`, `openspec/README.md` y dos changes viejos: **preexistentes, no de este ciclo** |
 | `git diff HEAD~1 HEAD -- src/` | **vacio** (0 bytes) |
 | `git status --porcelain` | **vacio** |

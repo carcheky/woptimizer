@@ -25,7 +25,7 @@
   (`1-(1-p)^N`: 6,25 % → **17,6 %** con N=3, 27,5 % con N=5).
 - **NO** anadir un `test_*` a la suite: el recuento se queda en **235 = 159 + 76** y
   las **cinco** declaraciones (`AGENTS.md:70`, `README.md:63`, `STATUS.md:12`,
-  `STATUS.md:127`, `docs/ai/testing-guide.md:57`) **no se mueven**. El gate va en
+  `STATUS.md:132`, `docs/ai/testing-guide.md:57`) **no se mueven**. El gate va en
   `validate_docs.py`.
 - **NO** escribir a mano una lista de tests «de evidencia» ni de veredictos: es la
   clase que este repo lleva dos ciclos persiguiendo (D2, D3, P2, A-C68-1).
