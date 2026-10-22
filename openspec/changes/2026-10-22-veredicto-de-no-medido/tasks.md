@@ -68,3 +68,50 @@ Y esa forma es la que exige el **AC-2 de esta misma tarea** (derivar el hash mue
 | **M-3** | el reloj deja de estar clavado | el pre-vuelo: `el sha de la fixture (...) tiene que tener '0' en la 8.a cifra hexadecimal` | **MUERTO, pero PROBABILÍSTICO**: 61/64 corridas en rojo (95,3 %; teórico 15/16 = 93,75 %), las 3 verdes son las que casan con `0` por suerte |
 
 **Lo que NO se ha cerrado:** `TASK-087`, `TASK-088` y `TASK-089` siguen encoladas. El guard de AC-4 sale **genérico sobre los ficheros de test de la raíz**, pero **no** enumera las 21 fixtures dependientes del reloj: eso es `TASK-088`, y no se cierra aquí.
+
+---
+
+## Ronda 2 (ciclo 69, dev) · M-3 tiene que morir el 100 %, no el 95,3 %
+
+**Por qué esta ronda.** La ronda 1 cerraba M-3 como *MUERTO, pero PROBABILÍSTICO*
+(61/64 = 95,3 %): la aserción que lo detectaba era `sha_completo[7] == "0"`, y con
+el reloj suelto el sha es **aleatorio**, luego esa aserción acierta con **P = 1/16**.
+Las 3 verdes casaban con `0` por suerte. **Un veredicto que depende del azar es
+ruido**, y este bucle decide PASS/FAIL con ese log.
+
+**El arreglo: el pre-vuelo afirma el INSTANTE.** Dos helpers nuevos en `run_tests.py`:
+
+| Helper | Qué hace |
+|---|---|
+| `_epoch_de_una_fecha_iso` | **Deriva** el epoch de la fecha que la fixture declara (no una constante copiada a mano) |
+| `_instante_del_commit` | Lee el epoch **real** del propio objeto commit (`git cat-file commit HEAD`) |
+
+Las dos se comparan: con el reloj suelto **no pueden coincidir**, luego el mutante
+muere **por la causa**, no por la suerte. Y es **portable**: el instante declarado es
+un dato del contrato de la fixture, mientras que el sha absoluto (que depende del
+autor, del formato del commit y de la versión de git) daría falso rojo en otro host.
+
+**La aserción de la 8.ª cifra NO se afloja.** Queda como la **comprobación del
+entorno** (que este host produzca el object id esperado), que es lo que mantiene la
+fixture **adversaria** para el mecanismo **antiguo** (`hash_real + "0"`). La del
+instante es la que carga el veredicto, y va **delante** a propósito.
+
+**MEDIDO** (cámara desechable en `%TEMP%`, 30 corridas por bloque):
+
+| Medición | Resultado |
+|---|---|
+| **M-3** (reloj suelto) | **30/30 en ROJO**, y las **30** con el motivo literal del aserto del **instante** (`EL RELOJ DE LA FIXTURE NO ESTA CLAVADO`); **ninguna** por excepción |
+| **Código sano** (repo real) | **30/30 sin fallos** (0 aserciones levantadas) |
+| **Control positivo** | pre-vuelo verde y tripwire con **0 hallazgos** |
+
+**Criterio de M-3 a partir de ahora: ROJO SIEMPRE** (N/N, con N ≥ 30 corridas
+medidas). Un rojo probabilístico **no** es un veredicto.
+
+**Dos citas corregidas in-place** (las escribió el orquestador con el desplazamiento
+mal calculado: **+6** líneas, no +3), verificadas línea a línea contra `STATUS.md`:
+
+| Cita | Antes | Ahora | Qué hay en esa línea |
+|---|---|---|---|
+| `validate_docs.py:2043` | `STATUS.md:94` | **`STATUS.md:97`** | la fila **D1** |
+| `run_tests.py:17736` | `STATUS.md:105` | **`STATUS.md:108`** | la fila **P-2b** |
+

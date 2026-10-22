@@ -17733,7 +17733,7 @@ def _head_del_repo_real():
     mismo helper y en el mismo orden de tres pasos, y sigue fallando fuerte si no
     hay ninguno. Un skip aqui seria una guarda que se apaga sola en el unico
     sitio donde nadie la ve, que es la clase de punto ciego que
-    la decision P-2b de `STATUS.md:105` prohibe. Y sigue mirandose ESTE repo, porque
+    la decision P-2b de `STATUS.md:108` prohibe. Y sigue mirandose ESTE repo, porque
     `_entorno_git_del_repo()` verifica que el `GIT_DIR` candidato sea de verdad
     este arbol: cambiar de ruta no cambia lo que la sonda mide.
     """
@@ -23389,6 +23389,22 @@ def test_el_envoltorio_git_no_hereda_stdin_y_no_cuelga_en_desatendido():
 # El arreglo tiene DOS mitades y las dos hacen falta: el reloj CLAVADO mantiene
 # la fixture ADVERSARIA (el caso que rompe se da el 100 % de las veces) y el
 # hash DERIVADO hace que ese caso no se de nunca.
+#
+# Y una TERCERA cosa, que es la que hace que el veredicto sea DETERMINISTA: el
+# pre-vuelo afirma el INSTANTE. MEDIDO el 2026-10-22 (dev, ciclo 69): con el
+# reloj suelto (mutante M-3) la asercion de la 8.a cifra del sha es un detector
+# de PROBABILIDAD (P = 1/16) y el mutante sobrevivio 3 de 64 corridas (95,3 %).
+# MEDIDO el 2026-10-22 (dev, ronda 2, camara desechable en %TEMP%): con el
+# aserto del INSTANTE, M-3 da 30/30 corridas en ROJO y las 30 con el motivo
+# literal de ESE aserto (ninguna por excepcion), y el codigo sano da 30/30 sin
+# fallos.
+# Un veredicto que depende de una azar es ruido. El INSTANTE (el epoch que la
+# fixture DECLARA contra el epoch que el commit REAL lleva, leido del objeto
+# commit con `cat-file commit`) es un dato DETERMINISTA y PORTABLE: con el reloj
+# suelto no puede coincidir, luego el mutante M-3 muere el 100 % de las veces y
+# por la CAUSA. La asercion de la 8.a cifra NO se afloja: queda como la
+# comprobacion del ENTORNO (que este host produzca el object id esperado), que
+# es lo que hace que la fixture siga siendo ADVERSARIA para el mecanismo ANTIGUO.
 # ---------------------------------------------------------------------------
 
 # El instante adversario, MEDIDO y VERIFICADO contra git de verdad:
@@ -23399,6 +23415,10 @@ def test_el_envoltorio_git_no_hereda_stdin_y_no_cuelga_en_desatendido():
 # El instante es estable para siempre: el objeto commit depende solo del arbol
 # vacio, del autor, del mensaje y del timestamp con offset explicito (+0000),
 # luego no depende de la zona horaria ni de la version de git.
+#
+# El epoch (1735689643) NO se escribe aqui: se DERIVA de esta fecha con
+# `_epoch_de_una_fecha_iso`, porque una constante escrita a mano es la clase de
+# dato que este repo lleva dos ciclos pagando (D2, D3, P2, A-C68-1).
 _FECHA_ADVERSARIA = "2025-01-01T00:00:43+00:00"
 
 # El asunto de la fixture ADVERSARIA. El sha del commit depende del mensaje, no
@@ -23446,6 +23466,71 @@ def _fixture_con_reloj_clavado(directorio, asunto, fecha_iso):
                 os.environ.pop(v, None)
             else:
                 os.environ[v] = anteriores[v]
+
+
+def _epoch_de_una_fecha_iso(fecha_iso):
+    """El epoch (segundos) de una fecha ISO 8601 con offset EXPLICITO.
+
+    MEDIDO el 2026-10-22 (TASK-083): `2025-01-01T00:00:43+00:00` son
+    1735689643 segundos. El epoch se DERIVA de la fecha que la fixture declara
+    y no se copia a mano: una constante escrita a mano es la clase de dato que
+    este repo lleva dos ciclos pagando (D2, D3, P2, A-C68-1), y aqui la
+    constante seria el epoch de un instante que la fixture podria dejar de
+    declarar sin que nadie se entere.
+
+    El offset tiene que ser EXPLICITO: sin el, `timestamp()` dependeria de la
+    zona horaria del host y el mismo instante seria otro en cada maquina,
+    luego la comparacion con el instante real del commit no seria portable.
+    """
+    from datetime import datetime
+
+    try:
+        momento = datetime.fromisoformat(fecha_iso)
+    except ValueError as error:
+        raise AssertionError(
+            f"la fecha declarada {fecha_iso!r} no es una fecha ISO 8601 que "
+            f"este helper sepa leer: {error}. Sin epoch no se puede comparar el "
+            "instante que la fixture declara con el que el commit real lleva"
+        ) from error
+    assert momento.tzinfo is not None, (
+        f"la fecha declarada {fecha_iso!r} no trae offset: sin offset el epoch "
+        "dependeria de la zona horaria del host y la comparacion con el "
+        "instante real del commit no seria portable")
+    return int(momento.timestamp())
+
+
+def _instante_del_commit(cwd):
+    """El epoch REAL del commit de la fixture, leido del PROPIO objeto commit.
+
+    MEDIDO el 2026-10-22 (TASK-083): `git cat-file commit HEAD` devuelve el
+    objeto commit CRUDO, cuya cabecera lleva
+    `author ancla <ancla@woptimizer.invalid> 1792651978 +0200`: el NOMBRE va
+    suelto, el CORREO va entre ANGULOS y el epoch va DESNUDO, con el offset
+    detras. El epoch va DENTRO del objeto, luego es lo que el commit REAL lleva
+    y no lo que el entorno recuerda.
+
+    Por que `cat-file commit` y no `git log -1 --format=%at`: el objeto crudo
+    es lo que git HASHEA, luego es la MISMA fuente que determina el sha, y no
+    depende del formato de un log (que es una capa de presentacion y puede
+    cambiar con la configuracion del host).
+
+    Y por que el epoch se busca DESNUDO y no entre parentesis: lo que git pone
+    entre `<` y `>` es el CORREO, y un correo puede ser una cadena de digitos. El
+    epoch es el unico token de la cabecera que son SOLO digitos.
+    """
+    cuerpo = _git_de_fixture(["cat-file", "commit", "HEAD"], cwd)
+    for linea in cuerpo.splitlines():
+        if not linea.startswith("author "):
+            continue
+        for parte in linea.split():
+            if parte.startswith("<") and parte.endswith(">"):
+                continue
+            if parte.isdigit():
+                return int(parte)
+    raise AssertionError(
+        f"el objeto commit de {cwd} no trae una cabecera `author` con el epoch "
+        f"dentro: el cuerpo leido es {cuerpo!r}. Sin el no se puede comparar el "
+        "instante que la fixture declara con el que el commit real lleva")
 
 
 def _objetos_de_la_fixture(cwd):
@@ -23552,6 +23637,34 @@ def test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe():
     dependa de la suerte: en vez de adivinar un caracter que quizas exista, se
     listan los objetos de la fixture y se elige un digito hex que NO sea
     prefijo de ninguno, luego `cat-file -e` da rc 128 POR CONSTRUCCION.
+
+    **LAS DOS ASERCIONES DE AC-1 Y POR QUE ESTAN EN ESE ORDEN.** Una mira el
+    INSTANTE y la otra el sha, y no es que una valga mas que la otra: son dos
+    preguntas distintas y el veredicto lo carga la del INSTANTE.
+
+    (1) La del INSTANTE compara el epoch que la fixture DECLARA (derivado de
+        `_FECHA_ADVERSARIA`, no copiado a mano) con el epoch que el commit REAL
+        lleva, leido del propio objeto commit con `git cat-file commit`. Con el
+        reloj suelto (el mutante M-3) el commit lleva el instante actual y el
+        epoch declarado no aparece en ningun sitio: esa asercion muere el 100 %
+        de las veces y por la CAUSA. MEDIDO el 2026-10-22 (dev, ronda 2,
+        camara desechable): 30/30 corridas en ROJO, las 30 con ESTE motivo
+        literal y ninguna por excepcion; el codigo sano, 30/30 sin fallos.
+        Es PORTABLE: el instante declarado es un
+        dato del contrato de la fixture, no una constante copiada del entorno,
+        luego funciona igual en cualquier maquina, mientras que el sha
+        absoluto (que depende del autor, del formato del commit y de la version
+        de git) daria falso rojo en otro host.
+
+    (2) La de la 8.a cifra del sha mira el sha, y el sha con el reloj suelto es
+        ALEATORIO: con ella sola el pre-vuelo seria un detector de
+        PROBABILIDAD (P = 1/16) y su rojo podria venir de la suerte y no del
+        mutante -- que es exactamente como el mutante M-3 sobrevivio 3 de 64
+        veces. Por eso va DETRAS y no se afloja: queda como la COMPROBACION DEL
+        ENTORNO (que este host produzca el object id esperado), que es lo que
+        hace que la fixture siga siendo ADVERSARIA para el mecanismo ANTIGUO
+        (el hash muerto construido como `hash_real + '0'`), y avisa si el
+        formato del objeto commit de git deja de ser el de la adversidad.
     """
     import shutil
 
@@ -23567,15 +23680,41 @@ def test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe():
             ["rev-parse", "--short", "HEAD"], d_hist).strip()
         hash_muerto, digitos_libres = _hash_muerto_por_construccion(d_hist, hash_real)
 
-        # AC-1: la fixture tiene que seguir siendo ADVERSARIA. Si esto revierte,
-        # el reloj ha cambiado y el pre-vuelo ha vuelto a ser una moneda al aire.
+        # AC-1 (LA QUE CARGA EL VEREDICTO): el INSTANTE que la fixture declara
+        # tiene que ser el INSTANTE que el commit REAL lleva. Con el reloj
+        # suelto (mutante M-3) el commit lleva el instante actual y el epoch
+        # declarado no aparece en ningun sitio: esta asercion muere el 100 % de
+        # las veces y por la CAUSA, no por la suerte. Va DELANTE de la de la 8.a
+        # cifra a proposito: con el reloj suelto el sha es ALEATORIO, luego
+        # cualquier asercion que mire el sha seria un detector de probabilidad
+        # (P = 1/16) y un rojo podria venir de la suerte y no del mutante.
+        instante_declarado = _epoch_de_una_fecha_iso(_FECHA_ADVERSARIA)
+        instante_real = _instante_del_commit(d_hist)
+        assert instante_real == instante_declarado, (
+            f"el commit de la fixture tiene que llevar el INSTANTE que la fixture "
+            f"declara ({_FECHA_ADVERSARIA} = {instante_declarado} s) y el commit "
+            f"REAL lleva {instante_real} s: EL RELOJ DE LA FIXTURE NO ESTA CLAVADO. "
+            f"Sin esta asercion el pre-vuelo vuelve a ser una moneda al aire, "
+            f"porque con el reloj suelto el sha es aleatorio y la 8.a cifra solo "
+            f"acierta con P = 1/16")
+
+        # AC-1 (LA COMPROBACION DEL ENTORNO): la fixture tiene que seguir siendo
+        # ADVERSARIA, o sea su sha tiene que tener '0' en la 8.a cifra, que es
+        # lo que hace que el prefijo de 8 hex RESUELVA el objeto real y, con
+        # ello, que el codigo VIEJO (el hash muerto construido como
+        # `hash_real + '0'`) MUERA el 100 % de las veces. Esta comprobacion NO
+        # lleva el veredicto (la de arriba lo lleva): mira el ENTORNO, que este
+        # host produzca el object id esperado, y es la que avisa si el formato
+        # del objeto commit de git deja de ser el de la adversidad.
         assert sha_completo[7] == "0", (
             f"el sha de la fixture ({sha_completo}) tiene que tener '0' en la 8.a "
             f"cifra hexadecimal: es lo que hace que el prefijo de 8 hex RESUELVA "
             f"el objeto real y, con ello, que el codigo viejo (el hash muerto "
             f"construido como `hash_real + '0'`) MUERA el 100 % de las veces. Con "
             f"el reloj clavado en {_FECHA_ADVERSARIA} el sha es 296cfb20...; si "
-            f"esto revierte, el reloj se ha soltado")
+            f"esto revierte, o el reloj se ha soltado o el entorno ha dejado de "
+            f"producir ese object id (esta es la comprobacion del ENTORNO: la que "
+            f"lleva el veredicto es la del INSTANTE, de arriba)")
 
         # El TESTIGO de que la fixture es adversaria: el prefijo de 8 hex del sha
         # REAL resuelve (rc 0). OJO: este valor NO es un hash bajo prueba (no se
