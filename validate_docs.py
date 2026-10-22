@@ -2835,6 +2835,26 @@ def main(argv=None):
 #       que deja el catalogo commiteado.
 #   (c) que los changelogs LLEVEN las lineas: se comprueban si estan, pero su
 #       ausencia no es un FAIL (el journal y el informe son los dos anclajes).
+#   (d) que la evidencia commiteada SEA EL LOG REAL. La evidencia la escribe
+#       quien muta y el gate no puede saberlo: NO comprueba el FICHERO del
+#       frame del traceback. MEDIDO: una evidencia FABRICADA con el frame en
+#       `otro_fichero.py` (que nunca es `run_tests.py`) la acepta y deriva
+#       MUERTO -> **0 FAIL**. O sea: el gate prueba la COHERENCIA con la
+#       evidencia commiteada, no la VERDAD del log.
+#   (e) que el `sha` del arbol auditado exista. El sha se copia tal cual de la
+#       linea canonica y el sha NO se resuelve contra ningun objeto de ningun
+#       repositorio: el "tercer testigo" es DECORATIVO. MEDIDO: un sha
+#       inventado (`deadbee000...`, que no existe en ningun arbol) -> **0 FAIL**.
+#       Y el sha commiteado de M-3 (`e8111158...`) es el del ARBOL AUDITADO (la
+#       camara donde se midio), que NO es el repo real: por eso el gate lo
+#       acepta sin resolverlo, y por eso el sha identifica el arbol MEDIDO y no
+#       el repo donde vive la linea.
+#
+# ESTA LISTA **NO ES EXHAUSTIVA**: es lo que se ha MEDIDO hasta ahora (ciclo
+# 70, mutantes K-1..K-17). Un limite que nadie ha medido sigue sin declarar, y
+# declararlo aqui sin medirlo seria escribir una promesa que nadie ha
+# comprobado. Lo que SI es exhaustivo es la lista de lo que el gate PRUEBA (los
+# cinco puntos de arriba), que sale del CODIGO y no de la prosa.
 #
 # POR QUE NO SE REPITE LA SUITE N VECES, con las cifras. Repetir cuesta
 # N x 734,9 s por mutante: N=3 son 8,0 h POR CICLO, y el killer-check cuesta
@@ -3131,6 +3151,16 @@ def _comprobar_veredictos_de_mutacion(root, errors, ok, saltados,
     informe no comprueba el ancla. Ademas, el contrato del flag son TRES
     saltados (el repositorio, el historial y las reglas R2/R4 del journal), y
     un cuarto haria que ese numero dejar de ser un contrato.
+
+    LO QUE NO PRUEBA, con los motivos medidos: (a) que el `asa` declarada sea
+    la guard semanticamente correcta; (b) que el `asa` no se ajustara despues
+    de ver el log; (c) que los changelogs LLEVEN las lineas (su ausencia no es
+    un FAIL); (d) que la evidencia commiteada SEA EL LOG REAL (una evidencia
+    fabricada con el frame en otro fichero -> 0 FAIL); (e) que el `sha` del
+    arbol auditado exista (un sha inventado -> 0 FAIL: el sha no se resuelve
+    contra ningun objeto). La lista completa, con el porque de cada limite,
+    esta en el bloque de arriba ("LO QUE ESTE GATE **NO** PRUEBA"), y esa
+    lista NO es exhaustiva: es la de los limites MEDIDOS hasta ahora.
     """
     global _REGISTRO_DE_VEREDICTOS
     _REGISTRO_DE_VEREDICTOS = None

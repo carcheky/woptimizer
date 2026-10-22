@@ -101,3 +101,73 @@ mutante es **NO MEDIDO**, y el gate lo dice (K-6 lo mata).
 (el guard de suite que detecte que el arbol se movio durante la corrida) siguen
 abiertos: no son de este encargo.
 
+
+---
+
+## Ronda de cierre — TASK-087 (ciclo 70), los TRES huecos de la auditoria
+
+**Estado:** HECHO. La auditoria del Paso 4 dio **PARTIAL** (14 de 16 mutantes
+muertos) y dejo **tres** cosas abiertas. Ninguna era un rediseno: eran tres
+arreglos acotados, y aqui esta lo que se midio de cada uno.
+
+### A · K-8, el guard se puede desenchufar (superviviente)
+
+`validar()` podia dejar de llamar al check 11 y el validador daba **160 OK,
+0 FAIL y SIN REGISTRO**: nadie lo notaba. El repo ya tenia el patron para el
+check 9 (un test de «mutante de cableado»); **el check 11 no lo tenia**.
+
+**Reparacion:** el test de cableado del check 9 (`run_tests.py`, fila 130 de
+`docs/ai/testing-guide.md`) crece y exige **ademas** que el check 11 este
+cableado y que su **REGISTRO** se imprima, con su propia mitad mutante (la
+llamada sustituida por `pass`). El **recuento NO se mueve**: sigue en
+**235 = 159 + 76** y las **cinco** declaraciones siguen donde estaban, porque
+no se anade ningun `test_*` nuevo.
+
+**MEDIDO en camara** (`%TEMP%\wopt_c71_k8`, arbol copiado del repo, sin
+`.git`): con todo cableado el test sale **rc = 0**; con el check 11
+desenchufado sale **rc = 1** con `AssertionError: el check 11 tiene que
+CORRER dentro de \`validar()\`: su REGISTRO no aparece en el informe`. O sea:
+K-8 **muere**, y el control positivo esta.
+
+### B · El docstring del gate declaraba 3 limites y le faltaban 2
+
+Faltaban los dos limites que la auditoria midio como **GUARDA MUERTA**: la
+**evidencia fabricada** (K-10b: el frame del traceback en otro fichero ->
+**0 FAIL**) y el **sha inexistente** (K-12 -> **0 FAIL**). Los dos estan
+escritos **con su motivo medido**, y la lista declara que **NO es
+exhaustiva**: es la de los limites **medidos** hasta ahora (K-1..K-17). Lo
+que si es exhaustivo es la lista de lo que el gate **prueba**, que sale del
+codigo.
+
+**MEDIDO ademas la consecuencia que pedia el encargo:** el sha de la camara
+(`e8111158…`, el del arbol auditado, que no existe en ningun arbol del repo)
+**no** hace fallar el gate — en las celdas del harness del auditor la entrada
+del journal lleva ese sha y no hay ni un FAIL por el sha — y la **coherencia
+entre catalogo, journal, changelog e informe si se exige**: K-9c, K-11, K-14 y
+K-15 siguen muertas cada una por su asercion.
+
+### C · El emisor pisaba la evidencia de los mutantes que no le pasabas
+
+Emitir el veredicto de un mutante **destruia** la evidencia commiteada de los
+otros (la reescribia con «no hay ninguna corrida»), y con el mutante pisado
+declarado NO MEDIDO el gate no se enteraba: era un verde por omision.
+
+**Reparacion:** el emisor escribe la evidencia **solo** de los mutantes con
+corrida, y no toca la de los demas. El mutante sin corridas sigue recibiendo
+su linea canonica (NO MEDIDO: sin evidencia no hay veredicto), pero **sin**
+evidencia escrita: el gate exigira la evidencia commiteada y su ausencia es
+un FAIL, que es lo correcto.
+
+**MEDIDO** (catalogo de DOS mutantes, un solo `--log`): la evidencia ajena
+queda **IDENTICA byte a byte** (161 B antes y despues, mismo sha1
+`1e59ac381b8110e5`) y la del mutante que si se le pasa se escribe (167 B, con
+el frame del log).
+
+### Los 14 mutantes que el auditor dio por muertos, siguen muertos
+
+Reejecutadas **todas** las celdas del harness del auditor contra el codigo de
+esta ronda (arbol `pristine` rehecho con el repo actual): K-1, K-2, K-3, K-4,
+K-5, K-6, K-7, K-9a/b, K-9c, K-10a, K-11, K-14, K-15 y K-17 mantienen su
+veredicto (diferencial SANO/MUTADO con la guarda que dispara en la celda sana
+y NO en la mutada). K-10b y K-12 siguen siendo **GUARDA MUERTA**, que es
+justo lo que el docstring declara ahora.

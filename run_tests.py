@@ -22294,6 +22294,25 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
     copia el MUTANTE (el cableado del check 9 sustituido por `pass`) y exige que
     el residuo desaparezca del informe. Asi el test demuestra su capacidad de
     matar en vez de declararla.
+
+    TASK-087 (ciclo 70, ronda de cierre): este test crece para los TRES huecos
+    que dejo la auditoria del fix `f5bec54` (PARTIAL: 14 de 16 mutantes
+    muertos). Los tres van aqui porque los tres son del MISMO guard: el
+    vigilante sobre si mismo. El RECUENTO NO SE MUEVE (sigue en 235 = 159 + 76)
+    porque no se anade ningun `test_*` nuevo: se extiende este.
+
+    (A) K-8, EL GUARD VACIOABLE. `validar()` podia dejar de llamar al check 11
+        y el validador daba 160 OK, 0 FAIL y SIN REGISTRO: nadie lo notaba. El
+        mecanismo que lo mata es el mismo que el del check 9, luego el mutante
+        de cableado del check 11 se mide aqui, con el mismo esqueleto y el
+        mismo subproceso.
+    (B) LOS LIMITES QUE EL DOCSTRING DEL GATE NO DECLARABA: que la evidencia
+        commiteada puede NO ser el log real (K-10b) y que el `sha` no se
+        resuelve contra nada (K-12). Un limite que no esta escrito no esta
+        declarado, luego se comprueba sobre el TEXTO del gate.
+    (C) EL EMISOR NO PISA LA EVIDENCIA DE LOS MUTANTES QUE NO LE PASAS: emitir
+        el veredicto de uno no puede destruir la evidencia commiteada de los
+        demas.
     """
     print("Check 9 en el camino real del validador, con su mutante de cableado...")
     import json
@@ -22347,6 +22366,16 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
             f"con un residuo real el validador tiene que salir con != 0; salio con "
             f"{rc}. Informe:\n{informe[-2000:]}")
 
+        # --- (A) EL CHECK 11 TAMBIEN TIENE QUE ESTAR CABLEADO (K-8) ---------
+        # El REGISTRO del check 11 es lo que hace visible que el guard ha
+        # corrido. MEDIDO (auditoria del ciclo 70, mutante K-8): con la llamada
+        # sustituida por `pass`, el validador daba 160 OK, 0 FAIL y SIN
+        # REGISTRO, y NINGUN `test_*` lo notaba: un guard que se puede apagar
+        # sin que nada se entere.
+        assert "[REGISTRO] check 11 (veredicto de mutacion)" in informe, (
+            "el check 11 tiene que CORRER dentro de `validar()`: su REGISTRO no "
+            f"aparece en el informe. rc={rc}. Informe:\n{informe[-2000:]}")
+
         # --- LA MITAD MUTANTE: el cableado sustituido por `pass` -------------
         ruta_validador = os.path.join(tmp, "validate_docs.py")
         with open(ruta_validador, encoding="utf-8") as f:
@@ -22367,6 +22396,147 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
             "hacer DESAPARECER el residuo del informe: si el test sigue viendo el "
             "fallo con el cableado muerto, no esta probando el cableado. Informe "
             f"del mutante:\n{informe_mut[-2000:]}")
+
+        # --- (A) LA MITAD MUTANTE DEL CHECK 11: su cableado por `pass` ------
+        # Se RESTAURA el validador original (la copia tiene ahora escrito el
+        # mutante del check 9) y se sustituye la LLAMADA del check 11. La
+        # llamada puede ocupar mas de una linea, luego se busca donde cierra
+        # el parentesis en vez de suponerlo.
+        with open(ruta_validador, "w", encoding="utf-8") as f:
+            f.write(fuente)
+        lineas_val = fuente.splitlines()
+        indice = next((i for i, l in enumerate(lineas_val)
+                        if l.strip().startswith(
+                            "_comprobar_veredictos_de_mutacion(root,")), None)
+        assert indice is not None, (
+            "no se encuentra la linea de cableado `_comprobar_veredictos_de_"
+            "mutacion(root, ...)` en la copia del validador. Si el cableado "
+            "cambio de forma, este test hay que rehacerlo; lo que no puede "
+            "pasar es que siga en verde sin comprobar el cableado")
+        fin = indice
+        while lineas_val[fin].count(")") < lineas_val[fin].count("("):
+            fin += 1
+        with open(ruta_validador, "w", encoding="utf-8") as f:
+            f.write("\n".join(lineas_val[:indice]
+                              + ["    pass  # MUTANTE: sin check 11"]
+                              + lineas_val[fin + 1:]) + "\n")
+        rc_mut11, informe_mut11 = ejecutar()
+        assert "Resumen:" in informe_mut11, (
+            "el mutante del check 11 tiene que llegar al final y printar su "
+            f"informe: si no, este test no esta probando el cableado sino una "
+            f"excepcion. Informe:\n{informe_mut11[-2000:]}")
+        assert "[REGISTRO] check 11 (veredicto de mutacion)" not in informe_mut11, (
+            "el MUTANTE (el cableado del check 11 sustituido por `pass`) tiene que "
+            "hacer DESAPARECER el REGISTRO del check 11 del informe: si el test "
+            "sigue viendolo con el cableado muerto, no esta probando el "
+            f"cableado. Informe del mutante:\n{informe_mut11[-2000:]}")
+
+        # --- (B) EL GATE DECLARE LOS LIMITES QUE NO PRUEBA (K-10b, K-12) -----
+        # Un limite que no esta ESCRITO no esta DECLARADO. El docstring se
+        # presenta como la lista de lo que el gate NO prueba, luego tiene que
+        # traer los DOS limites medidos que faltaban (la evidencia puede no ser
+        # el log real; el sha no se resuelve) y decir que la lista NO es
+        # exhaustiva: si no, quien lo lea puede suponer que la evidencia
+        # commiteada ES el log y que el sha resuelve contra algo.
+        raiz = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(raiz, "validate_docs.py"), encoding="utf-8") as f:
+            fuente_gate = f.read()
+        assert "LO QUE ESTE GATE **NO** PRUEBA" in fuente_gate, (
+            "el gate tiene que declarar en voz alta lo que NO prueba: no se "
+            "encuentra el bloque en `validate_docs.py`")
+        # El bloque canonico es el PRIMERO: el docstring de la funcion lo
+        # vuelve a citar, y ese segundo no es la lista.
+        partes = fuente_gate.split("LO QUE ESTE GATE **NO** PRUEBA")
+        assert len(partes) >= 2, (
+            "el bloque de lo que el gate NO prueba tiene que existir en "
+            "`validate_docs.py`")
+        bloque = partes[1]
+        bloque = bloque.split("POR QUE NO SE REPITE LA SUITE")[0]
+        minusculas = bloque.lower()
+        for etiqueta in ("(a)", "(b)", "(c)", "(d)", "(e)"):
+            assert etiqueta in bloque, (
+                f"la lista de lo que el gate NO prueba tiene que traer el limite "
+                f"{etiqueta}: no aparece en el bloque")
+        assert "0 fail" in minusculas, (
+            "los dos limites que faltaban se anaden CON SU MOTIVO MEDIDO (0 "
+            "FAIL): un limite sin motivo medido es una opinion")
+        assert "log real" in minusculas, (
+            "el limite (d) tiene que decir que la evidencia commiteada puede NO "
+            "ser el log real (MEDIDO: una evidencia fabricada con el frame en "
+            "otro fichero -> 0 FAIL)")
+        assert "no se resuelve" in minusculas, (
+            "el limite (e) tiene que decir que el sha del arbol auditado NO se "
+            "resuelve contra ningun objeto (MEDIDO: un sha inexistente -> 0 "
+            "FAIL)")
+        assert "no es exhaustiva" in minusculas, (
+            "la lista de lo que el gate NO prueba tiene que declarar que NO es "
+            "exhaustiva: es la de los limites MEDIDOS, y presentarla como "
+            "completa hace que quien la lea suponga lo que no esta medido")
+
+        # --- (C) EL EMISOR NO PISA LA EVIDENCIA DE LOS MUTANTES QUE NO LE
+        #     PASAS (TASK-087) -------------------------------------------------
+        # MEDIDO (auditoria del ciclo 70): con un catalogo de DOS mutantes y un
+        # solo `--log`, el emisor reescribia `evidencia/M-3.cola` con "no hay
+        # ninguna corrida": emitir el veredicto de uno BORRABA la evidencia
+        # commiteada del otro, y con el mutante pisado declarado NO MEDIDO el
+        # gate no se enteraba (verde por omision).
+        dir_emit = tempfile.mkdtemp(prefix="wopt_t087_emit_")
+        try:
+            os.makedirs(os.path.join(dir_emit, "evidencia"), exist_ok=True)
+            catalogo_emit = {"mutaciones": [
+                {"id": "M-3",
+                 "asa": "test_el_pre_vuelo_de_un_hash_muerto_"
+                        "distingue_existe_de_no_existe",
+                 "motivo": "EL RELOJ DE LA FIXTURE NO ESTA CLAVADO"},
+                {"id": "M-A1", "asa": "test_el_asa_del_mutante_pasado",
+                 "motivo": "MOTIVO DECLARADO"}]}
+            ruta_catalogo = os.path.join(dir_emit, "mutaciones.json")
+            with open(ruta_catalogo, "w", encoding="utf-8") as f:
+                json.dump(catalogo_emit, f)
+            ajena = os.path.join(dir_emit, "evidencia", "M-3.cola")
+            with open(ajena, "w", encoding="utf-8", newline="\n") as f:
+                f.write("=== WOPT_RUN 1 RC=1 ===\n"
+                        "Traceback (most recent call last):\n"
+                        '  File "C:\\camara\\run_tests.py", line 1, in test_ajeno\n'
+                        "AssertionError: EVIDENCIA QUE NO SE DEBE TOCAR\n")
+            with open(ajena, "rb") as f:
+                antes = f.read()
+            log = os.path.join(dir_emit, "suite.log")
+            with open(log, "w", encoding="utf-8", newline="\n") as f:
+                f.write("RC=1\n"
+                        "Traceback (most recent call last):\n"
+                        '  File "C:\\camara\\run_tests.py", line 2, in '
+                        "test_el_asa_del_mutante_pasado\n"
+                        "AssertionError: MOTIVO DECLARADO\n")
+            res = subprocess.run(
+                [sys.executable, os.path.join(raiz, ".taskmaster", "veredicto.py"),
+                 "emitir", "--catalogo", ruta_catalogo,
+                 "--evidencia", os.path.join(dir_emit, "evidencia"),
+                 "--sha", "0" * 40, "--log", f"M-A1={log}"],
+                cwd=dir_emit, capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=300)
+            assert res.returncode == 0, (
+                f"el emisor tiene que salir con 0: salio con {res.returncode}. "
+                f"stderr:\n{(res.stderr or '')[-1500:]}")
+            with open(ajena, "rb") as f:
+                despues = f.read()
+            assert despues == antes, (
+                "el emisor NO puede reescribir la evidencia de un mutante que no "
+                "se le ha pasado: la evidencia de M-3 ha cambiado. MEDIDO "
+                "(auditoria del ciclo 70): antes, emitir el veredicto de un "
+                "mutante destruia la evidencia commiteada de los demas, y con el "
+                "mutante pisado declarado NO MEDIDO el gate no se enteraba")
+            escrita = os.path.join(dir_emit, "evidencia", "M-A1.cola")
+            assert os.path.exists(escrita), (
+                "el emisor tiene que escribir la evidencia del mutante que SI le "
+                "han pasado (M-A1): si no escribe ninguna, no esta midiendo nada")
+            with open(escrita, encoding="utf-8") as f:
+                cuerpo_escrito = f.read()
+            assert "test_el_asa_del_mutante_pasado" in cuerpo_escrito, (
+                "la evidencia escrita tiene que ser la COLA del log que se le ha "
+                "pasado, no otra cosa")
+        finally:
+            shutil.rmtree(dir_emit, ignore_errors=True)
     finally:
         for clave, valor in previos.items():
             if valor is None:
@@ -22375,7 +22545,9 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
                 os.environ[clave] = valor
         shutil.rmtree(tmp, ignore_errors=True)
     print("Check 9 cableado en el camino real OK: el residuo sale con != 0 y el "
-          "mutante de cableado lo hace desaparecer.")
+          "mutante de cableado lo hace desaparecer. Y ademas: el check 11 sale "
+          "cableado con su REGISTRO (y su mutante lo borra), el gate declara los "
+          "cinco limites que no prueba y el emisor no pisa la evidencia ajena.")
 
 
 def test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real():
@@ -23444,7 +23616,7 @@ def _fixture_con_reloj_clavado(directorio, asunto, fecha_iso):
     `_repo_temporal_de_un_commit`:** esa helper la comparten 21 call sites y
     anadirle un parametro opcional por una necesidad de UN test seria un
     cambio con 21 consumidores; y ademas moveria el numero de linea de
-    `run_tests.py:23133`, que cuatro afirmaciones citan POR NUMERO (lo vigila
+    `run_tests.py:23305`, que cuatro afirmaciones citan POR NUMERO (lo vigila
     `test_las_citas_de_sandbox_rules_siguen_siendo_ciertas`). Clavar el reloj
     aqui resuelve el problema sin tocar nada compartido y sin mover ninguna
     cita.
@@ -24532,6 +24704,19 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
         # es que un `cat-file` se esconda en el, y aqui lo unico que hay es el
         # interprete, el nombre del driver y la ruta del script copiado.
         ("subprocess.run", "[sys.executable, 'driver.py', ruta_run_tests]"): 1,
+        # TASK-087 (ciclo 70, ronda de cierre): la UNA del EMISOR. Lanza
+        # `.taskmaster/veredicto.py emitir` con el catalogo y el log de UN
+        # mutante, para medir que el emisor NO pisa la evidencia de los demas.
+        # No llama a git: el emisor lee el catalogo y escribe ficheros, y nada
+        # mas. `sys.executable`, `raiz`, `ruta_catalogo` y `dir_emit` son
+        # `Name` sin enlace estatico, luego el guard no puede ver el resto del
+        # argv; lo que puede es que un `cat-file` se esconda en el, y aqui lo
+        # unico que hay es el interprete, la ruta del emisor y sus argumentos.
+        ("subprocess.run", "[sys.executable, os.path.join(raiz, '.taskmaster', "
+                           "'veredicto.py'), 'emitir', '--catalogo', "
+                           "ruta_catalogo, '--evidencia', os.path.join("
+                           "dir_emit, 'evidencia'), '--sha', '0' * 40, "
+                           "'--log', f'M-A1={log}']"): 1,
     }
     visto = {}
     for funcion, argv, _linea in INDECISAS:
@@ -29008,7 +29193,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
 
     **POR QUE ESTE GUARD EXISTE Y POR QUE NO SE PONE EN ROJO.** Cuatro sitios
     citan esas dos lineas POR NUMERO: `validate_docs.py:1429`,
-    `validate_docs.py:1924`, `run_tests.py:23133` y
+    `validate_docs.py:1924`, `run_tests.py:23305` y
     `docs/ai/sandbox-rules.md:1133`, y las cuatro dicen que son las dos filas del
     `0` de la tabla de codigos de salida. MEDIDO: `_declara_el_codigo_sobrecargado`
     (`validate_docs.py:1935`) compila el patron con `re.MULTILINE` sobre el
@@ -29051,7 +29236,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     # numero de una y olvidar las otras tres deja tres mentiras nuevas.
     cita = "sandbox-rules.md:55-56"
     for relativo, numeros in (("validate_docs.py", ("1429", "1924")),
-                              ("run_tests.py", ("23133",)),
+                              ("run_tests.py", ("23305",)),
                               ("docs/ai/sandbox-rules.md", ("1133",))):
         texto = _texto_de(os.path.join(raiz, *relativo.split("/"))).splitlines()
         for numero in numeros:

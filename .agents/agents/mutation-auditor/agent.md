@@ -105,6 +105,21 @@ deteccion:
   LO QUE ESTE CONTRATO NO PRUEBA: que el asa declarada sea la guard
   SEMANTICAMENTE correcta para esa mutacion. Lo que si prueba es que el veredicto
   es coherente con la evidencia y que no se puede escribir sin la linea canonica.
+
+  Y los otros tres limites, MEDIDOS en el ciclo 70 (mutantes K-10b y K-12), que
+  el gate declara con su motivo: (d) que la evidencia commiteada SEA el log real
+  -- una evidencia fabricada con el frame del traceback en otro fichero la
+  acepta y deriva MUERTO -> 0 FAIL, luego el gate prueba la COHERENCIA con la
+  evidencia commiteada, no la VERDAD del log; (e) que el sha del arbol auditado
+  exista -- el sha NO se resuelve contra ningun objeto de ningun repositorio,
+  luego un sha inexistente da 0 FAIL y el sha identifica el arbol MEDIDO (la
+  camara), no el repo; (c) que los changelogs lleven las lineas (su ausencia no
+  es un FAIL: el journal y el informe son los dos anclajes).
+
+  Esa lista NO es exhaustiva: es la de los limites MEDIDOS hasta ahora (ciclo
+  70, K-1..K-17). La lista COMPLETA, con el porque de cada limite, esta en el
+  docstring del gate (`validate_docs.py`, check 11) y en
+  `docs/ai/testing-guide.md`.
 ```
 
 La parte **automatizable** de ese bloque vive en el codigo, no en la prosa:
@@ -133,10 +148,18 @@ El flujo:
 2. mutas, corres la suite, guardas el log
 3. python .taskmaster/veredicto.py emitir --catalogo <cambio>/mutaciones.json \
        --evidencia <cambio>/evidencia --sha <sha> --log M-1=<log> [--log M-1=<otro>]
-   -> escribe evidencia/<mutante>.cola, imprime las lineas WOPT_VEREDICTO
+   -> escribe evidencia/<mutante>.cola SOLO de los mutantes con corrida (a los
+      demas no les toca su evidencia), imprime las lineas WOPT_VEREDICTO
 4. pegas esas lineas en el BLOQUE DE MAQUINA del mutation-report.md
 5. el orquestador las copia al journal (campo `veredictos`) y a los dos changelogs
 ```
+
+El emisor escribe la evidencia **solo** de los mutantes cuya corrida le pasas:
+si emites para un subconjunto, los demas conservan la evidencia que ya tenian
+(MEDIDO el 2026-10-22: antes la reescribia con "no hay ninguna corrida" y
+destruia la evidencia ajena). El flujo del ciclo es emitir para **todos** los
+mutantes del cambio: un NO MEDIDO **sin** evidencia commiteada es un FAIL del
+check 11, que es lo correcto.
 
 El bloque de maquina va **delimitado**, para que la prosa que cita el FORMATO no se
 confunda con un veredicto:

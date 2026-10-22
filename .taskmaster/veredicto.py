@@ -28,7 +28,15 @@ El killer-check cuesta CERO corridas extra porque el harness ya captura el log.
 
 LO QUE ESTE CONTRATO NO PRUEBA: que el `asa` declarada sea la guard
 SEMANTICAMENTE correcta para esa mutacion. Lo que si prueba es que el veredicto
-es coherente con la evidencia commiteada.
+es coherente con la evidencia commiteada. La lista COMPLETA de lo que el
+contrato no prueba, con los motivos MEDIDOS de cada limite, esta en el
+docstring del gate (`validate_docs.py`, check 11): aqui no se duplica, porque
+dos listas de limites se separan sin avisar.
+
+LO QUE NO ESCRIBE: la evidencia de los mutantes a los que no se le pasan
+corridas. Emitir el veredicto de uno NO destruye la evidencia de los demas
+(medido en la auditoria del ciclo 70: antes la reescribia con "no hay ninguna
+corrida", y con el mutante pisado declarado NO MEDIDO el gate no se enteraba).
 
 INDEPENDENCIA CON EL GATE. El gate de `validate_docs.py` (check 11) RE-DERIVA
 el estado con su PROPIA implementacion y NO importa este modulo. Si compartieran
@@ -271,6 +279,20 @@ def emitir(catalogo, logs_por_mutante, sha, dir_evidencia, salida=None,
     `logs_por_mutante` mapea id de mutante -> lista de rutas de log (puede
     tener mas de una: dos corridas del mismo mutante). `rcs_por_mutante` mapea
     id -> rc de la corrida, cuando el runner lo dio y el log no lo trae.
+
+    LO QUE NO ESCRIBE, y por que. La evidencia de un mutante al que NO se le
+    paso ninguna corrida NO se toca: ni se crea, ni se sobrescribe, ni se
+    vacia. MEDIDO (auditoria del ciclo 70, TASK-087): antes, emitir el
+    veredicto de un mutante BORRABA la evidencia commiteada de los otros (la
+    reescribia con "no hay ninguna corrida"), y con el mutante pisado
+    declarado NO MEDIDO el gate no se enteraba: era un verde por omision. El
+    que emite un veredicto no puede destruir la evidencia de quien no le paso
+    sus logs.
+
+    El mutante sin corridas sigue recibiendo su linea canonica (NO MEDIDO: sin
+    evidencia no hay veredicto), pero SIN evidencia escrita. El gate exigira
+    la evidencia commiteada y su ausencia es un FAIL, que es lo correcto:
+    nadie puede publicar un veredicto sin la evidencia que lo sostiene.
     """
     rcs_por_mutante = rcs_por_mutante or {}
     if dir_evidencia:
@@ -289,12 +311,19 @@ def emitir(catalogo, logs_por_mutante, sha, dir_evidencia, salida=None,
             if indice == 0 and identificador in rcs_por_mutante:
                 rc = rcs_por_mutante[identificador]
             bloques.append((rc, cola))
-        if dir_evidencia:
+        if dir_evidencia and bloques:
+            # SOLO la evidencia de los mutantes que tienen corridas. Un mutante
+            # al que no se le paso ningun log conserva la evidencia que tenga:
+            # sobrescribirla seria destruir la evidencia de otro.
             escribir_evidencia(os.path.join(dir_evidencia,
                                              f"{identificador}.cola"), bloques)
         corridas = [estado_de_una_corrida(cola, rc, asa, motivo)
                     for rc, cola in bloques]
         estado, por_que = estado_del_mutante(corridas, asa, motivo)
+        if dir_evidencia and not bloques:
+            por_que = (por_que + ". La evidencia de este mutante NO se ha "
+                       "escrito: no se paso ninguna corrida suya, y la "
+                       "evidencia commiteada de los demas no se toca")
         lineas.append(linea_canonica(identificador, estado, sha_de_este))
         print(f"{identificador}: {estado} ({por_que})")
     if salida:

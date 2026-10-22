@@ -151,3 +151,257 @@ veredictos.
 <!-- WOPT_VEREDICTOS -->
 WOPT_VEREDICTO M-3 NO MEDIDO e811115886a8de68bbcd338c11aaa426477caeb5
 <!-- /WOPT_VEREDICTOS -->
+
+---
+
+## 6. AUDITORÍA DEL `mutation-auditor` — ciclo 70 (TASK-087)
+
+**Sherlock**, 2026-10-22. Auditoría demutación del fix `f5bec54` ("el veredicto de
+mutación se vuelve comprobable"): el **emisor** (`.taskmaster/veredicto.py`) y el
+**gate** (check 11 de `validate_docs.py`).
+
+### 6.0 Las reglas con las que he medido (y por qué hacen falta)
+
+1. **Cámara desechable en `%TEMP%`**, copia del repo **sin** `.git`. Este repo
+   tiene el `.git` como **FICHERO puntero** de 57 bytes (`gitdir: …`), y
+   `robocopy /XD .git` **no** lo excluye: lo excluye `shutil.ignore_patterns`
+   (cubre ficheros y directorios). El aislamiento se **comprueba antes de mutar
+   nada**: `git rev-parse --git-dir` con un `GIT_DIR` desechable tiene que
+   devolver una ruta **dentro** de la cámara. En todas las cámaras: `GIT_DIR`
+   desechable y explícito, nunca descubierto.
+2. **Cero escrituras en el repo real.** Ancla antes y después: `HEAD` =
+   `f5bec54db57e65295ee4870afefbf6a8a0988c94`, `git status --porcelain` vacío,
+   y la entrada más nueva del reflog sigue siendo el commit del dev (317
+   entradas, ninguna mía). **Nada commiteado**: lo versiona el orquestador.
+3. **Dos celdas por mutante del gate**, sobre el MISMO estado: **SANO** (el gate
+   sin mutar tiene que FALLAR: la guarda existe) y **MUTADO** (con la mutación,
+   ese FAIL tiene que **desaparecer**: la guarda discriminaba). Si el FAIL
+   sigue, el mutante **se cuela**. Los mutantes del **emisor** se miden al revés:
+   el emisor mutado emite su línea y el gate tiene que **cazarla**.
+4. **Una muerte por sintaxis rota, `NameError` o `FileNotFoundError` NO es
+   veredicto.** Todo rojo de una celda se ha leído: el motivo literal nombra la
+   infracción o la celda es **NO MEDIDO**.
+5. Las dos líneas sensibles (`run_tests.py:23133` y `validate_docs.py:1429`)
+   **MEDIDAS y vigentes**; ninguna mutación las desplaza (todas las mutaciones
+   del gate están por debajo de `validate_docs.py:2800`, y ninguna toca
+   `run_tests.py`).
+
+### 6.1 La tabla de mutantes
+
+| id | qué rompe | cómo lo maté | veredicto |
+|---|---|---|---|
+| **K-1** | el emisor dice MUERTO porque el log está rojo, sin mirar el asa | emisor mutado (2 condiciones) → emite MUERTO → el gate lo caza (3 FAIL) | **MUERTO** |
+| **K-2** | la gramática acepta cualquier cosa (`match` en vez de `fullmatch`) | línea malformada en las 3 piezas → SANO 4 FAIL / MUTADO 0 | **MUERTO** |
+| **K-3** | el asa se compara por prefijo | evidencia con el asa+`_Y_UNO_MAS` → SANO 3 FAIL / MUTADO 0 | **MUERTO** |
+| **K-4** | se cae el chequeo del motivo | evidencia que muere por el asa sin el motivo → SANO 3 FAIL / MUTADO 0 | **MUERTO** |
+| **K-5** | el asa declarado no tiene que existir en la suite | asa inexistente → SANO 1 FAIL / MUTADO 0 | **MUERTO** |
+| **K-6** | el gate solo mira «el log está rojo» | corpus **real** de M-3 → SANO 3 FAIL / MUTADO 0 | **MUERTO** |
+| **K-7** | el filtro de época se deja en un futuro (999) | base → 0 FAIL, pero el REGISTRO dice `entradas cubiertas=0` y **no** hay `[OK]` del check 11 | **MUERTO** (no verde por omisión) |
+| **K-8** | **`validar()` deja de llamar al check 11** | base → **0 FAIL y SIN REGISTRO**: el guard desaparece y **nada lo nota** | ⚠️ **SOBREVIVIENTE** |
+| **K-9a** | el campo `change` apunta a otro sitio | → 1 FAIL (el directorio no existe) | **GUARDA VIVA** |
+| **K-9b** | la entrada no declara `change` | → 1 FAIL | **GUARDA VIVA** |
+| **K-9c** | el gate deja de recorrer las entradas | → 0 FAIL, pero el REGISTRO dice `mutantes re-derivados=0` | **MUERTO** (visible) |
+| **K-10a** | la evidencia está recortada antes del frame | → 3 FAIL (la evidencia obliga a NO MEDIDO) | **GUARDA VIVA** |
+| **K-10b** | **el frame del traceback es de otro fichero** | evidencia fabricada con `File "…\otro_fichero.py"` → **0 FAIL** | ⚠️ **GUARDA MUERTA** |
+| **K-11** | el cross-check de los changelogs no compara el estado | changelog con MUERTO y evidencia NO MEDIDO → SANO 2 FAIL / MUTADO 0 | **MUERTO** |
+| **K-12** | **el sha del árbol auditado no existe en ningún repo** | sha inventado (`deadbee000…`) en las 3 piezas → **0 FAIL** | ⚠️ **GUARDA MUERTA** |
+| **K-14** | un mutante fuera del catálogo no se acusa | → SANO 1 FAIL / MUTADO 0 | **MUERTO** |
+| **K-15** | el bloque del informe no tiene que llevar las mismas líneas | → SANO 1 FAIL / MUTADO 0 | **MUERTO** |
+| **K-17** | el emisor declara MUERTO si **alguna** corrida muere por el asa | emisor mutado → emite MUERTO → el gate lo caza (3 FAIL) | **MUERTO** |
+
+**Catorce de dieciséis mueren por su aserción.** Los dos que no, y las dos guardas
+muertas, están en 6.3 y 6.4.
+
+> **Por qué los K-\* no están en `mutaciones.json`:** el contrato exige que el
+> `asa` sea el nombre **EXACTO** de un `test_*` **definido** en `run_tests.py`, y
+> el gate lo comprueba con `ast`. Los mutantes del **gate** y del **emisor** no
+> matan ningún `test_*` de la suite (el gate vive en el validador, que la suite
+> no ejecuta), luego **el contrato no tiene forma de expresarlos**: son
+> mutantes *del vigilante*. Es una limitación con nombre, no un olvido: se
+> miden con el diferencial de dos celdas y se documentan aquí.
+
+### 6.2 La prueba de que el gate NO hereda del emisor
+
+El gate **no importa** al emisor (`validate_docs.py` no lo menciona fuera de
+los comentarios; verificado con grep) y re-deriva con **propia**
+implementación. Medido, no supuesto: con el emisor mutado (K-1/K-17) la línea
+que emite es `WOPT_VEREDICTO M-3 MUERTO e8111158…` y el gate la **caza** con
+3 FAIL (journal + los dos changelogs): *"el mutante M-3 esta declarado como
+MUERTO y la evidencia commiteada obliga a NO MEDIDO"*. **La mentira del emisor
+no se cuela.**
+
+Además, **fidelidad del emisor, medida**: alimentado con las 4 colas
+commiteadas de M-3, el emisor **reproduce byte a byte** la evidencia commiteada
+(`evidencia/M-3.cola` regenerada == commiteada: **True**) y vuelve a derivar
+`NO MEDIDO`. El emisor y el corpus no divergen.
+
+### 6.3 ⚠️ K-8: el guard se puede apagar sin que nada se entere
+
+**MEDIDO**: sustituir la llamada `_comprobar_veredictos_de_mutacion(…)` por
+`pass` deja el validador en **160 OK, 0 FAIL** y **sin REGISTRO**: no hay
+`[OK]` del check 11, no hay `entradas cubiertas=0`, no hay nada. **Ni la suite
+ni el validador se enteran.**
+
+**Por qué no lo caza la suite:** el repo **ya tiene el patrón** para esto —
+`run_tests.py:22298` ("Check 9 en el camino real del validador, con su mutante
+de cableado") exige que **desenchufar el check 9** haga desaparecer el residuo.
+**El check 11 no tiene ese test**: no hay ningún `test_*` que vigile su
+cableado (grep de `check 11`, `_comprobar_veredictos` y `WOPT_VEREDICTO` en
+`run_tests.py`: 0 resultados).
+
+**Decisión: no bloquea el cierre, y se encola.** Motivo: el fix **sí** hace lo
+que promete —el veredicto se vuelve comprobable y las mentiras se cazan
+(K-1…K-7, K-11, K-14, K-15, K-17)—; K-8 es un ataque **al cableado del propio
+vigilante**, de la familia que el repo ya conoce y ya tiene registrada
+(STATUS.md: *"la vigilancia deja de ser vaciable"*, TASK-082). Y el arreglo
+**no obliga a mover el recuento**: basta **extender el test de cableado que ya
+existe** (o el guard de forma que ya vigila al validador) para que el check 11
+cobre su propio mutante de cableado, con el recuento en **235 = 159 + 76**.
+Tarea encolada con su métrica en 6.9.
+
+### 6.4 ¿El gate verifica la **verdad** o solo la **coherencia**? (y lo que el docstring NO dice)
+
+**Solo la coherencia.** El gate comprueba que la línea escrita **cuadre con la
+evidencia commiteada**. La evidencia **la escribe quien muta**, y el gate no
+puede saber si es el log real. **MEDIDO**:
+
+- **K-10b**: una evidencia **fabricada** cuyo frame del traceback está en
+  `otro_fichero.py` (nunca en `run_tests.py`) → el gate la acepta y deriva
+  MUERTO → **0 FAIL**. El gate **no comprueba el fichero del frame**.
+- **K-12**: un `sha_arbol_auditado` **inventado** (`deadbee000…`, que no existe
+  en ningún repo) → **0 FAIL**. El gate **no resuelve el sha** contra ningún
+  objeto: el "tercer testigo" es **decorativo**. (El sha commiteado de M-3,
+  `e8111158…`, **tampoco existe en el repo real**: `git cat-file -t` →
+  `fatal: could not get object info`.)
+
+**El docstring declara tres límites** —(a) el `asa` no es la guarda
+semánticamente correcta, (b) el `asa` no se ajustó después de ver el log,
+(c) la **ausencia** de los changelogs no es un FAIL— y **NO declara los dos
+que he medido**: que **la evidencia commiteada puede no ser el log real** y que
+**el sha no se resuelve contra nada**. El docstring dice, en voz alta, lo que
+el gate no prueba; le faltan estos dos. **No es una mentira** (no afirma lo
+contrario), es una **laguna en una lista que se presenta como exhaustiva**:
+quien lo lea puede suponer que "la evidencia commiteada" es el log.
+
+**Encolado** (6.9): que el docstring declare estos dos límites.
+
+### 6.5 El validador 2,6× más rápido: **no es un check saltado**
+
+Comparación con **la misma entrada** (el árbol de `f5bec54`), el mismo
+`GIT_DIR` desechable y salida COMPLETA:
+
+| | `[OK]` | `[FAIL]` | `[SKIP]` | `[REGISTRO]` | tiempo |
+|---|---|---|---|---|---|
+| **antes** (validador de `ba28261`) | **160** | 0 | 0 | 0 | **11 461 – 11 779 ms** |
+| **después** (validador de `f5bec54`) | **160** | 0 | 0 | **1** | **4 459 – 5 067 ms** |
+| **después**, con la entrada del ciclo 70 en el journal | **162** | 0 | 0 | 1 | ~4 500 ms |
+
+- **Ningún check dejó de correr**: 160 `[OK]` en los dos, los mismos 160
+  (comparados uno a uno por clave), 0 FAIL y 0 SKIP en los dos. El gate **no
+  añade `[OK]`** con el conjunto de sujetos vacío: solo imprime el REGISTRO.
+- Los **+2** que se ven al final (160 → 162) son del gate con la entrada del
+  ciclo 70: el `[OK]` del check 11 y el `[OK]` de su cross-check de changelogs.
+  Los **158 → 160** del dev son del **árbol** (el `tasks.md` del cambio y las
+  anclas de `STATUS.md`), **no** del fix: el validador de `ba28261` sobre el
+  árbol de `f5bec54` da también **160**.
+- **La causa del speedup, medida**: `ast.parse` de `run_tests.py` **3 veces**
+  antes (11 461 ms) y **1 vez** después (4 459 ms), por `validar()`. El
+  `ast.parse` cuesta 3 459 ms y el validador lo pagaba **tres** veces, no dos.
+- **La cache no puede quedar obsoleta**: la clave es
+  `(nombre, hash(fuente))` (`validate_docs.py:2922`), o sea **el contenido**.
+  MEDIDO in-process: tras **modificar** `run_tests.py` (un `test_*` nuevo al
+  final, **cero desplazamiento**), la segunda llamada a `validar()` **vuelve a
+  parsear** y `_tests_definidos` **ve el test nuevo** (236). La cache tiene
+  dos entradas (contenido viejo y nuevo).
+
+### 6.6 El contrato en prosa: ¿se puede seguir? (sí)
+
+- El bloque del contrato (los tres estados, la regla del asa, la regla del
+  test no determinista, el límite de lo que no prueba) es **LITERAL** en
+  `.agents/agents/mutation-auditor/agent.md` y en `proposal.md` §3.6:
+  **1 517 caracteres, idénticos byte a byte** (comparados).
+- El agent.md dice **qué escribes y dónde** (las dos cosas: `mutaciones.json`
+  **y** `mutation-report.md`, con las **mismas** líneas) y **qué hacer con un
+  NO MEDIDO** (encolarlo como tarea; si toca seguridad o datos, el ciclo no se
+  cierra). Los tres estados y la transición aparecen también en
+  `.agents/skills/id-pipeline/SKILL.md` y en `docs/ai/testing-guide.md`.
+- **Prueba de fuego (hecho, no supuesto)**: he producido el catálogo y la
+  evidencia de una mutación real **con el emisor**, he escrito la línea
+  canónica en el journal, el informe y los dos changelogs **como hará el
+  orquestador**, y he ejecutado el gate sobre ella → **162 OK, 0 FAIL**. El
+  flujo se puede seguir **sin inventar un paso**.
+
+### 6.7 La prueba de fuego, en cifras
+
+| paso | resultado |
+|---|---|
+| mutación real `M-A1` (`src/woptimizer/config.py`: la prioridad vuelve a ganar a la categoría — el bug de TASK-020) | la suite **muere por el asa** en la 13.ª llamada: `AssertionError: Overlays prio=low -> 🟡 PRECAUCIÓN` |
+| el emisor sobre el log real | `M-A1: MUERTO (todas las corridas mueren por el asa)` → evidencia de 574 B escrita por el emisor |
+| evidencia de M-3 regenerada por el emisor | **byte a byte igual** a la commiteada |
+| las tres piezas con las mismas líneas | **162 OK, 0 FAIL** |
+| roto: la línea de `M-A1` fuera del **journal** | **4 FAIL** |
+| roto: la línea de `M-A1` fuera del **informe** | **2 FAIL** |
+| roto: la **evidencia** de `M-A1` borrada | **2 FAIL** |
+| roto: la línea de `M-A1` fuera de los **changelogs** | **0 FAIL** — por diseño (límite (c)): se comprueban **si están**, su ausencia no es un FAIL. Lo que sí falla es su **incoherencia** (K-11: el changelog en MUERTO con la evidencia en NO MEDIDO → 2 FAIL) |
+
+**Dos cosas que la prueba de fuego destapó del emisor** (herramienta, no fix):
+
+1. **El emisor pisa la evidencia de los mutantes que NO le pasas.** Con el
+   catálogo de 2 mutantes y un solo `--log`, escribe `evidencia/M-3.cola` con
+   *"no hay ninguna corrida"*. Lo he medido: **destruye la evidencia
+   commiteada** de M-3. Con un mutante declarado `MUERTO` el gate lo canta
+   (FAIL); con uno declarado `NO MEDIDO` (el caso de M-3) **no se nota**: el
+   green pasa. Por eso el flujo correcto es pasar **todos** los logs.
+2. **`--log` se repite, no se acumula**: `--log A=x --log A=y` es la forma
+   (una sola bandera con varios valores la rechaza `argparse`).
+
+### 6.8 Higiene
+
+| | resultado |
+|---|---|
+| identificadores sin definir (`symtable`, control positivo que **detecta** el nombre inyectado) | `run_tests.py`: 0 (63 falsos positivos de `__file__`), `validate_docs.py`: 0 (1 de `__file__`), **`.taskmaster/veredicto.py`: 0** |
+| recuento, derivado por el propio validador | `defined=235 invoked=235`, `solo_definidos=[]`, `solo_invocados=[]`; **235 = 159 + 76** |
+| las **cinco** declaraciones | `AGENTS.md:70`, `README.md`, `STATUS.md:12`, `STATUS.md:127`, `docs/ai/testing-guide.md:57`: las cinco dicen **235**; las dos que detallan el reparto, **159 + 76** |
+| residuos en los 10 ficheros del commit | **0** CJK, 0 hangul, 0 `U+FFFD`, 0 soft hyphen, 0 cirílico |
+| `git diff HEAD~1 HEAD -- src/ run_tests.py` | **vacío (0 bytes)** |
+| las dos líneas sensibles | `run_tests.py:23133` y `validate_docs.py:1429`, **MEDIDAS y vigentes** |
+
+### 6.9 Veredicto de cierre del ciclo 70
+
+| criterio | se cumple | por qué |
+|---|---|---|
+| **(a) el fix aguanta** | ✅ | el gate caza las mentiras del emisor (K-1, K-17), la gramática, el prefijo, el motivo, el asa inexistente, el changelog, el catálogo y el bloque del informe; el corpus real de M-3 es el que se usa |
+| **(b) los mutantes declarados y los añadidos mueren por su aserción** | ⚠️ **con una excepción** | 14 de 16 mueren; **K-8 sobrevive** (el guard se puede desenchufar sin que nada lo note) → **limitación acotada, encolada** (6.3): el arreglo no obliga a mover el recuento y la familia del guard vaciable ya está registrada en `STATUS.md` |
+| **(c) 0 identificadores sin definir** | ✅ | 0 en los tres ficheros, con control positivo que detecta |
+| **(d) los docstrings no mienten** | ⚠️ **con un hueco declarado** | no mienten (no afirman lo contrario), pero la lista de límites **no incluye** los dos medidos: que la evidencia puede no ser el log real (K-10b) y que el sha no se resuelve (K-12) → **encolado** (6.4) |
+| **(e) higiene, recuento y citas** | ✅ | 0 sin definir, 235 = 159 + 76, las cinco declaraciones, 0 residuos, `src/` y `run_tests.py` intactos |
+
+**VERDICT: PARTIAL.** El fix **funciona** y lo que promete se cumple; los dos
+huecos que quedan son **del guard sobre sí mismo** (K-8) y **de la lista de
+límites del docstring** (K-10b, K-12). Ninguno invalida el fix, y **ninguno es
+mío**: los reparo `openspec-dev`. No reabro el ciclo: van como tarea, con su
+métrica.
+
+**Tareas encoladas por esta auditoría** (nombre y métrica, para que se puedan
+re-auditar en tres ciclos):
+
+1. **`TASK-088` (sugerida) — el check 11 necesita su mutante de cableado.**
+   Métrica: con la llamada a `_comprobar_veredictos_de_mutacion` sustituida
+   por `pass`, el validador da **160 OK, 0 FAIL y sin REGISTRO**, y **ningún
+   `test_*` lo nota**. El patrón ya existe para el check 9
+   (`run_tests.py:22298`). Arreglo **sin mover el recuento** (235 = 159 + 76):
+   extender un test existente.
+2. **`TASK-089` (sugerida) — el docstring del gate declara sus dos límites
+   que faltan.** Métrica: hoy declara (a), (b) y (c); le faltan *"la evidencia
+   commiteada la escribe quien muta y el gate no puede saber si es el log real"*
+   (MEDIDO: una evidencia con el frame en `otro_fichero.py` → 0 FAIL) y *"el sha
+   no se resuelve contra ningún objeto"* (MEDIDO: sha inexistente → 0 FAIL).
+3. **`TASK-090` (sugerida) — el emisor no pisa la evidencia de los mutantes
+   que no le pasas.** Métrica: con el catálogo de 2 mutantes y **un** `--log`,
+   `evidencia/M-3.cola` se reescribe con *"no hay ninguna corrida"*; si el
+   mutante pisado está declarado `NO MEDIDO`, **el gate no se entera**.
+
+<!-- WOPT_VEREDICTOS -->
+WOPT_VEREDICTO M-3 NO MEDIDO e811115886a8de68bbcd338c11aaa426477caeb5
+WOPT_VEREDICTO M-A1 MUERTO f5bec54db57e65295ee4870afefbf6a8a0988c94
+<!-- /WOPT_VEREDICTOS -->

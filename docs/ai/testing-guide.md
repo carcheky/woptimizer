@@ -1215,7 +1215,7 @@ ciclo 26):
 | 127 | `test_el_rechazo_de_la_puerta_dice_que_se_espera_y_por_que_importa` | **TASK-059 (AC-A6, mata a M5 y M6):** extremo a extremo por SUBPROCESO con `GIT_DIR` temporal y el arbol de trabajo sucio **por el propio test** (un fichero untracked que crea y borpa). Sin identificador: sale con 2, la linea `WOPT_*` es la ULTIMA de stdout, dice "se espera" y "POR QUE importa", nombra las tres formas, es ASCII puro y **el indice queda intacto** (rechazar despues de stagear seria peor que no rechazar: deja al actor creyendo que no ha cambiado nada). Con identificador: sale con 0, imprime `WOPT_COMMIT_OK` y el commit resultante LLEVA el testigo; como el indice se vacia al commitear, se mira `git log -1 --name-only` y no el indice |
 | 128 | `test_las_plantillas_del_bucle_pasan_la_puerta_del_producto` | **TASK-059 (AC-C1, mata a M7):** se extraen del repo las plantillas literales de `git_safe_commit.py "..."` de `.agents/**` y se pasan por `ancla_del_mensaje` con los ids REALES de `tasks.json`. MEDIDO el 2026-10-04 antes de instalar la puerta: **0 de 5 pasaban**, e instalar la puerta sin tocar las plantillas mataba el bucle en su primer commit, con certeza y no con probabilidad. El marcador `TASK-NNN` de las plantillas se sustituye por un id que existe de verdad, porque la puerta exige RESOLUBILIDAD; y un mensaje que sea SOLO un marcador (`...`, `<mensaje>`, `[ID_TAREA]`) se salta a proposito, porque es una mencion del comando y no una plantilla que se copie y pegue. Hay un control negativo (la misma puerta rechaza un mensaje sin ancla) para que el test no pueda pasar por no hacer nada |
 | 129 | `test_el_check_9_de_los_hashes_del_journal_sobre_un_arbol_sintetico` | **TASK-059 (AC-B1..AC-B5, mata a M8..M13):** el campo `commits` de `rd_journal.json` con las cinco reglas: R1 forma (`fullmatch` del elemento y NO `search`), R2 resolubilidad, R3 vocabulario cerrado de `causa`, R4 antidolar y R5 techos. Siete filas sobre el esqueleto REAL copiado una vez, con un `GIT_DIR` temporal y **commits REALES** de ese repo, para que "resuelve" sea un hecho de git y no una afirmacion del codigo. Los pares que matan: el mismo hash con texto libre FAIL y el mismo hash desnudo 0 FAIL (mata `search`); el mismo hash muerto sin declaracion FAIL y con `commits_perdidos` 0 FAIL; un hash declarado perdido que RESUELVE FAIL (R4, sin el la solucion degenerada es declarar como perdidas lo que no se quiere sanear). Los techos se **leen del producto** (`MAX_HASHES_PERDIDOS`, `MAX_CICLOS_SIN_HASH`), se exige que su comentario lleve la FECHA de la medidad de la que salen, y el techo cuenta DECLARACIONES y no repeticiones de un mismo hash. Ninguna expectativa se deriva del fichero que se valida: los numeros los fija la fixture |
-| 130 | `test_el_check_9_se_cablea_en_el_camino_real_del_validador` | **TASK-059 (AC-B6, mata a M14):** el patron que ya pago tres veces (ciclos #47 y #49): los tests llamaban a las funciones privadas pasandoles los argumentos a mano, el cableado que suministra esos argumentos no lo probaba NADIE, y el fix se quedaba como **codigo muerto en el camino real**. Copia el `validate_docs.py` REAL a un arbol temporal con el esqueleto que `validar()` lee y lo ejecuta como SUBPROCESO, de modo que se ejercitan `main()`, `validar()`, la linea de cableado y el `sys.exit`. Contra un `commits` con texto libre tiene que salir con rc != 0, y la segunda mitad escribe el MUTANTE (el cableado sustituido por `pass`) y exige que el residuo desaparezca del informe: asi el test demuestra su capacidad de matar en vez de declararla |
+| 130 | `test_el_check_9_se_cablea_en_el_camino_real_del_validador` | **TASK-059 (AC-B6, mata a M14):** el patron que ya pago tres veces (ciclos #47 y #49): los tests llamaban a las funciones privadas pasandoles los argumentos a mano, el cableado que suministra esos argumentos no lo probaba NADIE, y el fix se quedaba como **codigo muerto en el camino real**. Copia el `validate_docs.py` REAL a un arbol temporal con el esqueleto que `validar()` lee y lo ejecuta como SUBPROCESO, de modo que se ejercitan `main()`, `validar()`, la linea de cableado y el `sys.exit`. Contra un `commits` con texto libre tiene que salir con rc != 0, y la segunda mitad escribe el MUTANTE (el cableado sustituido por `pass`) y exige que el residuo desaparezca del informe: asi el test demuestra su capacidad de matar en vez de declararla. **TASK-087 (ciclo 70, ronda de cierre): el MISMO test crece con los tres huecos que dejo la auditoria del fix `f5bec54` (PARTIAL, 14 de 16 mutantes muertos) y el RECUENTO NO SE MUEVE (235 = 159 + 76). (A) K-8, el guard VACIOABLE: `validar()` podia dejar de llamar al check 11 y el validador daba 160 OK, 0 FAIL y SIN REGISTRO sin que nada lo notara; aqui se exige que el REGISTRO del check 11 aparezca en el informe y su propio MUTANTE (la llamada sustituida por `pass`) lo haga desaparecer, con el control positivo de que con todo cableado el REGISTRO esta. (B) los DOS limites que el docstring del gate NO declaraba (la evidencia commiteada puede NO ser el log real, K-10b; el sha NO se resuelve contra nada, K-12): se comprueba sobre el TEXTO de `validate_docs.py` y que la lista diga que NO es exhaustiva. (C) el emisor NO pisa la evidencia de los mutantes que no le pasas: se emite el veredicto de UN mutante de un catalogo de DOS y la evidencia del otro tiene que quedar BYTE A BYTE igual |
 | 131 | `test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real` | **TASK-059 iteracion 2 (mata a M15, y la midio la suite real):** con la suite REAL ejecutandose (el bloqueo de `pydantic-core` era del entorno, no del repo), el test preexistente de TASK-057 `test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador` moria con `assert len(errors) == 1`: el check 9 anadia un SEGUNDO `errors.append` sobre un journal ilegible que el ancla del changelog de raiz ya habia acusado. Dos acusaciones para un hecho es ruido que entrena a ignorar el semaforo, y ese test afirma desde el ciclo #47 que **una causa produce un mensaje**: el fix va en el check, no en el test. Este fija la regla donde no existia, en el **camino real** por SUBPROCESO con el validador real copiado, porque comprobarlo solo sobre la privada deja el fix muerto en el cableado. Dos formas de ilegibilidad (contenido corrupto y **directorio** donde deberia estar el fichero, que en Windows da `PermissionError`, la clase exacta que el test de TASK-057 monkeypatchea) y una **mitad mutante** que devuelve el `errors.append` y exige que el numero de `[FAIL]` vuelva a 2, para que el test demuestre que MUERE con el fix |
 | 132 | `test_los_ids_del_bolsillo_se_leen_y_la_puerta_es_fail_closed` | **TASK-059 iteracion 3 (mutacion del ciclo 52, mata a S8 corregido, S9 y el `\b` de salida de S6):** `ids_de_tareas` tenia **0 apariciones** en toda la suite, y su comportamiento estaba contradicho por tres fuentes (el docstring de `ancla_del_mensaje`, el aviso de `ids_de_tareas` y D5 de la propuesta) mientras el codigo hacia una cuarta cosa. MEDIDO: con `ids=set()`, `TASK-059` NO pasa, o sea que la puerta es **fail-CLOSED**, no fail-open como reporto la auditoria: con el tablero ilegible `TASK-` deja de aceptarse por completo y el bucle se para, mientras que las dos convenciones de ciclo siguen valiendo. Se eligio esa opcion (la alternativa es el punto ciego que TASK-059 cierra) y se corrigieron las tres fuentes. El test lo mide sobre una **COPIA del arbol** con el tablero corrupto —`REPO_ROOT` se deriva de la ruta del wrapper, luego es la unica via hermetica— y ademas, por subproceso, comprueba el `INFO` de degradacion, que sale **antes** de la `WOPT_*` y sin dejar nada stageado |
 | 133 | `test_la_bandeja_no_amplia_la_excepcion_de_apagado` | **TASK-065 (LADRILLO del cambio, mata el atajo mortal):** meter los packs favoritos en el menu de la bandeja convertia la excepcion de TASK-025 —un solo clic apaga, justificada porque afectaba a UN pack— en un agujero de N packs, varios con `target_categories` activas. Misma forma que la sonda #16 de TASK-063: no mira COMO esta escrito el codigo, mira que un clic suelto no habilite nada. `puede_ejecutar` es False tras la 1.er pulsacion (que solo arma y pinta `✅ Confirmar`), True en la 2.a, y False en la 3.a porque la pendiente se consumio; ademas declara la ventana de 4 s y prueba que una pendiente CADUCADA deja de autorizar. El reloj es inyectado, asi que los 4 s se simulan |
@@ -1436,6 +1436,50 @@ mutación: el log dice *quién murió*, nunca *quién debía*, y la spec no
 contiene el nombre de la función. Lo que sí prueba es que el veredicto es
 **re-derivable** desde la evidencia commiteada, y que **no se puede escribir
 sin la línea canónica**.
+
+Y los otros tres, MEDIDOS (ciclo 70, mutantes K-10b y K-12), que el docstring
+del gate declara con su motivo:
+
+- **Que la evidencia commiteada SEA el log real.** La evidencia la escribe
+  quien muta y el gate no comprueba el **fichero** del frame del traceback:
+  una evidencia fabricada con el frame en otro fichero la acepta y deriva
+  MUERTO → **0 FAIL**. El gate prueba la **coherencia** con la evidencia
+  commiteada, no la **verdad** del log.
+- **Que el `sha` del árbol auditado exista.** El sha se copia tal cual de la
+  línea canónica y **no se resuelve** contra ningún objeto de ningún
+  repositorio: un sha inventado → **0 FAIL**. El sha commiteado de M-3
+  (`e8111158…`) es el del **árbol auditado** (la cámara donde se midió), que
+  no es el repo real: identifica el árbol **medido**, no el repo.
+- **Que los changelogs lleven las líneas.** Se comprueban si están, pero su
+  ausencia no es un FAIL (el journal y el informe son los dos anclajes).
+
+Esa lista **NO es exhaustiva**: es la de los límites **medidos** hasta ahora
+(ciclo 70, K-1..K-17). Un límite que nadie ha medido sigue sin declararse, y
+declararlo sin medirlo sería escribir una promesa que nadie ha comprobado. Lo
+que sí es exhaustivo es la lista de lo que el gate **prueba**, que sale del
+código y no de la prosa.
+
+### El guard sobre el guard (K-8)
+
+El gate era un guard **desenchufable**: `validar()` podía dejar de llamar al
+check 11 y el validador daba 160 OK, 0 FAIL y **sin REGISTRO** — nadie lo
+notaba. Es la clase exacta que este repo lleva dos ciclos persiguiendo. El
+cableado del check 11 se ata ahora en el mismo test que ata el del check 9
+(`test_el_check_9_se_cablea_en_el_camino_real_del_validador`, fila 130): con
+todo cableado el REGISTRO aparece, y con la llamada sustituida por `pass` el
+test se pone rojo.
+
+### El emisor no pisa la evidencia ajena
+
+Emitir el veredicto de un mutante **no puede destruir** la evidencia
+commiteada de los que no se le han pasado: el emisor escribe la evidencia
+**solo** de los mutantes con corrida, y los demás conservan la que tenían
+byte a byte. MEDIDO (auditoría del ciclo 70): antes, emitir el veredicto de
+uno reescribía la evidencia del otro con «no hay ninguna corrida», y con el
+mutante pisado declarado NO MEDIDO el gate no se enteraba (verde por omisión).
+El mutante sin corridas sigue recibiendo su línea canónica (NO MEDIDO: sin
+evidencia no hay veredicto), pero **sin** evidencia escrita: el gate exigirá
+la evidencia commiteada y su ausencia es un FAIL, que es lo correcto.
 
 ### Por qué no se repite la suite N veces
 

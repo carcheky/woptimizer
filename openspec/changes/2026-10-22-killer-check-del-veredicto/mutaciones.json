@@ -15,6 +15,19 @@
       },
       "sha_arbol_auditado": "e811115886a8de68bbcd338c11aaa426477caeb5",
       "origen": "el reloj de la fixture sin clavar: la fecha del commit no se fija, luego el sha de la fixture varia y el hash MUERTO puede coincidir con un objeto real"
+    },
+    {
+      "id": "M-A1",
+      "asa": "test_safety_badge_category_priority_order",
+      "motivo": "Overlays prio=low",
+      "mutacion": {
+        "fichero": "src/woptimizer/config.py",
+        "linea": 285,
+        "original": "    if \"🔴\" in (category or \"\"):\n    if any(k in cat_lower for k in [\"sistema\", \"antivirus\", \"overlay\"]):\n",
+        "sustituto": "    if \"🔴\" in (category or \"\") and prio_lower not in [\"medium\", \"low\"]:\n    if any(k in cat_lower for k in [\"sistema\", \"antivirus\", \"overlay\"]) and prio_lower not in [\"medium\", \"low\"]:\n"
+      },
+      "sha_arbol_auditado": "f5bec54db57e65295ee4870afefbf6a8a0988c94",
+      "origen": "la precedencia de la CATEGORIA sobre la PRIORIDAD se invierte en get_safety_badge: es el bug historico de TASK-020 (una categoria roja con prioridad low se pinta como PRECAUCION). La mutacion toca DOS lineas porque la rama de palabras clave es la red de seguridad que compensa a la del emoji: con una sola linea el badge seguia siendo ROJO y el test NO moria (mutante EQUIVALENTE, no cobertura). MEDIDO por el mutation-auditor del ciclo 70: la suite muere por el asa en la 13a llamada y el emisor deriva MUERTO"
     }
   ]
 }

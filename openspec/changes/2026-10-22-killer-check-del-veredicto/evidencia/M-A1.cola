@@ -1,0 +1,9 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c70_fuego2\run_tests.py", line 31067, in <module>
+    test_safety_badge_category_priority_order()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c70_fuego2\run_tests.py", line 583, in test_safety_badge_category_priority_order
+    assert r["text"].startswith("\U0001F534"), f"Overlays prio={prio} -> {r['text']}"
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+AssertionError: Overlays prio=low -> 🟡 PRECAUCIÓN
