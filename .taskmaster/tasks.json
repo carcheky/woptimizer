@@ -1,8 +1,8 @@
 {
  "project": "woptimizer",
  "version": "3.0.1.dev0",
- "updated_at": "2026-10-21",
- "active_task_id": "TASK-082",
+ "updated_at": "2026-10-22",
+ "active_task_id": "TASK-083",
  "tasks": [
   {
    "id": "TASK-001",
@@ -1784,19 +1784,22 @@
   },
   {
    "id": "TASK-083",
-   "title": "Un test FLAKY puede fabricar falsos veredictos: el pre-vuelo de un hash falla el 5,50 % de las veces",
-   "description": "MEDIDO el 2026-10-22 en el ciclo 68: test_el_pre_vuelo_de_un_hash_muerto... falla 11 de 200 fixtures (5,50 %; teorico 6,25 %) porque los fixtures comparten sha dentro del mismo segundo. Con 17 camaras en paralelo, P(que una medicion se contamine) = 61 %. YA PRODUJO UN FALSO VEREDICTO: el mutante S3 parecio muerto en la ronda 3 y lo detectaron el dev y el auditor porque el log no cuadraba. Un guard que a veces no vigila es un guard que a veces da verde falso, y el bucle decide veredictos con esa senal.",
-   "complexity": 2,
+   "title": "Un test FLAKY puede fabricar falsos veredictos: el hash muerto se construye a partir del hash REAL (1/16), no por el reloj",
+   "description": "MEDIDO el 2026-10-22 en el ciclo 69 (arquitecto): la asercion run_tests.py:23415 construye el hash muerto como hash_real + '0'. Ese prefijo de 8 hex resuelve el objeto REAL cuando la 8a cifra hexadecimal de su sha es '0', es decir con probabilidad 1/16 = 6,25 %. MEDIDO con dos distribuciones propias: 23/400 = 5,75 % (IC95 3,86-8,48 %) con asunto unico por fixture, y 12/144 shas distintos = 8,33 % (IC95 4,83-14,00 %) con el sesgo del repo de fixtures por segundo. El mecanismo esta confirmado al 100 %: 400/400 fixtures rompen si y solo si sha[7] == '0'. PREMISA REFUTADA: la causa NO es el reloj (con fecha fija el test falla SIEMPRE o NUNCA, medido 8/8) y el arreglo NO es 'asunto unico por fixture' (400 shas distintos y la tasa sigue en 5,75 %). El reloj es un efecto secundario: es lo que hace que el sha varie. Lo que produce el fallo es la CONSTRUCCION por concatenacion. Ya produjo un falso veredicto real (ciclo 68, ronda 3, mutante S3).",
+   "complexity": 3,
    "priority": "high",
    "status": "pending",
    "dependencies": [],
-   "module": "openspec/changes/2026-10-21-vistas-del-guard-de-workers-derivadas/mutation-report.md",
+   "module": "openspec/changes/2026-10-22-veredicto-de-no-medido/proposal.md",
    "acceptance_criteria": [
-    "AC-1: el test del pre-vuelo de un hash no depende del segundo en que nace el fixture: 0 muertes en 1000 corridas seguidas con asunto unico por fixture.",
-    "AC-2: el guard que mide la tasa se deriva de la medicion, no de una constante escrita a mano.",
-    "AC-3: mutante declarado: si el fixture vuelve a compartir sha, el guard tiene que dar ROJO nombrando el fixture y su sha, no morir de forma opaca."
+    "AC-1 (DISCRIMINANTE): el test del pre-vuelo clava el reloj de su fixture en GIT_AUTHOR_DATE = GIT_COMMITTER_DATE = 2025-01-01T00:00:43+00:00 (ts 1735689643) y AFIRMA que el sha de esa fixture tiene '0' en la 8a cifra (296cfb20fb7030f6f68afdfc508435be7a931b56). Con el codigo viejo (hash_real + '0') el test MUERE el 100 % de las veces (MEDIDO: git cat-file -e 296cfb20 -> rc 0); con el codigo nuevo pasa el 100 %. Si alguien revierte el arreglo, este test muere.",
+    "AC-2: el hash muerto se DERIVA POR CONSTRUCCION de los objetos de la fixture (git cat-file --batch-all-objects --batch-check): se elige un digito hex tal que <short><d> no sea prefijo de NINGUN objeto. El test afirma que existe tal digito y nombra el sha y el digito si alguna vez no lo hubiera. MEDIDO: hay 15 digitos libres de 16 en 400/400 fixtures.",
+    "AC-3: el test del pre-vuelo no depende del reloj: MEDIDO, 200 ejecuciones seguidas del test AISLADO (0,56 s cada una, 112 s en total) dan 0 fallos. El criterio es cero dependencia del reloj, NO un numero de corridas: el criterio anterior ('0 muertes en 1000 corridas') queda REFUTADO porque 1000 corridas de la suite son 1000 x 734,9 s = 8,5 dias y no miden lo que dicen medir.",
+    "AC-4 (tripwire): un guard DERIVADO con ast encuentra en la suite toda construccion de un valor bajo prueba a partir de un hash real por concatenacion. Con el arreglo: 0 hallazgos. Si alguien devuelve hash_real + '0', el guard da ROJO nombrando fichero y linea. El guard se deriva de la suite, no de una lista escrita a mano.",
+    "AC-5: python run_tests.py sigue en VERDE y el recuento de tests derivado no cambia (234 definidos = 234 invocados): el arreglo no anade ni quita tests.",
+    "AC-6: el docstring del test dice en una frase por que el reloj esta clavado (para que la fixture siga siendo ADVERSARIA) y por que el hash muerto se deriva (para que no dependa de la suerte). Sin las dos frases el arreglo se puede deshacer sin que nadie lo note."
    ],
-   "notes": "Clase: el bucle de I+D decide PASS/FAIL con el log de una suite, asi que un test flaky convierte una medicion en una moneda al aire. Ya se midio el falso veredicto, no es hipotetico. Encolado con metrica, no como nota: la regla de cierre del ciclo 68 encola las vias nuevas con nombre y criterio medible."
+   "notes": "Ciclo 69, arquitecto. Refutada la premisa del encargo en dos puntos: (1) la causa NO es el reloj sino la construccion hash_real + '0' (1/16); con fecha fija el test falla SIEMPRE o NUNCA (medido 8/8 pares con sha identico), luego 'inyectar el reloj' convertiria el test en uno que nunca falla y pierde los dientes en silencio, y 'asunto unico por fixture' NO baja la tasa (medido: 400 shas distintos, 5,75 %). (2) El criterio de cierre '0 muertes en 1000 corridas' es inutil: son 8,5 dias de suite y no miden la dependencia del reloj. Reemplazado por AC-1..AC-6. Extension del dano MEDIDA: el dano es UNA asercion en UN test, no una familia; hay 21 call sites de _repo_temporal_de_un_commit (sha dependiente del reloj) y 0 colisiones en 400 fixtures de los 5 literales fijos (deadbee, beefbee, cafebabe, badc0de, f00dfeed). Costes MEDIDOS: suite 734,9 s; arreglo +0,077 s (una llamada a git); repetir N veces N x 734,9 s por mutante (8,0 h por ciclo con N=3) y SIN exigir consistencia hace PEOR el veredicto falso (1-(1-p)^N: 17,6 % con N=3). Decision: (a) determinismo en la fuente + (d') la muerte tiene que venir del asa esperada. La parte de metodo del bucle va en TASK-087. Spec: openspec/changes/2026-10-22-veredicto-de-no-medido/"
   },
   {
    "id": "TASK-084",
@@ -1845,6 +1848,65 @@
     "AC-3: las tres citas que no sostienen su afirmacion quedan corregidas o eliminadas, no anotadas."
    ],
    "notes": "Reclasificado de 'baja' a 'media' por el ciclo 68: 19 citas y 0 vigiladas no es una cifra pequena, y este ciclo toco tres de ellas en un dia. Es deuda DOCUMENTAL, no toca seguridad ni datos."
+  },
+  {
+   "id": "TASK-087",
+   "title": "El bucle decide PASS/FAIL leyendo un log: falta el TERCER estado, NO MEDIDO, y falta la regla de que la muerte venga del asa esperada",
+   "description": "MEDIDO el 2026-10-22 en el ciclo 69: el bucle acepta 'rc=0 y ALL TESTS PASSED' como VERDE y el ciclo 68 aplico a mano la regla 'ningun veredicto se acepta con una sola corrida si su motivo puede ser el pre-vuelo'. Con un test no determinista ese criterio es INSUFICIENTE: hace falta un tercer estado, NO MEDIDO. Y hace falta que ese estado este en el CODIGO: una regla escrita en el agent.md depende de que el agente la lea, y este repo ya tiene la leccion de que una instruccion escrita incumplida mas de una vez tiene que meterse EN EL CODIGO. MEDIDO: repetir la suite N veces cuesta N x 734,9 s POR MUTANTE (N=3 -> 8,0 h por ciclo con 13 mutantes) y, sin exigir consistencia, hace PEOR el veredicto falso (1-(1-p)^N: 6,25 % con N=1, 17,6 % con N=3, 27,5 % con N=5). El killer-check (la muerte tiene que venir del asa esperada) cuesta CERO corridas extra, porque el harness YA captura el log.",
+   "complexity": 4,
+   "priority": "high",
+   "status": "pending",
+   "dependencies": [
+    "TASK-083"
+   ],
+   "module": "openspec/changes/2026-10-22-veredicto-de-no-medido/proposal.md",
+   "acceptance_criteria": [
+    "AC-1: el harness de mutacion emite una linea canonica WOPT_VEREDICTO <mutante> <MUERTO|SOBREVIVIENTE|NO MEDIDO> <sha>, y un veredicto sin esa linea no se puede escribir en el journal ni en el changelog (igual que un commit sin WOPT_COMMIT_OK no es un commit).",
+    "AC-2: el veredicto es MUERTO solo si el test que murio es el ASA ESPERADA de la mutacion y el motivo literal nombra la infraccion; en cualquier otro caso es NO MEDIDO. El harness deriva el nombre del test que murio del propio log, sin lista escrita a mano.",
+    "AC-3: hay una contraprueba: una mutacion cuyo unico rojo viene de un test que NO es su asa da NO MEDIDO, y se demuestra con una mutacion real (no con un test que solo comprueba que la funcion devuelve un int).",
+    "AC-4: el texto del contrato de veredicto (los tres estados y la regla de que un test no determinista no puede aportar la muerte de un mutante) esta en .agents/agents/mutation-auditor/agent.md, Y la parte que se puede exigir en codigo esta en el harness.",
+    "AC-5: el docstring de la regla dice por que NO se repite la suite N veces (con el coste medido: N x 734,9 s por mutante) y por que repetir sin consistencia empeora el veredicto falso (1-(1-p)^N).",
+    "AC-6: el agente se sincroniza al espejo con python .taskmaster/sync_agents.py y --check sale con 0."
+   ],
+   "notes": "Encolado por el ciclo 69 con metrica, no como nota: es el encargo de fondo de TASK-083 ('que debe significar medido cuando la suite que mide puede mentir') y no cabe en una tarea que arregla UN test. El coste del guard en codigo que obliga a repetir esta MEDIDO y es el que hace que la decision sea la del killer-check y no la de la repeticion. Depende de TASK-083: el killer-check solo tiene dientes si el pre-vuelo ya no puede matar por su cuenta."
+  },
+  {
+   "id": "TASK-088",
+   "title": "La FAMILIA del reloj: 21 fixtures con sha dependiente del reloj, y nadie vigila que un valor bajo prueba se derive de una de ellas",
+   "description": "MEDIDO el 2026-10-22 en el ciclo 69: hay 21 call sites de _repo_temporal_de_un_commit (run_tests.py:1675, 13358, 13530, 13727, 13769, 13781, 17371, 17586, 17769, 21244, 21308, 21542, 21879, 22311, 22428, 22606, 23271, 23391, 23991, 24095) y esa helper NO fija la fecha, luego el sha de cada fixture es funcion del segundo. Hoy el dano es de UN solo miembro (la asercion de run_tests.py:23415, que TASK-083 cierra) porque los demas usan literales fijos (0 colisiones medidas en 400 fixtures). Pero la clase sigue abierta: cualquier test nuevo que derive su valor bajo prueba del sha de una fixture reintroduce el 1/16, y el guard que lo cazaria tiene que ser DERIVADO de la suite, no una lista escrita a mano (la clase que este repo lleva dos ciclos persiguiendo: D2, D3, P2, A-C68-1).",
+   "complexity": 3,
+   "priority": "medium",
+   "status": "pending",
+   "dependencies": [
+    "TASK-083"
+   ],
+   "module": "openspec/changes/2026-10-22-veredicto-de-no-medido/proposal.md",
+   "acceptance_criteria": [
+    "AC-1: un guard DERIVADO con ast enumera los tests que crean una fixture de git y, para cada uno, deriva si su reloj esta fijado (GIT_AUTHOR_DATE/GIT_COMMITTER_DATE) o si su valor bajo prueba se deriva del sha. La enumeracion se DERIVA del codigo: el numero de call sites que declara el guard es el que el codigo tiene.",
+    "AC-2: el guard exige que ningun valor bajo prueba se construya por concatenacion a partir de un hash real. Con TASK-083 aplicado: 0 hallazgos.",
+    "AC-3: mutante declarado: plantar una construccion 'hash real + digito' en cualquier test de la suite da ROJO con fichero y linea; y plantar un sha real + digito que SI existe da ROJO tambien.",
+    "AC-4: el guard se prueba a si mismo con casos sinteticos (como los de run_tests.py:29755+), no solo contra la suite real.",
+    "AC-5: el coste del guard se mide y se declara: no puede pasar del 5 % del tiempo de la suite (734,9 s medidos el 2026-10-22)."
+   ],
+   "notes": "Ciclo 69. Se separa de TASK-083 porque AC-1/AC-2 de TASK-083 vigilan la CONSTRUCCION concreta y esta vigila la FAMILIA: es la respuesta a la pregunta de si el arreglo es de un test o de una familia. La respuesta medida es: el DANO es de un test, y la FAMILIA es la que hay que vigilar."
+  },
+  {
+   "id": "TASK-089",
+   "title": "No hay guard de SUITE que detecte que el arbol se movio durante la corrida: _sin_contaminacion solo compara HEAD por contenido",
+   "description": "MEDIDO el 2026-10-22 en el ciclo 69: el encargo del ciclo daba por hecho un 'guard de HEAD quieto' en run_tests.py:18115, y esa linea NO es eso (es la asercion de GIT_WORK_TREE incondicional dentro de test_el_contrato_de_codigos_esta_atado_a_cada_linea_wopt). El guard real es _sin_contaminacion (run_tests.py:17889-17934) y tiene tres testigos: el indice de la sonda sin rutas del repo real, el HEAD del repo real sin mover (run_tests.py:17924-17927, POR CONTENIDO) y ningun resto de sonda en la raiz real. CONSECUENCIA: puede dar VERDE con un arbol que ha cambiado, porque una modificacion sin commitear no mueve el HEAD; y ademas solo corre DENTRO de las sondas, luego no hay nada que detecte que el arbol se movio durante una corrida de suite completa. La regla 'nunca commitees mientras la suite corre' es hoy prosa.",
+   "complexity": 3,
+   "priority": "medium",
+   "status": "pending",
+   "dependencies": [],
+   "module": "openspec/changes/2026-10-22-veredicto-de-no-medido/proposal.md",
+   "acceptance_criteria": [
+    "AC-1: el guard de suite mide el estado del arbol (HEAD y working tree) al PRINCIPIO y al FINAL de la corrida, y una corrida con el arbol modificado tiene que dar NO MEDIDO, no verde.",
+    "AC-2: el estado se DERIVA con git (rev-parse HEAD + status --porcelain) y no de una firma escrita a mano del arbol.",
+    "AC-3: contraprueba con control positivo: cambiar un fichero del arbol a mitad de la corrida tiene que ser detectado, y la corrida sin cambios tiene que salir verde.",
+    "AC-4: el guard NO puede dar falso positivo por el actor que commitea en este arbol en paralelo (el caso que el docstring de _sin_contaminacion ya menciona): el HEAD se compara por contenido y el working tree por su conjunto de cambios.",
+    "AC-5: el coste del guard se mide y se declara en segundos reales contra la suite de 734,9 s."
+   ],
+   "notes": "Ciclo 69. Se encola porque el encargo del ciclo lo daba por hecho y la medicion lo refuto en su direccion: no habia ese guard, habia otro con otro alcance. El hueco que queda es real pero es de otra clase (integridad de la medicion), asi que no se mezcla con TASK-083."
   }
  ]
 }
