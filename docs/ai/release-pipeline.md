@@ -131,3 +131,40 @@ https://api.github.com/repos/carcheky/woptimizer/tags
 ## 7. Invariante para futuros ciclos
 
 > Si anades un test a `run_tests.py`, actualiza **los cuatro** ficheros que declaran el recuento: `STATUS.md`, `AGENTS.md`, `README.md` y la tabla de `docs/ai/testing-guide.md`. El check 7 de `validate_docs.py` lo deriva con `ast` y falla si no cuadra.
+
+## 8. Publicar es un paso del ciclo, no un extra
+
+> **REGLA DURA:** el motor **empuja a `beta` al cerrar cada ciclo** y comprueba que
+> `HEAD` == `origin/beta`. Un commit que no sale del arbol de trabajo es un commit
+> que no existe para quien lo pidio, y dos semanas sin commits visibles no son un
+> incidente: son un bucle que nunca publico.
+
+Va **al final del ciclo**, en este orden (la fuente es la skill, Seccion 0-bis):
+
+| # | Acto | Quien |
+|---|---|---|
+| 1 | Commit seguro del trabajo | `openspec-dev` |
+| 2 | `rd_journal.json` -> `CHANGELOG.md` -> `.taskmaster/CHANGELOG.md` -> `STATUS.md` | orquestador |
+| 3 | **Publicar en `beta`** | orquestador |
+| 4 | Verificar `HEAD == origin/beta` | orquestador |
+
+```bash
+git status --porcelain     # VACIO: con trabajo suelto no se publica
+git push origin beta
+git rev-parse HEAD         # y comparar con
+git rev-parse origin/beta  # tienen que ser el mismo hash
+```
+
+- **Si el push falla** (red, credenciales), el bucle **NO se detiene**: se anota
+  `publicacion: "PENDIENTE"` con el motivo en la entrada del ciclo y se reintenta en
+  el cierre siguiente.
+- **`main` no se toca en el bucle.** Solo recibe `beta` por fast-forward, y Promote es
+  una operacion del dueno:
+
+```bash
+git switch main && git merge --ff-only beta && git push origin main
+```
+
+> En este host el `.git` del arbol es un **fichero** de 57 bytes (VFS de Nextcloud):
+> hay que exportar `GIT_DIR` y `GIT_WORK_TREE` antes de cualquier `git` (ver
+> `docs/ai/sandbox-rules.md`).

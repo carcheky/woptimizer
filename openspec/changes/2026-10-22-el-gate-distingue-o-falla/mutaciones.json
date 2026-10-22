@@ -1,7 +1,7 @@
 {
   "cambio": "openspec/changes/2026-10-22-el-gate-distingue-o-falla/",
   "ciclo": 71,
-  "nota": "Once mutantes: los CUATRO del dev (M-90..M-93, que matan el gate) y SIETE de la AUDITORIA (M-94..M-100, que atacan el GUARD NUEVO: la seccion (D) de `test_el_check_9_se_cablea_en_el_camino_real_del_validador`). El `asa` (el test que DEBE morir) y el `motivo` (el substring del mensaje de la asercion) los DECLARA quien muta; el gate los re-deriva del log commiteado: el log dice quien murio, nunca quien debia. Los logs de los SIETE de la auditoria son REALES, capturados en camaras desechables (%TEMP%\\wopt_c71_aud\\camara_base, con su PROPIO `.git` y su `origin` desviado a un dummy: el repo real no se toca) corrriendo la SUITE COMPLETA; el `sha_arbol_auditado` de M-94..M-100 es el commit de la camara donde se midio (NO el del repo, y el gate no lo resuelve: es el limite (e)); el de M-90..M-93 se conserva el del dev, que es el commit de SU camara (limite (e) tambien). Los supervivientes (M-94, M-95, M-99, M-100) tienen el log VERDE y su rc lo pone el RUNNER: en M-99 y M-100 el log lleva `RC=0` en la PRIMERA linea, y en M-94 y M-95 el rc se le pasa al emisor con `--rc` (la convencion del repo). POR QUE hace falta: el log VERDE de esta suite contiene una TRAZA CAPTURADA (el UnicodeDecodeError de un hilo que lee la salida de un subproceso) y el emisor inferiria `rc=1` de cualquier log con un \"Traceback\". RONDA 2 (2026-10-22): re-auditoria tras la reparacion del dev (5fed36a). Los 11 mutantes del catalogo se vuelven a medir y se anaden 7 mutantes PROPIOS sobre las ramas del gate que el corpus ampliado no vigila. Los `sha_arbol_auditado` son los commits de las camaras desechables donde se midio (el arbol MUTADO que produjo la evidencia), y las `linea` estan localizadas POR CONTENIDO sobre el arbol actual.",
+  "nota": "RONDA 3: las 18 del catalogo de la ronda 2 re-medidas sobre el codigo del commit c94ef15 (la ronda 4 del dev) y 5 mutantes PROPIOS nuevos sobre el corpus ampliado (10 sentinelas, 4 entradas de journal).",
   "mutaciones": [
     {
       "id": "M-90",
@@ -9,12 +9,12 @@
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
         "fichero": "validate_docs.py",
-        "linea": 3182,
+        "linea": 3205,
         "original": "    global _REGISTRO_DE_VEREDICTOS\n    _REGISTRO_DE_VEREDICTOS = None\n    if sin_ancla_de_git:\n        return\n    journal = _leer_el_journal(root)\n    if journal is None:\n        # El journal ilegible YA lo acusa el ancla, y una segunda acusacion del\n        # mismo hecho es ruido: el ruido entrena al lector a ignorar el\n        # semaforo. Aqui no se acusa: se dice que no se pudo comprobar.\n        _REGISTRO_DE_VEREDICTOS = (\n            \"check 11 (veredicto de mutacion): REGISTRO no disponible, el \"\n            \"journal no se pudo leer, luego no hay ningun veredicto que \"\n            \"re-derivar. La ILEGIBILIDAD del journal ya la acusa el ancla\")\n        return\n    entradas = [e for e in journal if _ciclo_de(e) >= CICLO_ORIGEN_VEREDICTO]\n    if not entradas:\n        # El conjunto de sujetos es VACIO. No hay nada que comprobar, luego no\n        # hay nada que acusar y tampoco nada que certificar: un `[OK]` aqui\n        # seria verde POR OMISION. El REGISTRO se imprime (lo imprime `main()`)\n        # y dice 0, que es lo que hace visible el conjunto vacio.\n        _REGISTRO_DE_VEREDICTOS = (\n            f\"check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=0, \"\n            f\"mutantes re-derivados=0. El contrato de la linea canonica \"\n            f\"empieza en el ciclo {CICLO_ORIGEN_VEREDICTO} y todavia no hay \"\n            f\"ninguna entrada del journal en ese rango: este REGISTRO dice 0 \"\n            f\"a proposito, y no hay ninguna linea de [OK] para este check, \"\n            f\"porque un [OK] que no ha comprobado nada es verde por omision\")\n        return\n\n    definidos = None\n    mutantes_re_derivados = 0\n    estados = {}\n    for entrada in entradas:\n        ciclo = _ciclo_de(entrada)\n        cambio = entrada.get(\"change\")\n        if not cambio:\n            errors.append(\n                f\"rd_journal.json: la entrada del ciclo {ciclo} NO declara el \"\n                f\"campo `change`, que es el ancla del cambio que hay que \"\n                f\"comprobar. Desde el ciclo {CICLO_ORIGEN_VEREDICTO} es \"\n                f\"obligatorio\"\n            )\n            continue\n        directorio = _dentro_del_arbol(root, cambio)\n        if directorio is None or not os.path.isdir(directorio):\n            errors.append(\n                f\"rd_journal.json: la entrada del ciclo {ciclo} apunta a \"\n                f\"`{cambio}` y ese directorio NO EXISTE (o se sale del arbol)\"\n            )\n            continue\n        catalogo_ruta = os.path.join(directorio, \"mutaciones.json\")\n        if not os.path.exists(catalogo_ruta):\n            errors.append(\n                f\"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/: \"\n                f\"NO declara el catalogo `mutaciones.json`, luego sus \"\n                f\"veredictos no se pueden re-derivar\"\n            )\n            continue\n        informe_ruta = os.path.join(directorio, \"mutation-report.md\")\n        if not os.path.exists(informe_ruta):\n            errors.append(\n                f\"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/\"\n                f\"mutation-report.md: NO EXISTE. El informe del ciclo es el \"\n                f\"segundo testigo del veredicto: sin el, el veredicto no es \"\n                f\"re-auditable\"\n            )\n            continue\n        try:\n            mutantes = _leer_el_catalogo(catalogo_ruta)\n        except (OSError, ValueError) as exc:\n            errors.append(\n                f\"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/\"\n                f\"mutaciones.json: NO SE PUEDE LEER ({exc})\"\n            )\n            continue\n\n        # (a) LAS LINEAS CANONICAS de la entrada del journal.\n        lineas = _lineas_canonicas_de_un_texto(entrada.get(\"status\") or \"\")\n        campo = entrada.get(\"veredictos\")\n        if isinstance(campo, str):\n            lineas.extend([l.strip() for l in campo.splitlines() if l.strip()])\n        elif isinstance(campo, list):\n            for elemento in campo:\n                if isinstance(elemento, str):\n                    lineas.extend([l.strip() for l in elemento.splitlines()\n                                   if l.strip()])\n        vistas = set()\n        unicas = []\n        for linea in lineas:\n            if linea not in vistas:\n                vistas.add(linea)\n                unicas.append(linea)\n        lineas = unicas\n\n        por_mutante = {}\n        for linea in lineas:\n            m = RE_LINEA_CANONICA.fullmatch(linea)\n            if not m:\n                errors.append(\n                    f\"rd_journal.json: la entrada del ciclo {ciclo} tiene una \"\n                    f\"linea de veredicto que NO obeyece la gramatica: {linea!r}. \"\n                    f\"La forma es `WOPT_VEREDICTO <mutante> \"\n                    f\"<MUERTO|SOBREVIVIENTE|NO MEDIDO> <sha>`\"\n                )\n                continue\n            por_mutante[m.group(\"mutante\")] = (m.group(\"estado\"),\n                                                m.group(\"sha\"))\n\n        # (b) EL CATALOGO manda: cada mutante tiene linea y la linea cuadra.\n        if definidos is None:\n            definidos = _tests_definidos(root)\n        for identificador, asa, motivo, sha_del_catalogo in mutantes:\n            if identificador not in por_mutante:\n                errors.append(\n                    f\"rd_journal.json: la entrada del ciclo {ciclo} NO tiene \"\n                    f\"linea canonica para el mutante {identificador}, que si \"\n                    f\"esta en el catalogo del cambio\"\n                )\n                continue\n            estado_declarado, sha_declarado = por_mutante[identificador]\n            if sha_del_catalogo and sha_declarado != sha_del_catalogo:\n                errors.append(\n                    f\"rd_journal.json: el mutante {identificador} cita el sha \"\n                    f\"{sha_declarado} y el catalogo declara \"\n                    f\"{sha_del_catalogo}: la linea no apunta al arbol auditado\"\n                )\n            if asa not in definidos:\n                errors.append(\n                    f\"mutaciones.json: el asa declarada por {identificador} \"\n                    f\"(`{asa}`) NO es un test definido en run_tests.py\"\n                )\n            evidencia_ruta = os.path.join(directorio, \"evidencia\",\n                                          f\"{identificador}.cola\")\n            if not os.path.exists(evidencia_ruta):\n                errors.append(\n                    f\"evidencia/{identificador}.cola: NO EXISTE. Sin la \"\n                    f\"evidencia commiteada el veredicto no se puede re-derivar\"\n                )\n                continue\n            with open(evidencia_ruta, encoding=\"utf-8\") as fh:\n                texto_evidencia = fh.read()\n            bloques = _bloques_de_evidencia(texto_evidencia)\n            estado_derivado, por_que = _estado_del_mutante(bloques, asa, motivo)\n            mutantes_re_derivados += 1\n            estados[identificador] = estado_derivado\n            if estado_derivado != estado_declarado:\n                errors.append(\n                    f\"rd_journal.json: el mutante {identificador} esta \"\n                    f\"declarado como {estado_declarado} y la evidencia \"\n                    f\"commiteada obliga a {estado_derivado} ({por_que})\"\n                )\n\n        # (c) LAS LINEAS DE MAS: un mutante que no esta en el catalogo.\n        ids_del_catalogo = {m[0] for m in mutantes}\n        for identificador in por_mutante:\n            if identificador not in ids_del_catalogo:\n                errors.append(\n                    f\"rd_journal.json: la entrada del ciclo {ciclo} declara el \"\n                    f\"mutante {identificador}, que NO esta en el catalogo \"\n                    f\"`mutaciones.json` del cambio\"\n                )\n\n        # (d) EL INFORME tiene el bloque de maquina con las mismas lineas.\n        with open(informe_ruta, encoding=\"utf-8\") as fh:\n            cuerpo_informe = fh.read()\n        lineas_del_informe = _lineas_canonicas_de_un_texto(cuerpo_informe)\n        if not lineas_del_informe:\n            errors.append(\n                f\"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/\"\n                f\"mutation-report.md: NO tiene el bloque de maquina \"\n                f\"`{APERTURA_DE_BLOQUE}` con las lineas canonicas, luego el \"\n                f\"informe no es el segundo testigo del veredicto\"\n            )\n        else:\n            del_informe = {l for l in lineas_del_informe\n                           if RE_LINEA_CANONICA.fullmatch(l)}\n            del_journal = {l for l in lineas\n                           if RE_LINEA_CANONICA.fullmatch(l)}\n            if del_informe != del_journal:\n                errors.append(\n                    f\"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/\"\n                    f\"mutation-report.md: el bloque de maquina NO lleva las \"\n                    f\"mismas lineas canonicas que el journal del ciclo {ciclo}\"\n                )\n\n    ok.append(\n        f\"check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=\"\n        f\"{len(entradas)}, mutantes re-derivados={mutantes_re_derivados}, \"\n        f\"origen del contrato: ciclo {CICLO_ORIGEN_VEREDICTO}\"\n    )\n    _REGISTRO_DE_VEREDICTOS = (\n        f\"check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=\"\n        f\"{len(entradas)}, mutantes re-derivados={mutantes_re_derivados}, \"\n        f\"origen del contrato: ciclo {CICLO_ORIGEN_VEREDICTO}\"\n    )\n    _comprobar_veredictos_en_los_changelogs(root, estados, errors, ok)\n",
         "sustituto": "    global _REGISTRO_DE_VEREDICTOS\n    _REGISTRO_DE_VEREDICTOS = (\n        \"check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=0, \"\n        \"mutantes re-derivados=0, origen del contrato: ciclo 70\")\n"
       },
-      "sha_arbol_auditado": "a7e3ed98882d",
-      "origen": "el CUERPO del gate vaciado y el REGISTRO puesto: el gate no comprueba NADA y el REGISTRO sigue saliendo (por eso el guard de CABLEADO no lo ve: es el agujero D-B)"
+      "sha_arbol_auditado": "b88b2ae33530",
+      "origen": "propio"
     },
     {
       "id": "M-91",
@@ -22,12 +22,12 @@
       "motivo": "EL GATE ACUSA EN LO QUE NO PUEDE",
       "mutacion": {
         "fichero": "validate_docs.py",
-        "linea": 3327,
+        "linea": 3350,
         "original": "            if estado_derivado != estado_declarado:",
         "sustituto": "            if estado_derivado == estado_declarado:"
       },
-      "sha_arbol_auditado": "3bbdc7a8ecc2",
-      "origen": "la comparacion del veredicto INVERTIDA: el gate acusa al que esta bien y calla sobre el que se contradice"
+      "sha_arbol_auditado": "c5247b8fc599",
+      "origen": "propio"
     },
     {
       "id": "M-92",
@@ -35,12 +35,12 @@
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
         "fichero": "validate_docs.py",
-        "linea": 3293,
+        "linea": 3316,
         "original": "        for identificador, asa, motivo, sha_del_catalogo in mutantes:",
         "sustituto": "        for identificador, asa, motivo, sha_del_catalogo in mutantes[:1]:"
       },
-      "sha_arbol_auditado": "7646bc8de2a0",
-      "origen": "el gate solo mira el PRIMER mutante del catalogo: con el coherente primero, el contradictorio ni se mira"
+      "sha_arbol_auditado": "92d44a408dcb",
+      "origen": "propio"
     },
     {
       "id": "M-93",
@@ -48,12 +48,12 @@
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
         "fichero": "validate_docs.py",
-        "linea": 3327,
+        "linea": 3350,
         "original": "            if estado_derivado != estado_declarado:\n                errors.append(\n                    f\"rd_journal.json: el mutante {identificador} esta \"\n                    f\"declarado como {estado_declarado} y la evidencia \"\n                    f\"commiteada obliga a {estado_derivado} ({por_que})\"\n                )\n",
-        "sustituto": "            if estado_derivado != estado_declarado:\n                # MUTANTE M-93: el veredicto se CALCULA y se TIRA.\n                # El gate conserva el bucle, la llamada y la\n                # comparacion (por eso un guard de FORMA lo acepta)\n                # y no dice NADA.\n                _descartado = (estado_derivado, por_que)\n"
+        "sustituto": "            if estado_derivado != estado_declarado:\n                # MUTANTE M-93: el veredicto se CALCULA y se TIRA.\n                _descartado = (estado_derivado, por_que)\n"
       },
-      "sha_arbol_auditado": "ee9caa58ec05",
-      "origen": "el veredicto se CALCULA y se TIRA: el bucle, la llamada y la comparacion se conservan (por eso un guard de FORMA lo acepta) y el gate no dice NADA"
+      "sha_arbol_auditado": "d7d2b995d878",
+      "origen": "propio"
     },
     {
       "id": "M-94",
@@ -61,12 +61,12 @@
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
         "fichero": "validate_docs.py",
-        "linea": 3293,
+        "linea": 3316,
         "original": "        for identificador, asa, motivo, sha_del_catalogo in mutantes:",
         "sustituto": "        for identificador, asa, motivo, sha_del_catalogo in mutantes[1:]:"
       },
-      "sha_arbol_auditado": "7ede3bb371d9",
-      "origen": "el gate solo mira el ULTIMO mutante del catalogo (el espejo de M-92). Con el corpus de la seccion (D) el contradictorio es el ultimo, luego el gate acierta POR POSICION y el guard no lo nota: el guard mide el COMPORTAMIENTO sobre un corpus con el contradictorio SIEMPRE al final"
+      "sha_arbol_auditado": "b0b968047ccd",
+      "origen": "propio"
     },
     {
       "id": "M-95",
@@ -74,12 +74,12 @@
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
         "fichero": "validate_docs.py",
-        "linea": 3196,
+        "linea": 3219,
         "original": "    entradas = [e for e in journal if _ciclo_de(e) >= CICLO_ORIGEN_VEREDICTO]",
         "sustituto": "    entradas = [e for e in journal if _ciclo_de(e) >= CICLO_ORIGEN_VEREDICTO][:1]"
       },
-      "sha_arbol_auditado": "4431f8606e65",
-      "origen": "el gate solo mira la PRIMERA entrada del journal. El corpus de la seccion (D) tiene UNA sola entrada, luego el gate no pierde nada AHORA y es ciego para todos los ciclos posteriores: en el repo real el journal tiene una entrada por ciclo y el check 11 dejaria de re-derivar los veredictos de los ultimos"
+      "sha_arbol_auditado": "3973606dc7dd",
+      "origen": "propio"
     },
     {
       "id": "M-96",
@@ -87,12 +87,12 @@
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
         "fichero": "run_tests.py",
-        "linea": 22855,
+        "linea": 23026,
         "original": "            json.dump(entradas_sinteticas, fh, ensure_ascii=False, indent=2)",
         "sustituto": "            pass  # MUTANTE M-96: el corpus NO se monta"
       },
-      "sha_arbol_auditado": "c9bf0f7f7eec",
-      "origen": "el corpus NO se monta (el journal del corpus no se escribe): la seccion (D) se queda sin sujeto, el gate no acusa a nadie y D1 tiene que morir"
+      "sha_arbol_auditado": "89ddcc7d268a",
+      "origen": "propio"
     },
     {
       "id": "M-97",
@@ -100,12 +100,12 @@
       "motivo": "EL GATE ACUSA EN LO QUE NO PUEDE",
       "mutacion": {
         "fichero": "run_tests.py",
-        "linea": 22733,
+        "linea": 22750,
         "original": "             \"LA ASERCION DEL SENTINELA COHERENTE\", \"MUERTO\"),",
         "sustituto": "             \"LA ASERCION DEL SENTINELA COHERENTE\", \"SOBREVIVIENTE\"),"
       },
-      "sha_arbol_auditado": "3312138b8971",
-      "origen": "el sentinela COHERENTE deja de ser coherente (su journal lo declara SOBREVIVIENTE y su evidencia obliga a MUERTO): el gate le acusa y la celda D1 tiene que morir en la asercion del coherente"
+      "sha_arbol_auditado": "074778d2956a",
+      "origen": "propio"
     },
     {
       "id": "M-98",
@@ -113,12 +113,12 @@
       "motivo": "copia mutada contaminaria las secciones que vienen despues",
       "mutacion": {
         "fichero": "run_tests.py",
-        "linea": 22945,
-        "original": "            f.write(fuente_del_esqueleto)\n        with open(ruta_validador, encoding=\"utf-8\") as f:\n            assert f.read() == fuente_del_esqueleto, (",
-        "sustituto": "            pass  # MUTANTE M-98: D3 NO restaura el esqueleto\n        with open(ruta_validador, encoding=\"utf-8\") as f:\n            assert f.read() == fuente_del_esqueleto, ("
+        "linea": 23170,
+        "original": "        with open(ruta_validador, \"w\", encoding=\"utf-8\") as f:\n            f.write(fuente_del_esqueleto)\n        with open(ruta_validador, encoding=\"utf-8\") as f:\n            assert f.read() == fuente_del_esqueleto, (",
+        "sustituto": "        pass  # MUTANTE M-98: D3 NO restaura el esqueleto\n        with open(ruta_validador, encoding=\"utf-8\") as f:\n            assert f.read() == fuente_del_esqueleto, ("
       },
-      "sha_arbol_auditado": "864ebd090f5a",
-      "origen": "D3 NO restaura el esqueleto: la copia mutada se queda y contamina lo que venga despues. La celda D3 tiene que morir en su asercion"
+      "sha_arbol_auditado": "1dd1e558bce0",
+      "origen": "propio"
     },
     {
       "id": "M-99",
@@ -126,12 +126,12 @@
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
         "fichero": "validate_docs.py",
-        "linea": 3327,
+        "linea": 3350,
         "original": "            if estado_derivado != estado_declarado:",
         "sustituto": "            if estado_declarado == \"SOBREVIVIENTE\":"
       },
-      "sha_arbol_auditado": "8bae55c39239",
-      "origen": "el gate decide por la DECLARACION y no por la EVIDENCIA: acusa a todo mutante declarado SOBREVIVIENTE sin mirar la evidencia commiteada. El corpus de la seccion (D) lo pasa (el contradictorio esta declarado SOBREVIVIENTE y el coherente MUERTO), luego el guard no lo nota"
+      "sha_arbol_auditado": "ebe692afd206",
+      "origen": "propio"
     },
     {
       "id": "M-100",
@@ -139,11 +139,11 @@
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
         "fichero": "validate_docs.py",
-        "linea": 3050,
+        "linea": 3069,
         "original": "    if motivo and motivo not in ultima:",
         "sustituto": "    if False and motivo and motivo not in ultima:"
       },
-      "sha_arbol_auditado": "1613d9b1dcdc",
+      "sha_arbol_auditado": "0f8030d69dda",
       "origen": "el motivo literal de la evidencia YA NO se comprueba: el gate acepta cualquier cola con el frame del asa. El corpus de la seccion (D) lo pasa porque su evidencia esta bien escrita"
     },
     {
@@ -152,11 +152,11 @@
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
         "fichero": "validate_docs.py",
-        "linea": 3260,
+        "linea": 3283,
         "original": "        campo = entrada.get(\"veredictos\")",
         "sustituto": "        campo = None  # MUTANTE M-101: el journal NO aporta las lineas"
       },
-      "sha_arbol_auditado": "51fec48d400f",
+      "sha_arbol_auditado": "9144057b0b38",
       "origen": "el gate IGNORA el campo `veredictos` del journal: las lineas canonicas solo se sacarian del `status`, luego no hay sujeto que juzgar y el gate acusa por ESTRUCTURA, no por JUICIO"
     },
     {
@@ -165,11 +165,11 @@
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
         "fichero": "validate_docs.py",
-        "linea": 3302,
+        "linea": 3325,
         "original": "            if sha_del_catalogo and sha_declarado != sha_del_catalogo:",
         "sustituto": "            if False and sha_del_catalogo and sha_declarado != sha_del_catalogo:"
       },
-      "sha_arbol_auditado": "2a51db2dadee",
+      "sha_arbol_auditado": "f3e94843d979",
       "origen": "el gate NO comprueba que el sha de la linea sea el del catalogo: una linea puede apuntar a un arbol que NO es el auditado y el gate no se entera"
     },
     {
@@ -178,11 +178,11 @@
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
         "fichero": "validate_docs.py",
-        "linea": 3308,
+        "linea": 3331,
         "original": "            if asa not in definidos:",
         "sustituto": "            if False and asa not in definidos:"
       },
-      "sha_arbol_auditado": "554e4c6ac5d8",
+      "sha_arbol_auditado": "309ae523826c",
       "origen": "el gate NO comprueba que el `asa` sea un test DEFINIDO: un asa inventado pasa por bueno"
     },
     {
@@ -191,11 +191,11 @@
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
         "fichero": "validate_docs.py",
-        "linea": 3048,
-        "original": "    if muerto != asa:\n        return (\"NO MEDIDO\", f\"murio `{muerto}` y el asa declarada es `{asa}`\")",
-        "sustituto": "    if muerto != asa and asa is None:\n        return (\"NO MEDIDO\", f\"murio `{muerto}` y el asa declarada es `{asa}`\")"
+        "linea": 3067,
+        "original": "    if muerto != asa:",
+        "sustituto": "    if muerto != asa and asa is None:"
       },
-      "sha_arbol_auditado": "708fe8485891",
+      "sha_arbol_auditado": "fe09da634cd0",
       "origen": "el gate ACEPTA una evidencia cuyo frame es OTRO test: declara MUERTO una muerte que no fue la del asa"
     },
     {
@@ -204,11 +204,11 @@
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
         "fichero": "validate_docs.py",
-        "linea": 3360,
+        "linea": 3383,
         "original": "            if del_informe != del_journal:",
         "sustituto": "            if False and del_informe != del_journal:"
       },
-      "sha_arbol_auditado": "2508d6bdd2ee",
+      "sha_arbol_auditado": "f70bd036c768",
       "origen": "el gate NO comprueba que el informe del ciclo lleve las MISMAS lineas que el journal: el segundo testigo se desacopla del primero"
     },
     {
@@ -217,11 +217,11 @@
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
         "fichero": "validate_docs.py",
-        "linea": 3337,
+        "linea": 3360,
         "original": "            if identificador not in ids_del_catalogo:",
         "sustituto": "            if False and identificador not in ids_del_catalogo:"
       },
-      "sha_arbol_auditado": "d3d3c1a2b985",
+      "sha_arbol_auditado": "41986f08d7f7",
       "origen": "el gate NO acusa a un mutante que este en el journal y NO en el catalogo: el catalogo deja de ser el que manda"
     },
     {
@@ -234,8 +234,73 @@
         "original": "        if dir_evidencia and bloques:",
         "sustituto": "        if dir_evidencia:"
       },
-      "sha_arbol_auditado": "a80c2cdbdbae",
+      "sha_arbol_auditado": "e5f02d611e7c",
       "origen": "el emisor vuelve a Pisar la evidencia ajena: escribe tambien la de los mutantes a los que no se le paso ninguna corrida (la seccion (C) del guard lo tiene que notar)"
+    },
+    {
+      "id": "M-108",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3317,
+        "original": "            if identificador not in por_mutante:",
+        "sustituto": "            if False and identificador not in por_mutante:"
+      },
+      "sha_arbol_auditado": "64881b8b6317",
+      "origen": "el gate NO acusa a un mutante que este en el CATALOGO y NO tenga linea canonica en el journal: la rama `if identificador not in por_mutante:` se apaga. El corpus de la seccion (D) NO la ejercita (alli todo mutante del catalogo tiene linea), luego el guard no lo nota: es el ESPEJO de M-106, que si esta cubierto"
+    },
+    {
+      "id": "M-109",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3219,
+        "original": "    entradas = [e for e in journal if _ciclo_de(e) >= CICLO_ORIGEN_VEREDICTO]",
+        "sustituto": "    entradas = [e for e in journal if _ciclo_de(e) > CICLO_ORIGEN_VEREDICTO]"
+      },
+      "sha_arbol_auditado": "4e0d8d6cad47",
+      "origen": "el filtro del journal se queda en el CICLO 70 y siguientes: con `>` en vez de `>=` el gate deja de re-derivar los veredictos del ciclo 70, que es el ORIGEN del contrato. El corpus tiene su primera entrada justo en el limite (ciclo 70), luego el guard no lo nota"
+    },
+    {
+      "id": "M-110",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3435,
+        "original": "            if m.group(\"estado\") != estados[identificador]:",
+        "sustituto": "            if False and m.group(\"estado\") != estados[identificador]:"
+      },
+      "sha_arbol_auditado": "97b380f3f6f8",
+      "origen": "el gate deja de COMPARAR los dos changelogs contra la evidencia commiteada (`if m.group(\"estado\") != estados[identificador]:` se apaga). El corpus no lleva lineas canonicas de los sentinelas en los changelogs, luego esa rama no la ejercita nadie: la copia legible del veredicto puede contradecir la evidencia sin que nada lo note"
+    },
+    {
+      "id": "M-111",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3325,
+        "original": "            if sha_del_catalogo and sha_declarado != sha_del_catalogo:",
+        "sustituto": "            if sha_del_catalogo and len(sha_declarado) != len(sha_del_catalogo):"
+      },
+      "sha_arbol_auditado": "7ab54a5181a7",
+      "origen": "el sha se compara POR LONGITUD y no POR VALOR: dos shas distintos de la misma longitud pasan por el mismo arbol. La celda D1-bis del sha lo tiene que coger"
+    },
+    {
+      "id": "M-112",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3383,
+        "original": "            if del_informe != del_journal:",
+        "sustituto": "            if del_informe - del_journal:"
+      },
+      "sha_arbol_auditado": "46b3e095b4d9",
+      "origen": "la comparacion del bloque de maquina con el journal pasa a `del_informe - del_journal`: solo se acusan las lineas que FALTAN, luego un informe con lineas canonicas DE MAS (un veredicto que el journal no respalda) pasa por sano"
     }
   ]
 }

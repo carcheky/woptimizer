@@ -2862,9 +2862,9 @@ def main(argv=None):
 #       sobre un catalogo que se contradice a si mismo (el agujero D-B).
 #       Lo que lo detecta es la SUITE, con un guard de PRODUCTO: la seccion (D)
 #       de `test_el_check_9_se_cablea_en_el_camino_real_del_validador` monta
-#       un corpus SINTETICO (CUATRO entradas de journal y DIEZ sentinelas:
-#       tres COHERENTES y siete CONTRADICTORIOS), exige que el gate ACUSE a
-#       los siete y CALLE sobre los tres y que con el cuerpo vaciado ese
+#       un corpus SINTETICO (SEIS entradas de journal y QUINCE sentinelas:
+#       tres COHERENTES y doce CONTRADICTORIOS), exige que el gate ACUSE a
+#       los doce y CALLE sobre los tres y que con el cuerpo vaciado ese
 #       `[FAIL]` muera; el guard cubre SOLO las formas de ceguera que el
 #       corpus EJERCITA.
 #
@@ -2878,14 +2878,23 @@ def main(argv=None):
 #       SOBREVIVIERON, luego el corpus era estrecho y el guard no tenia por
 #       donde verlos.
 #
+#       Y hay CUATRO ramas MAS que la ronda 3 del `mutation-auditor` dejo
+#       VIVAS porque el corpus tampoco las ejercitaba (M-108..M-112, con sus
+#       cuatro sentinelas: el del LIMITE, el del catalogo sin linea en el
+#       journal, el del informe que se queda corto y el del changelog), y que
+#       el MISMO guard vigila ahora con un centinela por rama y con el
+#       `[FAIL]` DE SU RAZON en cada celda. MEDIDO el 2026-10-22 (ronda 4 del
+#       dev): con el corpus ampliado, las NUEVE ramas (cinco estructurales y
+#       estas cuatro) muerden.
+#
 # ESTA LISTA **NO ES EXHAUSTIVA**: es lo que se ha MEDIDO hasta ahora (ciclos
 # 70 y 71: mutantes K-1..K-17 y el limite D-B; y la segunda ronda de TASK-090:
-# las cinco precondiciones estructurales M-102..M-106). Un limite que nadie ha
-# medido
-# sigue sin declarar, y
-# declararlo aqui sin medirlo seria escribir una promesa que nadie ha
-# comprobado. Lo que SI es exhaustivo es la lista de lo que el gate PRUEBA (los
-# cinco puntos de arriba), que sale del CODIGO y no de la prosa.
+# las cinco precondiciones estructurales M-102..M-106; y la tercera ronda de
+# TASK-090: las cuatro ramas que quedaban sin ejercitar, M-108..M-112). Un
+# limite que nadie ha medido sigue sin declarar, y declararlo aqui sin medirlo
+# seria escribir una promesa que nadie ha comprobado. Lo que SI es exhaustivo es
+# la lista de lo que el gate PRUEBA (los cinco puntos de arriba), que sale del
+# CODIGO y no de la prosa.
 #
 # POR QUE NO SE REPITE LA SUITE N VECES, con las cifras. Repetir cuesta
 # N x 734,9 s por mutante: N=3 son 8,0 h POR CICLO, y el killer-check cuesta
@@ -3196,8 +3205,11 @@ def _comprobar_veredictos_de_mutacion(root, errors, ok, saltados,
     REGISTRO puesto -> 0 FAIL: el agujero D-B), y solo la SUITE lo detecta, con
     un guard de PRODUCTO (la seccion (D) de
     `test_el_check_9_se_cablea_en_el_camino_real_del_validador`, con un
-    centinela por rama: tres para el JUICIO del gate y cinco para sus
-    PRECONDICIONES ESTRUCTURALES). La lista
+    centinela por rama: tres para el JUICIO del gate, cinco para sus
+    PRECONDICIONES ESTRUCTURALES y cuatro mas para las ramas que la ronda 3
+    del `mutation-auditor` dejo sin ejercitar: la entrada del LIMITE, el
+    catalogo sin linea en el journal, el informe que se queda corto y los
+    changelogs contra la evidencia). La lista
     completa, con el porque de cada limite,
     esta en el bloque de arriba ("LO QUE ESTE GATE **NO** PRUEBA"), y esa
     lista NO es exhaustiva: es la de los limites MEDIDOS hasta ahora.

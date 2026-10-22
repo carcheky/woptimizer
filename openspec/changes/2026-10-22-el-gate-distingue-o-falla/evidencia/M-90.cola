@@ -1,9 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r2_camara1\run_tests.py", line 31830, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara1\run_tests.py", line 32057, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r2_camara1\run_tests.py", line 22886, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara1\run_tests.py", line 23057, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     exigir_la_acusacion(informe_sano, contradictorio, "SOBREVIVIENTE",
     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                         "MUERTO",
@@ -12,25 +12,25 @@ Traceback (most recent call last):
                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                         "commiteada obliga a MUERTO")
                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r2_camara1\run_tests.py", line 22691, in exigir_la_acusacion
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara1\run_tests.py", line 22708, in exigir_la_acusacion
     assert [l for l in nombran if declarado in l and obliga in l], (
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR al sentinela M-FIX-MAL (el journal lo declara SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO: el journal lo declara SOBREVIVIENTE y su evidencia commiteada obliga a MUERTO) y no lo ha hecho. Sin esta asercion un gate ciego en ESTA rama pasaria por sano: con el cuerpo del gate VACIO el validador tambien daria 0 FAIL. Fallos que lo nombran: []. Informe:
-lara los 235 tests que run_tests.py tiene de verdad
+35 tests que run_tests.py tiene de verdad
   [OK]   docs/ai/testing-guide.md: 235 filas de test, una por test definido
-  [OK]   run_tests.py: reparto 159 backend + 76 headless derivado con ast (marcador en run_tests.py:31965); suma el total que ya deriva el check 7
+  [OK]   run_tests.py: reparto 159 backend + 76 headless derivado con ast (marcador en run_tests.py:32192); suma el total que ya deriva el check 7
   [OK]   STATUS.md: declara el reparto 159 backend + 76 headless que deriva el marcador de run_tests.py
   [OK]   STATUS.md: Deuda Tecnica Conocida: 28 fila(s), 4 exenta(s) CERRADA(s), 24 viva(s) con 47 ancla(s) de ruta resuelta(s) y 1 por contenido
-  [OK]   campo 'commits' del journal: 2 entrada(s) con 'cycle', 0 con lista de hash(es), 0 conforme(s) a R1, 2 sin hash declarado, 0 hash(es) perdido(s) declarados con causa (ninguna), 0 sin resolver sin declaracion | techos R5: 3 hash(es) y 2 ciclo(s) sin hash
+  [OK]   campo 'commits' del journal: 4 entrada(s) con 'cycle', 0 con lista de hash(es), 0 conforme(s) a R1, 4 sin hash declarado, 0 hash(es) perdido(s) declarados con causa (ninguna), 0 sin resolver sin declaracion | techos R5: 3 hash(es) y 2 ciclo(s) sin hash
   [OK]   docs/ai/architecture.md: declara el contrato de persistencia (`%APPDATA%\woptimizer\profiles.json` y que ya NO esta junto al ejecutable) en una sola unidad de texto
   [OK]   docs/ai/data-models.md: declara el contrato de persistencia (`%APPDATA%\woptimizer\profiles.json` y que ya NO esta junto al ejecutable) en una sola unidad de texto
 
-  [FAIL] historial de commits: se lee pero NO aporta ningun ciclo (0 subjects con marcador de ciclo sobre 1 leidos) mientras rd_journal.json si registra 2 ciclo(s). Un parser que no encuentra nada es un parser ROTO, y un parser roto en verde es el falso verde que esta union viene a cerrar
-  [FAIL] CHANGELOG.md (raiz): rd_journal.json registra el ciclo 071 pero el changelog legible no tiene su entrada. Borrarla en los dos ficheros no puede hacer desaparecer la obligacion de registrarla
-  [FAIL] CHANGELOG.md (raiz): sin entrada para el/los ciclo/s 071, exigido por rd_journal.json y/o por el historial de commits. La tabla resumen los enlaza, pero el encabezado seccion no existe: enlace muerto
+  [FAIL] historial de commits: se lee pero NO aporta ningun ciclo (0 subjects con marcador de ciclo sobre 1 leidos) mientras rd_journal.json si registra 4 ciclo(s). Un parser que no encuentra nada es un parser ROTO, y un parser roto en verde es el falso verde que esta union viene a cerrar
+  [FAIL] CHANGELOG.md (raiz): rd_journal.json registra el ciclo 073 pero el changelog legible no tiene su entrada. Borrarla en los dos ficheros no puede hacer desaparecer la obligacion de registrarla
+  [FAIL] CHANGELOG.md (raiz): sin entrada para el/los ciclo/s 071, 072, 073, exigido por rd_journal.json y/o por el historial de commits. La tabla resumen los enlaza, pero el encabezado seccion no existe: enlace muerto
 
   [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=0, mutantes re-derivados=0, origen del contrato: ciclo 70
 
-Resumen: 162 OK, 3 FAIL, 0 SKIP
+Resumen: 164 OK, 3 FAIL, 0 SKIP
 
 EL GATE NO DISTINGUE

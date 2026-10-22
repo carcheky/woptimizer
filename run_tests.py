@@ -22347,6 +22347,46 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
         vuelve a morir, el `[FAIL]` de SU razon desaparece y la celda que la
         vigila cae (con el motivo "EL GATE NO DISTINGUE", el mismo de las
         otras, para que el log del mutante diga la verdad).
+
+        (D-ter) LOS CUATRO HUECOS QUE DEJO LA RONDA 3 (TASK-090, tercera
+        ronda).
+        El guard de arriba vigila el JUICIO del gate y sus CINCO
+        PRECONDICIONES ESTRUCTURALES. MEDIDO el 2026-10-22 (ronda 3 del
+        `mutation-auditor`): con ese corpus, cuatro ramas MAS del gate
+        SOBREVIVIERON (M-108, M-109, M-110 y M-112). Las cuatro son ramas
+        que el gate COMPRUEBA y que el corpus NO EJERCITABA: el fallo era
+        del CORPUS, no del gate (el mismo patron de las dos rondas
+        anteriores, otra vez). aqui se anaden CUATRO centinelas mas, uno
+        por rama, y cada uno es el caso que SOLO su rama puede caza:
+          M-FIX-LIMITE:       la entrada del journal que esta EN EL LIMITE
+                              (el ciclo 70, el origen del contrato) tiene
+                              que estar MIRADA: su veredicto se ACUSA. Un
+                              gate que filtre el journal con `>` en vez de
+                              `>=` no examina esa entrada, y el guard solo
+                              comprobaba su SILENCIO.
+          M-FIX-SIN-LINEA:   el CATALOGO declara un mutante que el journal
+                              NO lleva en linea canonica: es el ESPEJO de
+                              M-FIX-FUERA (que es al reves: una linea del
+                              journal que no esta en el catalogo). Sin su
+                              acusacion, un veredicto puede DESAPARECER de
+                              lo publicado sin un solo FAIL.
+          M-FIX-INFORME-CORTO: el journal lleva una linea canonica que el
+                              INFORME del ciclo NO lleva: el segundo
+                              testigo puede quedarse CORTO sin que nadie lo
+                              note. OJO con la SEMANTICA, que es contraintuitiva
+                              y ya se ha medido: la mutacion que lo mata es
+                              `!=` -> `del_informe - del_journal`, y esa
+                              diferencia se queja de lo que el INFORME tiene
+                              de MAS, luego un informe con una linea DE MAS
+                              la acusa IGUAL. El caso que la mata es el
+                              INVERSO: el informe que se queda corto.
+          M-FIX-CHANGELOG:   los DOS changelogs de la camara llevan la
+                              linea canonica de este centinela con un
+                              estado DISCREPANTE del que obliga la
+                              evidencia: la copia legible del veredicto
+                              puede contradecir a la evidencia commiteada.
+        Y el REGISTRO tiene que contar las SEIS entradas del corpus: un
+        gate que no examinase la del LIMITE contaria menos.
     """
     print("Check 9 en el camino real del validador, con su mutante de cableado...")
     import json
@@ -22923,23 +22963,36 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
                     f"AssertionError: {motivo}\n")
 
         def montar_cambio(nombre, ciclo, mutaciones, lineas_journal,
-                           lineas_informe):
+                           lineas_informe, lineas_de_prosa=(),
+                           mutaciones_alteradas=None):
             """Monta un cambio SINTETICO del corpus y devuelve su entrada.
 
             `mutaciones`: `(id, asa, motivo, sha_del_catalogo,
             test_que_murio)` de los mutantes DEL CATALOGO. `test_que_murio`
             es el test que nombra el frame de la evidencia; si no se dice,
             la evidencia muere en el propio `asa`.
+
+            `lineas_de_prosa`: lineas que van DESPUES del bloque de maquina
+            (CIERRE primero, luego la prosa). Documentan los sentinelas cuya
+            linea canonica NO va en el informe, y son el ANCLA que su
+            `mutacion` declara: el fichero y la linea tienen que EXISTIR
+            (TASK-091).
+
+            `mutaciones_alteradas`: `{id: (linea, original, sustituto)}` para
+            los sentinelas cuya `mutacion` no puede senalar a su linea
+            canonica (porque esa linea no esta en el fichero que se declara).
             """
             relativo = "openspec/changes/" + nombre
             directorio = os.path.join(tmp, *relativo.split("/"))
             os.makedirs(os.path.join(directorio, "evidencia"), exist_ok=True)
+            lineas_informe = list(lineas_informe)
             with open(os.path.join(directorio, "mutation-report.md"), "w",
                       encoding="utf-8", newline="\n") as fh:
                 fh.write("\n".join(["# Informe del ciclo sintetico (D)", "",
                                      "<!-- WOPT_VEREDICTOS -->"]
-                                    + list(lineas_informe)
-                                    + ["<!-- /WOPT_VEREDICTOS -->"]) + "\n")
+                                    + lineas_informe
+                                    + ["<!-- /WOPT_VEREDICTOS -->"]
+                                    + list(lineas_de_prosa)) + "\n")
             with open(os.path.join(directorio, "proposal.md"), "w",
                       encoding="utf-8", newline="\n") as fh:
                 fh.write(f"# Corpus sintetico de las precondiciones (D) "
@@ -22955,15 +23008,22 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
                     (l for l in lineas_informe
                      if l.startswith(f"WOPT_VEREDICTO {identificador} ")),
                     f"WOPT_VEREDICTO {identificador} MUERTO {sha_del_catalogo}")
+                if (mutaciones_alteradas
+                        and identificador in mutaciones_alteradas):
+                    linea_mut, original, sustituto = mutaciones_alteradas[
+                        identificador]
+                else:
+                    linea_mut = 4 + indice
+                    sustituto = original.replace(" MUERTO ", " OTRO ")
                 catalogo["mutaciones"].append({
                     "id": identificador,
                     "asa": asa,
                     "motivo": motivo,
                     "mutacion": {
                         "fichero": relativo + "/mutation-report.md",
-                        "linea": 4 + indice,
+                        "linea": linea_mut,
                         "original": original,
-                        "sustituto": original.replace(" MUERTO ", " OTRO "),
+                        "sustituto": sustituto,
                     },
                     "sha_arbol_auditado": sha_del_catalogo,
                 })
@@ -23017,33 +23077,163 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
               sha_sintetico, None),),
             lineas_d_journal, lineas_d_informe))
 
-        # El JOURNAL del corpus: CUATRO entradas. La primera (ciclo 70) es la
+        # --- (D1-ter) LOS CUATRO HUECOS QUE DEJO LA RONDA 3 -----------------
+        # MEDIDO el 2026-10-22 (ronda 3 del `mutation-auditor`): con el
+        # corpus de arriba, los cuatro mutantes propios M-108, M-109, M-110 y
+        # M-112 SOBREVIVIERON. Los cuatro son ramas que el gate COMPRUEBA y
+        # que el corpus NO EJERCITABA: el fallo era del CORPUS, no del gate
+        # (el mismo patron de las dos rondas anteriores, otra vez). aqui van
+        # los cuatro sentinelas, uno por rama.
+        #
+        # M-FIX-LIMITE (M-109): la entrada del LIMITE. El corpus ya ponia su
+        # primera entrada en el ciclo 70 (el origen del contrato) y el guard
+        # solo comprobaba su SILENCIO: un gate que filtrase el journal con
+        # `>` en vez de `>=` no miraria esa entrada y nadie lo notaria. Este
+        # centinela va en una SEGUNDA entrada del ciclo 70, y su veredicto se
+        # ACUSA: el gate tiene que haberla JUZGADO, no solo callar sobre ella.
+        centinela_limite = "M-FIX-LIMITE"
+        # M-FIX-SIN-LINEA (M-108): el ESPEJO de M-FIX-FUERA. M-FIX-FUERA es
+        # una linea del journal que NO esta en el catalogo; este es un
+        # mutante del CATALOGO que NO tiene linea en el journal. Sin su
+        # acusacion, un veredicto puede DESAPARECER de lo publicado sin un
+        # solo FAIL.
+        centinela_sin_linea = "M-FIX-SIN-LINEA"
+        # M-FIX-INFORME-CORTO (M-112): el journal lleva una linea canonica
+        # que el INFORME del ciclo NO lleva. OJO con la SEMANTICA, que es
+        # contraintuitiva: la mutacion que lo mata es `!=` ->
+        # `del_informe - del_journal`, y esa diferencia se queja de lo que el
+        # INFORME tiene de MAS, luego un informe con una linea DE MAS la
+        # acusa IGUAL. El caso que la mata es el INVERSO: el informe que se
+        # queda CORTO.
+        centinela_informe_corto = "M-FIX-INFORME-CORTO"
+        # M-FIX-CHANGELOG (M-110): los DOS changelogs de la camara llevan su
+        # linea canonica con un estado DISCREPANTE del que obliga la
+        # evidencia: la copia legible del veredicto puede contradecir a la
+        # evidencia commiteada.
+        centinela_changelog = "M-FIX-CHANGELOG"
+        # M-FIX-COMPA: el control de que las celdas de arriba no se apoyan
+        # en un fallo ajeno: esta en regla en todo (catalogo, journal,
+        # informe y evidencia) y nadie lo acusa.
+        centinela_compa = "M-FIX-COMPA"
+
+        # La entrada del LIMITE (ciclo 70): su veredicto se ACUSA. Va
+        # INSERTADA en la segunda posicion, para que el journal se lea en
+        # orden de ciclo y para que un gate que solo mire la PRIMERA entrada
+        # (mutante M-95) no la vea.
+        lineas_limite = [
+            f"WOPT_VEREDICTO {centinela_limite} SOBREVIVIENTE {sha_sintetico}"]
+        entradas_sinteticas.insert(1, montar_cambio(
+            "2026-10-22-corpus-sintetico-limite", 70,
+            ((centinela_limite, asa_real,
+              "LA ASERCION DEL SENTINELA DEL LIMITE",
+              sha_sintetico, None),),
+            lineas_limite, lineas_limite,
+            mutaciones_alteradas={
+                centinela_limite: (4, lineas_limite[0],
+                                   lineas_limite[0].replace(
+                                       " SOBREVIVIENTE ", " OTRO ")),
+            }))
+        # El cambio de las PRECONDICIONES que faltaban (ciclo 74):
+        #   M-FIX-CHANGELOG:    coherente (el journal y la evidencia dicen
+        #                       MUERTO) y su linea canonica esta en los DOS
+        #                       changelogs de la camara con un estado
+        #                       DISCREPANTE (SOBREVIVIENTE).
+        #   M-FIX-COMPA:        coherente y en regla en todo.
+        #   M-FIX-INFORME-CORTO: en el catalogo y con linea en el journal,
+        #                       pero SIN linea en el INFORME del ciclo.
+        #   M-FIX-SIN-LINEA:    en el catalogo y SIN linea en el journal (ni
+        #                       en el informe).
+        lineas_pre_journal = [
+            f"WOPT_VEREDICTO {centinela_changelog} MUERTO {sha_sintetico}",
+            f"WOPT_VEREDICTO {centinela_compa} MUERTO {sha_sintetico}",
+            f"WOPT_VEREDICTO {centinela_informe_corto} MUERTO {sha_sintetico}",
+        ]
+        lineas_pre_informe = [
+            f"WOPT_VEREDICTO {centinela_changelog} MUERTO {sha_sintetico}",
+            f"WOPT_VEREDICTO {centinela_compa} MUERTO {sha_sintetico}",
+        ]
+        # La prosa que ANCLA la `mutacion` de los dos sentinelas cuya linea
+        # canonica no esta en el informe (TASK-091: el fichero tiene que
+        # existir y el texto declarado estar EN el fichero).
+        prosa_informe_corto = (
+            f"# {centinela_informe_corto}: el journal lo declara y este "
+            "informe NO lleva su linea canonica")
+        prosa_sin_linea = (
+            f"# {centinela_sin_linea}: el catalogo lo declara y el journal NO "
+            "lleva su linea canonica")
+        entradas_sinteticas.append(montar_cambio(
+            "2026-10-22-corpus-sintetico-precondiciones", 74,
+            ((centinela_changelog, asa_real,
+              "LA ASERCION DEL SENTINELA DEL CHANGELOG",
+              sha_sintetico, None),
+             (centinela_compa, asa_real,
+              "LA ASERCION DEL SENTINELA COMPATIBLE",
+              sha_sintetico, None),
+             (centinela_informe_corto, asa_real,
+              "LA ASERCION DEL SENTINELA DEL INFORME CORTO",
+              sha_sintetico, None),
+             (centinela_sin_linea, asa_real,
+              "LA ASERCION DEL SENTINELA SIN LINEA",
+              sha_sintetico, None)),
+            lineas_pre_journal, lineas_pre_informe,
+            lineas_de_prosa=(prosa_informe_corto, prosa_sin_linea),
+            mutaciones_alteradas={
+                centinela_changelog: (4, lineas_pre_informe[0],
+                                      lineas_pre_informe[0].replace(
+                                          " MUERTO ", " OTRO ")),
+                centinela_compa: (5, lineas_pre_informe[1],
+                                  lineas_pre_informe[1].replace(
+                                      " MUERTO ", " OTRO ")),
+                centinela_informe_corto: (7, prosa_informe_corto,
+                                          prosa_informe_corto.replace(
+                                              "NO lleva", "SI lleva")),
+                centinela_sin_linea: (8, prosa_sin_linea,
+                                      prosa_sin_linea.replace(
+                                          "NO lleva", "SI lleva")),
+            }))
+
+        # El JOURNAL del corpus: SEIS entradas. La primera (ciclo 70) es la
         # que veria un gate que solo mire la PRIMERA, y no tiene ninguna
-        # contradiccion: la segunda (ciclo 71) las tiene todas, y las dos
-        # ultimas (ciclos 72 y 73) son las precondiciones estructurales.
+        # contradiccion; la segunda (ciclo 70 otra vez) es la del LIMITE, y
+        # su veredicto se ACUSA; la tercera (ciclo 71) lleva las
+        # contradicciones del JUICIO; las dos siguientes (ciclos 72 y 73) son
+        # las precondiciones estructurales de la ronda 2; y la ultima (ciclo
+        # 74) es la de las precondiciones de la ronda 3.
         with open(os.path.join(tmp, ".taskmaster", "rd_journal.json"), "w",
                   encoding="utf-8", newline="\n") as fh:
             json.dump(entradas_sinteticas, fh, ensure_ascii=False, indent=2)
 
-        # (D1) EL VALIDADOR SANO ACUSA A LOS CONTRADICTORIOS Y CALLA SOBRE LOS
-        # COHERENTES ------------------------------------------------------
+        # Los DOS changelogs de la camara llevan la linea canonica del
+        # centinela del changelog con un estado DISCREPANTE: la copia legible
+        # del veredicto contradice a la evidencia commiteada, y el gate tiene
+        # que notarlo en los DOS ficheros.
+        for relativa in ("CHANGELOG.md",
+                         os.path.join(".taskmaster", "CHANGELOG.md")):
+            with open(os.path.join(tmp, relativa), "a",
+                      encoding="utf-8", newline="\n") as fh:
+                fh.write("\n<!-- WOPT_VEREDICTOS -->\n"
+                         f"WOPT_VEREDICTO {centinela_changelog} SOBREVIVIENTE "
+                         f"{sha_sintetico}\n"
+                         "<!-- /WOPT_VEREDICTOS -->\n")
+
         # EL ORDEN DE LAS ASERCIONES ES NORMATIVO, y por que: la primera que
         # salta es la que deja su mensaje al final del log, y ese mensaje es el
-        # `motivo` que el gate re-deriva. La de los COHERENTES va PRIMERA: es
-        # la que mata al mutante M-91 (la comparacion invertida), que ACUSA EN
-        # LO QUE NO PUEDE. Las tres de los CONTRADICTORIOS van detras, cada una
-        # con su rama: M-92 y M-94 (el catalogo truncado) no pueden pasar las
-        # dos a la vez, y por eso cada una mira un sentinela distinto.
+        # `motivo` que el gate re-deriva. Y el orden lo fija el MUTANTE que
+        # cada celda tiene que matar, no la comodidad:
+        #   (1) la de los COHERENTES va PRIMERA: es la que mata al mutante
+        #       M-91 (la comparacion invertida), que ACUSA EN LO QUE NO PUEDE;
+        #   (2) las CUATRO de las ramas que la ronda 3 del `mutation-auditor`
+        #       dejo VIVAS (las celdas (D1-ter)) van justo detras, y ANTES del
+        #       aserto de "Resumen:", porque su mutante M-108 hace que el
+        #       validador REVENTE (un `KeyError` al buscar la linea canonica
+        #       que acaba de no acusar) y, con el aserto de "Resumen:" el
+        #       primero, el log diria "el validador no llego al final" y no
+        #       "EL GATE NO DISTINGUE", que es el motivo que el catalogo
+        #       declara para ese mutante;
+        #   (3) las tres de los CONTRADICTORIOS van detras, cada una con su
+        #       rama: M-92 y M-94 (el catalogo truncado) no pueden pasar las
+        #       dos a la vez, y por eso cada una mira un sentinela distinto.
         rc_sano, informe_sano = ejecutar_el_validador_del_esqueleto()
-        assert "Resumen:" in informe_sano, (
-            "el validador del esqueleto tiene que LLEGAR AL FINAL y printar su "
-            "informe: si no, esta celda esta probando una excepcion, no el "
-            f"gate. rc={rc_sano}. Informe:\n{informe_sano[-2000:]}")
-        assert "[REGISTRO] check 11 (veredicto de mutacion)" in informe_sano, (
-            "el REGISTRO del check 11 tiene que estar en el informe: es lo que "
-            "hace visible que el gate CORRIO, y el mutante D-B lo CONSERVA "
-            "mientras vacia el cuerpo. rc={rc_sano}. Informe:\n"
-            f"{informe_sano[-2000:]}\nEL GATE NO DISTINGUE")
         fallos_del_coherente = (acusaciones_que_nombran(informe_sano, coherente)
                                  + acusaciones_que_nombran(informe_sano, sano))
         assert not fallos_del_coherente, (
@@ -23054,6 +23244,87 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
             "uno que no acusa nada (mutante M-91). Fallos que los nombran: "
             f"{fallos_del_coherente!r}. Informe:\n{informe_sano[-2000:]}\n"
             "EL GATE ACUSA EN LO QUE NO PUEDE")
+
+        def exigir_el_fall_con_esta_razon(informe, razon, por_que):
+            """El gate TIENE que acusar, con ESTA razon en el texto del FAIL."""
+            fallos = [l for l in informe.splitlines()
+                      if l.strip().startswith("[FAIL]") and razon in l]
+            assert fallos, (
+                f"EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el "
+                f"validador tiene que ACUSAR ({por_que}) y no lo ha hecho: ningun "
+                f"[FAIL] del informe dice {razon!r}. Sin esta asercion un gate "
+                "ciego en ESTA rama pasaria por sano: con el cuerpo del gate "
+                "VACIO el validador tambien daria 0 FAIL. Fallos del informe:\n"
+                f"{informe[-3000:]}\n"
+                "EL GATE NO DISTINGUE")
+
+        # --- (D1-ter) LAS CUATRO RAMAS QUE LA RONDA 3 DEJO VIVAS -------------
+        # MEDIDO el 2026-10-22 (ronda 3 del `mutation-auditor`): con el
+        # corpus de arriba, los cuatro mutantes propios M-108, M-109, M-110 y
+        # M-112 SOBREVIVIERON. Los cuatro son ramas que el gate COMPRUEBA y
+        # que NADIE EJERCITABA: el fallo era del corpus. Cada celda de aqui
+        # exige el `[FAIL]` DE SU RAZON, que es lo que la distingue.
+        #
+        # (a) M-108: el mutante del CATALOGO sin linea canonica en el
+        # journal. Sin esta acusacion, un veredicto puede DESAPARECER de lo
+        # publicado sin un solo FAIL (y el segundo testigo, que tampoco la
+        # lleva, la omitiria en silencio).
+        exigir_el_fall_con_esta_razon(
+            informe_sano,
+            f"NO tiene linea canonica para el mutante {centinela_sin_linea}",
+            f"el catalogo del cambio declara {centinela_sin_linea} y el journal "
+            "NO lleva su linea canonica, luego ese veredicto podria desaparecer "
+            "de lo publicado sin que nadie lo note")
+        # (b) M-112: el INFORME del ciclo se queda CORTO (el journal lleva una
+        # linea canonica que el bloque de maquina del informe NO lleva). El
+        # segundo testigo desatado del primero.
+        exigir_el_fall_con_esta_razon(
+            informe_sano,
+            "el bloque de maquina NO lleva las mismas lineas canonicas que el "
+            "journal del ciclo 74",
+            f"el journal del ciclo 74 lleva la linea de "
+            f"{centinela_informe_corto} y el bloque de maquina de su informe NO, "
+            "luego el segundo testigo esta desacoplado del primero")
+        # (c) M-110: los DOS changelogs contra la evidencia commiteada. La
+        # copia legible del veredicto puede contradecir a la evidencia y el
+        # gate tiene que decirlo.
+        exigir_el_fall_con_esta_razon(
+            informe_sano,
+            f"el mutante {centinela_changelog} aparece como SOBREVIVIENTE y la "
+            "evidencia commiteada obliga a MUERTO",
+            f"los changelogs declaran {centinela_changelog} como "
+            "SOBREVIVIENTE y su evidencia commiteada obliga a MUERTO, luego la "
+            "copia legible del veredicto contradice a la evidencia")
+        # (d) M-109: la entrada del LIMITE (el ciclo 70, el origen del
+        # contrato) tiene que estar MIRADA. Su veredicto se ACUSA (el gate lo
+        # ha JUZGADO) y el REGISTRO cuenta las SEIS entradas del corpus (el
+        # gate las ha EXAMINADO todas). Un gate que filtre el journal con
+        # `>` en vez de `>=` deja el origen del contrato sin re-derivar, y el
+        # solo hecho de que el guard no lo notara era el agujero.
+        exigir_la_acusacion(informe_sano, centinela_limite, "SOBREVIVIENTE",
+                            "MUERTO",
+                            "la entrada del journal que esta en el LIMITE (el "
+                            "ciclo 70, el origen del contrato) tiene que estar "
+                            "MIRADA: su veredicto se juzga contra la evidencia")
+        assert f"entradas cubiertas={len(entradas_sinteticas)}" in informe_sano, (
+            f"el gate tiene que EXAMINAR las {len(entradas_sinteticas)} "
+            "entradas del corpus (incluida la del LIMITE, el ciclo 70): su "
+            "REGISTRO tiene que decir 'entradas cubiertas="
+            f"{len(entradas_sinteticas)}'. Un gate que se queda en el ciclo 71 "
+            "deja el origen del contrato sin re-derivar y no lo dice: "
+            f"Informe:\n{informe_sano[-2000:]}\nEL GATE NO DISTINGUE")
+
+        # (D1-bis) EL VALIDADOR SANO ACUSA A LOS CONTRADICTORIOS Y CALLA SOBRE LOS
+        # COHERENTES ------------------------------------------------------
+        assert "Resumen:" in informe_sano, (
+            "el validador del esqueleto tiene que LLEGAR AL FINAL y printar su "
+            "informe: si no, esta celda esta probando una excepcion, no el "
+            f"gate. rc={rc_sano}. Informe:\n{informe_sano[-2000:]}")
+        assert "[REGISTRO] check 11 (veredicto de mutacion)" in informe_sano, (
+            "el REGISTRO del check 11 tiene que estar en el informe: es lo que "
+            "hace visible que el gate CORRIO, y el mutante D-B lo CONSERVA "
+            "mientras vacia el cuerpo. rc={rc_sano}. Informe:\n"
+            f"{informe_sano[-2000:]}\nEL GATE NO DISTINGUE")
         exigir_la_acusacion(informe_sano, contradictorio, "SOBREVIVIENTE",
                             "MUERTO",
                             "el journal lo declara SOBREVIVIENTE y su evidencia "
@@ -23079,20 +23350,9 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
         #
         # EL MOTIVO del fallo es SIEMPRE "EL GATE NO DISTINGUE", como en las
         # tres celdas de arriba: las cinco ramas son cinco maneras de que el
-        # gate calle donde tiene que hablar.
-        def exigir_el_fall_con_esta_razon(informe, razon, por_que):
-            """El gate TIENE que acusar, con ESTA razon en el texto del FAIL."""
-            fallos = [l for l in informe.splitlines()
-                      if l.strip().startswith("[FAIL]") and razon in l]
-            assert fallos, (
-                f"EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el "
-                f"validador tiene que ACUSAR ({por_que}) y no lo ha hecho: ningun "
-                f"[FAIL] del informe dice {razon!r}. Sin esta asercion un gate "
-                "ciego en ESTA rama pasaria por sano: con el cuerpo del gate "
-                "VACIO el validador tambien daria 0 FAIL. Fallos del informe:\n"
-                f"{informe[-3000:]}\n"
-                "EL GATE NO DISTINGUE")
-
+        # gate calle donde tiene que hablar. El helper `exigir_el_fall_con_
+        # esta_razon` que las usa esta DEFINIDO MAS ARRIBA, con las celdas
+        # (D1-ter), para que el orden de las aserciones sea el que manda.
         exigir_el_fall_con_esta_razon(
             informe_sano,
             f"el mutante {centinela_sha} cita el sha",
@@ -23184,10 +23444,12 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
           "mutante de cableado lo hace desaparecer. Y ademas: el check 11 sale "
           "cableado con su REGISTRO (y su mutante lo borra), el gate declara los "
           "seis limites que no prueba y el emisor no pisa la evidencia ajena. "
-          "Y el gate DISTINGUE: acusa a los SIETE contradictorios (tres del "
-          "juicio y cinco precondiciones estructurales: sha, asa, frame, "
-          "informe y catalogo), calla sobre los TRES coherentes, y con el "
-          "cuerpo vaciado la acusacion muere (REGISTRO sigue).")
+          "Y el gate DISTINGUE: acusa a los DOCE sentinelas con problema (cuatro "
+          "del juicio, cinco precondiciones estructurales de la ronda 2 -- sha, "
+          "asa, frame, informe y catalogo -- y tres de la ronda 3 -- la linea que "
+          "falta, el informe corto y el changelog --), calla sobre los TRES "
+          "coherentes, y con el cuerpo vaciado la acusacion muere (REGISTRO "
+          "sigue).")
 
 
 def test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real():
@@ -24256,7 +24518,7 @@ def _fixture_con_reloj_clavado(directorio, asunto, fecha_iso):
     `_repo_temporal_de_un_commit`:** esa helper la comparten 21 call sites y
     anadirle un parametro opcional por una necesidad de UN test seria un
     cambio con 21 consumidores; y ademas moveria el numero de linea de
-    `run_tests.py:23718`, que cuatro afirmaciones citan POR NUMERO (lo vigila
+    `run_tests.py:24207`, que cuatro afirmaciones citan POR NUMERO (lo vigila
     `test_las_citas_de_sandbox_rules_siguen_siendo_ciertas`). Clavar el reloj
     aqui resuelve el problema sin tocar nada compartido y sin mover ninguna
     cita.
@@ -29833,7 +30095,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
 
     **POR QUE ESTE GUARD EXISTE Y POR QUE NO SE PONE EN ROJO.** Cuatro sitios
     citan esas dos lineas POR NUMERO: `validate_docs.py:1429`,
-    `validate_docs.py:1924`, `run_tests.py:23945` y
+    `validate_docs.py:1924`, `run_tests.py:24207` y
     `docs/ai/sandbox-rules.md:1133`, y las cuatro dicen que son las dos filas del
     `0` de la tabla de codigos de salida. MEDIDO: `_declara_el_codigo_sobrecargado`
     (`validate_docs.py:1935`) compila el patron con `re.MULTILINE` sobre el
@@ -29848,7 +30110,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     por encima de la 55 desplaza la tabla y este guard muere.
 
     Ademas se comprueba que la seccion "Por que el validador NO corre en CI"
-    sigue por encima de la 61 (`run_tests.py:23943`), que es el suelo que hace
+    sigue por encima de la 61 (`run_tests.py:24205`), que es el suelo que hace
     falta para que esas citas no se pudran.
     """
     print("Probando que las citas por linea de sandbox-rules.md son ciertas...")
@@ -29876,7 +30138,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     # numero de una y olvidar las otras tres deja tres mentiras nuevas.
     cita = "sandbox-rules.md:55-56"
     for relativo, numeros in (("validate_docs.py", ("1429", "1924")),
-                              ("run_tests.py", ("23945",)),
+                              ("run_tests.py", ("24207",)),
                               ("docs/ai/sandbox-rules.md", ("1133",))):
         texto = _texto_de(os.path.join(raiz, *relativo.split("/"))).splitlines()
         for numero in numeros:

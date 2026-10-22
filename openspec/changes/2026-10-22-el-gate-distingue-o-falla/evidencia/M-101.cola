@@ -1,9 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r2_camara2\run_tests.py", line 31830, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara2\run_tests.py", line 32057, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r2_camara2\run_tests.py", line 22886, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara2\run_tests.py", line 23057, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     exigir_la_acusacion(informe_sano, contradictorio, "SOBREVIVIENTE",
     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                         "MUERTO",
@@ -12,25 +12,26 @@ Traceback (most recent call last):
                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                         "commiteada obliga a MUERTO")
                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r2_camara2\run_tests.py", line 22691, in exigir_la_acusacion
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara2\run_tests.py", line 22708, in exigir_la_acusacion
     assert [l for l in nombran if declarado in l and obliga in l], (
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR al sentinela M-FIX-MAL (el journal lo declara SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO: el journal lo declara SOBREVIVIENTE y su evidencia commiteada obliga a MUERTO) y no lo ha hecho. Sin esta asercion un gate ciego en ESTA rama pasaria por sano: con el cuerpo del gate VACIO el validador tambien daria 0 FAIL. Fallos que lo nombran: []. Informe:
-: REGISTRO entradas cubiertas=2, mutantes re-derivados=0, origen del contrato: ciclo 70
-
-  [FAIL] historial de commits: se lee pero NO aporta ningun ciclo (0 subjects con marcador de ciclo sobre 1 leidos) mientras rd_journal.json si registra 2 ciclo(s). Un parser que no encuentra nada es un parser ROTO, y un parser roto en verde es el falso verde que esta union viene a cerrar
-  [FAIL] CHANGELOG.md (raiz): rd_journal.json registra el ciclo 071 pero el changelog legible no tiene su entrada. Borrarla en los dos ficheros no puede hacer desaparecer la obligacion de registrarla
-  [FAIL] CHANGELOG.md (raiz): sin entrada para el/los ciclo/s 071, exigido por rd_journal.json y/o por el historial de commits. La tabla resumen los enlaza, pero el encabezado seccion no existe: enlace muerto
-  [FAIL] rd_journal.json: la entrada del ciclo 70 NO tiene linea canonica para el mutante M-FIX-BIEN, que si esta en el catalogo del cambio
+talogo del cambio
   [FAIL] openspec/changes/2026-10-22-corpus-sintetico-del-guard/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 70
   [FAIL] rd_journal.json: la entrada del ciclo 71 NO tiene linea canonica para el mutante M-FIX-MAL, que si esta en el catalogo del cambio
   [FAIL] rd_journal.json: la entrada del ciclo 71 NO tiene linea canonica para el mutante M-FIX-ALREV, que si esta en el catalogo del cambio
   [FAIL] rd_journal.json: la entrada del ciclo 71 NO tiene linea canonica para el mutante M-FIX-MOTIVO, que si esta en el catalogo del cambio
   [FAIL] rd_journal.json: la entrada del ciclo 71 NO tiene linea canonica para el mutante M-FIX-SANO, que si esta en el catalogo del cambio
   [FAIL] openspec/changes/2026-10-22-corpus-sintetico-del-guard-b/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 71
+  [FAIL] rd_journal.json: la entrada del ciclo 72 NO tiene linea canonica para el mutante M-FIX-SHA, que si esta en el catalogo del cambio
+  [FAIL] rd_journal.json: la entrada del ciclo 72 NO tiene linea canonica para el mutante M-FIX-ASA, que si esta en el catalogo del cambio
+  [FAIL] rd_journal.json: la entrada del ciclo 72 NO tiene linea canonica para el mutante M-FIX-FRAME, que si esta en el catalogo del cambio
+  [FAIL] openspec/changes/2026-10-22-corpus-sintetico-estructural-c/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 72
+  [FAIL] rd_journal.json: la entrada del ciclo 73 NO tiene linea canonica para el mutante M-FIX-INFORME, que si esta en el catalogo del cambio
+  [FAIL] openspec/changes/2026-10-22-corpus-sintetico-estructural-d/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 73
 
-  [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=2, mutantes re-derivados=0, origen del contrato: ciclo 70
+  [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=4, mutantes re-derivados=0, origen del contrato: ciclo 70
 
-Resumen: 163 OK, 10 FAIL, 0 SKIP
+Resumen: 165 OK, 16 FAIL, 0 SKIP
 
 EL GATE NO DISTINGUE

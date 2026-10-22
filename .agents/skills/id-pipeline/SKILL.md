@@ -19,7 +19,7 @@ flowchart LR
 
 > [!IMPORTANT]
 > **REGLA DE NO-DETENCIÓN (LEE ESTO ANTES QUE NADA):**
-> **El bucle NO tiene final.** Terminar el Paso 3, o terminar el Paso 4, **no** es terminar el turno. Al completar el **Paso 4** con veredicto `PASS` —o con `FAIL` ya corregido—, actualizas `.taskmaster/rd_journal.json`, `CHANGELOG.md`, `.taskmaster/CHANGELOG.md` y [`STATUS.md`](file:///c:/Users/carch/Nextcloud/Scripts/woptimizer/STATUS.md), y **en el siguiente mensaje vuelves al Paso 1 sin decir nada al usuario**.
+> **El bucle NO tiene final.** Terminar el Paso 3, o terminar el Paso 4, **no** es terminar el turno. Al completar el **Paso 4** con veredicto `PASS` —o con `FAIL` ya corregido—, actualizas `.taskmaster/rd_journal.json`, `CHANGELOG.md`, `.taskmaster/CHANGELOG.md` y [`STATUS.md`](file:///c:/Users/carch/Nextcloud/Scripts/woptimizer/STATUS.md), **publicas el ciclo en `beta` (`git push origin beta`) y compruebas que `HEAD` == `origin/beta`** (Sección 0-bis), y **en el siguiente mensaje vuelves al Paso 1 sin decir nada al usuario**.
 > - **Nunca te detienes a esperar confirmación entre ciclos.**
 > - **Nunca dices "he terminado", "ciclo completado" ni "listo" al cerrar un ciclo.** No existe el concepto de "terminar" aquí.
 > - **Nunca escribes un mensaje de cierre al usuario al acabar un ciclo.** Si escribes un resumen y paras, el bucle está roto. El único texto que puedes escribir al usuario es el del ciclo en curso.
@@ -60,21 +60,21 @@ flowchart LR
 >
 > ```bash
 > git switch beta            # el bucle trabaja aqui
-> # ... ciclos ...
+> git push origin beta       # PUBLICAR: cada ciclo cierra con push a beta
 > git switch main
 > git merge --ff-only beta   # el arbol tiene que estar limpio
 > git push origin main
 > git switch beta
 > ```
 >
-> **Antes de cada `git push`, `git status --porcelain` tiene que salir vacio:**
-> `add -A` se lleva lo que haya suelto, y en un turno arrastro un
-> `run_tests_out.txt` de 354 lineas a un commit ajeno.
->
-> Y la contraprueba de la regla, que es la mitad que de verdad discrimina: **ninguna
+> **PUBLICAR ES PARTE DEL CICLO, no un extra:** al cerrar cada ciclo el motor
+> empuja a `beta` y comprueba que `HEAD` == `origin/beta`. **Antes de cada `git
+> push`, `git status --porcelain` tiene que salir vacio:** `add -A` se lleva lo
+> que haya suelto, y en un turno arrastro un `run_tests_out.txt` de 354 lineas a
+> un commit ajeno. **Si el push falla (red, credenciales), el bucle NO se
+> detiene:** anótalo (`publicacion: "PENDIENTE"` + motivo) y reintenta en el cierre
+> siguiente. **`main` no se toca en el bucle.** Y la contraprueba: **ninguna
 > plantilla literal de commit de este documento nombra `main` como destino.**
-> Sin esa mitad, escribir la regla seria un comentario nuevo que no cambia
-> nada, y el test pasaria sin medir.
 
 ---
 
@@ -239,7 +239,7 @@ Tu objetivo es implementar el código, verificarlo rigurosamente, actualizar la 
 
 > **REGLA:** entre el Paso 3 y el reinicio, delega en el agente `mutation-auditor`. **Su veredicto decide a dónde vas después: `PASS` → Paso 1 (que es un reinicio, no una parada). `FAIL` → Paso 3.** No lo saltes porque "los tests pasan": eso es precisamente lo que no demuestra nada.
 >
-> ⚠️ **Este paso NO es el final del bucle.** Un `PASS` aquí significa "siguiente tarea", no "trabajo terminado". Si después de este paso escribes un resumen y te detienes, has parado el motor.
+> ⚠️ **Este paso NO es el final del bucle.** Un `PASS` aquí significa "siguiente tarea", no "trabajo terminado". Si después de este paso escribes un resumen y te detienes, has parado el motor. Con el veredicto (`PASS`, o `FAIL` ya corregido) el ciclo se **publica en `beta`** (Sección 0-bis) antes de volver al Paso 1.
 
 ### Por qué existe este paso
 
@@ -481,7 +481,7 @@ WOPT_VEREDICTO <mutante> <MUERTO|SOBREVIVIENTE|NO MEDIDO> <sha>
 1. Tras el `git_safe_commit.py` del Paso 3 (para tener el hash).
 2. Tras actualizar `rd_journal.json` (para mantener orden: journal → changelogs → STATUS).
 3. **Antes** de actualizar `STATUS.md` (el dashboard referencia los pases nuevos).
-4. **Antes** de retornar al Paso 1.
+4. **PUBLICAR (obligatorio, Sección 0-bis):** con el árbol limpio (`git status --porcelain` vacío), `git push origin beta` y comprueba que `HEAD` == `origin/beta`. **Un ciclo cerrado en local no está cerrado.** **Antes** de retornar al Paso 1.
 
 ⚠️ Al llegar al paso 2 produces **tres** ficheros en este orden: `rd_journal.json`, luego `CHANGELOG.md` de raíz, luego `.taskmaster/CHANGELOG.md`. El de raíz va resumido y en lenguaje de usuario; el técnico, detallado. Si te saltas el de raíz, el ciclo está incompleto.
 
