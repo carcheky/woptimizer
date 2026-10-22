@@ -9,7 +9,7 @@
 | Indicador | Estado | Detalle |
 |---|---|---|
 | Sintaxis UI | 🟢 | `verify_ui_syntax.py` — alcance **DERIVADO** con `rglob`, 22 módulos bajo `src/woptimizer/` (cifra atada a la que el script imprime: `test_el_recuento_de_modulos_de_sintaxis_es_derivado` la compara, no se mantiene a mano) |
-| Tests headless | 🟢 | `run_tests.py`, **234 tests** (158 backend + 76 headless UI) |
+| Tests headless | 🟢 | `run_tests.py`, **235 tests** (159 backend + 76 headless UI) |
 | Benchmark base | 🟢 | 182 ms init · 4.97 ms escaneo · 0.003 ms cache · 30 MB RSS |
 | Process DB | 🟢 | 96 entradas · 8 categorías · 0 huérfanas · 🛡️ 34 protegidas |
 | Versionado | 🟢 | Rama `beta` · último commit `9ccbfd6` (ciclo 68) · `main` publicada `v1.1.0` |
@@ -123,7 +123,7 @@
 1. **Leer AGENTS.md** para invariantes (separación capas, kill recursivo, pack gaming protegido).
 2. **Nunca commitear a `main`** — trabajar en `beta`, luego ff-merge.
 3. **Commit solo vía** `python .taskmaster/git_safe_commit.py "mensaje (TASK-NNN)"`.
-4. **Tests:** `python run_tests.py` (234 tests) · `python verify_ui_syntax.py` · `python validate_docs.py`.
+4. **Tests:** `python run_tests.py` (235 tests) · `python verify_ui_syntax.py` · `python validate_docs.py`.
 5. **Docs vivas:** actualizar `docs/ai/` tras cada cambio arquitectónico.
 6. **Carga selectiva:** no leer toda la doc — consultar `llms.txt` como mapa y cargar solo el fichero de `docs/ai/` que necesites.
 7. **Pipeline de 4 pasos:** Buscar → Planear → Ejecutar → Auditar tests (mutation-auditor).

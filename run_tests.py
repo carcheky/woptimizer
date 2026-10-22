@@ -23367,8 +23367,166 @@ def test_el_envoltorio_git_no_hereda_stdin_y_no_cuelga_en_desatendido():
           "padre desatendido con el pipe abierto.")
 
 
+# ---------------------------------------------------------------------------
+# TASK-083 (ciclo 69): el hash muerto se DERIVA por construccion y el reloj de
+# la fixture queda CLAVADO en un instante adversario.
+#
+# MEDIDO el 2026-10-22 (arquitecto, 400 fixtures): el codigo viejo construia el
+# hash muerto como `hash_real + "0"`, y `git cat-file -e` resuelve CUALQUIER
+# prefijo de 8 hex, luego ese prefijo coincide con el objeto REAL cuando la
+# 8.a cifra hexadecimal del sha es `0`: P = 1/16 = 6,25 %. MEDIDO en dos
+# distribuciones: 23/400 = 5,75 % (IC95 3,86-8,48 %) y 12/144 shas = 8,33 %
+# (IC95 4,83-14,00 %). El mecanismo esta confirmado al 100 %: 400/400 fixtures
+# rompen SI Y SOLO SI `sha[7] == "0"`.
+#
+# Y el RELOJ no era la causa: `_repo_temporal_de_un_commit` no fija la fecha,
+# luego el sha es funcion del segundo, pero la probabilidad de fallo es 1/16
+# para CUALQUIER reloj (con fecha fija el test falla SIEMPRE o NUNCA, medido
+# 8/8 shas identicos). El reloj es un efecto secundario; la CONSTRUCCION es la
+# causa. Y "asunto unico por fixture" NO lo arregla: 400 shas distintos y la
+# tasa sigue en 5,75 %.
+#
+# El arreglo tiene DOS mitades y las dos hacen falta: el reloj CLAVADO mantiene
+# la fixture ADVERSARIA (el caso que rompe se da el 100 % de las veces) y el
+# hash DERIVADO hace que ese caso no se de nunca.
+# ---------------------------------------------------------------------------
+
+# El instante adversario, MEDIDO y VERIFICADO contra git de verdad:
+#   ts = 1735689643 -> GIT_AUTHOR_DATE = GIT_COMMITTER_DATE = 2025-01-01T00:00:43+00:00
+#   sha = 296cfb20fb7030f6f68afdfc508435be7a931b56   (8.a cifra = '0')
+#   git cat-file -e 296cfb20 -> rc 0 (EXISTE) -> el codigo VIEJO muere el 100 %
+#   digitos libres (hash_real+d no es prefijo de NINGUN objeto): 15 de 16
+# El instante es estable para siempre: el objeto commit depende solo del arbol
+# vacio, del autor, del mensaje y del timestamp con offset explicito (+0000),
+# luego no depende de la zona horaria ni de la version de git.
+_FECHA_ADVERSARIA = "2025-01-01T00:00:43+00:00"
+
+# El asunto de la fixture ADVERSARIA. El sha del commit depende del mensaje, no
+# solo de la fecha, luego el asunto va FIJO aqui y lo comparten el pre-vuelo y
+# el tripwire: si cambia, el sha deja de ser `296cfb20...` y la asercion de
+# adversariedad (8.a cifra = '0') se pone en rojo CON SU NOMBRE, en vez de
+# dejar la fixture sin dientes en silencio.
+_ASUNTO_ADVERSARIO = "chore: fixture del pre-vuelo"
+
+
+def _fixture_con_reloj_clavado(directorio, asunto, fecha_iso):
+    """`_repo_temporal_de_un_commit` con el RELOJ CLAVADO en `fecha_iso`.
+
+    MEDIDO el 2026-10-22 (TASK-083): con `GIT_AUTHOR_DATE` =
+    `GIT_COMMITTER_DATE` = `2025-01-01T00:00:43+00:00` (ts 1735689643) el
+    commit de la fixture sale con el sha
+    `296cfb20fb7030f6f68afdfc508435be7a931b56`, cuya 8.a cifra hexadecimal es
+    `0`, y `git cat-file -e 296cfb20` responde rc 0: o sea que el codigo VIEJO
+    (el hash muerto construido como `hash_real + "0"`) MUERE el 100 % de las
+    veces con esta fixture.
+
+    **POR QUE el reloj se clava en el ENTORNO y no dentro de
+    `_repo_temporal_de_un_commit`:** esa helper la comparten 21 call sites y
+    anadirle un parametro opcional por una necesidad de UN test seria un
+    cambio con 21 consumidores; y ademas moveria el numero de linea de
+    `run_tests.py:23133`, que cuatro afirmaciones citan POR NUMERO (lo vigila
+    `test_las_citas_de_sandbox_rules_siguen_siendo_ciertas`). Clavar el reloj
+    aqui resuelve el problema sin tocar nada compartido y sin mover ninguna
+    cita.
+
+    Y por que se clava el entorno en vez de pasar `env=` a git: la helper
+    compartida (`_git_de_fixture`) copia `os.environ` al hijo, luego basta con
+    poner las dos variables y devolverlas a su estado. El `finally` las repone
+    aunque la fixture falle.
+    """
+    variables = ("GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE")
+    anteriores = {v: os.environ.get(v) for v in variables}
+    for v in variables:
+        os.environ[v] = fecha_iso
+    try:
+        return _repo_temporal_de_un_commit(directorio, asunto)
+    finally:
+        for v in variables:
+            if anteriores[v] is None:
+                os.environ.pop(v, None)
+            else:
+                os.environ[v] = anteriores[v]
+
+
+def _objetos_de_la_fixture(cwd):
+    """Los sha de TODOS los objetos de la fixture, tal y como git los ve.
+
+    MEDIDO el 2026-10-22 (TASK-083): `git cat-file --batch-all-objects
+    --batch-check` lista el repositorio de objetos entero (`<sha> <tipo>
+    <tamano>`) y sale con rc 0. Es la lectura que permite DERIVAR un hash
+    muerto: el pre-vuelo tiene que saber que objetos existen para poder
+    afirmar que uno NO existe.
+
+    `cwd` es el DIRECTORIO de la fixture (no su `.git`): `cat-file` recibe el
+    repositorio por el directorio de trabajo, que es lo que hacen los demas
+    comandos de la fixture.
+    """
+    salida = _git_de_fixture(
+        ["cat-file", "--batch-all-objects", "--batch-check"], cwd)
+    objetos = [linea.split()[0] for linea in salida.splitlines() if linea.strip()]
+    assert objetos, (
+        f"la fixture de {cwd} no tiene NINGUN objeto: `cat-file --batch-all-objects "
+        f"--batch-check` devolvio una lista vacia, luego no hay nada de lo que "
+        f"derivar un hash muerto")
+    return objetos
+
+
+def _digitos_libres_para_un_hash_muerto(objetos, hash_real):
+    """Los digitos hex con los que `<hash_real><digito>` NO es prefijo de nadie.
+
+    MEDIDO el 2026-10-22 (TASK-083): la fixture tiene DOS objetos (el commit y
+    el arbol vacio `4b825dc6...`), luego de 16 digitos hay 15 LIBRES (medido en
+    400/400 fixtures). Con un digito libre, `git cat-file -e` responde rc 128
+    (`fatal: Not a valid object name`) y el pre-vuelo decide sobre una verdad
+    y no sobre la suerte.
+
+    **POR QUE aqui no se escribe `<hash_real> + "<digito>"`:** esa ES la
+    construccion que el tripwire de AC-4 prohibe (un valor bajo prueba
+    construido a partir de un hash real). Aqui el prefijo candidato se
+    CONSTRUYE para PROBAR si existe, no para usarse de valor bajo prueba, y se
+    arma con `join` para que el guard no lo confunda con la construccion
+    prohibida.
+
+    Devuelve la lista de digitos libres, en orden. Si NO hubiera ninguno,
+    revienta con un `AssertionError` que NOMBRA el hash y los objetos: un
+    `None` silencioso seria un falso verde.
+    """
+    libres = []
+    for digito in "0123456789abcdef":
+        candidato = "".join((hash_real, digito))
+        if not any(objeto.startswith(candidato) for objeto in objetos):
+            libres.append(digito)
+    assert libres, (
+        f"NO hay digito hex libre para el hash corto {hash_real}: los 16 "
+        f"digitos hacen prefijo de alguno de los {len(objetos)} objetos de la "
+        f"fixture ({objetos}). Sin digito libre el hash muerto NO se puede "
+        f"derivar, y herearlo seria volver a la construccion por concatenacion")
+    return libres
+
+
+def _hash_muerto_por_construccion(cwd, hash_real):
+    """`(hash_muerto, digitos_libres)`: un hash que NO existe, POR CONSTRUCCION.
+
+    MEDIDO el 2026-10-22 (TASK-083): el arreglo del pre-vuelo. En vez de
+    adivinar un caracter que quizas exista (P = 1/16 de que exista, porque
+    `git cat-file -e` resuelve cualquier prefijo de 8 hex), se listan los
+    objetos de la fixture y se elige un digito hex que NO sea prefijo de
+    ninguno: luego la muerte del hash muerto es una CONSECUENCIA, no una
+    suerte.
+
+    El nombre acaba en `_por_construccion` a proposito: es la CONVENCION que
+    lee el tripwire de AC-4 (`_delitos_de_procedencia_del_hash_muerto`), que
+    exige que toda helper asi se use como hash bajo prueba. Renombrarla
+    desactiva el tripwire, y por eso el nombre es parte del contrato.
+    """
+    objetos = _objetos_de_la_fixture(cwd)
+    libres = _digitos_libres_para_un_hash_muerto(objetos, hash_real)
+    return "".join((hash_real, libres[0])), "".join(libres)
+
+
 def test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe():
-    """AC-3 / M2 y M3: el pre-vuelo decide, y decide las DOS cosas.
+    """AC-1 / AC-2 (TASK-083): el pre-vuelo decide, decide las DOS cosas y ya
+    no depende de la suerte.
 
     MEDIDO el 2026-10-08: `git cat-file --batch-check` SIN `input=` responde
     **rc 0 con stdout vacio**, luego la forma que usaban los dos `pre-vuelo`
@@ -23380,21 +23538,62 @@ def test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe():
     devolviera `False` siempre pasaria el caso negativo, y uno que devolviera
     `True` siempre pasaria el positivo; con los dos, solo pasa el que responde
     a git de verdad.
+
+    **POR QUE el reloj de esta fixture esta CLAVADO (AC-1):** para que la
+    fixture siga siendo ADVERSARIA, o sea para que el caso que rompia (el hash
+    muerto construido como `hash_real + "0"`, que `cat-file -e` resuelve
+    cuando la 8.a cifra del sha es `0`, con P = 1/16) se de el 100 % de las
+    veces y no con una probabilidad: con el reloj clavado el sha es
+    `296cfb20...`, luego el codigo viejo MUERE aqui siempre y este test
+    conserva los dientes; si el reloj se deja suelto, la fixture vuelve a ser
+    una moneda al aire y un rojo puede venir de la suerte y no del mutante.
+
+    **POR QUE el hash muerto se DERIVA por construccion (AC-2):** para que no
+    dependa de la suerte: en vez de adivinar un caracter que quizas exista, se
+    listan los objetos de la fixture y se elige un digito hex que NO sea
+    prefijo de ninguno, luego `cat-file -e` da rc 128 POR CONSTRUCCION.
     """
     import shutil
 
     import validate_docs as vd
 
-    tmp = tempfile.mkdtemp(prefix="wopt_t072_pre_vuelo_")
+    tmp = tempfile.mkdtemp(prefix="wopt_t083_pre_vuelo_")
     try:
         d_hist = os.path.join(tmp, "historial")
-        _repo_temporal_de_un_commit(d_hist, "chore: fixture del pre-vuelo")
+        _fixture_con_reloj_clavado(d_hist, _ASUNTO_ADVERSARIO,
+                                    _FECHA_ADVERSARIA)
+        sha_completo = _git_de_fixture(["rev-parse", "HEAD"], d_hist).strip()
         hash_real = _git_de_fixture(
             ["rev-parse", "--short", "HEAD"], d_hist).strip()
-        hash_muerto = "deadbee"
+        hash_muerto, digitos_libres = _hash_muerto_por_construccion(d_hist, hash_real)
+
+        # AC-1: la fixture tiene que seguir siendo ADVERSARIA. Si esto revierte,
+        # el reloj ha cambiado y el pre-vuelo ha vuelto a ser una moneda al aire.
+        assert sha_completo[7] == "0", (
+            f"el sha de la fixture ({sha_completo}) tiene que tener '0' en la 8.a "
+            f"cifra hexadecimal: es lo que hace que el prefijo de 8 hex RESUELVA "
+            f"el objeto real y, con ello, que el codigo viejo (el hash muerto "
+            f"construido como `hash_real + '0'`) MUERA el 100 % de las veces. Con "
+            f"el reloj clavado en {_FECHA_ADVERSARIA} el sha es 296cfb20...; si "
+            f"esto revierte, el reloj se ha soltado")
+
+        # El TESTIGO de que la fixture es adversaria: el prefijo de 8 hex del sha
+        # REAL resuelve (rc 0). OJO: este valor NO es un hash bajo prueba (no se
+        # espera que NO exista): es el control POSITIVO de que la construccion
+        # prohibida habria dado con un objeto real, y por eso es determinista.
+        assert _objeto_existe_en_fixture(sha_completo[:8], d_hist) is True, (
+            f"el prefijo de 8 hex del sha real ({sha_completo[:8]}) tiene que "
+            f"RESOLVER en la fixture: es lo que hace ADVERSARIA a la fixture y lo "
+            f"que hace que el codigo viejo muera aqui el 100 % de las veces")
+
         assert vd.RE_HASH_CORTO.fullmatch(hash_muerto), (
             "el hash muerto de la fixture tiene que ser CONFORME (7-40 hex): si no "
             "fuera conforme, el pre-vuelo mediria la forma y no la existencia")
+
+        assert hash_muerto.startswith(hash_real), (
+            f"el hash muerto {hash_muerto} tiene que VENIR de la derivacion (el "
+            f"hash corto real {hash_real} mas un digito): si no, ha vuelto a ser "
+            f"un literal y el pre-vuelo depende de la suerte otra vez")
 
         assert _objeto_existe_en_fixture(hash_real, d_hist) is True, (
             f"el hash real {hash_real} tiene que EXISTIR en su propia fixture. Si "
@@ -23404,24 +23603,348 @@ def test_el_pre_vuelo_de_un_hash_muerto_distingue_existe_de_no_existe():
             "mata")
 
         assert _objeto_existe_en_fixture(hash_muerto, d_hist) is False, (
-            f"el hash muerto {hash_muerto} tiene que NO existir en esa fixture. Si "
-            "existe, la fixture no distingue el caso muerto del real y todo lo que "
-            "mide el check 9 con ella queda sin objeto")
-
-        # Y el que MATA al M2 (volver a `cat-file --batch-check` sin `input=`):
-        # con el codigo viejo la salida es `''` y el caso positivo de arriba
-        # revienta. Se deja escrito en el mensaje para que quien lea el rojo sepa
-        # que medico.
-        assert _objeto_existe_en_fixture(hash_real + "0", d_hist) is False, (
-            "un hash REAL mas un caracter tiene que NO existir: `cat-file -e` "
-            "responde 128 con `fatal: Not a valid object name` y eso se traduce a "
-            "False, no a un AssertionError. Si esto revienta, el helper esta "
-            "tratando el 128 como fallo de git, que es el falso verde que "
-            "_git_de_fixture tendria")
+            f"el hash muerto {hash_muerto} (derivado; digitos libres "
+            f"{digitos_libres}) tiene que NO existir en esa fixture: se deriva "
+            f"por construccion, luego esto no puede fallar por suerte. Y `cat-file "
+            f"-e` responde 128 con `fatal: Not a valid object name`, que se "
+            f"traduce a False y no a un AssertionError: si esto revienta, el "
+            f"helper esta tratando el 128 como fallo de git, que es el falso "
+            f"verde que _git_de_fixture tendria")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print("Pre-vuelo de existencia: el hash real se resuelve y el muerto no, y el "
           "128 de git no se pierde como AssertionError.")
+
+
+# --- AC-4 (TASK-083): el tripwire que vigila la CONSTRUCCION ---------------
+#
+# DERIVADO con `ast` sobre el fuente de la suite, nunca una lista de ficheros
+# ni de posiciones escrita a mano (la clase que este repo lleva dos ciclos
+# persiguiendo: D2, D3, P2, A-C68-1).
+
+
+def _literal_hex_corto(nodo):
+    """`True` si el nodo es un literal de cadena de 1 a 8 digitos hex.
+
+    El rango y el alfabeto son los de un PREFIJO de sha: es lo unico que se
+    concatena con un hash para construir un objeto que git resuelve.
+    """
+    return (isinstance(nodo, ast.Constant)
+            and isinstance(nodo.value, str)
+            and 1 <= len(nodo.value) <= 8
+            and all(c in "0123456789abcdefABCDEF" for c in nodo.value))
+
+
+def _expresion_de_un_hash(nodo):
+    """`True` si el nodo es una expresion que parece un hash real.
+
+    El reconocimiento es POR NOMBRE (`hash`, `sha`, `digest`, `hex`, `short`):
+    es lo que hace la regla DERIVABLE, porque el nombre de una variable es
+    parte del codigo y no una lista que alguien pueda vaciar.
+    """
+    import re as _re
+    if isinstance(nodo, ast.Name):
+        return bool(_re.search(r"(?i)(hash|sha|digest|hex|short)", nodo.id))
+    if isinstance(nodo, ast.Attribute):
+        return bool(_re.search(r"(?i)(hash|sha|digest|hex|short)", nodo.attr))
+    return False
+
+
+def _hallazgos_de_concatenacion_de_un_hash_real(arbol):
+    """`[(linea, texto)]`: todo valor construido a partir de un hash real.
+
+    DERIVADO con `ast` sobre el arbol que se le pasa: la regla es "ningun
+    `BinOp(Add)` de la suite puede concatenar una expresion que parece un hash
+    con un literal de cadena". El literal tiene que ser HEX de 1 a 8 digitos
+    porque es lo que se concatena con un sha para construir un prefijo que
+    `cat-file -e` resuelve.
+
+    MEDIDO el 2026-10-22 (TASK-083) sobre la suite REAL: el patron aparece
+    exactamente UNA vez, en la linea del pre-vuelo, y es el bug. Con el
+    arreglo: 0 hallazgos.
+    """
+    hallazgos = []
+    for nodo in ast.walk(arbol):
+        if not (isinstance(nodo, ast.BinOp) and isinstance(nodo.op, ast.Add)):
+            continue
+        for izquierda, derecha in ((nodo.left, nodo.right),
+                                   (nodo.right, nodo.left)):
+            if _literal_hex_corto(izquierda) and _expresion_de_un_hash(derecha):
+                hallazgos.append((nodo.lineno, ast.unparse(nodo)))
+                break
+    return hallazgos
+
+
+def _funciones_de_modulo(arbol):
+    """Las funciones `def` de MODULO del fuente (no las anidadas)."""
+    return [nodo for nodo in arbol.body if isinstance(nodo, ast.FunctionDef)]
+
+
+def _es_una_derivacion_por_construccion(nombre):
+    """`True` si el nombre marca una derivacion POR CONSTRUCCION.
+
+    Es la CONVENCION que lee `_delitos_de_procedencia_del_hash_muerto`: toda
+    helper asi se usa como hash bajo prueba, y por eso el nombre es parte del
+    contrato (renombrarla desactiva el tripwire).
+    """
+    return nombre.endswith("_por_construccion")
+
+
+def _nombres_de_un_destino(destino):
+    """Los nombres que un destino de asignacion ata."""
+    if isinstance(destino, ast.Name):
+        return [destino.id]
+    if isinstance(destino, (ast.Tuple, ast.List)):
+        nombres = []
+        for elemento in destino.elts:
+            nombres.extend(_nombres_de_un_destino(elemento))
+        return nombres
+    return []
+
+
+def _usos_de_un_hash_bajo_prueba(funcion):
+    """Los hashes que esta funcion espera MUERTOS: `(expresion, linea)`.
+
+    Derivado con `ast`: un uso es una asercion `... is False` cuya llamada es
+    `_objeto_existe_en_fixture(<expresion>, ...)`. El nombre de la helper y el
+    comparador salen del CODIGO, no de una lista escrita a mano.
+    """
+    usos = []
+    for nodo in ast.walk(funcion):
+        if not (isinstance(nodo, ast.Assert) and isinstance(nodo.test, ast.Compare)):
+            continue
+        comparacion = nodo.test
+        if len(comparacion.ops) != 1 or not isinstance(comparacion.ops[0], ast.Is):
+            continue
+        comparadores = comparacion.comparators
+        if not comparadores or not isinstance(comparadores[0], ast.Constant):
+            continue
+        if comparadores[0].value is not False:
+            continue
+        llamada = comparacion.left
+        if not (isinstance(llamada, ast.Call) and isinstance(llamada.func, ast.Name)):
+            continue
+        if llamada.func.id != "_objeto_existe_en_fixture" or not llamada.args:
+            continue
+        usos.append((llamada.args[0], nodo.lineno))
+    return usos
+
+
+def _delitos_de_procedencia_del_hash_muerto(arbol):
+    """`[(linea, motivo)]`: el hash bajo prueba que NO viene de la derivacion.
+
+    TRES reglas, todas derivadas del codigo:
+
+    (1) toda helper `*_por_construccion` tiene que ser llamada por alguien: si
+        nadie la llama, el hash bajo prueba ha vuelto a ser un literal y el
+        pre-vuelo depende de la suerte otra vez;
+    (2) en toda funcion que llama a una derivacion, la llamada tiene que NOMBRAR
+        el valor (`x = _..._por_construccion(...)`) y ese nombre tiene que ser
+        el argumento de un uso de hash bajo prueba
+        (`_objeto_existe_en_fixture(x, ...) is False`);
+    (3) ese nombre no puede quedar reasignado a un literal en la misma funcion.
+    """
+    delitos = []
+    funciones = _funciones_de_modulo(arbol)
+    for funcion in funciones:
+        if not _es_una_derivacion_por_construccion(funcion.name):
+            continue
+        llamadas = [nodo for nodo in ast.walk(arbol)
+                    if isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Name)
+                    and nodo.func.id == funcion.name]
+        if not llamadas:
+            delitos.append((funcion.lineno,
+                            f"la derivacion por construccion `{funcion.name}` no "
+                            f"la llama nadie: el hash bajo prueba ha vuelto a ser "
+                            f"un literal y el pre-vuelo depende de la suerte"))
+    for funcion in funciones:
+        usos = _usos_de_un_hash_bajo_prueba(funcion)
+        literales = {}
+        asignaciones = []
+        for nodo in ast.walk(funcion):
+            if not isinstance(nodo, ast.Assign):
+                continue
+            nombres = []
+            for destino in nodo.targets:
+                nombres.extend(_nombres_de_un_destino(destino))
+            if not nombres:
+                continue
+            asignaciones.append((nombres, nodo))
+            valor = nodo.value
+            if isinstance(valor, ast.Constant) and isinstance(valor.value, str):
+                for nombre in nombres:
+                    literales[nombre] = nodo.lineno
+        for nombres, nodo in asignaciones:
+            valor = nodo.value
+            if not any(isinstance(hijo, ast.Call) and isinstance(hijo.func, ast.Name)
+                       and _es_una_derivacion_por_construccion(hijo.func.id)
+                       for hijo in ast.walk(valor)):
+                continue
+            llega = any(isinstance(expresion, ast.Name) and expresion.id in nombres
+                        for expresion, _ in usos)
+            if not llega:
+                delitos.append((nodo.lineno,
+                                "el valor derivado en esta asignacion no llega a "
+                                "ningun uso de hash bajo prueba: la derivacion se "
+                                "queda sin usar"))
+            for nombre in nombres:
+                if nombre in literales:
+                    delitos.append((literales[nombre],
+                                    f"`{nombre}` se reasigna a un literal: el hash "
+                                    f"bajo prueba ha dejado de venir de la "
+                                    f"derivacion"))
+    return delitos
+
+
+def test_el_hash_muerto_se_deriva_por_construccion_y_no_por_concatenacion():
+    """AC-4 (TASK-083): el tripwire que vigila la CONSTRUCCION del hash muerto.
+
+    MEDIDO el 2026-10-22: el pre-vuelo construia el hash muerto como
+    `hash_real + "0"`, y `cat-file -e` resuelve cualquier prefijo de 8 hex,
+    luego ese prefijo es el objeto REAL cuando la 8.a cifra del sha es `0`
+    (P = 1/16 = 6,25 %). Un test que a veces falla por azar puede fabricar un
+    veredicto FALSO de mutacion: ya paso en el ciclo 68.
+
+    Este guard mira la suite CON `ast` y exige dos cosas:
+
+    (1) FORMA: que NO haya ninguna construccion de un valor por concatenacion a
+        partir de un hash real (`hash_real + "0"`). Con el arreglo: 0 hallazgos;
+        si alguien vuelve a la concatenacion, el guard ROJO nombrando FICHERO
+        y LINEA.
+    (2) PROCEDENCIA: que el hash bajo prueba venga de la DERIVACION por
+        construccion y no de un literal, y que la derivacion este viva (la
+        llama alguien) y llegue al hash bajo prueba.
+
+    Y se prueba A SI MISMO con casos SINTETICOS (no solo contra la suite real):
+    un `sha real + digito` que SI existe tiene que quedar FUERA y uno que NO
+    existe tiene que dar 0 hallazgos.
+
+    **POR QUE este guard es un `test_*` CONTADO y no una funcion `_`-prefijada:**
+    un guard que NADIE CUENTA se puede borrar sin que nada se entere (leccion
+    A-C68-1 del ciclo 68: los tres probes de aquel ciclo eran `_`-prefijados y
+    borrarlos NO bajaba ningun recuento, luego el validador no lo notaba y la
+    suite se quedaba en verde). Contado, si desaparece el recuento derivado con
+    `ast` deja de cuadrar y el validador da FAIL.
+    """
+    import glob
+    import shutil
+
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    ruta_suite = os.path.join(raiz, "run_tests.py")
+    arbol = ast.parse(_texto_de(ruta_suite), filename=ruta_suite)
+
+    # --- (1) FORMA: la suite no construye ningun hash por concatenacion -----
+    ficheros = [ruta_suite]
+    for patron in ("test_*.py", "*_test.py"):
+        ficheros.extend(sorted(glob.glob(os.path.join(raiz, patron))))
+    hallazgos = []
+    for ruta in ficheros:
+        if os.path.abspath(ruta) == os.path.abspath(ruta_suite):
+            arbol_de_este = arbol
+        else:
+            with open(ruta, encoding="utf-8", errors="replace") as fh:
+                arbol_de_este = ast.parse(fh.read(), filename=ruta)
+        for linea, texto in _hallazgos_de_concatenacion_de_un_hash_real(arbol_de_este):
+            hallazgos.append(f"{os.path.relpath(ruta, raiz)}:{linea}: {texto}")
+    assert not hallazgos, (
+        "la suite construye un valor a partir de un hash real POR CONCATENACION "
+        "(la construccion que hace que el pre-vuelo dependa de la suerte: "
+        "`cat-file -e` resuelve cualquier prefijo de 8 hex, luego "
+        "`hash_real + '0'` es el objeto REAL cuando la 8.a cifra del sha es `0`, "
+        f"con P = 1/16). Hallazgos (fichero:linea): {hallazgos}")
+
+    # --- (2) PROCEDENCIA: el hash bajo prueba viene de la derivacion --------
+    delitos = _delitos_de_procedencia_del_hash_muerto(arbol)
+    assert not delitos, (
+        "el hash bajo prueba NO viene de la derivacion por construccion: "
+        f"{delitos}. Sin derivacion el pre-vuelo vuelve a depender de la suerte "
+        "(P = 1/16 de que el hash exista)")
+
+    # --- (3) PRODUCTO: contra una fixture DE VERDAD ------------------------
+    tmp = tempfile.mkdtemp(prefix="wopt_t083_tripwire_")
+    try:
+        d_hist = os.path.join(tmp, "historial")
+        _fixture_con_reloj_clavado(d_hist, _ASUNTO_ADVERSARIO,
+                                    _FECHA_ADVERSARIA)
+        sha_completo = _git_de_fixture(["rev-parse", "HEAD"], d_hist).strip()
+        hash_real = _git_de_fixture(
+            ["rev-parse", "--short", "HEAD"], d_hist).strip()
+        objetos = _objetos_de_la_fixture(d_hist)
+        # El caso que hay que RECHAZAR existe de verdad: el prefijo de 8 hex del
+        # sha real RESUELVE, luego "<corto>0" es un objeto real.
+        assert sha_completo[7] == "0", (
+            f"el sha de la fixture ({sha_completo}) tiene que tener '0' en la 8.a "
+            f"cifra hexadecimal: sin eso el caso que el tripwire tiene que "
+            f"rechazar no se da en ninguna fixture")
+        assert _objeto_existe_en_fixture(sha_completo[:8], d_hist) is True, (
+            f"el prefijo de 8 hex del sha real ({sha_completo[:8]}) tiene que "
+            f"RESOLVER: es el caso 'sha real + digito' que SI existe")
+        libres = _digitos_libres_para_un_hash_muerto(objetos, hash_real)
+        assert "0" not in libres, (
+            f"la derivacion ha elegido el digito que SI existe: {libres}. El "
+            f"digito que hace prefijo del objeto real tiene que quedar FUERA")
+        derivado = "".join((hash_real, libres[0]))
+        assert _objeto_existe_en_fixture(derivado, d_hist) is False, (
+            f"el hash derivado {derivado} tiene que NO existir: se deriva por "
+            f"construccion, luego no puede existir")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # --- (4) AUTOCONTROL: el detector se prueba a si mismo ------------------
+    fuente_con_concatenacion = (
+        "def test_algo():\n"
+        "    hash_real = '296cfb2'\n"
+        "    hash_muerto = hash_real + '0'\n"
+    )
+    hallazgos_sinteticos = _hallazgos_de_concatenacion_de_un_hash_real(
+        ast.parse(fuente_con_concatenacion))
+    assert len(hallazgos_sinteticos) == 1, (
+        f"el detector tiene que ver la concatenacion en la fuente sintetica: "
+        f"vio {hallazgos_sinteticos}")
+    assert hallazgos_sinteticos[0][0] == 3, (
+        f"el detector tiene que dar la LINEA (3): dio {hallazgos_sinteticos[0]}")
+    fuente_limpia = (
+        "def test_algo():\n"
+        "    hash_real = '296cfb2'\n"
+        "    assert hash_real\n"
+    )
+    assert _hallazgos_de_concatenacion_de_un_hash_real(
+        ast.parse(fuente_limpia)) == [], (
+        "una fuente sin concatenacion tiene que dar 0 hallazgos")
+    fuente_por_la_izquierda = (
+        "def test_algo():\n"
+        "    valor = '0' + hash_real\n"
+    )
+    assert len(_hallazgos_de_concatenacion_de_un_hash_real(
+        ast.parse(fuente_por_la_izquierda))) == 1, (
+        "la concatenacion con el literal a la IZQUIERDA tambien es la "
+        "construccion prohibida")
+
+    # Y el caso SINTETICO de la derivacion: un sha real + digito que SI existe
+    # tiene que quedar FUERA, y sin digito libre la derivacion tiene que
+    # REVENTAR (no devolver una lista vacia en silencio).
+    sha_sintetico = "abcdef12" + "0" * 32
+    libres_sinteticos = _digitos_libres_para_un_hash_muerto(
+        [sha_sintetico], "abcdef12")
+    assert "0" not in libres_sinteticos, (
+        "el digito que SI existe (el que hace prefijo del objeto real) no puede "
+        "salir como libre")
+    assert len(libres_sinteticos) == 15, (
+        f"de 16 digitos, 15 tienen que estar libres: {libres_sinteticos}")
+    objetos_que_ocupan_todos = ["abcdef12" + d + "0" * 31
+                                for d in "0123456789abcdef"]
+    try:
+        _digitos_libres_para_un_hash_muerto(objetos_que_ocupan_todos, "abcdef12")
+    except AssertionError:
+        sin_digito = True
+    else:
+        sin_digito = False
+    assert sin_digito, (
+        "sin ningun digito libre la derivacion tiene que REVENTAR: una lista "
+        "vacia en silencio seria un falso verde")
+    print("Tripwire del hash muerto: 0 construcciones por concatenacion en la "
+          "suite, la derivacion por construccion viva y usada, y el detector "
+          "probado a si mismo con casos sinteticos.")
 
 
 def _argv_de_un_argumento(nodo, variables, uso, profundidad=0):
@@ -23596,7 +24119,28 @@ def _es_el_token_de_batch_check(token):
 
 
 def _llamadas_cat_file_batch_check(fuente):
-    """`(sin_input, con_input, indecisas)`: como se reparte la primitive.
+    """`(sin_input, con_input, indecisas, por_construccion)`: como se reparte.
+
+    **LA CUARTA CATEGORIA (MEDIDO el 2026-10-22, TASK-083).**
+    `git cat-file --batch-all-objects --batch-check` NO lee los nombres de la
+    entrada estandar: con esa opcion git itera por los objetos del repositorio
+    (y por los de los almacenes alternativos) en vez de leerlos de stdin.
+    MEDIDO contra el git de este host, con `stdin=DEVNULL` y SIN `input=`:
+    rc 0 y la lista COMPLETA de los objetos de la fixture (2: el commit y el
+    arbol vacio) -- frente a la forma SIN `--batch-all-objects`, que con la
+    misma entrada vacia responde rc 0 con stdout VACIO (el falso verde que este
+    guard vino a matar). O sea: la regla "toda llamada a `cat-file
+    --batch-check` necesita `input=`" era VERDADERA para la primitive que lee
+    stdin y era FALSA para esta forma, que es la que exige el AC-2 de TASK-083
+    (derivar el hash muerto por construccion, listando los objetos).
+
+    Por eso las llamadas de esta forma van a SU PROPIA categoria, que no es
+    "no se sabe" (que es verde por omision) ni "no necesitan input" (que seria
+    mentir sobre el mecanismo): es una tercera cosa, y una llamada NUEVA de
+    esta forma tiene que estar JUSTIFICADA para que la cuenta del registro no
+    se desfasare en silencio. El resto de la regla NO se toca: cualquier
+    `cat-file --batch-check` que pueda leer stdin sigue teniendo que llevar
+    `input=`.
 
     MEDIDO el 2026-10-08 con el `ast` de este mismo fichero: 7 formas de
     escribir la llamada prohibida, y las 7 se ven (tupla, variable
@@ -23629,7 +24173,7 @@ def _llamadas_cat_file_batch_check(fuente):
     """
     arbol = ast.parse(fuente) if isinstance(fuente, str) else fuente
     variables = _variables_del_modulo(arbol)
-    sin_input, con_input, indecisas = [], [], []
+    sin_input, con_input, indecisas, por_construccion = [], [], [], []
     for nodo in ast.walk(arbol):
         if not isinstance(nodo, ast.Call):
             continue
@@ -23657,6 +24201,11 @@ def _llamadas_cat_file_batch_check(fuente):
             # suelto en otra parte del fichero no es esta llamada.
             if "cat-file" in tokens and any(
                     _es_el_token_de_batch_check(token) for token in tokens):
+                if any(str(token).strip() == "--batch-all-objects"
+                       for token in tokens):
+                    # La forma que NO lee stdin: va a su propia categoria.
+                    por_construccion.append(nodo.lineno)
+                    continue
                 pasado = True
         if not pasado and es_shell:
             pasado = any("--batch-check" in str(token) for token in tokens)
@@ -23666,7 +24215,7 @@ def _llamadas_cat_file_batch_check(fuente):
             con_input.append(nodo.lineno)
         else:
             sin_input.append(nodo.lineno)
-    return sin_input, con_input, indecisas
+    return sin_input, con_input, indecisas, por_construccion
 
 
 def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
@@ -23704,6 +24253,22 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
     `cat-file -t` por hash serian ~100 subprocesos. Este guard solo vigila
     `run_tests.py`, que es donde el defecto estaba.
 
+    **LA CUARTA CATEGORIA (MEDIDO el 2026-10-22, TASK-083).** Este guard tenia
+    una regla que era FALSA para una forma documentada de git:
+    `git cat-file --batch-all-objects --batch-check` NO lee los nombres de la
+    entrada estandar (git itera por los objetos del repositorio), luego no
+    necesita `input=` y no es la primitive decorativa que este guard vino a
+    matar. MEDIDO contra el git de este host: con `stdin=DEVNULL` y sin
+    `input=` responde rc 0 con la lista COMPLETA de los objetos de la fixture
+    (2: el commit y el arbol vacio), frente a la forma sin `--batch-all-objects`
+    que con la misma entrada vacia responde rc 0 con stdout VACIO. Esa forma es
+    la que deriva el hash muerto por construccion (AC-2 de TASK-083), luego sin
+    la categoria el guard la trataria como un falso positivo. La categoria nueva
+    tiene su propio REGISTRO (una CUENTA, no una lista de lineas) y su
+    CONTRAPRUEBA con las dos mitades: la forma con `--batch-all-objects` cae
+    aqui, y la MISMA llamada sin esa opcion vuelve a caer en `sin_input`, que es
+    lo que prueba que la excepcion no se ha comido la regla entera.
+
     **RONDA 3 (TASK-072): CINCO formas mas y el registro de lo indeciso.** Cada
     una responde a un superviviente medido por el `mutation-auditor`, y todas se
     apoyan en las DOS mitades: que la deteccion REAL ve la llamada y que el
@@ -23713,7 +24278,8 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
     with open(os.path.join(raiz, "run_tests.py"), encoding="utf-8") as fh:
         fuente = fh.read()
 
-    SIN_INPUT, _CON_INPUT, INDECISAS = _llamadas_cat_file_batch_check(fuente)
+    SIN_INPUT, _CON_INPUT, INDECISAS, POR_CONSTRUCCION = \
+        _llamadas_cat_file_batch_check(fuente)
     assert not SIN_INPUT, (
         "hay llamadas a `git cat-file --batch-check` SIN `input=` en las lineas "
         f"{SIN_INPUT}. `cat-file --batch-check` lee los nombres por STDIN: sin "
@@ -23722,6 +24288,29 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
         "pre-vuelo es decorativo. Con `input=` es una llamada legitima: por eso "
         "la UNICA que hay en este repo esta en `validate_docs.py`, que pregunta "
         "por ~100 hashes del journal en una sola llamada"
+    )
+
+    # --- LA CATEGORIA QUE NO LEE STDIN (MEDIDO el 2026-10-22, TASK-083) -----
+    #
+    # `git cat-file --batch-all-objects --batch-check` itera por los objetos del
+    # repositorio y NO lee la entrada estandar: MEDIDO contra el git de este
+    # host, con `stdin=DEVNULL` y sin `input=`, responde rc 0 con la lista
+    # COMPLETA de los objetos de la fixture. Esa es la llamada que deriva el hash
+    # muerto por construccion (AC-2 de TASK-083), y sin esta categoria el guard
+    # la trataria como la primitive decorativa que vino a matar.
+    #
+    # El REGISTRO es una CUENTA, no una lista de lineas: las lineas se mueven con
+    # cada insercion y un registro por linea seria un registro que hay que
+    # actualizar cada vez (la clase D2). Una llamada NUEVA de esta forma cambia
+    # la cuenta y tumba la suite, que es lo que obliga a justificarla.
+    REGISTRO_POR_CONSTRUCCION = 1
+    assert len(POR_CONSTRUCCION) == REGISTRO_POR_CONSTRUCCION, (
+        f"las llamadas a `cat-file --batch-all-objects --batch-check` (la forma que "
+        f"NO lee stdin) son {len(POR_CONSTRUCCION)} y el REGISTRO dice "
+        f"{REGISTRO_POR_CONSTRUCCION}, en las lineas {POR_CONSTRUCCION}. Si has "
+        f"anadido una, justificala aqui (esa forma no necesita `input=` porque git "
+        f"itera por los objetos del repositorio); si has quitado una, borra la "
+        f"entrada: un registro que se pudre es un registro que nadie vuelve a mirar"
     )
 
     # --- EL REGISTRO DE "NO SE HA PODIDO MIRAR" (S3r, mutante B14) ------------
@@ -23901,7 +24490,7 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
     comprobados = []
     detectadas = 0
     for nombre, fragmento, con_input, esperados in FRAGMENTOS:
-        sin, con, _ind = _llamadas_cat_file_batch_check(fragmento)
+        sin, con, _ind, _por = _llamadas_cat_file_batch_check(fragmento)
         comprobados.append(nombre)
         detectadas += len(sin) + len(con)
         if len(sin) + len(con) != esperados:
@@ -23941,6 +24530,36 @@ def test_ninguna_llamada_de_cat_file_batch_check_se_queda_sin_input():
         f"formas que importan y las dos mitades de cada una: {fallos}. Con una "
         "contraprueba que solo mira un predicado auxiliar, desactivar el bucle "
         "que decide deja la suite en verde con el guard mirando cero llamadas")
+
+    # --- LA FORMA QUE NO LEE STDIN, EJERCITADA (MEDIDO el 2026-10-22) -------
+    #
+    # MEDIDO contra el git de este host: `git cat-file --batch-all-objects
+    # --batch-check` con `stdin=DEVNULL` y SIN `input=` responde rc 0 con la
+    # lista COMPLETA de los objetos del repositorio (en la fixture del
+    # pre-vuelo: 2, el commit y el arbol vacio), frente a la forma SIN
+    # `--batch-all-objects`, que con la misma entrada vacia responde rc 0 con
+    # stdout VACIO. O sea: esta forma NO es la primitive decorativa que el
+    # guard mata, y por eso tiene su propia categoria. La contraprueba exige
+    # las TRES mitades: que la deteccion la VE, que NO la cuenta como "sin
+    # input=" y que la cuenta de esa categoria es la que el registro declara.
+    sin_pc, con_pc, _ind_pc, por_pc = _llamadas_cat_file_batch_check(
+        "subprocess.run(['git', 'cat-file', '--batch-all-objects', "
+        "'--batch-check'])")
+    assert not sin_pc and not con_pc, (
+        f"la forma `--batch-all-objects` NO lee stdin: tiene que quedar en su "
+        f"propia categoria, no en `sin_input` ni en `con_input` (sin={sin_pc}, "
+        f"con={con_pc})")
+    assert len(por_pc) == 1, (
+        f"la deteccion tiene que ver la forma `--batch-all-objects` UNA vez: ha "
+        f"visto {len(por_pc)}. Un guard que no ve la forma que vigila no vigila")
+    # Y el CONTROL NEGATIVO de la categoria: sin `--batch-all-objects`, la misma
+    # llamada SI es la primitive que lee stdin y cae en `sin_input`.
+    sin_nc, con_nc, _ind_nc, por_nc = _llamadas_cat_file_batch_check(
+        "subprocess.run(['git', 'cat-file', '--batch-check'])")
+    assert len(sin_nc) == 1 and not por_nc, (
+        f"sin `--batch-all-objects` la llamada vuelve a ser la primitive que lee "
+        f"stdin: tiene que caer en `sin_input` (sin={sin_nc}, por_construccion="
+        f"{por_nc}). Si no, la excepcion se ha comido la regla entera")
 
     print("Guard estructural de cat-file: 0 llamadas sin input= en run_tests.py; "
           f"la deteccion real ve las {len(FRAGMENTOS)} formas de la contraprueba, "
@@ -30599,6 +31218,13 @@ if __name__ == "__main__":
     test_el_conjunto_de_vistas_tiene_una_sola_fuente_de_verdad()      # AC-1
     test_una_vista_nueva_se_audita_aunque_nadie_la_apunte()            # AC-2
     test_el_derivado_de_vistas_es_el_disco_y_abre_algo()               # AC-3
+    # TASK-083: el tripwire del hash muerto. Suite: 234 -> 235, y el reparto
+    # DERIVADO con `ast` pasa a 159 backend + 76 headless. Va ANTES del
+    # marcador headless porque es tooling puro: lee texto con `ast` y monta
+    # UNA fixture en `%TEMP%` (subproceso). Es un `test_*` CONTADO a proposito:
+    # un guard que nadie cuenta se puede borrar sin que nada se entere
+    # (leccion A-C68-1 del ciclo 68).
+    test_el_hash_muerto_se_deriva_por_construccion_y_no_por_concatenacion()  # AC-4
     print("\n--- Running Headless UI Tests ---")
     test_main_window_navigation_transitions()
     # TASK-035: Telemetria y feedback visual unificado en ejecucion de packs.
