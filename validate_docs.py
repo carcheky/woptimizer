@@ -3524,17 +3524,23 @@ def _comprobar_el_paso_de_publicacion(root, errors, ok, saltados):
     """
     ruta = os.path.join(root, _SKILL_DEL_MOTOR)
     if not os.path.exists(ruta):
-        # SKIP y no FAIL. MEDIDO: en modo FAIL el check rompia
-        # `test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador`,
-        # que cuenta los errores de una fixture MINIMA (sin `.agents/`) y cuyo
-        # unico error esperado es el del journal. Un guard que acusa a la
-        # fixture es un rojo mas caro que el mutante que tapa, y el validador
-        # tiene su TERCER canal para esto: `saltados`. El repo real tiene la
-        # skill, y ahi el check mide de verdad.
-        saltados.append(
-            f"check 12 (paso de publicacion): este arbol no tiene "
-            f"{_SKILL_DEL_MOTOR}, luego no hay motor que verificar"
-        )
+        # SIN SKILL HAY DOS CASOS, y no son el mismo. MEDIDO (suite local y
+        # simulacion del CI, el mismo fallo en las dos):
+        #   * el arbol NO tiene `.agents/` -> es una fixture MINIMA de otro
+        #     test. Aqui el check NO dice NADA: ni OK, ni SKIP, ni FAIL. Un
+        #     SKIP mas rompe `test_sin_ancla_de_git_no_se_parece_a_un_verde`
+        #     (que cuenta que hay EXACTAMENTE TRES `[SKIP]`), y un FAIL rompe
+        #     `test_el_journal_ilegible_informa_en_vez_de_reventar_el_validador`
+        #     (que cuenta los errores de su fixture). Un guard que acusa a la
+        #     fixture es un rojo mas caro que el mutante que tapa.
+        #   * el arbol TIENE `.agents/` -> es el repo del MOTOR y le falta la
+        #     skill: eso si es un FAIL de verdad.
+        if os.path.isdir(os.path.join(root, ".agents")):
+            errors.append(
+                f"check 12 (paso de publicacion): el arbol tiene `.agents/` pero "
+                f"le falta {_SKILL_DEL_MOTOR}: el motor se queda sin paso de "
+                f"publicacion que verificar"
+            )
         return errors, ok, saltados
     with open(ruta, encoding="utf-8") as fh:
         cuerpo = fh.read()
