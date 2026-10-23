@@ -1872,7 +1872,7 @@ def test_no_system_process_is_killable():
     """
     print("Testing blindaje anti-brick (procesos de sistema)...")
     import json
-    import shutil
+    import shutil, psutil as _psutil
     import tempfile
     import woptimizer.config as wopt_config
     from woptimizer.config import CATEGORY_ORDER
@@ -1963,10 +1963,10 @@ def test_no_system_process_is_killable():
             )
 
         # 3d) El kill por pack respeta el blindaje: nunca toca un PID de sistema.
-        wopt_config._data_dir = _dir_data_original
+        wopt_config._data_dir = _dir_data_original; vivos = [p.pid for p in _psutil.process_iter(["name"]) if (p.info.get("name") or "").lower() in {"lsass.exe", "winlogon.exe"}]
         k, f, s, mb = ProcessService().kill_pack_apps(["lsass.exe", "winlogon.exe"])
         assert (k, f) == (0, 0), f"kill_pack_apps intento matar un proceso de sistema: {k, f}"
-        assert s == 2, f"Los dos procesos de sistema deberian contar como omitidos, s={s}"
+        assert s == len(vivos) and s >= 2, f"Todos los procesos de sistema vivos deberian contar como omitidos: s={s}, vivos={len(vivos)}"
         assert mb == 0.0, f"No se debe liberar memoria de un kill que no ocurrio: {mb}"
 
         # Un nombre legitimo sigue siendo normal (guarda contra un blindaje
