@@ -22319,9 +22319,10 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
         el CUERPO del gate VACIO y el REGISTRO puesto, el validador seguia
         dando 0 FAIL sobre un catalogo que se contradice a si mismo, y NINGUN
         `test_*` lo notaba (el agujero D-B). Aqui el guard es de PRODUCTO: un
-        corpus SINTETICO con CUATRO entradas de journal y DIEZ sentinelas
-        (tres COHERENTES y siete CONTRADICTORIOS), y el gate tiene que ACUSAR
-        a los siete y CALLAR sobre los tres (D1). La CONTRAPROUEBA (D2)
+        corpus SINTETICO con CUATRO entradas de journal y QUINCE sentinelas
+        (tres COHERENTES y doce CONTRADICTORIOS, con las ampliaciones de
+        (D-bis) y (D-ter)), y el gate tiene que ACUSAR
+        a los DOCE y CALLAR sobre los TRES (D1). La CONTRAPROUEBA (D2)
         vacia el CUERPO del gate, con el REGISTRO puesto, y exige que la
         acusacion del contradictorio DESAPARECER y que el REGISTRO SIGA: sin
         D2, la D1 podria cumplirse por un motivo equivocado. Y D3 restaura el
@@ -22387,6 +22388,34 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
                               puede contradecir a la evidencia commiteada.
         Y el REGISTRO tiene que contar las SEIS entradas del corpus: un
         gate que no examinase la del LIMITE contaria menos.
+
+    (F) TASK-091 (ciclo 72): EL GATE TIENE QUE LEER LA `mutacion` DEL CATALOGO.
+        Lo de arriba vigila el CABLEADO, los LIMITES, el emisor, el JUICIO del
+        gate y el check 12. Lo que NO vigilaba es lo que este ciclo MIDIO: que
+        el gate LEA el campo `mutacion` del catalogo. MEDIDO: el gate leia
+        `id`, `asa`, `motivo` y `sha_arbol_auditado` y DESCARTABA la
+        `mutacion`, luego un catalogo que declara una mutacion que NO EXISTE
+        (un `mutacion.fichero` que no es un fichero) pasaba el gate con
+        **0 FAIL**, y lo mismo con un `ciclo: 999`.
+        Aqui el guard es de PRODUCTO, con un cambio SINTETICO PROPIO (que no
+        toca NINGUNO de los QUINCE centinelas de (D)) y TRES centinelas PROPIOS
+        cuyo ORDEN es NORMATIVO: el COHERENTE va PRIMERO y el ROTO SEGUNDO,
+        porque un gate que mire solo el PRIMERO (el mutante M-92, que ya existe
+        en el catalogo del repo) tiene que quedar cogido por el SEGUNDO. Las
+        CUATRO reglas que se vigilan (R1: la `mutacion` tiene forma; R2: el
+        fichero que declara EXISTE y esta dentro del arbol; R3: el `cambio`
+        del catalogo es el `change` de la entrada que lo ancla; R4: el `ciclo`
+        del catalogo es el `cycle` de esa entrada) NO CADUCAN con el
+        movimiento del codigo: comparan dos declaraciones que el repo ya hace
+        y NO leen el CONTENIDO de ningun fichero. Lo que si caduca es el TEXTO
+        declarado, y por eso el texto es el limite (g) que el guard (B) exige.
+        Cada regla tiene su celda, porque una regla que nadie vigila no esta
+        puesta: F1 (R2), F1-bis (R1), F2 (R4), F2-bis (R3), F3 (la
+        contraprueba: con la `mutacion` correcta el gate CALLA sobre los tres),
+        F4 (el catalogo REAL del repo, los 26 mutantes vivos, tiene que pasar
+        con 0 FAIL) y F5 (el limite (g), que tiene que NOMBRAR las cuatro
+        reglas que el gate SI comprueba).
+        El RECUENTO NO SE MUEVE (235 = 159 + 76): se extiende este.
     """
     print("Check 9 en el camino real del validador, con su mutante de cableado...")
     import json
@@ -22527,7 +22556,7 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
         bloque = partes[1]
         bloque = bloque.split("POR QUE NO SE REPITE LA SUITE")[0]
         minusculas = bloque.lower()
-        for etiqueta in ("(a)", "(b)", "(c)", "(d)", "(e)", "(f)"):
+        for etiqueta in ("(a)", "(b)", "(c)", "(d)", "(e)", "(f)", "(g)"):
             assert etiqueta in bloque, (
                 f"la lista de lo que el gate NO prueba tiene que traer el limite "
                 f"{etiqueta}: no aparece en el bloque")
@@ -22571,6 +22600,33 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
             "el DOCSTRING de la funcion tiene que REPETIR el limite (f) (el "
             "validador, por si solo, NO detecta un gate ciego; solo la suite "
             "lo hace): un limite declarado solo en el bloque de arriba se "
+            "pierde en cuanto el docstring es lo que se lee")
+        # (g) es el limite NUEVO de este ciclo (TASK-091): el gate comprueba que
+        # la `mutacion` este DECLARADA y con FORMA, que su fichero EXISTA y este
+        # dentro del arbol, y que el catalogo sea el del ciclo y del cambio que
+        # dice ser; pero NO que el TEXTO declarado este en ese fichero. Un
+        # limite sin su motivo medido es una opinion, luego se comprueban sus
+        # TRES motivos (caducidad, coste y semantica) y no solo la etiqueta.
+        assert "62,3 ms" in bloque, (
+            "el limite (g) tiene que decir el COSTE MEDIDO de comprobar el texto "
+            "declarado (62,3 ms): un limite sin motivo medido es una opinion")
+        assert "46,2 ms" in bloque, (
+            "el limite (g) tiene que decir los ms DISPONIBLES (46,2 ms): sin el "
+            "margen, la cifra del coste no dice nada (el presupuesto es del 0,5 "
+            "del validador y ya HAY margen usado)")
+        assert "25 de los 26" in bloque, (
+            "el limite (g) tiene que decir la MEDIDA DE LA CADUCIDAD: el texto "
+            "declarado esta en la linea declarada en 1 de los 26 mutantes, luego "
+            "exigirlo daria FAIL sobre 25 de los 26 (y el `original` de M-A1 no "
+            "existe como bloque contiguo)")
+        assert "receta caduca" in minusculas, (
+            "el limite (g) tiene que decir la SEMANTICA: la RECETA caduca, el "
+            "VEREDICTO no (el veredicto es un hecho sobre el arbol AUDITADO)")
+        assert "62,3 ms" in docstring_gate and "46,2 ms" in docstring_gate, (
+            "el DOCSTRING de la funcion tiene que REPETIR el limite (g) con sus "
+            "MOTIVOS MEDIDOS (62,3 ms de coste contra 46,2 ms disponibles, y la "
+            "RECETA caduca pero el VEREDICTO no): el texto declarado NO se "
+            "comprueba, y un limite declarado solo en el bloque de arriba se "
             "pierde en cuanto el docstring es lo que se lee")
 
         # --- (C) EL EMISOR NO PISA LA EVIDENCIA DE LOS MUTANTES QUE NO LE
@@ -23639,6 +23695,312 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
         # Y se restaura la skill buena: el esqueleto no puede quedar mutado.
         with open(ruta_skill, "w", encoding="utf-8") as f:
             f.write(skill_del_motor)
+
+        # --- (F) EL GATE TIENE QUE LEER LA `mutacion` DEL CATALOGO (TASK-091) --
+        # Lo que hay hasta aqui vigila el CABLEADO del check 11, sus LIMITES, el
+        # emisor, el JUICIO del gate (D) y el check 12 (E). Lo que NO vigilaba
+        # es lo que este ciclo MIDIO: que el gate LEA el campo `mutacion` del
+        # catalogo. MEDIDO (el gate leia `id`, `asa`, `motivo` y
+        # `sha_arbol_auditado`, y DESCARTABA la `mutacion`): un catalogo que
+        # declara una mutacion que NO EXISTE (un `mutacion.fichero` que no es un
+        # fichero) pasaba el gate con **0 FAIL**, y lo mismo con un `ciclo: 999`
+        # (un catalogo que se hace pasar por el de otro ciclo).
+        #
+        # El guard es de PRODUCTO, como el de (D), y con un cambio SINTETICO
+        # PROPIO: NO toca NINGUNO de los QUINCE centinelas de (D), y su entrada
+        # del journal se ANADE al final (las SEIS de (D) siguen intactas y sus
+        # aserciones ya han corrido).
+        #
+        # Y los TRES centinelas son PROPIOS y su ORDEN es NORMATIVO: el
+        # COHERENTE va PRIMERO y el ROTO SEGUNDO, porque un gate que mire solo el
+        # PRIMERO (el mutante M-92, que ya existe en el catalogo del repo) tiene
+        # que quedar cogido por el SEGUNDO. El TERCERO (el de la FORMA rota) es
+        # el que hace morir al mutante M-H1 (un gate que acepta una `mutacion`
+        # ausente o mal formada).
+        #
+        # Las CUATRO reglas que se vigilan aqui (R1: la `mutacion` tiene forma;
+        # R2: el fichero que declara EXISTE y esta dentro del arbol; R3: el
+        # `cambio` del catalogo es el `change` de la entrada que lo ancla; R4: el
+        # `ciclo` del catalogo es el `cycle` de esa entrada) NO CADUCAN con el
+        # movimiento del codigo: comparan dos declaraciones que el repo ya hace
+        # y NO leen el CONTENIDO de ningun fichero (solo `os.path.isfile`).
+        # Lo que si caduca es el TEXTO declarado, y por eso el texto es el
+        # limite (g) que el guard (B) de arriba ya exige.
+        centinela_mut_ok = "M-FIX-MUTACION-OK"
+        centinela_mut_mal = "M-FIX-MUTACION-MAL"
+        centinela_mut_forma = "M-FIX-MUTACION-FORMA"
+        nombre_mut = "2026-10-23-corpus-sintetico-de-la-mutacion"
+        relativo_mut = "openspec/changes/" + nombre_mut
+        directorio_mut = os.path.join(tmp, *relativo_mut.split("/"))
+        os.makedirs(os.path.join(directorio_mut, "evidencia"), exist_ok=True)
+        sha_mut = "0" * 40
+        asa_mut = "test_el_check_9_se_cablea_en_el_camino_real_del_validador"
+        motivo_mut = "LA ASERCION DEL SENTINELA DE LA MUTACION"
+        lineas_mut = [f"WOPT_VEREDICTO {centinela_mut_ok} MUERTO {sha_mut}",
+                      f"WOPT_VEREDICTO {centinela_mut_mal} MUERTO {sha_mut}",
+                      f"WOPT_VEREDICTO {centinela_mut_forma} MUERTO {sha_mut}"]
+        # El INFORME del cambio: el SEGUNDO testigo. Su bloque de maquina lleva
+        # las MISMAS lineas que el journal, y sus lineas 4, 5 y 6 son las que las
+        # `mutacion` declaran (el `original` es una linea LITERAL del fichero,
+        # como en el corpus de (D)).
+        lineas_informe_mut = (["# Informe del ciclo sintetico de la mutacion (F)",
+                               "",
+                               "<!-- WOPT_VEREDICTOS -->"]
+                              + lineas_mut + ["<!-- /WOPT_VEREDICTOS -->"])
+        with open(os.path.join(directorio_mut, "mutation-report.md"), "w",
+                  encoding="utf-8", newline="\n") as fh:
+            fh.write("\n".join(lineas_informe_mut) + "\n")
+        with open(os.path.join(directorio_mut, "proposal.md"), "w",
+                  encoding="utf-8", newline="\n") as fh:
+            fh.write(f"# Corpus sintetico de la `mutacion` (F) ({nombre_mut})\n\n"
+                     "Cambio SINTETICO que solo existe dentro del esqueleto "
+                     "temporal del test: no esta commiteado en ningun arbol.\n")
+        for identificador in (centinela_mut_ok, centinela_mut_mal,
+                               centinela_mut_forma):
+            with open(os.path.join(directorio_mut, "evidencia",
+                                   f"{identificador}.cola"), "w",
+                      encoding="utf-8", newline="\n") as fh:
+                fh.write(cola_de_muerte(asa_mut, motivo_mut))
+
+        def escribir_el_catalogo_de_la_mutacion(ciclo, fichero_del_malo,
+                                                 cambio_del_catalogo=None,
+                                                 linea_del_tercero=0):
+            """El catalogo del corpus (F), con lo que cada celda necesita.
+
+            `fichero_del_malo` es el `mutacion.fichero` del centinela ROTO (la
+            regla R2): la celda F1 le declara un fichero que NO EXISTE, y la
+            celda F3 le declara el informe REAL (que existe).
+
+            `cambio_del_catalogo` es el `cambio` que declara el catalogo (la
+            regla R3): la celda F2-bis le declara OTRO cambio que no es el
+            suyo, luego el catalogo se hace pasar por el de otro.
+
+            `linea_del_tercero` es la `linea` que declara el TERCER centinela
+            (el de la FORMA, la regla R1): `0` (que no es un entero `>= 1`, la
+            forma rota que el catalogo REAL tenia en M-121) en las celdas que
+            tienen que acusarlo, y la linea real en la contraprueba (F3).
+            """
+            cambio_del_catalogo = cambio_del_catalogo or (relativo_mut + "/")
+            catalogo = {"cambio": cambio_del_catalogo, "ciclo": ciclo,
+                        "mutaciones": []}
+            for indice, identificador in enumerate((centinela_mut_ok,
+                                                    centinela_mut_mal,
+                                                    centinela_mut_forma)):
+                original = lineas_mut[indice]
+                if identificador == centinela_mut_mal:
+                    fichero = fichero_del_malo
+                else:
+                    fichero = relativo_mut + "/mutation-report.md"
+                catalogo["mutaciones"].append({
+                    "id": identificador,
+                    "asa": asa_mut,
+                    "motivo": motivo_mut,
+                    "mutacion": {
+                        "fichero": fichero,
+                        "linea": (linea_del_tercero
+                                  if identificador == centinela_mut_forma
+                                  else 4 + indice),
+                        "original": original,
+                        "sustituto": original.replace(" MUERTO ", " OTRO "),
+                    },
+                    "sha_arbol_auditado": sha_mut,
+                })
+            with open(os.path.join(directorio_mut, "mutaciones.json"), "w",
+                      encoding="utf-8", newline="\n") as fh:
+                json.dump(catalogo, fh, ensure_ascii=False, indent=2)
+
+        # La ENTRADA del journal del corpus (F): el ancla del catalogo.
+        entrada_mut = {"cycle": 75, "date": "2026-10-23", "slug": nombre_mut,
+                       "task": "TASK-091", "area": "Tooling / Testing",
+                       "change": relativo_mut + "/",
+                       "status": f"CORPUS SINTETICO de la `mutacion` (F): la "
+                                 f"entrada del ciclo 75 del corpus.",
+                       "veredictos": list(lineas_mut)}
+        with open(os.path.join(tmp, ".taskmaster", "rd_journal.json"), "w",
+                  encoding="utf-8", newline="\n") as fh:
+            json.dump(entradas_sinteticas + [entrada_mut], fh,
+                      ensure_ascii=False, indent=2)
+
+        def los_fallos_que_nombran(informe, identificador):
+            """Los `[FAIL]` que NOMBRAN a este sentinela (el gate acusa por id)."""
+            return [l for l in informe.splitlines()
+                    if l.strip().startswith("[FAIL]") and identificador in l]
+
+        # (F1) R2: EL FICHERO QUE DECLARA LA MUTACION TIENE QUE EXISTIR --------
+        # El centinela ROTO declara un `mutacion.fichero` que NO EXISTE: el gate
+        # tiene que ACUSARLO, CON SU RAZON (que es lo que lo distingue de una
+        # acusacion cualquiera), y el COHERENTE (el PRIMERO) tiene que quedar SIN
+        # UNA sola acusacion. El orden es normativo: con el ROTO SEGUNDO, un
+        # gate que mire solo el PRIMERO (M-92) queda cogido.
+        escribir_el_catalogo_de_la_mutacion(
+            75, "openspec/changes/no-existe/mutation-report.md")
+        rc_f1, informe_f1 = ejecutar_el_validador_del_esqueleto()
+        assert "Resumen:" in informe_f1, (
+            "el validador del corpus (F) tiene que LLEGAR AL FINAL y printar su "
+            f"informe: si no, esta asercion esta probando una excepcion y no la "
+            f"regla. rc={rc_f1}. Informe:\n{informe_f1[-2000:]}\n"
+            "EL GATE NO LEE LA MUTACION")
+        fallos_del_ok = los_fallos_que_nombran(informe_f1, centinela_mut_ok)
+        assert not fallos_del_ok, (
+            "el centinela COHERENTE de la `mutacion` (el PRIMERO, el que declara "
+            "un fichero que EXISTE) tiene que quedar SIN UNA sola acusacion: un "
+            "gate que acusa lo que esta bien no tiene acento, y entonces su "
+            "acusacion sobre lo que esta MAL no significa nada. Fallos que lo "
+            f"nombran: {fallos_del_ok!r}. Informe:\n{informe_f1[-2000:]}\n"
+            "EL GATE NO LEE LA MUTACION")
+        fallos_del_mal = los_fallos_que_nombran(informe_f1, centinela_mut_mal)
+        assert [l for l in fallos_del_mal if "NO EXISTE en el arbol" in l], (
+            "el centinela ROTO de la `mutacion` (el SEGUNDO, el que declara un "
+            "`mutacion.fichero` que NO EXISTE) tiene que ser ACUSADO por el gate "
+            "CON SU RAZON (R2): sin esto, un catalogo que declara una mutacion "
+            "que no existe pasa por verde. Fallos que lo nombran: "
+            f"{fallos_del_mal!r}. Informe:\n{informe_f1[-2000:]}\n"
+            "EL GATE NO LEE LA MUTACION")
+
+        # (F1-bis) R1: LA FORMA. El TERCER centinela declara una `mutacion` con
+        # la FORMA rota (`linea: 0`, que no es un entero `>= 1`: la forma que el
+        # catalogo REAL tenia en M-121) y es coherente en TODO lo demas (asa
+        # real, evidencia, journal e informe en regla), luego el unico motivo
+        # posible de su acusacion es la FORMA. Sin esta celda, un gate que
+        # aceptara una `mutacion` ausente o mal formada SEGUIRIA viva: es el
+        # mutante M-H1, y tiene que morir aqui.
+        fallos_de_la_forma = los_fallos_que_nombran(informe_f1,
+                                                    centinela_mut_forma)
+        assert [l for l in fallos_de_la_forma
+                if "NO declara una `mutacion` utilizable" in l], (
+            "el centinela de la FORMA de la `mutacion` (el TERCERO, el que "
+            "declara `linea: 0`) tiene que ser ACUSADO por el gate CON SU RAZON "
+            "(R1): sin esto, un gate que acepta una `mutacion` ausente o mal "
+            "formada sigue vivo, y una `mutacion` que no dice ni que fichero "
+            "sustituye no es una mutacion. Fallos que lo nombran: "
+            f"{fallos_de_la_forma!r}. Informe:\n{informe_f1[-2000:]}\n"
+            "EL GATE NO LEE LA MUTACION")
+
+        # (F2) R4: EL CICLO QUE DECLARA EL CATALOGO TIENE QUE SER EL DE LA
+        #      ENTRADA QUE LO ANCLA ---------------------------------------------
+        # El catalogo dice `ciclo: 999` y la entrada del journal que lo ancla es
+        # la del ciclo 75: un catalogo que se hace pasar por el de otro ciclo no
+        # es el que dice ser, y el gate tiene que decirlo CON SU RAZON.
+        escribir_el_catalogo_de_la_mutacion(
+            999, "openspec/changes/no-existe/mutation-report.md")
+        rc_f2, informe_f2 = ejecutar_el_validador_del_esqueleto()
+        assert "Resumen:" in informe_f2, (
+            "el validador del corpus (F) tiene que LLEGAR AL FINAL tambien con "
+            f"el `ciclo` del catalogo desacoplado. rc={rc_f2}. Informe:\n"
+            f"{informe_f2[-2000:]}\nEL GATE NO LEE LA MUTACION")
+        fallos_del_ciclo = [l for l in informe_f2.splitlines()
+                            if l.strip().startswith("[FAIL]")
+                            and "declara `ciclo` =" in l]
+        assert fallos_del_ciclo, (
+            "un catalogo que declara `ciclo: 999` y lo ancla una entrada del "
+            "ciclo 75 tiene que ser ACUSADO por el gate CON SU RAZON (R4): sin "
+            "esto, el catalogo de un ciclo puede hacerse pasar por el de otro y "
+            "nadie lo nota. Informe:\n{informe_f2[-2000:]}\n"
+            "EL GATE NO LEE LA MUTACION")
+
+        # (F2-bis) R3: EL CAMBIO QUE DECLARA EL CATALOGO TIENE QUE SER EL DE LA
+        #      ENTRADA QUE LO ANCLA ----------------------------------------------
+        # El catalogo declara `cambio` = otro cambio que NO es el suyo, y la
+        # entrada del journal que lo ancla es la de este: un catalogo que se
+        # hace pasar por el de otro cambio no es el que dice ser. Y el FAIL lo
+        # tiene que hacer el CATALOGO, no un mutante: acusar a un mutante de
+        # algo que es del catalogo entero es la clase de ruido que hace que un
+        # validador en rojo se lea como ruido (y por eso esta celda exige
+        # tambien 0 FAIL que nombren a los TRES centinelas). Es el mutante
+        # M-H3, y tiene que morir aqui.
+        escribir_el_catalogo_de_la_mutacion(
+            75, relativo_mut + "/mutation-report.md",
+            cambio_del_catalogo="openspec/changes/2026-10-23-otro-cambio/",
+            linea_del_tercero=6)
+        rc_f2bis, informe_f2bis = ejecutar_el_validador_del_esqueleto()
+        assert "Resumen:" in informe_f2bis, (
+            "el validador del corpus (F) tiene que LLEGAR AL FINAL tambien con "
+            f"el `cambio` del catalogo desacoplado. rc={rc_f2bis}. Informe:\n"
+            f"{informe_f2bis[-2000:]}\nEL GATE NO LEE LA MUTACION")
+        fallos_del_cambio = [l for l in informe_f2bis.splitlines()
+                             if l.strip().startswith("[FAIL]")
+                             and "declara `cambio` =" in l]
+        assert fallos_del_cambio, (
+            "un catalogo que declara un `cambio` que NO es el de la entrada del "
+            "journal que lo ancla tiene que ser ACUSADO por el gate CON SU "
+            "RAZON (R3): sin esto, el catalogo de un cambio puede hacerse pasar "
+            "por el de otro y nadie lo nota. Informe:\n{informe_f2bis[-2000:]}\n"
+            "EL GATE NO LEE LA MUTACION")
+        fallos_f2bis = (los_fallos_que_nombran(informe_f2bis, centinela_mut_ok)
+                        + los_fallos_que_nombran(informe_f2bis, centinela_mut_mal)
+                        + los_fallos_que_nombran(informe_f2bis,
+                                                centinela_mut_forma))
+        assert not fallos_f2bis, (
+            "el `cambio` desacoplado es un hecho DEL CATALOGO: el gate tiene que "
+            "acusarlo al catalogo, no a un mutante. Fallos que nombran a los "
+            f"centinelas: {fallos_f2bis!r}. Informe:\n{informe_f2bis[-2000:]}\n"
+            "EL GATE NO LEE LA MUTACION")
+
+        # (F3) LA CONTRAPROUEBA: el MISMO catalogo, con la `mutacion` CORRECTA
+        #      (el fichero que declara EXISTE y la forma en regla) y el `ciclo`
+        #      bien declarado. El gate tiene que CALLAR sobre los TRES
+        #      centinelas y SEGUIR imprimiendo el REGISTRO. Sin esta celda, "el
+        #      gate acusa" podria ser un gate que acusa SIEMPRE, que es el otro
+        #      extremo del mismo fallo.
+        escribir_el_catalogo_de_la_mutacion(
+            75, relativo_mut + "/mutation-report.md", linea_del_tercero=6)
+        rc_f3, informe_f3 = ejecutar_el_validador_del_esqueleto()
+        assert "Resumen:" in informe_f3, (
+            "el validador del corpus (F) tiene que LLEGAR AL FINAL con la "
+            f"`mutacion` correcta. rc={rc_f3}. Informe:\n{informe_f3[-2000:]}\n"
+            "EL GATE NO LEE LA MUTACION")
+        fallos_f3 = (los_fallos_que_nombran(informe_f3, centinela_mut_ok)
+                     + los_fallos_que_nombran(informe_f3, centinela_mut_mal)
+                     + los_fallos_que_nombran(informe_f3, centinela_mut_forma))
+        assert not fallos_f3, (
+            "con la `mutacion` CORRECTA el gate tiene que CALLAR sobre los tres "
+            "centinelas del corpus (F): si acusa a uno que esta en regla, su "
+            "acusacion no distingue nada. Fallos que los nombran: "
+            f"{fallos_f3!r}. Informe:\n{informe_f3[-2000:]}\n"
+            "EL GATE NO LEE LA MUTACION")
+        assert "[REGISTRO] check 11 (veredicto de mutacion)" in informe_f3, (
+            "con la `mutacion` correcta el gate tiene que SEGUIR imprimiendo su "
+            "REGISTRO: el corpus (F) no puede hacer callar al gate. Informe:\n"
+            f"{informe_f3[-2000:]}\nEL GATE NO LEE LA MUTACION")
+
+        # (F4) EL CATALOGO REAL DEL REPO, SIN TOCAR: 0 FAIL ---------------------
+        # El gate tiene que pasar sobre el catalogo REAL (los 26 mutantes
+        # vivos), no solo sobre el corpus sintetico: si la migracion de un
+        # mutante real quedara rota, el validador del repo pasaria en ROJO y
+        # nadie lo veria hasta el CI. Se comprueba sobre el arbol REAL, en
+        # proceso (mismo gate, misma llamada).
+        errores_reales, oks_reales, saltados_reales = [], [], []
+        vd._comprobar_veredictos_de_mutacion(raiz, errores_reales, oks_reales,
+                                              saltados_reales, False)
+        assert not errores_reales, (
+            "el catalogo REAL del repo tiene que pasar el gate con 0 FAIL: "
+            f"acuso {errores_reales!r}. O la migracion de un mutante real esta "
+            "rota, o el gate es mas estricto que lo que el repo declara (y "
+            "entonces el gate esta midiendo algo que nadie pidio)")
+        assert any("REGISTRO" in o for o in oks_reales), (
+            "el gate REAL tiene que seguir imprimiendo su REGISTRO con el "
+            f"catalogo real: oks={oks_reales!r}")
+
+        # (F5) EL LIMITE (g): LO QUE EL GATE **NO** PRUEBA DE LA `mutacion` ----
+        # El guard (B) de este MISMO test ya exige que el bloque canonico traiga
+        # el limite (g) con sus TRES motivos medidos y que el docstring lo
+        # repita. Aqui se comprueba el OTRO lado del limite: que el bloque
+        # nombre LAS CUATRO reglas que el gate SI comprueba (R1..R4), luego el
+        # limite no puede leerse como "el gate no mira la `mutacion` en
+        # absoluto" (que es lo que haria que R1..R4 sobraran).
+        with open(os.path.join(raiz, "validate_docs.py"), encoding="utf-8") as f:
+            fuente_para_f = f.read()
+        bloque_f = (fuente_para_f
+                    .split("LO QUE ESTE GATE **NO** PRUEBA")[1]
+                    .split("POR QUE NO SE REPITE LA SUITE")[0])
+        for marca_f in ("R1", "R2", "R3", "R4"):
+            assert marca_f in bloque_f, (
+                f"el limite (g) tiene que NOMBRAR la regla {marca_f} (la que el "
+                "gate SI comprueba): si el limite dice que el gate no mira la "
+                "`mutacion` en absoluto, las cuatro reglas sobrarian")
+        assert "texto que se declara este en ese fichero" in bloque_f, (
+            "el limite (g) tiene que decir QUE es lo que NO se comprueba: el "
+            "TEXTO declarado, no la DECLARACION")
     finally:
         for clave, valor in previos.items():
             if valor is None:
@@ -23649,7 +24011,7 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
     print("Check 9 cableado en el camino real OK: el residuo sale con != 0 y el "
           "mutante de cableado lo hace desaparecer. Y ademas: el check 11 sale "
           "cableado con su REGISTRO (y su mutante lo borra), el gate declara los "
-          "seis limites que no prueba y el emisor no pisa la evidencia ajena. "
+          "siete limites que no prueba y el emisor no pisa la evidencia ajena. "
           "Y el gate DISTINGUE: acusa a los DOCE sentinelas con problema (cuatro "
           "del juicio, cinco precondiciones estructurales de la ronda 2 -- sha, "
           "asa, frame, informe y catalogo -- y tres de la ronda 3 -- la linea que "
@@ -23659,7 +24021,13 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
           "defaults, con el recorte COMPARTIDO), DICE ALGO en el camino real, "
           "ACUSA la skill degradada (la orden en una valla con prefijo de cita o "
           "en un comentario de varias lineas), y CALLA en un arbol sin "
-          "`.agents/`.")
+          "`.agents/`. Y el gate LEE la `mutacion`: con su propio corpus "
+          "acusa al centinela ROTO (el SEGUNDO, con `mutacion.fichero` "
+          "inexistente) CON SU RAZON, acusa al centinela de la FORMA rota CON "
+          "SU RAZON, acusa el `ciclo` descoplado del catalogo y el `cambio` "
+          "descoplado, calla sobre el COHERENTE (el PRIMERO), y con la "
+          "`mutacion` correcta no acusa a ninguno. Y el catalogo REAL del repo "
+          "pasa el gate con 0 FAIL.")
 
 
 def test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real():
@@ -30305,7 +30673,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
 
     **POR QUE ESTE GUARD EXISTE Y POR QUE NO SE PONE EN ROJO.** Cuatro sitios
     citan esas dos lineas POR NUMERO: `validate_docs.py:1429`,
-    `validate_docs.py:1924`, `run_tests.py:24417` y
+    `validate_docs.py:1924`, `run_tests.py:24785` y
     `docs/ai/sandbox-rules.md:1133`, y las cuatro dicen que son las dos filas del
     `0` de la tabla de codigos de salida. MEDIDO: `_declara_el_codigo_sobrecargado`
     (`validate_docs.py:1935`) compila el patron con `re.MULTILINE` sobre el
@@ -30320,7 +30688,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     por encima de la 55 desplaza la tabla y este guard muere.
 
     Ademas se comprueba que la seccion "Por que el validador NO corre en CI"
-    sigue por encima de la 61 (`run_tests.py:24415`), que es el suelo que hace
+    sigue por encima de la 61 (`run_tests.py:24777`), que es el suelo que hace
     falta para que esas citas no se pudran.
     """
     print("Probando que las citas por linea de sandbox-rules.md son ciertas...")
@@ -30348,7 +30716,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     # numero de una y olvidar las otras tres deja tres mentiras nuevas.
     cita = "sandbox-rules.md:55-56"
     for relativo, numeros in (("validate_docs.py", ("1429", "1924")),
-                              ("run_tests.py", ("24417",)),
+                              ("run_tests.py", ("24785",)),
                               ("docs/ai/sandbox-rules.md", ("1133",))):
         texto = _texto_de(os.path.join(raiz, *relativo.split("/"))).splitlines()
         for numero in numeros:

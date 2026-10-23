@@ -2821,7 +2821,21 @@ def main(argv=None):
 #       EXACTAMENTE el `asa` declarado y si el motivo literal contiene el
 #       `motivo` declarado;
 #   (4) que el `asa` declarado sea un `test_*` DEFINIDO en `run_tests.py`;
-#   (5) que el conjunto de sujetos NO este vacio (el REGISTRO lo imprime).
+#   (5) que el conjunto de sujetos NO este vacio (el REGISTRO lo imprime);
+#   (6) que la `mutacion` de cada mutante este DECLARADA y con FORMA (R1:
+#       `fichero`/`original`/`sustituto` no vacios, `original != sustituto` y
+#       `linea` un entero `>= 1`);
+#   (7) que el fichero que declara esa `mutacion` EXISTA y este DENTRO del
+#       arbol (R2);
+#   (8) que el `cambio` que declara el catalogo sea el `change` de la entrada
+#       del journal que lo ancla (R3);
+#   (9) que el `ciclo` que declara el catalogo sea el `cycle` de esa misma
+#       entrada (R4).
+#
+# Las CUATRO ultimas (R1..R4) son las del ciclo 72 (TASK-091) y NO CADUCAN con
+# el movimiento del codigo: comparan dos declaraciones que el repo ya hace, y
+# ninguna lee el CONTENIDO de un fichero (solo `os.path.isfile`). Lo que si
+# caduca es el TEXTO declarado, y por eso el texto es el limite (g) de abajo.
 #
 # LO QUE ESTE GATE **NO** PRUEBA, y por eso lo dice en voz alta:
 #   (a) que el `asa` declarada sea la guard SEMANTICAMENTE correcta para esa
@@ -2886,14 +2900,58 @@ def main(argv=None):
 #       `[FAIL]` DE SU RAZON en cada celda. MEDIDO el 2026-10-22 (ronda 4 del
 #       dev): con el corpus ampliado, las NUEVE ramas (cinco estructurales y
 #       estas cuatro) muerden.
+#   (g) que el TEXTO declarado (`mutacion.original`) este EN el fichero. El
+#       gate comprueba que la `mutacion` este DECLARADA y con FORMA (R1), que
+#       su fichero EXISTA y este dentro del arbol (R2) y que el catalogo sea
+#       el del ciclo y del cambio que dice ser (R3 y R4), pero **NO** que el
+#       texto que se declara este en ese fichero.
+#
+#       MOTIVO MEDIDO (CADUCIDAD): el texto declarado se mueve con cada ciclo
+#       que toca el codigo. MEDIDO el 2026-10-22 (ANTES de este cambio): el
+#       `original` declarado era un bloque CONTIGUO en **24 de los 26**
+#       mutantes (los dos que no: M-A1, dos `if` que existen pero NO son
+#       contiguos, y M-121, que era prosa). MEDIDO el 2026-10-23 (DESPUES de
+#       este cambio, que toco el cuerpo del gate y su bucle de mutantes):
+#       **22 de los 26**, porque las tres recetas de M-90, M-92 y M-94
+#       apuntaban precisamente a esas dos cosas. O sea que **cualquier**
+#       cambio del codigo invalida las recetas. Y el `original` esta en la
+#       LINEA declarada en **1 de 26** (solo M-107), luego una regla que lo
+#       exigiera en la linea daria FAIL sobre **25 de los 26** mutantes, y una
+#       que exigiera el texto daria FAIL sobre el propio catalogo del repo.
+#
+#       MOTIVO MEDIDO (COSTE): comprobarlo cuesta **62,3 ms** (26 mutantes,
+#       5 ficheros, 1.891 MB leidos, cache por ruta + busqueda `in`) y el
+#       presupuesto del gate es del **0,5 %** de los 11,28 s del validador =
+#       **56,4 ms**, con un margen actual de **10,2 ms**: disponibles
+#       **46,2 ms**, luego **NO CABE**. Las CUATRO reglas que si caben (forma,
+#       fichero, cambio, ciclo) cuestan **0,88 ms MEDIDOS** el 2026-10-23 (R1
+#       0,011 ms; R2 0,872 ms, que son 26 `stat` a ~33 us cada uno; R3+R4
+#       0,0003 ms) porque NO leen contenido: solo `os.path.isfile`. El margen
+#       del check 11 en este host: 13,674 ms antes y 14,837 ms despues.
+#
+#       MOTIVO MEDIDO (SEMANTICA): la RECETA caduca, el VEREDICTO no. El
+#       veredicto es un hecho sobre el arbol AUDITADO (`sha_arbol_auditado`),
+#       y ese hecho no se invalida porque el codigo se haya movido despues;
+#       lo que caduca es el PROCEDIMIENTO para reproducirlo. Un FAIL por
+#       esto convertiria el gate en una bomba de relojería (habria que
+#       re-declarar mutantes historicos cada vez que se mueve el codigo),
+#       que es justo lo que este encargo prohibe.
+#
+#       Y la seccion (F) de
+#       `test_el_check_9_se_cablea_en_el_camino_real_del_validador` vigila las
+#       CUATRO reglas con un cambio sintetico PROPIO y TRES centinelas PROPIOS
+#       (uno COHERENTE, uno con `mutacion.fichero` inexistente y uno con la
+#       FORMA rota), y exige que el gate ACUSE a los rotos y CALLE sobre el
+#       coherente.
 #
 # ESTA LISTA **NO ES EXHAUSTIVA**: es lo que se ha MEDIDO hasta ahora (ciclos
 # 70 y 71: mutantes K-1..K-17 y el limite D-B; y la segunda ronda de TASK-090:
 # las cinco precondiciones estructurales M-102..M-106; y la tercera ronda de
-# TASK-090: las cuatro ramas que quedaban sin ejercitar, M-108..M-112). Un
+# TASK-090: las cuatro ramas que quedaban sin ejercitar, M-108..M-112; y el
+# ciclo 72 (TASK-091): el limite (g), el TEXTO declarado). Un
 # limite que nadie ha medido sigue sin declarar, y declararlo aqui sin medirlo
 # seria escribir una promesa que nadie ha comprobado. Lo que SI es exhaustivo es
-# la lista de lo que el gate PRUEBA (los cinco puntos de arriba), que sale del
+# la lista de lo que el gate PRUEBA (los nueve puntos de arriba), que sale del
 # CODIGO y no de la prosa.
 #
 # POR QUE NO SE REPITE LA SUITE N VECES, con las cifras. Repetir cuesta
@@ -3146,13 +3204,26 @@ def _tests_definidos(root):
 
 
 def _leer_el_catalogo(ruta):
-    """Los mutantes del catalogo. -> `[(id, asa, motivo, sha), ...]`"""
+    """El catalogo de mutaciones. -> `(encabezado, [(id, asa, motivo, sha,
+    mutacion), ...])`
+
+    El QUINTO elemento de cada mutante es el campo `mutacion` TAL COMO VIENE:
+    NO se normaliza y NO se valida aqui, porque una `mutacion` ausente o mal
+    formada tiene que poder LLEGAR hasta la comprobacion del gate (si se
+    normalizara en esta funcion, un `mutacion` ausente se volveria un `None`
+    indistinguible de uno legitimo, y el gate no podria acusar).
+
+    El `encabezado` es el nivel superior del catalogo (`cambio` y `ciclo`), que
+    es lo que R3 y R4 contrastan con la entrada del journal que lo ancla.
+    """
     with open(ruta, encoding="utf-8") as fh:
         datos = json.load(fh)
     if isinstance(datos, dict):
         lista = datos.get("mutaciones", [])
+        encabezado = datos
     else:
         lista = datos
+        encabezado = {}
     salida = []
     for entrada in lista:
         if not isinstance(entrada, dict):
@@ -3162,8 +3233,40 @@ def _leer_el_catalogo(ruta):
                 raise ValueError(f"el mutante {entrada.get('id')!r} no declara "
                                  f"`{campo}`")
         salida.append((entrada["id"], entrada["asa"], entrada["motivo"],
-                       entrada.get("sha_arbol_auditado")))
-    return salida
+                       entrada.get("sha_arbol_auditado"),
+                       entrada.get("mutacion")))
+    return encabezado, salida
+
+
+def _detalle_de_la_mutacion(mutacion):
+    """El DEFECTO de la declaracion `mutacion`, o `None` si esta bien.
+
+    -> `str` o `None`
+
+    R1: LA DECLARACION TIENE FORMA. Un `mutacion` es un objeto con `fichero`,
+    `original` y `sustituto` no vacios, con `original != sustituto` y con
+    `linea` un entero `>= 1`.
+
+    NO lee NINGUN fichero: solo mira la forma de lo declarado. Y el detalle
+    que devuelve es el NOMBRE DEL CAMPO que no cuadra, que es lo que el FAIL
+    tiene que teach (AC-2: el FAIL nombra el campo y el valor que no cuadra).
+    """
+    if mutacion is None:
+        return "falta el campo 'mutacion'"
+    if not isinstance(mutacion, dict):
+        return "el campo 'mutacion' no es un objeto"
+    for campo in ("fichero", "original", "sustituto"):
+        valor = mutacion.get(campo)
+        if not isinstance(valor, str) or not valor.strip():
+            return f"no declara {campo!r}"
+    if mutacion["original"] == mutacion["sustituto"]:
+        return "'original' y 'sustituto' son el MISMO texto"
+    if "linea" not in mutacion:
+        return "no declara 'linea'"
+    linea = mutacion["linea"]
+    if isinstance(linea, bool) or not isinstance(linea, int) or linea < 1:
+        return "'linea' no es un entero >= 1"
+    return None
 
 
 def _dentro_del_arbol(root, relativo):
@@ -3213,6 +3316,25 @@ def _comprobar_veredictos_de_mutacion(root, errors, ok, saltados,
     completa, con el porque de cada limite,
     esta en el bloque de arriba ("LO QUE ESTE GATE **NO** PRUEBA"), y esa
     lista NO es exhaustiva: es la de los limites MEDIDOS hasta ahora.
+
+    Y (g) que el TEXTO declarado (`mutacion.original`) este EN el fichero. El
+    gate comprueba que la `mutacion` este DECLARADA y con FORMA (R1 de la
+    `mutacion`), que su fichero EXISTA y este dentro del arbol (R2 de la
+    `mutacion`), que el `cambio` del catalogo sea el `change` de la entrada
+    del journal (R3) y que el `ciclo` del catalogo sea el `cycle` de esa
+    entrada (R4), pero NO que el texto declarado este en ese fichero. Con sus
+    TRES motivos medidos: (CADUCIDAD) el texto se mueve con cada ciclo que
+    toca el codigo (MEDIDO: el `original` declarado era un bloque CONTIGUO en
+    24 de los 26 mutantes antes del cambio del gate de este ciclo, y es 22 de
+    los 26 despues, porque tres recetas apuntaban al cuerpo del gate y a su
+    bucle de mutantes; y el texto esta en la linea declarada en 1 de los 26
+    mutantes, luego 25 de los 26 fallarian), hay recetas cuyo `original` nunca
+    existio como bloque (M-A1) y hay recetas que son el cuerpo entero de una
+    funcion (M-90); (COSTE) comprobarlo cuesta 62,3 ms y el presupuesto del gate
+    es de 56,4 ms con 10,2 ms usados, luego disponibles 46,2 ms: NO CABE; y
+    (SEMANTICA) la RECETA caduca, el VEREDICTO no: el veredicto es un hecho
+    sobre el arbol AUDITADO y no se invalida porque el codigo se mueva
+    despues, luego un FAIL por esto seria una bomba de relojería.
     """
     global _REGISTRO_DE_VEREDICTOS
     _REGISTRO_DE_VEREDICTOS = None
@@ -3282,13 +3404,45 @@ def _comprobar_veredictos_de_mutacion(root, errors, ok, saltados,
             )
             continue
         try:
-            mutantes = _leer_el_catalogo(catalogo_ruta)
+            encabezado, mutantes = _leer_el_catalogo(catalogo_ruta)
         except (OSError, ValueError) as exc:
             errors.append(
                 f"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/"
                 f"mutaciones.json: NO SE PUEDE LEER ({exc})"
             )
             continue
+
+        # (R3) Y (R4): EL ANCLA DEL CATALOGO. Una vez por ENTRADA del journal
+        # y ANTES del bucle de mutantes: un catalogo que se hace pasar por el
+        # de otro ciclo (o por el de otro cambio) no es el que dice ser, y eso
+        # se dice UNA vez, no una vez por mutante. Son las dos reglas que
+        # atan el catalogo a la entrada del journal que lo ancla, y las dos se
+        # derivan de dos declaraciones que el repo YA hace.
+        cambio_del_catalogo = (encabezado.get("cambio")
+                                if isinstance(encabezado, dict) else None)
+        ciclo_del_catalogo = (encabezado.get("ciclo")
+                              if isinstance(encabezado, dict) else None)
+        # El `change` de la entrada se normaliza a texto SOLO si lo es: un gate
+        # que revienta con una excepcion no accuse nada, y un validador que se
+        # cae entero no comprueba NADA de lo que viene despues.
+        cambio_de_la_entrada = (cambio.rstrip("/")
+                                if isinstance(cambio, str) else None)
+        if not (isinstance(cambio_del_catalogo, str)
+                and cambio_de_la_entrada is not None
+                and cambio_del_catalogo.rstrip("/") == cambio_de_la_entrada):
+            errors.append(
+                f"mutaciones.json: el catalogo declara `cambio` = "
+                f"{cambio_del_catalogo!r} y la entrada del journal del ciclo "
+                f"{ciclo} declara `change` = {cambio!r}: este catalogo NO es el "
+                f"del ciclo que dice ser"
+            )
+        if ciclo_del_catalogo != ciclo:
+            errors.append(
+                f"mutaciones.json: el catalogo declara `ciclo` = "
+                f"{ciclo_del_catalogo!r} y la entrada del journal que lo ancla "
+                f"es la del ciclo {ciclo!r}: este catalogo NO es del ciclo que "
+                f"dice ser"
+            )
 
         # (a) LAS LINEAS CANONICAS de la entrada del journal.
         lineas = _lineas_canonicas_de_un_texto(entrada.get("status") or "")
@@ -3325,7 +3479,31 @@ def _comprobar_veredictos_de_mutacion(root, errors, ok, saltados,
         # (b) EL CATALOGO manda: cada mutante tiene linea y la linea cuadra.
         if definidos is None:
             definidos = _tests_definidos(root)
-        for identificador, asa, motivo, sha_del_catalogo in mutantes:
+        for identificador, asa, motivo, sha_del_catalogo, mutacion in mutantes:
+            # (R1) LA DECLARACION TIENE FORMA, y (R2) EL FICHERO EXISTE Y ESTA
+            # DENTRO DEL ARBOL. Las dos son por MUTANTE y las dos son BARATAS
+            # (`os.path.isfile`: un `stat`, NADA de contenido): sin `mutacion`
+            # no hay RECETA, y una receta que apunta a un fichero que no existe
+            # es la DECLARACION de una mutacion, no una mutacion.
+            detalle = _detalle_de_la_mutacion(mutacion)
+            if detalle is not None:
+                errors.append(
+                    f"mutaciones.json: el mutante {identificador} NO declara una "
+                    f"`mutacion` utilizable: {detalle}. El campo `mutacion` dice "
+                    f"QUE fichero y QUE texto se sustituyen, y sin el no se puede "
+                    f"saber que se rompio para auditar el fix"
+                )
+            else:
+                fichero = mutacion["fichero"]
+                destino = _dentro_del_arbol(root, fichero)
+                if destino is None or not os.path.isfile(destino):
+                    errors.append(
+                        f"mutaciones.json: el mutante {identificador} declara "
+                        f"`mutacion.fichero` = {fichero!r} y ese fichero NO "
+                        f"EXISTE en el arbol (o se sale de el). Una mutacion que "
+                        f"apunta a un fichero que no existe NO es una mutacion: "
+                        f"es la DECLARACION de una mutacion"
+                    )
             if identificador not in por_mutante:
                 errors.append(
                     f"rd_journal.json: la entrada del ciclo {ciclo} NO tiene "

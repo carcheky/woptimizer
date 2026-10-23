@@ -336,14 +336,15 @@
       "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo": "EL GATE NO DISTINGUE",
       "mutacion": {
-        "fichero": "run_tests.py + validate_docs.py",
-        "linea": 0,
-        "original": "la celda (D1-ter)(d) del LIMITE y la asercion de 'entradas cubiertas'",
-        "sustituto": "pass (celda neutralizada) + M-109 aplicado"
+        "fichero": "run_tests.py",
+        "linea": 23354,
+        "original": "        exigir_la_acusacion(informe_sano, centinela_limite, \"SOBREVIVIENTE\",\n                            \"MUERTO\",\n                            \"la entrada del journal que esta en el LIMITE (el \"\n                            \"ciclo 70, el origen del contrato) tiene que estar \"\n                            \"MIRADA: su veredicto se juzga contra la evidencia\")\n        assert f\"entradas cubiertas={len(entradas_sinteticas)}\" in informe_sano, (\n            f\"el gate tiene que EXAMINAR las {len(entradas_sinteticas)} \"\n            \"entradas del corpus (incluida la del LIMITE, el ciclo 70): su \"\n            \"REGISTRO tiene que decir 'entradas cubiertas=\"\n            f\"{len(entradas_sinteticas)}'. Un gate que se queda en el ciclo 71 \"\n            \"deja el origen del contrato sin re-derivar y no lo dice: \"\n            f\"Informe:\\n{informe_sano[-2000:]}\\nEL GATE NO DISTINGUE\")",
+        "sustituto": "        pass  # MUTANTE M-121: la celda (D1-ter)(d) del LIMITE y la asercion de 'entradas cubiertas' NEUTRALIZADAS"
       },
       "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
       "origen": "META: el GUARD al que le neutralizan la celda (D1-ter)(d) del LIMITE y la asercion de 'entradas cubiertas', y ademas aplican M-109. Si la suite queda VERDE, la celda (d) y la asercion son lo UNICO que caza a M-109 (tienen dientes).",
-      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche.",
+      "nota_migracion_ciclo_72": "MIGRADO en el ciclo 72 (TASK-091). MEDIDO (censo del catalogo REAL de este cambio: 26 mutantes vivos, census con las mismas reglas que usa el gate): la `mutacion` que declaraba este mutante NO PODIA pasar R1 ni R2. Su `fichero` era \"run_tests.py + validate_docs.py\" (DOS rutas en una, que no es un fichero) y su `linea` era 0 (no un entero >= 1). Con el gate que las lee (check 11, desde el 2026-10-23) el validador daba 1 FAIL sobre el propio catalogo del repo: \"el mutante M-121 NO declara una `mutacion` utilizable: 'linea' no es un entero >= 1\". LA MIGRACION MINIMA declara una receta APLICABLE: el bloque CONTIGUO de `run_tests.py` (lineas 23354-23365) que neutraliza las DOS cosas que este mutante neutraliza --la celda (D1-ter)(d) del LIMITE y la asercion de 'entradas cubiertas', que son lineas consecutivas-- por un `pass`. LA SEGUNDA MITAD del mutante (que ADEMAS aplica M-109 sobre `validate_docs.py`) NO cabe en un unico `mutacion`, porque el campo declara UN fichero: queda DECLARADA aqui, y su receta esta en la entrada de M-109 (fichero `validate_docs.py`), luego la ronda 6 del `mutation-auditor` tiene que aplicar las DOS. NO se declara el TEXTO de esa segunda mitad porque el gate NO comprueba el texto declarado (limite (g) del bloque canonico del gate: la RECETA caduca, el VEREDICTO no)."
     }
   ]
 }
