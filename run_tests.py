@@ -18866,14 +18866,14 @@ def _sin_la_capa_que_el_bucle_no_lee(texto):
     reglas empiezan con `>`: un encabezado que contenga la norma es contenido
     valido, y excluirlo abriria un agujero del mismo tipo que el que se cierra.
     El `>` se sigue quitando porque en markdown es MARCA de cita, no contenido.
+
+    Y AHORA DELEGA: el recorte vive en `validate_docs.py`
+    (`_sin_la_capa_que_el_bucle_no_lee`) y las dos cosas lo LLAMAN. MEDIDO el
+    2026-10-22: el check 12 se habia hecho su PROPIO recorte, por LINEAS, y no
+    veia las vallas con prefijo `> ` (la del propio SKILL.md): falso verde.
     """
-    import re as _re
-    sin_vallas = _re.sub(r"```.*?```", " ", texto, flags=_re.DOTALL)
-    sin_comentarios = _re.sub(r"<!--.*?-->", " ", sin_vallas, flags=_re.DOTALL)
-    plano = " ".join(
-        l.lstrip(">").lstrip() for l in sin_comentarios.splitlines()
-    )
-    return " ".join(plano.split())
+    import validate_docs as vd
+    return vd._sin_la_capa_que_el_bucle_no_lee(texto)
 
 
 def test_la_regla_de_rama_no_vive_en_un_comentario_ni_en_una_valla():
@@ -23433,6 +23433,212 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
             assert f.read() == fuente_del_esqueleto, (
                 "el validador del esqueleto tiene que quedar como estaba: una "
                 "copia mutada contaminaria las secciones que vienen despues")
+
+        # --- (E) EL CHECK 12 TAMBIEN TIENE QUE ESTAR CABLEADO (TASK-090) -----
+        # MEDIDO el 2026-10-22 (ronda 4 del `mutation-auditor`): el check 12 (el
+        # paso de publicacion de la skill del motor) tenia CUATRO fallos y NINGUN
+        # `test_*` lo vigilaba:
+        #   C-9  el recorte del check 12 era PROPIO y por LINEAS: una valla con
+        #        prefijo `> ` (que es como esta la del propio SKILL.md) la leia
+        #        como contenido, luego la skill podia dejar de mandar publicar y
+        #        el check decia que si. Un FALSO VERDE.
+        #   C-6  el control del comentario HTML era de UNA linea y no tocaba la
+        #        rama multilinea: un comentario de VARIAS lineas se colaba y el
+        #        control no lo veia.
+        #   C-7  el check no estaba cableado en `validar()` y NADIE lo notaba: un
+        #        validador mudo no dice ni OK, ni FAIL, ni SKIP, y pasa por verde.
+        #   T-1  la suite no tenia NI UNA referencia al check 12.
+        # aqui se vigilan las tres cosas que un guard tiene que vigilar: el
+        # CABLEADO (que el check diga algo en el camino real), el RECORTE (que
+        # sea el MISMO que el del guard de la regla de rama, y que no deje pasar
+        # ni la valla con prefijo de cita ni el comentario de varias lineas) y
+        # el COMPORTAMIENTO (que acuse cuando la skill ha dejado de mandar
+        # publicar). EL RECUENTO NO SE MUEVE (235 = 159 + 76): se extiende este.
+        import validate_docs as vd
+
+        # (E1) EL CABLEADO, EN EL CODIGO. Sin defaults, por el motivo de siempre
+        #      (D1, D2, D3): un default convierte un cableado roto en un `None`
+        #      que se lee como "no hay nada que comprobar".
+        with open(os.path.join(raiz, "validate_docs.py"), encoding="utf-8") as f:
+            fuente_del_validador = f.read()
+        arbol_del_validador = ast.parse(fuente_del_validador)
+        validar = next((n for n in arbol_del_validador.body
+                        if isinstance(n, ast.FunctionDef)
+                        and n.name == "validar"), None)
+        assert validar is not None, (
+            "no se encuentra `validar()` en `validate_docs.py`: si el validador "
+            "cambio de forma, esta seccion hay que rehacerla; lo que no puede "
+            "pasar es que siga en verde sin comprobar el cableado")
+        llamadas = [n for n in ast.walk(validar)
+                    if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Name)
+                    and n.func.id == "_comprobar_el_paso_de_publicacion"]
+        assert len(llamadas) == 1, (
+            "`validar()` tiene que LLAMAR al check 12, y lo tiene que hacer de "
+            f"verdad: se han encontrado {len(llamadas)} llamadas a "
+            "`_comprobar_el_paso_de_publicacion` en su cuerpo. Un check sin "
+            "cablear no dice NADA: ni OK, ni FAIL, ni SKIP, y un validador mudo "
+            "pasa por verde (C-7)")
+        llamada = llamadas[0]
+        assert len(llamada.args) == 4 and not llamada.keywords, (
+            "la llamada al check 12 tiene que pasar los CUATRO argumentos "
+            "explicitamente (root, errors, ok, saltados) y sin defaults: un "
+            "default convierte un cableado roto en un `None` que se lee como "
+            "'no hay nada que comprobar' (D1, D2, D3)")
+        firma = next((n for n in arbol_del_validador.body
+                      if isinstance(n, ast.FunctionDef)
+                      and n.name == "_comprobar_el_paso_de_publicacion"), None)
+        assert firma is not None, (
+            "no se encuentra `_comprobar_el_paso_de_publicacion` en "
+            "`validate_docs.py`: si el check cambio de nombre, esta seccion hay "
+            "que rehacerla")
+        assert not firma.args.defaults and not firma.args.kw_defaults, (
+            "la firma del check 12 no puede llevar defaults: un default "
+            "convierte un cableado roto en un `None` que se lee como 'no hay "
+            "nada que comprobar' (D1, D2, D3)")
+        # Y el check 12 tiene que leer la skill con el RECORTE COMPARTIDO, no
+        # con un recorte PROPIO: dos copias de un recorte derivan, y MEDIDO el
+        # 2026-10-22 la copia del check 12 (por LINEAS) no veia la valla con
+        # prefijo `> ` y daba un falso verde (C-9). Se comprueba sobre la
+        # ASIGNACION que lee la skill, y no sobre "llama una vez": un recorte
+        # PROPIO en ese punto deriva aunque el resto del check llame al
+        # compartido.
+        lecturas_de_la_skill = [n for n in ast.walk(firma)
+                                if isinstance(n, ast.Assign)
+                                and any(isinstance(t, ast.Name) and t.id == "plano"
+                                        for t in n.targets)]
+        assert lecturas_de_la_skill, (
+            "el check 12 tiene que LEER la skill (una asignacion a `plano`): si "
+            "el check cambio de forma, esta seccion hay que rehacerla; lo que "
+            "no puede pasar es que siga en verde sin comprobarlo")
+        leidas_con_el_compartido = all(
+            isinstance(a.value, ast.Call)
+            and isinstance(a.value.func, ast.Name)
+            and a.value.func.id == "_sin_la_capa_que_el_bucle_no_lee"
+            for a in lecturas_de_la_skill)
+        assert leidas_con_el_compartido, (
+            "el check 12 tiene que leer la skill con el recorte COMPARTIDO "
+            "`_sin_la_capa_que_el_bucle_no_lee` (el mismo que el guard de la "
+            "regla de rama): con un recorte PROPIO el check 12 no veia la valla "
+            "con prefijo `> ` y daba un falso verde (C-9)")
+
+        # (E2) EL RECORTE COMPARTIDO, medido sobre el del PRODUCTO (no sobre una
+        #      copia de la suite): la valla con prefijo de cita NO es contenido
+        #      (C-9), el comentario de VARIAS lineas NO es contenido (C-6) y la
+        #      prosa de verdad SI se conserva (incluida la que va con `> `, que
+        #      es como esta escrita la del SKILL.md).
+        recorte = getattr(vd, "_sin_la_capa_que_el_bucle_no_lee", None)
+        assert recorte is not None, (
+            "`validate_docs.py` tiene que exponer `_sin_la_capa_que_el_bucle_no_lee`: "
+            "es el recorte UNICO del repo (lo usan el check 12 y el guard de la "
+            "regla de rama) y sin el no hay nada que comparar")
+        assert "git push origin beta" not in recorte(
+            "> ```bash\n> git push origin beta\n> ```\n"), (
+            "una valla con prefijo de cita `> ` no es contenido que el motor lea "
+            "(es la forma de la valla del propio SKILL.md): el recorte la esta "
+            "leyendo como contenido, y por eso el check 12 daba un falso verde "
+            "(C-9)")
+        assert "publicas el ciclo en `beta`" not in recorte(
+            "<!-- publicas el ciclo en `beta`\ny una nota mas\n-->\n"), (
+            "un comentario HTML de VARIAS lineas no es contenido que el motor "
+            "lea: el recorte lo esta leyendo como contenido, y el control del "
+            "comentario (que era de UNA linea) no lo via (C-6)")
+        assert "publicas el ciclo en `beta`" in recorte(
+            "> publicas el ciclo en `beta`\n"), (
+            "la prosa de verdad se conserva, INCLUIDA la que va con prefijo de "
+            "cita `> ` (que es como esta escrita la del SKILL.md): un recorte "
+            "que se la come deja al motor sin paso de publicacion")
+
+        # (E3) LA AUSENCIA DE `.agents/`. El check 12 calla (ni OK, ni FAIL, ni
+        #      SKIP) cuando el arbol NO tiene `.agents/`: es una fixture minima
+        #      de otro test, y un SKIP mas rompe el test de los TRES `[SKIP]`.
+        #      Y ACUSA cuando tiene `.agents/` pero le falta la skill: eso si
+        #      es un FAIL de verdad.
+        comprobar_el_check_12 = getattr(vd, "_comprobar_el_paso_de_publicacion", None)
+        assert comprobar_el_check_12 is not None, (
+            "`validate_docs.py` tiene que exponer "
+            "`_comprobar_el_paso_de_publicacion`: sin el no hay check 12 que "
+            "vigilar")
+        arbol_sin_agents = tempfile.mkdtemp(prefix="wopt_check12_sin_agents_")
+        try:
+            errores, oks, saltados = [], [], []
+            comprobar_el_check_12(arbol_sin_agents, errores, oks, saltados)
+            assert not [e for e in errores if "check 12" in e], (
+                "el check 12 tiene que CALLAR en un arbol sin `.agents/`: "
+                f"acuso {errores!r}")
+            assert not [o for o in oks if "check 12" in o], (
+                "el check 12 tiene que CALLAR en un arbol sin `.agents/`: "
+                f"dijo {oks!r}")
+            assert not [s for s in saltados if "check 12" in s], (
+                "el check 12 tiene que CALLAR en un arbol sin `.agents/`: "
+                f"salto {saltados!r}")
+        finally:
+            shutil.rmtree(arbol_sin_agents, ignore_errors=True)
+        arbol_con_agents = tempfile.mkdtemp(prefix="wopt_check12_con_agents_")
+        try:
+            os.makedirs(os.path.join(arbol_con_agents, ".agents"), exist_ok=True)
+            errores, oks, saltados = [], [], []
+            comprobar_el_check_12(arbol_con_agents, errores, oks, saltados)
+            assert [e for e in errores if "check 12" in e], (
+                "un arbol CON `.agents/` y SIN la skill es el repo del motor "
+                "incompleto: el check 12 tiene que ACUSAR, y no dijo nada")
+        finally:
+            shutil.rmtree(arbol_con_agents, ignore_errors=True)
+
+        # (E4) EL RECORRIDO REAL: la skill REAL del motor, en el esqueleto, y el
+        #      validador como SUBPROCESO. El check 12 tiene que DECIR ALGO (C-7:
+        #      sin cablear no dice ni OK, ni FAIL, ni SKIP) y tiene que decir la
+        #      VERDAD (la skill manda publicar).
+        with open(os.path.join(raiz, ".agents", "skills", "id-pipeline", "SKILL.md"),
+                  encoding="utf-8") as f:
+            skill_del_motor = f.read()
+        ruta_skill = os.path.join(tmp, ".agents", "skills", "id-pipeline", "SKILL.md")
+        os.makedirs(os.path.dirname(ruta_skill), exist_ok=True)
+        with open(ruta_skill, "w", encoding="utf-8") as f:
+            f.write(skill_del_motor)
+        rc12, informe12 = ejecutar_el_validador_del_esqueleto()
+        assert "Resumen:" in informe12, (
+            "el validador del esqueleto tiene que LLEGAR AL FINAL y printar su "
+            f"informe. rc={rc12}. Informe:\n{informe12[-2000:]}")
+        assert "check 12 (paso de publicacion)" in informe12, (
+            "el check 12 tiene que DECIR ALGO en el camino real: su linea no "
+            "aparece en el informe. Si no esta cableado en `validar()`, el "
+            f"validador mudo pasa por verde. rc={rc12}. Informe:\n"
+            f"{informe12[-2000:]}\nEL CHECK 12 NO ESTA CABLEADO")
+        assert "NO manda publicar" not in informe12, (
+            "la skill REAL del motor manda publicar en `beta`, y el check 12 "
+            "tiene que decirlo: el informe acusa a la skill de verdad. "
+            f"rc={rc12}. Informe:\n{informe12[-2000:]}")
+
+        # (E5) LA CONTRAPROUEBA: si la skill deja de mandar publicar, el check
+        #      tiene que ACUSAR. El corpus es el del falso verde MEDIDO (C-9): la
+        #      ORDEN escrita dentro de una valla con prefijo `> ` (la forma de la
+        #      valla del propio SKILL.md) y dentro de un comentario de VARIAS
+        #      lineas (C-6). Con el recorte correcto ninguna de las dos es
+        #      contenido, luego el check tiene que acusar la ORDEN ausente.
+        skill_degradada = (
+            skill_del_motor.replace("publicas el ciclo en `beta`", "empuja a `beta`")
+            + "\n> ```bash\n> publicas el ciclo en `beta` y git push origin beta\n"
+            + "> ```\n"
+            + "\n<!-- publicas el ciclo en `beta` y git push origin beta\n"
+            + "una nota mas, y el comentario sigue abierto -->\n"
+        )
+        with open(ruta_skill, "w", encoding="utf-8") as f:
+            f.write(skill_degradada)
+        rc_mut12, informe_mut12 = ejecutar_el_validador_del_esqueleto()
+        assert "Resumen:" in informe_mut12, (
+            "el validador con la skill degradada tiene que LLEGAR AL FINAL. "
+            f"rc={rc_mut12}. Informe:\n{informe_mut12[-2000:]}")
+        assert "NO manda publicar" in informe_mut12, (
+            "la skill con la ORDEN metida en una valla con prefijo `> ` y en un "
+            "comentario de VARIAS lineas NO manda publicar: el check 12 tiene "
+            "que ACUSAR, y no ha acusado. Si no acusa, el recorte ve como "
+            "contenido lo que el motor no lee, y el check da un falso verde. "
+            f"rc={rc_mut12}. Informe:\n{informe_mut12[-2000:]}\n"
+            "EL CHECK 12 NO DISTINGUE")
+        # Y se restaura la skill buena: el esqueleto no puede quedar mutado.
+        with open(ruta_skill, "w", encoding="utf-8") as f:
+            f.write(skill_del_motor)
     finally:
         for clave, valor in previos.items():
             if valor is None:
@@ -23449,7 +23655,11 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
           "asa, frame, informe y catalogo -- y tres de la ronda 3 -- la linea que "
           "falta, el informe corto y el changelog --), calla sobre los TRES "
           "coherentes, y con el cuerpo vaciado la acusacion muere (REGISTRO "
-          "sigue).")
+          "sigue). Y el check 12 tambien: esta cableado (una llamada, sin "
+          "defaults, con el recorte COMPARTIDO), DICE ALGO en el camino real, "
+          "ACUSA la skill degradada (la orden en una valla con prefijo de cita o "
+          "en un comentario de varias lineas), y CALLA en un arbol sin "
+          "`.agents/`.")
 
 
 def test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real():
@@ -24518,7 +24728,7 @@ def _fixture_con_reloj_clavado(directorio, asunto, fecha_iso):
     `_repo_temporal_de_un_commit`:** esa helper la comparten 21 call sites y
     anadirle un parametro opcional por una necesidad de UN test seria un
     cambio con 21 consumidores; y ademas moveria el numero de linea de
-    `run_tests.py:24207`, que cuatro afirmaciones citan POR NUMERO (lo vigila
+    `run_tests.py:24417`, que cuatro afirmaciones citan POR NUMERO (lo vigila
     `test_las_citas_de_sandbox_rules_siguen_siendo_ciertas`). Clavar el reloj
     aqui resuelve el problema sin tocar nada compartido y sin mover ninguna
     cita.
@@ -30095,7 +30305,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
 
     **POR QUE ESTE GUARD EXISTE Y POR QUE NO SE PONE EN ROJO.** Cuatro sitios
     citan esas dos lineas POR NUMERO: `validate_docs.py:1429`,
-    `validate_docs.py:1924`, `run_tests.py:24207` y
+    `validate_docs.py:1924`, `run_tests.py:24417` y
     `docs/ai/sandbox-rules.md:1133`, y las cuatro dicen que son las dos filas del
     `0` de la tabla de codigos de salida. MEDIDO: `_declara_el_codigo_sobrecargado`
     (`validate_docs.py:1935`) compila el patron con `re.MULTILINE` sobre el
@@ -30110,7 +30320,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     por encima de la 55 desplaza la tabla y este guard muere.
 
     Ademas se comprueba que la seccion "Por que el validador NO corre en CI"
-    sigue por encima de la 61 (`run_tests.py:24205`), que es el suelo que hace
+    sigue por encima de la 61 (`run_tests.py:24415`), que es el suelo que hace
     falta para que esas citas no se pudran.
     """
     print("Probando que las citas por linea de sandbox-rules.md son ciertas...")
@@ -30138,7 +30348,7 @@ def test_las_citas_de_sandbox_rules_siguen_siendo_ciertas():
     # numero de una y olvidar las otras tres deja tres mentiras nuevas.
     cita = "sandbox-rules.md:55-56"
     for relativo, numeros in (("validate_docs.py", ("1429", "1924")),
-                              ("run_tests.py", ("24207",)),
+                              ("run_tests.py", ("24417",)),
                               ("docs/ai/sandbox-rules.md", ("1133",))):
         texto = _texto_de(os.path.join(raiz, *relativo.split("/"))).splitlines()
         for numero in numeros:

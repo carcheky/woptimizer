@@ -3466,9 +3466,13 @@ def _comprobar_veredictos_en_los_changelogs(root, estados, errors, ok):
 #
 # QUE MIDE: que la instruccion de publicacion esta en la skill COMO CONTENIDO
 # OPERATIVO --fuera de comentarios HTML y fuera de vallas ```-- y no como
-# prosa decorativa. Es el mismo criterio que el guard de la regla de rama
-# (`test_la_regla_de_rama_no_vive_en_un_comentario_ni_en_una_valla`), aqui en
-# el gate documental, porque el gate es lo que corre ANTES de cada push.
+# prosa decorativa. El RECORTE es el MISMO que el del guard de la regla de rama
+# (`test_la_regla_de_rama_no_vive_en_un_comentario_ni_en_una_valla`): los dos lo
+# LLAMAN (`_sin_la_capa_que_el_bucle_no_lee`), no lo copian, porque dos copias
+# de un recorte derivan. MEDIDO el 2026-10-22: el recorte PROPIO del check 12
+# (por LINEAS) no veia las vallas con prefijo `> ` -- que es como esta la del
+# propio SKILL.md --, luego la skill podia dejar de mandar publicar y el check
+# decia que si.
 #
 # EL SUJETO es UN fichero, no una enumeracion escrita a mano: por eso las
 # frases se derivan de la propia skill en vez de tener una lista de sujetos
@@ -3484,35 +3488,28 @@ _COMANDO_DE_PUBLICACION = "git push origin beta"
 _COMPROBACION_DE_PUBLICACION = "origin/beta"
 
 
-def _lineas_que_el_motor_lee(cuerpo):
-    """`(numero, linea)` de las lineas que el motor lee como INSTRUCCION.
+def _sin_la_capa_que_el_bucle_no_lee(texto):
+    """El texto SIN las dos capas que el bucle no lee como INSTRUCCION.
 
     Se quedan fuera las vallas ``` (son literales: un ejemplo de comando) y
     los comentarios HTML (no los renderiza nada, luego no pueden ser una
-    instruccion). Es el mismo recorte que usa el guard de la regla de rama.
+    instruccion).
+
+    ESTE ES EL RECORTE UNICO del repo: lo usa el check 12 (aqui) y lo usa
+    tambien el guard de la regla de rama (`run_tests.py`), que lo LLAMA en vez
+    de copiarlo. MEDIDO el 2026-10-22: el check 12 se habia hecho su PROPIO
+    recorte, por LINEAS, y una valla con prefijo `> ` -- que es como esta
+    escrita la del propio SKILL.md -- la leia como contenido: la skill podia
+    dejar de mandar publicar y el check decia que si. Un recorte que se copia
+    es un recorte que deriva, y dos recortes que dicen lo mismo solo mientras
+    nadie los toque.
     """
-    dentro_de_valla = False
-    dentro_de_comentario = False
-    for numero, linea in enumerate(cuerpo.splitlines(), 1):
-        if linea.lstrip().startswith("```"):
-            dentro_de_valla = not dentro_de_valla
-            continue
-        if dentro_de_valla:
-            continue
-        if dentro_de_comentario:
-            if "-->" in linea:
-                dentro_de_comentario = False
-            continue
-        if "<!--" in linea:
-            if "-->" not in linea.split("<!--", 1)[1]:
-                dentro_de_comentario = True
-                continue
-            # comentario cerrado en la misma linea: se mira el resto
-            antes, _, despues = linea.partition("<!--")
-            _, _, cola = despues.partition("-->")
-            yield numero, antes + cola
-            continue
-        yield numero, linea
+    sin_vallas = re.sub(r"```.*?```", " ", texto, flags=re.DOTALL)
+    sin_comentarios = re.sub(r"<!--.*?-->", " ", sin_vallas, flags=re.DOTALL)
+    plano = " ".join(
+        l.lstrip(">").lstrip() for l in sin_comentarios.splitlines()
+    )
+    return " ".join(plano.split())
 
 
 def _comprobar_el_paso_de_publicacion(root, errors, ok, saltados):
@@ -3545,8 +3542,7 @@ def _comprobar_el_paso_de_publicacion(root, errors, ok, saltados):
     with open(ruta, encoding="utf-8") as fh:
         cuerpo = fh.read()
 
-    leidas = list(_lineas_que_el_motor_lee(cuerpo))
-    plano = " ".join(l.strip() for _n, l in leidas)
+    plano = _sin_la_capa_que_el_bucle_no_lee(cuerpo)
 
     faltan = []
     for nombre, frase in (("orden", _ORDEN_DE_PUBLICACION),
@@ -3565,24 +3561,30 @@ def _comprobar_el_paso_de_publicacion(root, errors, ok, saltados):
     else:
         ok.append(
             "check 12 (paso de publicacion): la skill del motor manda publicar "
-            f"en `beta` ({len(leidas)} linea(s) de contenido leidas)"
+            f"en `beta` ({len(cuerpo.splitlines())} linea(s) de la skill leidas)"
         )
 
-    # --- LOS TRES CONTROLES, y sin ellos el guard no miraria nada ------------
+    # --- LOS CONTROLES, y sin ellos el guard no miraria nada ------------------
     # Un guard que solo busca la frase pasa con la frase dentro de un
     # comentario o de una valla: eso es la confusion entre estar escrito y
     # ser operativo, y es exactamente el agujero que el guard de la regla de
     # rama ya cerro para la regla de rama.
+    #
+    # Y cada control se mide CON EL MISMO RECORTE que el cuerpo del check: un
+    # control medido con otro recorte no dice nada del que se usa. MEDIDO el
+    # 2026-10-22: con el recorte por LINEAS, un comentario de VARIAS lineas se
+    # colaba y el control (que era de UNA linea) no lo veia.
     controles = [
         ("comentario HTML",
          "<!-- nota: " + _ORDEN_DE_PUBLICACION + " y " + _COMANDO_DE_PUBLICACION +
-         ". -->\n"),
+         ".\nno es una instruccion: es un comentario de VARIAS lineas.\n-->\n"),
         ("valla",
          "```bash\n" + _COMANDO_DE_PUBLICACION + "\n```\n"),
+        ("valla con prefijo de cita",
+         "> ```bash\n> " + _COMANDO_DE_PUBLICACION + "\n> ```\n"),
     ]
     for nombre, trozo in controles:
-        leidas_control = list(_lineas_que_el_motor_lee(trozo))
-        plano_control = " ".join(l.strip() for _n, l in leidas_control)
+        plano_control = _sin_la_capa_que_el_bucle_no_lee(trozo)
         if _ORDEN_DE_PUBLICACION in plano_control or \
                 _COMANDO_DE_PUBLICACION in plano_control:
             errors.append(
@@ -3591,14 +3593,18 @@ def _comprobar_el_paso_de_publicacion(root, errors, ok, saltados):
                 f"{nombre} no es una instruccion que el motor lea, y el recorte "
                 f"la da por presente. Control: {plano_control!r}"
             )
-    # Y el control POSITIVO: la prosa real se conserva.
-    prosa = "PUBLICAR ES PARTE DEL CICLO\n" + _ORDEN_DE_PUBLICACION + "\n"
-    plano_prosa = " ".join(l.strip() for _n, l in _lineas_que_el_motor_lee(prosa))
-    if _ORDEN_DE_PUBLICACION not in plano_prosa:
-        errors.append(
-            "check 12 (paso de publicacion): el control POSITIVO falla: la prosa "
-            "real tiene que conservarse, y el recorte se la come"
-        )
+    # Y los controles POSITIVOS: la prosa real se conserva, INCLUIDA la que va
+    # con prefijo de cita `> ` (que es como esta escrita la del SKILL.md).
+    for nombre, prosa in (
+            ("prosa", "PUBLICAR ES PARTE DEL CICLO\n" + _ORDEN_DE_PUBLICACION + "\n"),
+            ("cita", "> " + _ORDEN_DE_PUBLICACION + "\n")):
+        plano_prosa = _sin_la_capa_que_el_bucle_no_lee(prosa)
+        if _ORDEN_DE_PUBLICACION not in plano_prosa:
+            errors.append(
+                "check 12 (paso de publicacion): el control POSITIVO de "
+                f"{nombre} falla: la prosa real tiene que conservarse, y el "
+                "recorte se la come"
+            )
     return errors, ok, saltados
 
 
