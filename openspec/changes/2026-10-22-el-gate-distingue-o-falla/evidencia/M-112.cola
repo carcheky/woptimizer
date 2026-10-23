@@ -1,5 +1,42 @@
-=== WOPT_RUN 1 RC=0 ===
-l sano mas modulo sano nuevo -> exit 0 y ALCANCE_DERIVADO=23).
-STATUS.md declara 22 modulos y verify_ui_syntax.py IMPRIME 22, los dos derivados de src/woptimizer/ (TASK-081, AC-2).
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud_E\run_tests.py", line 32319, in <module>
+    test_el_check_9_se_cablea_en_el_camino_real_del_validador()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud_E\run_tests.py", line 23281, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+    exigir_el_fall_con_esta_razon(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        informe_sano,
+        ^^^^^^^^^^^^^
+    ...<3 lines>...
+        f"{centinela_informe_corto} y el bloque de maquina de su informe NO, "
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        "luego el segundo testigo esta desacoplado del primero")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud_E\run_tests.py", line 23252, in exigir_el_fall_con_esta_razon
+    assert fallos, (
+           ^^^^^^
+AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR (el journal del ciclo 74 lleva la linea de M-FIX-INFORME-CORTO y el bloque de maquina de su informe NO, luego el segundo testigo esta desacoplado del primero) y no lo ha hecho: ningun [FAIL] del informe dice 'el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 74'. Sin esta asercion un gate ciego en ESTA rama pasaria por sano: con el cuerpo del gate VACIO el validador tambien daria 0 FAIL. Fallos del informe:
+teada
 
-ALL TESTS PASSED.
+  [FAIL] historial de commits: se lee pero NO aporta ningun ciclo (0 subjects con marcador de ciclo sobre 1 leidos) mientras rd_journal.json si registra 6 ciclo(s). Un parser que no encuentra nada es un parser ROTO, y un parser roto en verde es el falso verde que esta union viene a cerrar
+  [FAIL] CHANGELOG.md (raiz): rd_journal.json registra el ciclo 074 pero el changelog legible no tiene su entrada. Borrarla en los dos ficheros no puede hacer desaparecer la obligacion de registrarla
+  [FAIL] CHANGELOG.md (raiz): sin entrada para el/los ciclo/s 071, 072, 073, 074, exigido por rd_journal.json y/o por el historial de commits. La tabla resumen los enlaza, pero el encabezado seccion no existe: enlace muerto
+  [FAIL] rd_journal.json: el mutante M-FIX-LIMITE esta declarado como SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO (murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion)
+  [FAIL] rd_journal.json: el mutante M-FIX-MAL esta declarado como SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO (murio `test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real` por su asercion)
+  [FAIL] rd_journal.json: el mutante M-FIX-ALREV esta declarado como MUERTO y la evidencia commiteada obliga a SOBREVIVIENTE (la suite termino en VERDE)
+  [FAIL] rd_journal.json: el mutante M-FIX-MOTIVO esta declarado como SOBREVIVIENTE y la evidencia commiteada obliga a NO MEDIDO (el motivo literal no nombra la infraccion declarada)
+  [FAIL] rd_journal.json: el mutante M-FIX-SHA cita el sha ffffffffffffffffffffffffffffffffffffffff y el catalogo declara 0000000000000000000000000000000000000000: la linea no apunta al arbol auditado
+  [FAIL] mutaciones.json: el asa declarada por M-FIX-ASA (`test_este_asa_no_esta_definido_en_run_tests`) NO es un test definido en run_tests.py
+  [FAIL] rd_journal.json: el mutante M-FIX-FRAME esta declarado como MUERTO y la evidencia commiteada obliga a NO MEDIDO (murio `test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real` y el asa declarada es `test_el_check_9_se_cablea_en_el_camino_real_del_validador`)
+  [FAIL] rd_journal.json: la entrada del ciclo 72 declara el mutante M-FIX-FUERA, que NO esta en el catalogo `mutaciones.json` del cambio
+  [FAIL] openspec/changes/2026-10-22-corpus-sintetico-estructural-d/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 73
+  [FAIL] rd_journal.json: la entrada del ciclo 74 NO tiene linea canonica para el mutante M-FIX-SIN-LINEA, que si esta en el catalogo del cambio
+  [FAIL] CHANGELOG.md: el mutante M-FIX-CHANGELOG aparece como SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO
+  [FAIL] .taskmaster\CHANGELOG.md: el mutante M-FIX-CHANGELOG aparece como SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO
+
+  [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=6, mutantes re-derivados=13, origen del contrato: ciclo 70
+
+Resumen: 168 OK, 15 FAIL, 0 SKIP
+
+EL GATE NO DISTINGUE

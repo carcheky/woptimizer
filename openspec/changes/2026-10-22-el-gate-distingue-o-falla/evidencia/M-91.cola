@@ -1,25 +1,26 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara1\run_tests.py", line 32057, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud_E\run_tests.py", line 32319, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara1\run_tests.py", line 23049, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud_E\run_tests.py", line 23239, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     assert not fallos_del_coherente, (
            ^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: EL GATE ACUSA EN LO QUE NO PUEDE: los sentinelas M-FIX-BIEN y M-FIX-SANO declaran MUERTO y su evidencia commiteada obliga a MUERTO, luego no hay nada que acusar, y el gate los ha acusado. Un gate que acusa en lo que no puede es tan ciego como uno que no acusa nada (mutante M-91). Fallos que los nombran: ['  [FAIL] rd_journal.json: el mutante M-FIX-BIEN esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion)', '  [FAIL] rd_journal.json: el mutante M-FIX-SANO esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real` por su asercion)']. Informe:
- ciclo/s 071, 072, 073, exigido por rd_journal.json y/o por el historial de commits. La tabla resumen los enlaza, pero el encabezado seccion no existe: enlace muerto
-  [FAIL] rd_journal.json: el mutante M-FIX-BIEN esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion)
-  [FAIL] rd_journal.json: el mutante M-FIX-SANO esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real` por su asercion)
-  [FAIL] rd_journal.json: el mutante M-FIX-SHA cita el sha ffffffffffffffffffffffffffffffffffffffff y el catalogo declara 0000000000000000000000000000000000000000: la linea no apunta al arbol auditado
-  [FAIL] rd_journal.json: el mutante M-FIX-SHA esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion)
-  [FAIL] mutaciones.json: el asa declarada por M-FIX-ASA (`test_este_asa_no_esta_definido_en_run_tests`) NO es un test definido en run_tests.py
-  [FAIL] rd_journal.json: el mutante M-FIX-ASA esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_este_asa_no_esta_definido_en_run_tests` por su asercion)
+do como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_este_asa_no_esta_definido_en_run_tests` por su asercion)
   [FAIL] rd_journal.json: la entrada del ciclo 72 declara el mutante M-FIX-FUERA, que NO esta en el catalogo `mutaciones.json` del cambio
   [FAIL] rd_journal.json: el mutante M-FIX-INFORME esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion)
   [FAIL] openspec/changes/2026-10-22-corpus-sintetico-estructural-d/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 73
+  [FAIL] rd_journal.json: el mutante M-FIX-CHANGELOG esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion)
+  [FAIL] rd_journal.json: el mutante M-FIX-COMPA esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion)
+  [FAIL] rd_journal.json: el mutante M-FIX-INFORME-CORTO esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion)
+  [FAIL] rd_journal.json: la entrada del ciclo 74 NO tiene linea canonica para el mutante M-FIX-SIN-LINEA, que si esta en el catalogo del cambio
+  [FAIL] openspec/changes/2026-10-22-corpus-sintetico-precondiciones/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 74
+  [FAIL] CHANGELOG.md: el mutante M-FIX-CHANGELOG aparece como SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO
+  [FAIL] .taskmaster\CHANGELOG.md: el mutante M-FIX-CHANGELOG aparece como SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO
 
-  [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=4, mutantes re-derivados=9, origen del contrato: ciclo 70
+  [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=6, mutantes re-derivados=13, origen del contrato: ciclo 70
 
-Resumen: 165 OK, 12 FAIL, 0 SKIP
+Resumen: 168 OK, 19 FAIL, 0 SKIP
 
 EL GATE ACUSA EN LO QUE NO PUEDE

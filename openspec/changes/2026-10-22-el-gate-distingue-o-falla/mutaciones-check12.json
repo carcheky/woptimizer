@@ -1,0 +1,138 @@
+{
+  "cambio": "openspec/changes/2026-10-22-el-gate-distingue-o-falla/",
+  "ciclo": 71,
+  "nota": "Los mutantes del CHECK 12 (commit ccf59ca), medidos por el mutation-auditor (ronda 4). NO entran en `mutaciones.json` porque el gate 11 exige un `asa` REAL y el check 12 no tiene ni un test en la suite.",
+  "mutaciones": [
+    {
+      "id": "C-1",
+      "asa": null,
+      "motivo": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
+      "mutacion": [
+        {
+          "fichero": ".agents/skills/id-pipeline/SKILL.md",
+          "original": "publicas el ciclo en `beta`",
+          "sustituto": "publicas el ciclo en la rama de trabajo"
+        }
+      ],
+      "sha_arbol_auditado": "04ecf0f9573f",
+      "origen": "La ORDEN desaparece del contenido que el motor lee.",
+      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+    },
+    {
+      "id": "C-2",
+      "asa": null,
+      "motivo": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
+      "mutacion": [
+        {
+          "fichero": ".agents/skills/id-pipeline/SKILL.md",
+          "original": "publicas el ciclo en `beta`",
+          "sustituto": "publicas el ciclo en la rama de trabajo"
+        },
+        {
+          "fichero": ".agents/skills/id-pipeline/SKILL.md",
+          "original": ".agents/agents/<n>/agent.md   -> fuente de verdad. Versionada, y la leen Antigravity y OpenCode.",
+          "sustituto": "publicas el ciclo en `beta` (`git push origin beta`) y compruebas que `HEAD` == `origin/beta`"
+        }
+      ],
+      "sha_arbol_auditado": "04ecf0f9573f",
+      "origen": "La ORDEN se queda dentro de una VALLA real (fence de 3 lineas, sin prefijo '>').",
+      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+    },
+    {
+      "id": "C-9",
+      "asa": null,
+      "motivo": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
+      "mutacion": [
+        {
+          "fichero": ".agents/skills/id-pipeline/SKILL.md",
+          "original": "publicas el ciclo en `beta`",
+          "sustituto": "publicas el ciclo en la rama de trabajo"
+        },
+        {
+          "fichero": ".agents/skills/id-pipeline/SKILL.md",
+          "original": "> git switch beta            # el bucle trabaja aqui",
+          "sustituto": "> publicas el ciclo en `beta` (`git push origin beta`) y compruebas que `HEAD` == `origin/beta`"
+        }
+      ],
+      "sha_arbol_auditado": "04ecf0f9573f",
+      "origen": "La ORDEN se queda dentro de la valla CON PREFIJO '>' (la que usa el propio SKILL.md en su ejemplo de git). El recorte del check 12 exige que la valla EMPIECE en la linea, luego no la ve.",
+      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+    },
+    {
+      "id": "C-3",
+      "asa": null,
+      "motivo": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
+      "mutacion": [
+        {
+          "fichero": ".agents/skills/id-pipeline/SKILL.md",
+          "original": "**publicas el ciclo en `beta` (`git push origin beta`) y compruebas que `HEAD` == `origin/beta`**",
+          "sustituto": "<!-- publicas el ciclo en `beta` (`git push origin beta`) y compruebas que `HEAD` == `origin/beta` -->"
+        }
+      ],
+      "sha_arbol_auditado": "86f3d8f50f91",
+      "origen": "La ORDEN se queda dentro de un COMENTARIO HTML.",
+      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+    },
+    {
+      "id": "C-4",
+      "asa": null,
+      "motivo": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
+      "mutacion": [
+        {
+          "fichero": ".agents/skills/id-pipeline/SKILL.md",
+          "original": "git push origin beta",
+          "sustituto": "git push origin la-rama-de-trabajo",
+          "veces": 3
+        }
+      ],
+      "sha_arbol_auditado": "86f3d8f50f91",
+      "origen": "El COMANDO desaparece de las tres apariciones operativas; la COMPROBACION se queda.",
+      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+    },
+    {
+      "id": "C-5",
+      "asa": null,
+      "motivo": "el control de valla FALLA",
+      "mutacion": [
+        {
+          "fichero": "validate_docs.py",
+          "original": "        if dentro_de_valla:\n            continue",
+          "sustituto": "        if dentro_de_valla and False:\n            continue"
+        }
+      ],
+      "sha_arbol_auditado": "86f3d8f50f91",
+      "origen": "El recorte del check 12 deja de excluir las vallas: tiene quetripar su control INTERNO de la valla.",
+      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+    },
+    {
+      "id": "C-6",
+      "asa": null,
+      "motivo": "el control de comentario HTML FALLA",
+      "mutacion": [
+        {
+          "fichero": "validate_docs.py",
+          "original": "        if dentro_de_comentario:",
+          "sustituto": "        if dentro_de_comentario and False:"
+        }
+      ],
+      "sha_arbol_auditado": "86f3d8f50f91",
+      "origen": "El recorte del check 12 deja de excluir los comentarios HTML: tiene que tripar su control INTERNO del comentario.",
+      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+    },
+    {
+      "id": "C-7",
+      "asa": null,
+      "motivo": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
+      "mutacion": [
+        {
+          "fichero": "validate_docs.py",
+          "original": "    return _comprobar_el_paso_de_publicacion(root, errors, ok, saltados)",
+          "sustituto": "    return errors, ok, saltados"
+        }
+      ],
+      "sha_arbol_auditado": "86f3d8f50f91",
+      "origen": "El check 12 deja de estar CABLEADO: `validar()` no lo llama. Ningun FAIL, ningun OK, ningun SKIP.",
+      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "cambio": "openspec/changes/2026-10-22-el-gate-distingue-o-falla/",
   "ciclo": 71,
-  "nota": "RONDA 3: las 18 del catalogo de la ronda 2 re-medidas sobre el codigo del commit c94ef15 (la ronda 4 del dev) y 5 mutantes PROPIOS nuevos sobre el corpus ampliado (10 sentinelas, 4 entradas de journal).",
+  "nota": "RONDA 4 (mutation-auditor): las 23 de la ronda 3 mas M-121. RE-MEDIDAS sobre el arbol 4f2f115 (que ya incluye el fix del check 12, commit 4f2f115) en camara desechable con su propio .git, base verde nativa (rc=0, 'ALL TESTS PASSED.') y sin ningun parche. El sha de cada mutante es el HEAD de la camara donde se midio (las tres camaras son copias del mismo arbol; sus shas difieren solo por la marca de tiempo del commit de la camara).",
   "mutaciones": [
     {
       "id": "M-90",
@@ -26,8 +26,9 @@
         "original": "            if estado_derivado != estado_declarado:",
         "sustituto": "            if estado_derivado == estado_declarado:"
       },
-      "sha_arbol_auditado": "c5247b8fc599",
-      "origen": "propio"
+      "sha_arbol_auditado": "0f667bdb0600",
+      "origen": "propio",
+      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)"
     },
     {
       "id": "M-92",
@@ -39,8 +40,9 @@
         "original": "        for identificador, asa, motivo, sha_del_catalogo in mutantes:",
         "sustituto": "        for identificador, asa, motivo, sha_del_catalogo in mutantes[:1]:"
       },
-      "sha_arbol_auditado": "92d44a408dcb",
-      "origen": "propio"
+      "sha_arbol_auditado": "04ecf0f9573f",
+      "origen": "propio",
+      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)"
     },
     {
       "id": "M-93",
@@ -247,8 +249,9 @@
         "original": "            if identificador not in por_mutante:",
         "sustituto": "            if False and identificador not in por_mutante:"
       },
-      "sha_arbol_auditado": "64881b8b6317",
-      "origen": "el gate NO acusa a un mutante que este en el CATALOGO y NO tenga linea canonica en el journal: la rama `if identificador not in por_mutante:` se apaga. El corpus de la seccion (D) NO la ejercita (alli todo mutante del catalogo tiene linea), luego el guard no lo nota: es el ESPEJO de M-106, que si esta cubierto"
+      "sha_arbol_auditado": "0f667bdb0600",
+      "origen": "el gate NO acusa a un mutante que este en el CATALOGO y NO tenga linea canonica en el journal: la rama `if identificador not in por_mutante:` se apaga. El corpus de la seccion (D) NO la ejercita (alli todo mutante del catalogo tiene linea), luego el guard no lo nota: es el ESPEJO de M-106, que si esta cubierto",
+      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)"
     },
     {
       "id": "M-109",
@@ -260,8 +263,9 @@
         "original": "    entradas = [e for e in journal if _ciclo_de(e) >= CICLO_ORIGEN_VEREDICTO]",
         "sustituto": "    entradas = [e for e in journal if _ciclo_de(e) > CICLO_ORIGEN_VEREDICTO]"
       },
-      "sha_arbol_auditado": "4e0d8d6cad47",
-      "origen": "el filtro del journal se queda en el CICLO 70 y siguientes: con `>` en vez de `>=` el gate deja de re-derivar los veredictos del ciclo 70, que es el ORIGEN del contrato. El corpus tiene su primera entrada justo en el limite (ciclo 70), luego el guard no lo nota"
+      "sha_arbol_auditado": "0f667bdb0600",
+      "origen": "el filtro del journal se queda en el CICLO 70 y siguientes: con `>` en vez de `>=` el gate deja de re-derivar los veredictos del ciclo 70, que es el ORIGEN del contrato. El corpus tiene su primera entrada justo en el limite (ciclo 70), luego el guard no lo nota",
+      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)"
     },
     {
       "id": "M-110",
@@ -273,8 +277,9 @@
         "original": "            if m.group(\"estado\") != estados[identificador]:",
         "sustituto": "            if False and m.group(\"estado\") != estados[identificador]:"
       },
-      "sha_arbol_auditado": "97b380f3f6f8",
-      "origen": "el gate deja de COMPARAR los dos changelogs contra la evidencia commiteada (`if m.group(\"estado\") != estados[identificador]:` se apaga). El corpus no lleva lineas canonicas de los sentinelas en los changelogs, luego esa rama no la ejercita nadie: la copia legible del veredicto puede contradecir la evidencia sin que nada lo note"
+      "sha_arbol_auditado": "0f667bdb0600",
+      "origen": "el gate deja de COMPARAR los dos changelogs contra la evidencia commiteada (`if m.group(\"estado\") != estados[identificador]:` se apaga). El corpus no lleva lineas canonicas de los sentinelas en los changelogs, luego esa rama no la ejercita nadie: la copia legible del veredicto puede contradecir la evidencia sin que nada lo note",
+      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)"
     },
     {
       "id": "M-111",
@@ -299,8 +304,22 @@
         "original": "            if del_informe != del_journal:",
         "sustituto": "            if del_informe - del_journal:"
       },
-      "sha_arbol_auditado": "46b3e095b4d9",
-      "origen": "la comparacion del bloque de maquina con el journal pasa a `del_informe - del_journal`: solo se acusan las lineas que FALTAN, luego un informe con lineas canonicas DE MAS (un veredicto que el journal no respalda) pasa por sano"
+      "sha_arbol_auditado": "0f667bdb0600",
+      "origen": "la comparacion del bloque de maquina con el journal pasa a `del_informe - del_journal`: solo se acusan las lineas que FALTAN, luego un informe con lineas canonicas DE MAS (un veredicto que el journal no respalda) pasa por sano",
+      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)"
+    },
+    {
+      "id": "M-121",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "run_tests.py + validate_docs.py",
+        "linea": 0,
+        "original": "la celda (D1-ter)(d) del LIMITE y la asercion de 'entradas cubiertas'",
+        "sustituto": "pass (celda neutralizada) + M-109 aplicado"
+      },
+      "sha_arbol_auditado": "0a28b28104c6",
+      "origen": "META: el GUARD al que le neutralizan la celda (D1-ter)(d) del LIMITE y la asercion de 'entradas cubiertas', y ademas aplican M-109. Si la suite queda VERDE, la celda (d) y la asercion son lo UNICO que caza a M-109 (tienen dientes)."
     }
   ]
 }
