@@ -1,7 +1,7 @@
 {
   "cambio": "openspec/changes/2026-10-22-el-gate-distingue-o-falla/",
   "ciclo": 71,
-  "nota": "RONDA 4 (mutation-auditor): las 23 de la ronda 3 mas M-121. RE-MEDIDAS sobre el arbol 4f2f115 (que ya incluye el fix del check 12, commit 4f2f115) en camara desechable con su propio .git, base verde nativa (rc=0, 'ALL TESTS PASSED.') y sin ningun parche. El sha de cada mutante es el HEAD de la camara donde se midio (las tres camaras son copias del mismo arbol; sus shas difieren solo por la marca de tiempo del commit de la camara).",
+  "nota": "RONDA 5 (mutation-auditor): los 24 mutantes del gate (M-90..M-112 y M-121) RE-MEDIDOS sobre el arbol 3752c5b en camara desechable con su propio .git, base verde nativa (rc=0, 'ALL TESTS PASSED.') y sin ningun parche. El sha de cada mutante es el HEAD de la camara donde se midio (4d7643c7be79e): las camaras son COPIAS del mismo arbol, luego el sha es el de todas.",
   "mutaciones": [
     {
       "id": "M-90",
@@ -13,8 +13,9 @@
         "original": "    global _REGISTRO_DE_VEREDICTOS\n    _REGISTRO_DE_VEREDICTOS = None\n    if sin_ancla_de_git:\n        return\n    journal = _leer_el_journal(root)\n    if journal is None:\n        # El journal ilegible YA lo acusa el ancla, y una segunda acusacion del\n        # mismo hecho es ruido: el ruido entrena al lector a ignorar el\n        # semaforo. Aqui no se acusa: se dice que no se pudo comprobar.\n        _REGISTRO_DE_VEREDICTOS = (\n            \"check 11 (veredicto de mutacion): REGISTRO no disponible, el \"\n            \"journal no se pudo leer, luego no hay ningun veredicto que \"\n            \"re-derivar. La ILEGIBILIDAD del journal ya la acusa el ancla\")\n        return\n    entradas = [e for e in journal if _ciclo_de(e) >= CICLO_ORIGEN_VEREDICTO]\n    if not entradas:\n        # El conjunto de sujetos es VACIO. No hay nada que comprobar, luego no\n        # hay nada que acusar y tampoco nada que certificar: un `[OK]` aqui\n        # seria verde POR OMISION. El REGISTRO se imprime (lo imprime `main()`)\n        # y dice 0, que es lo que hace visible el conjunto vacio.\n        _REGISTRO_DE_VEREDICTOS = (\n            f\"check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=0, \"\n            f\"mutantes re-derivados=0. El contrato de la linea canonica \"\n            f\"empieza en el ciclo {CICLO_ORIGEN_VEREDICTO} y todavia no hay \"\n            f\"ninguna entrada del journal en ese rango: este REGISTRO dice 0 \"\n            f\"a proposito, y no hay ninguna linea de [OK] para este check, \"\n            f\"porque un [OK] que no ha comprobado nada es verde por omision\")\n        return\n\n    definidos = None\n    mutantes_re_derivados = 0\n    estados = {}\n    for entrada in entradas:\n        ciclo = _ciclo_de(entrada)\n        cambio = entrada.get(\"change\")\n        if not cambio:\n            errors.append(\n                f\"rd_journal.json: la entrada del ciclo {ciclo} NO declara el \"\n                f\"campo `change`, que es el ancla del cambio que hay que \"\n                f\"comprobar. Desde el ciclo {CICLO_ORIGEN_VEREDICTO} es \"\n                f\"obligatorio\"\n            )\n            continue\n        directorio = _dentro_del_arbol(root, cambio)\n        if directorio is None or not os.path.isdir(directorio):\n            errors.append(\n                f\"rd_journal.json: la entrada del ciclo {ciclo} apunta a \"\n                f\"`{cambio}` y ese directorio NO EXISTE (o se sale del arbol)\"\n            )\n            continue\n        catalogo_ruta = os.path.join(directorio, \"mutaciones.json\")\n        if not os.path.exists(catalogo_ruta):\n            errors.append(\n                f\"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/: \"\n                f\"NO declara el catalogo `mutaciones.json`, luego sus \"\n                f\"veredictos no se pueden re-derivar\"\n            )\n            continue\n        informe_ruta = os.path.join(directorio, \"mutation-report.md\")\n        if not os.path.exists(informe_ruta):\n            errors.append(\n                f\"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/\"\n                f\"mutation-report.md: NO EXISTE. El informe del ciclo es el \"\n                f\"segundo testigo del veredicto: sin el, el veredicto no es \"\n                f\"re-auditable\"\n            )\n            continue\n        try:\n            mutantes = _leer_el_catalogo(catalogo_ruta)\n        except (OSError, ValueError) as exc:\n            errors.append(\n                f\"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/\"\n                f\"mutaciones.json: NO SE PUEDE LEER ({exc})\"\n            )\n            continue\n\n        # (a) LAS LINEAS CANONICAS de la entrada del journal.\n        lineas = _lineas_canonicas_de_un_texto(entrada.get(\"status\") or \"\")\n        campo = entrada.get(\"veredictos\")\n        if isinstance(campo, str):\n            lineas.extend([l.strip() for l in campo.splitlines() if l.strip()])\n        elif isinstance(campo, list):\n            for elemento in campo:\n                if isinstance(elemento, str):\n                    lineas.extend([l.strip() for l in elemento.splitlines()\n                                   if l.strip()])\n        vistas = set()\n        unicas = []\n        for linea in lineas:\n            if linea not in vistas:\n                vistas.add(linea)\n                unicas.append(linea)\n        lineas = unicas\n\n        por_mutante = {}\n        for linea in lineas:\n            m = RE_LINEA_CANONICA.fullmatch(linea)\n            if not m:\n                errors.append(\n                    f\"rd_journal.json: la entrada del ciclo {ciclo} tiene una \"\n                    f\"linea de veredicto que NO obeyece la gramatica: {linea!r}. \"\n                    f\"La forma es `WOPT_VEREDICTO <mutante> \"\n                    f\"<MUERTO|SOBREVIVIENTE|NO MEDIDO> <sha>`\"\n                )\n                continue\n            por_mutante[m.group(\"mutante\")] = (m.group(\"estado\"),\n                                                m.group(\"sha\"))\n\n        # (b) EL CATALOGO manda: cada mutante tiene linea y la linea cuadra.\n        if definidos is None:\n            definidos = _tests_definidos(root)\n        for identificador, asa, motivo, sha_del_catalogo in mutantes:\n            if identificador not in por_mutante:\n                errors.append(\n                    f\"rd_journal.json: la entrada del ciclo {ciclo} NO tiene \"\n                    f\"linea canonica para el mutante {identificador}, que si \"\n                    f\"esta en el catalogo del cambio\"\n                )\n                continue\n            estado_declarado, sha_declarado = por_mutante[identificador]\n            if sha_del_catalogo and sha_declarado != sha_del_catalogo:\n                errors.append(\n                    f\"rd_journal.json: el mutante {identificador} cita el sha \"\n                    f\"{sha_declarado} y el catalogo declara \"\n                    f\"{sha_del_catalogo}: la linea no apunta al arbol auditado\"\n                )\n            if asa not in definidos:\n                errors.append(\n                    f\"mutaciones.json: el asa declarada por {identificador} \"\n                    f\"(`{asa}`) NO es un test definido en run_tests.py\"\n                )\n            evidencia_ruta = os.path.join(directorio, \"evidencia\",\n                                          f\"{identificador}.cola\")\n            if not os.path.exists(evidencia_ruta):\n                errors.append(\n                    f\"evidencia/{identificador}.cola: NO EXISTE. Sin la \"\n                    f\"evidencia commiteada el veredicto no se puede re-derivar\"\n                )\n                continue\n            with open(evidencia_ruta, encoding=\"utf-8\") as fh:\n                texto_evidencia = fh.read()\n            bloques = _bloques_de_evidencia(texto_evidencia)\n            estado_derivado, por_que = _estado_del_mutante(bloques, asa, motivo)\n            mutantes_re_derivados += 1\n            estados[identificador] = estado_derivado\n            if estado_derivado != estado_declarado:\n                errors.append(\n                    f\"rd_journal.json: el mutante {identificador} esta \"\n                    f\"declarado como {estado_declarado} y la evidencia \"\n                    f\"commiteada obliga a {estado_derivado} ({por_que})\"\n                )\n\n        # (c) LAS LINEAS DE MAS: un mutante que no esta en el catalogo.\n        ids_del_catalogo = {m[0] for m in mutantes}\n        for identificador in por_mutante:\n            if identificador not in ids_del_catalogo:\n                errors.append(\n                    f\"rd_journal.json: la entrada del ciclo {ciclo} declara el \"\n                    f\"mutante {identificador}, que NO esta en el catalogo \"\n                    f\"`mutaciones.json` del cambio\"\n                )\n\n        # (d) EL INFORME tiene el bloque de maquina con las mismas lineas.\n        with open(informe_ruta, encoding=\"utf-8\") as fh:\n            cuerpo_informe = fh.read()\n        lineas_del_informe = _lineas_canonicas_de_un_texto(cuerpo_informe)\n        if not lineas_del_informe:\n            errors.append(\n                f\"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/\"\n                f\"mutation-report.md: NO tiene el bloque de maquina \"\n                f\"`{APERTURA_DE_BLOQUE}` con las lineas canonicas, luego el \"\n                f\"informe no es el segundo testigo del veredicto\"\n            )\n        else:\n            del_informe = {l for l in lineas_del_informe\n                           if RE_LINEA_CANONICA.fullmatch(l)}\n            del_journal = {l for l in lineas\n                           if RE_LINEA_CANONICA.fullmatch(l)}\n            if del_informe != del_journal:\n                errors.append(\n                    f\"openspec/changes/{os.path.basename(directorio.rstrip('/'))}/\"\n                    f\"mutation-report.md: el bloque de maquina NO lleva las \"\n                    f\"mismas lineas canonicas que el journal del ciclo {ciclo}\"\n                )\n\n    ok.append(\n        f\"check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=\"\n        f\"{len(entradas)}, mutantes re-derivados={mutantes_re_derivados}, \"\n        f\"origen del contrato: ciclo {CICLO_ORIGEN_VEREDICTO}\"\n    )\n    _REGISTRO_DE_VEREDICTOS = (\n        f\"check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=\"\n        f\"{len(entradas)}, mutantes re-derivados={mutantes_re_derivados}, \"\n        f\"origen del contrato: ciclo {CICLO_ORIGEN_VEREDICTO}\"\n    )\n    _comprobar_veredictos_en_los_changelogs(root, estados, errors, ok)\n",
         "sustituto": "    global _REGISTRO_DE_VEREDICTOS\n    _REGISTRO_DE_VEREDICTOS = (\n        \"check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=0, \"\n        \"mutantes re-derivados=0, origen del contrato: ciclo 70\")\n"
       },
-      "sha_arbol_auditado": "b88b2ae33530",
-      "origen": "propio"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "propio",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-91",
@@ -26,9 +27,10 @@
         "original": "            if estado_derivado != estado_declarado:",
         "sustituto": "            if estado_derivado == estado_declarado:"
       },
-      "sha_arbol_auditado": "0f667bdb0600",
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
       "origen": "propio",
-      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)"
+      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-92",
@@ -40,9 +42,10 @@
         "original": "        for identificador, asa, motivo, sha_del_catalogo in mutantes:",
         "sustituto": "        for identificador, asa, motivo, sha_del_catalogo in mutantes[:1]:"
       },
-      "sha_arbol_auditado": "04ecf0f9573f",
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
       "origen": "propio",
-      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)"
+      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-93",
@@ -54,8 +57,9 @@
         "original": "            if estado_derivado != estado_declarado:\n                errors.append(\n                    f\"rd_journal.json: el mutante {identificador} esta \"\n                    f\"declarado como {estado_declarado} y la evidencia \"\n                    f\"commiteada obliga a {estado_derivado} ({por_que})\"\n                )\n",
         "sustituto": "            if estado_derivado != estado_declarado:\n                # MUTANTE M-93: el veredicto se CALCULA y se TIRA.\n                _descartado = (estado_derivado, por_que)\n"
       },
-      "sha_arbol_auditado": "d7d2b995d878",
-      "origen": "propio"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "propio",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-94",
@@ -67,8 +71,9 @@
         "original": "        for identificador, asa, motivo, sha_del_catalogo in mutantes:",
         "sustituto": "        for identificador, asa, motivo, sha_del_catalogo in mutantes[1:]:"
       },
-      "sha_arbol_auditado": "b0b968047ccd",
-      "origen": "propio"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "propio",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-95",
@@ -80,8 +85,9 @@
         "original": "    entradas = [e for e in journal if _ciclo_de(e) >= CICLO_ORIGEN_VEREDICTO]",
         "sustituto": "    entradas = [e for e in journal if _ciclo_de(e) >= CICLO_ORIGEN_VEREDICTO][:1]"
       },
-      "sha_arbol_auditado": "3973606dc7dd",
-      "origen": "propio"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "propio",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-96",
@@ -93,8 +99,9 @@
         "original": "            json.dump(entradas_sinteticas, fh, ensure_ascii=False, indent=2)",
         "sustituto": "            pass  # MUTANTE M-96: el corpus NO se monta"
       },
-      "sha_arbol_auditado": "89ddcc7d268a",
-      "origen": "propio"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "propio",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-97",
@@ -106,8 +113,9 @@
         "original": "             \"LA ASERCION DEL SENTINELA COHERENTE\", \"MUERTO\"),",
         "sustituto": "             \"LA ASERCION DEL SENTINELA COHERENTE\", \"SOBREVIVIENTE\"),"
       },
-      "sha_arbol_auditado": "074778d2956a",
-      "origen": "propio"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "propio",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-98",
@@ -119,8 +127,9 @@
         "original": "        with open(ruta_validador, \"w\", encoding=\"utf-8\") as f:\n            f.write(fuente_del_esqueleto)\n        with open(ruta_validador, encoding=\"utf-8\") as f:\n            assert f.read() == fuente_del_esqueleto, (",
         "sustituto": "        pass  # MUTANTE M-98: D3 NO restaura el esqueleto\n        with open(ruta_validador, encoding=\"utf-8\") as f:\n            assert f.read() == fuente_del_esqueleto, ("
       },
-      "sha_arbol_auditado": "1dd1e558bce0",
-      "origen": "propio"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "propio",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-99",
@@ -132,8 +141,9 @@
         "original": "            if estado_derivado != estado_declarado:",
         "sustituto": "            if estado_declarado == \"SOBREVIVIENTE\":"
       },
-      "sha_arbol_auditado": "ebe692afd206",
-      "origen": "propio"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "propio",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-100",
@@ -145,8 +155,9 @@
         "original": "    if motivo and motivo not in ultima:",
         "sustituto": "    if False and motivo and motivo not in ultima:"
       },
-      "sha_arbol_auditado": "0f8030d69dda",
-      "origen": "el motivo literal de la evidencia YA NO se comprueba: el gate acepta cualquier cola con el frame del asa. El corpus de la seccion (D) lo pasa porque su evidencia esta bien escrita"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "el motivo literal de la evidencia YA NO se comprueba: el gate acepta cualquier cola con el frame del asa. El corpus de la seccion (D) lo pasa porque su evidencia esta bien escrita",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-101",
@@ -158,8 +169,9 @@
         "original": "        campo = entrada.get(\"veredictos\")",
         "sustituto": "        campo = None  # MUTANTE M-101: el journal NO aporta las lineas"
       },
-      "sha_arbol_auditado": "9144057b0b38",
-      "origen": "el gate IGNORA el campo `veredictos` del journal: las lineas canonicas solo se sacarian del `status`, luego no hay sujeto que juzgar y el gate acusa por ESTRUCTURA, no por JUICIO"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "el gate IGNORA el campo `veredictos` del journal: las lineas canonicas solo se sacarian del `status`, luego no hay sujeto que juzgar y el gate acusa por ESTRUCTURA, no por JUICIO",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-102",
@@ -171,8 +183,9 @@
         "original": "            if sha_del_catalogo and sha_declarado != sha_del_catalogo:",
         "sustituto": "            if False and sha_del_catalogo and sha_declarado != sha_del_catalogo:"
       },
-      "sha_arbol_auditado": "f3e94843d979",
-      "origen": "el gate NO comprueba que el sha de la linea sea el del catalogo: una linea puede apuntar a un arbol que NO es el auditado y el gate no se entera"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "el gate NO comprueba que el sha de la linea sea el del catalogo: una linea puede apuntar a un arbol que NO es el auditado y el gate no se entera",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-103",
@@ -184,8 +197,9 @@
         "original": "            if asa not in definidos:",
         "sustituto": "            if False and asa not in definidos:"
       },
-      "sha_arbol_auditado": "309ae523826c",
-      "origen": "el gate NO comprueba que el `asa` sea un test DEFINIDO: un asa inventado pasa por bueno"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "el gate NO comprueba que el `asa` sea un test DEFINIDO: un asa inventado pasa por bueno",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-104",
@@ -197,8 +211,9 @@
         "original": "    if muerto != asa:",
         "sustituto": "    if muerto != asa and asa is None:"
       },
-      "sha_arbol_auditado": "fe09da634cd0",
-      "origen": "el gate ACEPTA una evidencia cuyo frame es OTRO test: declara MUERTO una muerte que no fue la del asa"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "el gate ACEPTA una evidencia cuyo frame es OTRO test: declara MUERTO una muerte que no fue la del asa",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-105",
@@ -210,8 +225,9 @@
         "original": "            if del_informe != del_journal:",
         "sustituto": "            if False and del_informe != del_journal:"
       },
-      "sha_arbol_auditado": "f70bd036c768",
-      "origen": "el gate NO comprueba que el informe del ciclo lleve las MISMAS lineas que el journal: el segundo testigo se desacopla del primero"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "el gate NO comprueba que el informe del ciclo lleve las MISMAS lineas que el journal: el segundo testigo se desacopla del primero",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-106",
@@ -223,8 +239,9 @@
         "original": "            if identificador not in ids_del_catalogo:",
         "sustituto": "            if False and identificador not in ids_del_catalogo:"
       },
-      "sha_arbol_auditado": "41986f08d7f7",
-      "origen": "el gate NO acusa a un mutante que este en el journal y NO en el catalogo: el catalogo deja de ser el que manda"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "el gate NO acusa a un mutante que este en el journal y NO en el catalogo: el catalogo deja de ser el que manda",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-107",
@@ -236,8 +253,9 @@
         "original": "        if dir_evidencia and bloques:",
         "sustituto": "        if dir_evidencia:"
       },
-      "sha_arbol_auditado": "e5f02d611e7c",
-      "origen": "el emisor vuelve a Pisar la evidencia ajena: escribe tambien la de los mutantes a los que no se le paso ninguna corrida (la seccion (C) del guard lo tiene que notar)"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "el emisor vuelve a Pisar la evidencia ajena: escribe tambien la de los mutantes a los que no se le paso ninguna corrida (la seccion (C) del guard lo tiene que notar)",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-108",
@@ -249,9 +267,10 @@
         "original": "            if identificador not in por_mutante:",
         "sustituto": "            if False and identificador not in por_mutante:"
       },
-      "sha_arbol_auditado": "0f667bdb0600",
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
       "origen": "el gate NO acusa a un mutante que este en el CATALOGO y NO tenga linea canonica en el journal: la rama `if identificador not in por_mutante:` se apaga. El corpus de la seccion (D) NO la ejercita (alli todo mutante del catalogo tiene linea), luego el guard no lo nota: es el ESPEJO de M-106, que si esta cubierto",
-      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)"
+      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-109",
@@ -263,9 +282,10 @@
         "original": "    entradas = [e for e in journal if _ciclo_de(e) >= CICLO_ORIGEN_VEREDICTO]",
         "sustituto": "    entradas = [e for e in journal if _ciclo_de(e) > CICLO_ORIGEN_VEREDICTO]"
       },
-      "sha_arbol_auditado": "0f667bdb0600",
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
       "origen": "el filtro del journal se queda en el CICLO 70 y siguientes: con `>` en vez de `>=` el gate deja de re-derivar los veredictos del ciclo 70, que es el ORIGEN del contrato. El corpus tiene su primera entrada justo en el limite (ciclo 70), luego el guard no lo nota",
-      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)"
+      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-110",
@@ -277,9 +297,10 @@
         "original": "            if m.group(\"estado\") != estados[identificador]:",
         "sustituto": "            if False and m.group(\"estado\") != estados[identificador]:"
       },
-      "sha_arbol_auditado": "0f667bdb0600",
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
       "origen": "el gate deja de COMPARAR los dos changelogs contra la evidencia commiteada (`if m.group(\"estado\") != estados[identificador]:` se apaga). El corpus no lleva lineas canonicas de los sentinelas en los changelogs, luego esa rama no la ejercita nadie: la copia legible del veredicto puede contradecir la evidencia sin que nada lo note",
-      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)"
+      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-111",
@@ -291,8 +312,9 @@
         "original": "            if sha_del_catalogo and sha_declarado != sha_del_catalogo:",
         "sustituto": "            if sha_del_catalogo and len(sha_declarado) != len(sha_del_catalogo):"
       },
-      "sha_arbol_auditado": "7ab54a5181a7",
-      "origen": "el sha se compara POR LONGITUD y no POR VALOR: dos shas distintos de la misma longitud pasan por el mismo arbol. La celda D1-bis del sha lo tiene que coger"
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "el sha se compara POR LONGITUD y no POR VALOR: dos shas distintos de la misma longitud pasan por el mismo arbol. La celda D1-bis del sha lo tiene que coger",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-112",
@@ -304,9 +326,10 @@
         "original": "            if del_informe != del_journal:",
         "sustituto": "            if del_informe - del_journal:"
       },
-      "sha_arbol_auditado": "0f667bdb0600",
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
       "origen": "la comparacion del bloque de maquina con el journal pasa a `del_informe - del_journal`: solo se acusan las lineas que FALTAN, luego un informe con lineas canonicas DE MAS (un veredicto que el journal no respalda) pasa por sano",
-      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)"
+      "nota_ronda_4": "RE-MEDIDO por el mutation-auditor (ronda 4) sobre el arbol 4f2f115 en la camara F (sin parches)",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     },
     {
       "id": "M-121",
@@ -318,8 +341,9 @@
         "original": "la celda (D1-ter)(d) del LIMITE y la asercion de 'entradas cubiertas'",
         "sustituto": "pass (celda neutralizada) + M-109 aplicado"
       },
-      "sha_arbol_auditado": "0a28b28104c6",
-      "origen": "META: el GUARD al que le neutralizan la celda (D1-ter)(d) del LIMITE y la asercion de 'entradas cubiertas', y ademas aplican M-109. Si la suite queda VERDE, la celda (d) y la asercion son lo UNICO que caza a M-109 (tienen dientes)."
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "META: el GUARD al que le neutralizan la celda (D1-ter)(d) del LIMITE y la asercion de 'entradas cubiertas', y ademas aplican M-109. Si la suite queda VERDE, la celda (d) y la asercion son lo UNICO que caza a M-109 (tienen dientes).",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche."
     }
   ]
 }

@@ -1,6 +1,6 @@
 # Cuadro de Mando: Motor Autónomo de I+D (woptimizer)
 
-> Dashboard del pipeline de I+D. Actualizado el 2026-10-22.
+> Dashboard del pipeline de I+D. Actualizado el 2026-10-23.
 
 ---
 
@@ -12,17 +12,17 @@
 | Tests headless | 🟢 | `run_tests.py`, **235 tests** (159 backend + 76 headless UI) |
 | Benchmark base | 🟢 | 182 ms init · 4.97 ms escaneo · 0.003 ms cache · 30 MB RSS |
 | Process DB | 🟢 | 96 entradas · 8 categorías · 0 huérfanas · 🛡️ 34 protegidas |
-| Versionado | 🟢 | Rama `beta` · último commit `423a96e` (ciclo 70) · `main` publicada `v1.1.0` |
+| Versionado | 🟢 | Rama `beta` · último commit `3752c5b` (ciclo 71) · `main` publicada `v1.1.0` |
 | Build (PyInstaller) | 🟡 | Artefacto de distribución; se regenera al publicar vía CI |
 
 ---
 
 ## 🔄 Estado de la Ejecución
 
-- **Ciclos completados:** 70 (`rd_journal.json`)
+- **Ciclos completados:** 71 (`rd_journal.json`)
 - **Rama de trabajo:** `beta` (nunca commitear a `main` directamente)
-- **Último ciclo (#70):** TASK-087 — el veredicto de mutación se vuelve **comprobable**: un emisor escribe la línea canónica `WOPT_VEREDICTO <mutante> <MUERTO|SOBREVIVIENTE|NO MEDIDO> <sha>` y un gate (check 11 de `validate_docs.py`) la **re-deriva** desde la evidencia commiteada. El gate va en el validador y **no** como `test_*`, así que el recuento queda **intacto** (235 = 159 + 76). Veredicto de auditoría: **PASS**
-- **Tarea activa (`active_task_id`):** `TASK-087` — el veredicto de mutación era **prosa sin vigilancia**: borrar el veredicto del journal o el informe entero daba **0 FAIL**. Evidencia: `openspec/changes/2026-10-22-killer-check-del-veredicto/`.
+- **Último ciclo (#71):** TASK-090 — el gate de mutación pasa a **DISTINGUIR**, no solo a existir: un guard de **PRODUCTO** con corpus sintético, centinela por rama y contraprueba propia (el cuerpo del gate se puede vaciar y el guard lo detecta). El gate se mide por lo que **hace**, no por su forma. Y el check 12 (el aviso de que el motor mande publicar en `beta`), que en la ronda 4accausaba **8 falsos verdes**, queda vigilado por la sección (E) del guard, con el **recorte único** del repo (dos copias de un recorte derivan, y derivaron). Auditoría **PASS**: 32 mutantes medidos, 31 muertos por su aserción, 0 supervivientes indebidos, 5 **NO MEDIDO** encolados como T-1. Tests: **235 = 159 + 76**, **intactos**
+- **Tarea activa (`active_task_id`):** `TASK-091` — el gate ignora el campo `mutacion` del catálogo: se puede declarar una mutación que **no existe** y el gate da **0 FAIL**. Evidencia: `openspec/changes/2026-10-22-el-gate-distingue-o-falla/`.
 - **`TASK-080` NO se activa:** su propia medicion dice que CI no puede dar verde todavia (25 hashes de `rd_journal.json` sin pushear). Activarlo hoy rompe el pipeline.
 
 ---
@@ -39,8 +39,9 @@
 | **TASK-082** | ✅ `completed` | high | El conjunto de vistas del guard de workers se deriva del disco, y su vigilancia deja de ser vaciable | **RESUELTO 2026-10-22:** el guard abre el **derivado** (`_vistas_del_disco()`) y la literal queda como **declaración comparada**; tres rondas de reparación (vigilancia no contada · `NameError` latente · dos vías del detector). Auditoría **PASS**: 13/13 mutantes declarados, 0 identificadores sin definir. Spec: `openspec/changes/2026-10-21-vistas-del-guard-de-workers-derivadas/` |
 | **TASK-083** | ✅ `completed` | high | Un test FLAKY puede fabricar falsos veredictos: el hash muerto se construye a partir del hash REAL (1/16), no por el reloj | **RESUELTO 2026-10-22:** la causa no era el reloj sino la **construcción** — el hash muerto era `hash_real + "0"` y `cat-file -e` resuelve cualquier prefijo de 8 hex, así que coincidía con el objeto real cuando la 8.ª cifra del sha era `0` → 1/16 = 6,25 %. Arreglado con reloj clavado, hash muerto **derivado por construcción** y un **tripwire derivado con `ast`**. Auditoría **PASS**: M-3 **30/30 en rojo y reproducible**, 0 fallos de 200, y **no hay otro test flaky**. Spec: `openspec/changes/2026-10-22-veredicto-de-no-medido/` |
 | **TASK-087** | ✅ `completed` | high | El veredicto de mutación se vuelve **comprobable**: falta el tercer estado, NO MEDIDO | **RESUELTO 2026-10-22:** un **emisor** (`.taskmaster/veredicto.py`) escribe la línea canónica `WOPT_VEREDICTO <mutante> <MUERTO|SOBREVIVIENTE|NO MEDIDO> <sha>` y un **gate** (check 11 de `validate_docs.py`) la **re-deriva** desde la evidencia commiteada. El gate va en el validador y **no** como `test_*`: el journal se escribe después del Paso 4 y el recuento queda **intacto** (235 = 159 + 76). Auditoría **PASS** (D-A, D-D, D-E, D-F, D-G y los 14 previos muertos). Spec: `openspec/changes/2026-10-22-killer-check-del-veredicto/` |
+| **TASK-090** | ✅ `completed` | high | El CUERPO del check 11 se puede vaciar y el guard sigue verde: el cableado está vigilado, el contenido no | **RESUELTO 2026-10-23 (ciclo 71):** el gate pasa a ser un guard de **PRODUCTO** (no de forma): corpus **sintético** en el esqueleto temporal, centinela por rama, **CONTRAPROUEBA** (vaciar el CUERPO del gate con el REGISTRO puesto y exigir que la acusación desaparezca) y **cálle sobre los coherentes**. El gate se mide por lo que HACE. La rnd 3 dio FAIL (4 supervivientes: el corpus solo ejercitaba el juicio), la rnd 4 FAIL (el check 12 no lo vigilaba nadie), la rnd 5 **PASS**: 32 mutantes medidos, **31 muertos** por su aserción, **0 supervivientes indebidos** (M-121 sobrevive POR diseño: su supervivencia prueba que dos celdas tienen dientes), **5 NO MEDIDO** encolados como `TASK-092`. `src/woptimizer/**` intacto. Spec: `openspec/changes/2026-10-22-el-gate-distingue-o-falla/` |
 
-> **Prioridad de ejecución:** `TASK-087` cerrado el 2026-10-22. Siguiente del backlog: **`TASK-090`** (el cuerpo del check 11 se puede vaciar y el guard sigue verde) → `TASK-091` (el gate ignora el campo `mutacion` del catálogo) → `TASK-088` (la familia de fixtures y el conjunto del tripwire) → `TASK-089` (el árbol que se mueve durante la corrida) → `TASK-084` → `TASK-085` → `TASK-086`; y `TASK-068` en cuanto el dueño decida.
+> **Prioridad de ejecución:** `TASK-090` cerrado el 2026-10-23 (ciclo 71). Siguiente del backlog: **`TASK-091`** (el gate ignora el campo `mutacion` del catálogo) → **`TASK-092`** (T-1 de la ronda 5: las aserciones de la sección (E) tienen que terminar en una línea marcador, o el emisor no ve el motivo y cinco mutantes caen a NO MEDIDO) → `TASK-088` (la familia de fixtures y el conjunto del tripwire) → `TASK-089` (el árbol que se mueve durante la corrida) → `TASK-084` → `TASK-085` → `TASK-086`; y `TASK-068` en cuanto el dueño decida.
 > **TASK-068** está bloqueada por decisiones del dueño (P-1 y P-2b, ver más abajo).
 
 ---

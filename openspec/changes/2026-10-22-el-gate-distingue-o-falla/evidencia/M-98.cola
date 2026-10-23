@@ -1,9 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara2\run_tests.py", line 32056, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-98_b\run_tests.py", line 32529, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara2\run_tests.py", line 23172, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-98_b\run_tests.py", line 23433, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     assert f.read() == fuente_del_esqueleto, (
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: el validador del esqueleto tiene que quedar como estaba: una copia mutada contaminaria las secciones que vienen despues

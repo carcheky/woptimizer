@@ -1,9 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara3\run_tests.py", line 32057, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-107_b\run_tests.py", line 32529, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara3\run_tests.py", line 22583, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-107_b\run_tests.py", line 22623, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     assert despues == antes, (
            ^^^^^^^^^^^^^^^^
 AssertionError: el emisor NO puede reescribir la evidencia de un mutante que no se le ha pasado: la evidencia de M-3 ha cambiado. MEDIDO (auditoria del ciclo 70): antes, emitir el veredicto de un mutante destruia la evidencia commiteada de los demas, y con el mutante pisado declarado NO MEDIDO el gate no se enteraba

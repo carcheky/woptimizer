@@ -1,5 +1,9 @@
-=== WOPT_RUN 1 RC=0 ===
-ol sano mas modulo sano nuevo -> exit 0 y ALCANCE_DERIVADO=23).
-STATUS.md declara 22 modulos y verify_ui_syntax.py IMPRIME 22, los dos derivados de src/woptimizer/ (TASK-081, AC-2).
-
-ALL TESTS PASSED.
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_C-7_b\run_tests.py", line 32529, in <module>
+    test_el_check_9_se_cablea_en_el_camino_real_del_validador()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_C-7_b\run_tests.py", line 23476, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+    assert len(llamadas) == 1, (
+           ^^^^^^^^^^^^^^^^^^
+AssertionError: `validar()` tiene que LLAMAR al check 12, y lo tiene que hacer de verdad: se han encontrado 0 llamadas a `_comprobar_el_paso_de_publicacion` en su cuerpo. Un check sin cablear no dice NADA: ni OK, ni FAIL, ni SKIP, y un validador mudo pasa por verde (C-7)

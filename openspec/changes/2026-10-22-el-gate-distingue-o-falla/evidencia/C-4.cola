@@ -1,5 +1,24 @@
-=== WOPT_RUN 1 RC=0 ===
-ol sano mas modulo sano nuevo -> exit 0 y ALCANCE_DERIVADO=23).
-STATUS.md declara 22 modulos y verify_ui_syntax.py IMPRIME 22, los dos derivados de src/woptimizer/ (TASK-081, AC-2).
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_C-4_b\run_tests.py", line 32529, in <module>
+    test_el_check_9_se_cablea_en_el_camino_real_del_validador()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_C-4_b\run_tests.py", line 23608, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+    assert "NO manda publicar" not in informe12, (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: la skill REAL del motor manda publicar en `beta`, y el check 12 tiene que decirlo: el informe acusa a la skill de verdad. rc=1. Informe:
+encia commiteada obliga a NO MEDIDO (el motivo literal no nombra la infraccion declarada)
+  [FAIL] rd_journal.json: el mutante M-FIX-SHA cita el sha ffffffffffffffffffffffffffffffffffffffff y el catalogo declara 0000000000000000000000000000000000000000: la linea no apunta al arbol auditado
+  [FAIL] mutaciones.json: el asa declarada por M-FIX-ASA (`test_este_asa_no_esta_definido_en_run_tests`) NO es un test definido en run_tests.py
+  [FAIL] rd_journal.json: el mutante M-FIX-FRAME esta declarado como MUERTO y la evidencia commiteada obliga a NO MEDIDO (murio `test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real` y el asa declarada es `test_el_check_9_se_cablea_en_el_camino_real_del_validador`)
+  [FAIL] rd_journal.json: la entrada del ciclo 72 declara el mutante M-FIX-FUERA, que NO esta en el catalogo `mutaciones.json` del cambio
+  [FAIL] openspec/changes/2026-10-22-corpus-sintetico-estructural-d/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 73
+  [FAIL] rd_journal.json: la entrada del ciclo 74 NO tiene linea canonica para el mutante M-FIX-SIN-LINEA, que si esta en el catalogo del cambio
+  [FAIL] openspec/changes/2026-10-22-corpus-sintetico-precondiciones/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 74
+  [FAIL] CHANGELOG.md: el mutante M-FIX-CHANGELOG aparece como SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO
+  [FAIL] .taskmaster\CHANGELOG.md: el mutante M-FIX-CHANGELOG aparece como SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO
+  [FAIL] check 12 (paso de publicacion): la skill del motor NO manda publicar. Faltan: comando ('git push origin beta'). Sin un paso que mande el push, el trabajo se queda en el disco del host aunque el bucle termine el ciclo
 
-ALL TESTS PASSED.
+  [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=6, mutantes re-derivados=13, origen del contrato: ciclo 70
+
+Resumen: 168 OK, 17 FAIL, 0 SKIP

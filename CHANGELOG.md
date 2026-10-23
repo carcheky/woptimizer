@@ -1,3 +1,53 @@
+## CYCLE-071 - 2026-10-23
+
+### 🔴 Corregido — El motor ya no puede salir en verde con el aviso de publicar apagado
+
+**Estado**: **PASS** en auditoría de mutación (32 mutantes medidos: 31 muertos por su aserción, 0 supervivientes indebidos, 5 **NO MEDIDO** encolados). Tests: **235** (159 backend + 76 headless, **intactos**). Commits: `da6b75f`, `0eb6378`, `35478ec`, `5fed36a`, `c94ef15`, `110b9ab`, `ccf59ca`, `4f2f115`, `4533953`, `3752c5b`.
+
+- 🔴 **Qué estaba roto**: el revisor automático que vigila que el manual del motor mande publicar en `beta` **no lo vigilaba nadie**. Medido en laboratorio: sus ocho pruebas de rotura pasaban en verde. Ese aviso podía estar apagado, o roto en todas las formas, y el proyecto entero salía en verde.
+- 🔴 **Y dos de ellas eran un verde falso de verdad**: la orden de publicar escondida **dentro de una valla con prefijo `> `** —que es exactamente como está escrita en el propio manual del motor— la leía como si fuera una instrucción operativa, y el aviso sin conectar **no decía absolutamente nada**: ni sí, ni no, ni error. Un validador mudo pasa por verde.
+- 🛡️ **Por qué pasaba**: el aviso usaba **su propia** versión del filtro que descarta el texto que el motor no lee, y el guard que ya existía en el repo usaba **otro**. Dos copias de un filtro derivan, y derivaron: la copia del aviso no veía las vallas con `> `.
+- ✅ **Qué se hizo**: ahora el filtro es **uno solo**, vive en el producto y **los dos lo llaman** en vez de copiarlo. Y el aviso tiene ya su propio guard en la suite, con cinco comprobaciones: que esté conectado de verdad (y sin valores por defecto que disimulen un cableado roto), que use el filtro compartido, que **calle** cuando el árbol no es el del motor, que **suene** en el camino real, y una **contraprueba** que degrada el manual a propósito y exige que el aviso lo note.
+- ✅ **Y se comprobó de verdad**: se rompieron 32 casos a propósito, uno por uno, en cámaras desechables. **31 mueren por su comprobación**, en el sitio exacto y por el motivo exacto que tocaba. El que sobrevive sobrevive **a propósito**: desactiva las dos comprobaciones que cazan a otro fallo, y su supervivencia es justamente la prueba de que esas dos tienen dientes.
+- ✅ **Un fallo de verdad en el camino**: al ampliar el corpus del guard se vio que el corpus era **estrecho**: con una sola contradicción, cuatro de los fallos escapes no se distinguían del guard sano. Se amplió en tres rondas hasta cubrir todas las ramas.
+- ✅ **La interfaz** (`src/woptimizer/`) **no se ha tocado**: cero cambios. Todo esto es herramienta del taller.
+
+### 🔵 Lo que queda anotado
+
+- **Cinco de los ocho fallos del aviso quedan como "no medidos"**, y se dice por qué: **no es que sobrevivan** (mueren, y el motivo está en la evidencia guardada), es que el mensaje que los mata termina en el informe del validador y la herramienta que lee el veredicto mira **la última línea**, luego no ve el motivo. Es un defecto de la **forma** de los mensajes, no del arreglo. Queda encolado **con su métrica exacta** para el que lo arregle: añadir una línea de marca al final, como ya hacen las demás, y volver a medir esos cinco.
+- **Un hallazgo de la ronda anterior sigue abierto**: cuando el mensaje de una comprobación lleva dentro el volcado de pila, la herramienta que emite el veredicto y la que lo re-derivan **no coinciden**. Está medido y escrito.
+- La cifra de tests **no cambia** (235 = 159 + 76).
+- Una cita por número de línea volvió a caducar sin que nada lo notara: ya es un agujero con nombre (`TASK-086`).
+
+### 🔵 Veredicto de mutación de este ciclo
+
+<!-- WOPT_VEREDICTOS -->
+WOPT_VEREDICTO M-90 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-91 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-92 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-93 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-94 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-95 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-96 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-97 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-98 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-99 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-100 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-101 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-102 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-103 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-104 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-105 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-106 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-107 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-108 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-109 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-110 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-111 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-112 MUERTO 4d7643c7be79e2e52d25707e151699b81075367e
+WOPT_VEREDICTO M-121 SOBREVIVIENTE 4d7643c7be79e2e52d25707e151699b81075367e
+<!-- /WOPT_VEREDICTOS -->
+
 ## CYCLE-070 - 2026-10-22
 
 ### 🔴 Corregido — El veredicto de las pruebas ya no se puede afirmar sin dejar rastro

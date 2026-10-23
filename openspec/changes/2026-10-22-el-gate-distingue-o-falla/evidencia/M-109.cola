@@ -1,9 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud_E\run_tests.py", line 32319, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-109_b\run_tests.py", line 32529, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud_E\run_tests.py", line 23304, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-109_b\run_tests.py", line 23304, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     exigir_la_acusacion(informe_sano, centinela_limite, "SOBREVIVIENTE",
     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                         "MUERTO",
@@ -14,7 +14,7 @@ Traceback (most recent call last):
                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                         "MIRADA: su veredicto se juzga contra la evidencia")
                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud_E\run_tests.py", line 22748, in exigir_la_acusacion
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-109_b\run_tests.py", line 22748, in exigir_la_acusacion
     assert [l for l in nombran if declarado in l and obliga in l], (
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR al sentinela M-FIX-LIMITE (el journal lo declara SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO: la entrada del journal que esta en el LIMITE (el ciclo 70, el origen del contrato) tiene que estar MIRADA: su veredicto se juzga contra la evidencia) y no lo ha hecho. Sin esta asercion un gate ciego en ESTA rama pasaria por sano: con el cuerpo del gate VACIO el validador tambien daria 0 FAIL. Fallos que lo nombran: []. Informe:

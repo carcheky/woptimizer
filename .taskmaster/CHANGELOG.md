@@ -1,3 +1,96 @@
+## [CYCLE-071] 2026-10-23 - task-090-el-gate-distingue-o-falla
+
+### TASK-090: el gate tiene que DISTINGUIR, no solo existir
+
+**Area**: Tooling / Testing. **Change**: `openspec/changes/2026-10-22-el-gate-distingue-o-falla/`
+**Estado**: **COMPLETED** - auditoria **PASS** (ronda 5), con **cinco NO MEDIDO** encolados como T-1. **Tests**: **235 = 159 + 76 INTACTOS**. `src/woptimizer/**` intacto.
+**Commits**: `da6b75f`, `0eb6378`, `35478ec`, `5fed36a`, `c94ef15`, `110b9ab` (rondas del dev), `ccf59ca`, `4f2f115` (check 12), `4533953` (ronda 4 del auditor), `3752c5b` (fix final del dev).
+
+**Models**
+- Paso 1 (Buscar): orquestador - backlog: `TASK-090` (creada en el cierre del ciclo 70).
+- Paso 2 (Planear): `architect-review` - **refuto** la premisa de que el gate pudiese "vigilar" el check 12 sin un `asa` real, y separo D-B (TASK-090) de D-H (TASK-091) por contaminacion de aserciones.
+- Paso 3 (Ejecutar): `openspec-dev` - **seis rondas** (ampliacion del corpus en tres, mas el fix del check 12 y el recorte unico).
+- Paso 4 (Auditar): `mutation-auditor` - ronda 3 **FAIL** (4 supervivientes), ronda 4 **FAIL** (el check 12 no lo vigilaba nadie), ronda 5 **PASS** (32 mutantes, 31 muertos, 0 supervivientes indebidos).
+
+### El encargo y la premisa que se REFUTO
+
+El encargo (TASK-090): el **cuerpo** del check 11 se puede vaciar y el guard sigue verde - el cableado esta vigilado, el contenido no. MEDIDO en camara desechable: con el cuerpo del gate vaciado y el REGISTRO puesto, la suite daba **rc=0 verde**.
+
+El arquitecto REFUTO la premisa operativa que traia el encargo: un guard de FORMA (que mira el texto del codigo) no puede vigilar el CONTENIDO de un gate, porque el gate que se vigila tiene **muchas** ramas y una sola forma no las alcanza. La solucion es un guard de **PRODUCTO**: montar un corpus SINTETICO en el esqueleto temporal y exigir que el gate **acuse a los DOCE contradictorios** y **calle sobre los TRES coherentes**, con una **CONTRAPROUEBA** que vacia el cuerpo del gate (con el REGISTRO puesto, que es lo UNICO que el guard de cableado mira) y exige que la acusacion desaparezca.
+
+### Lo que la medicion fue dizendo, ronda a ronda
+
+| ronda | que midio | veredicto | lo queabria |
+|---|---|---|---|
+| 3 | 23 mutantes | **FAIL** | 4 supervivientes (M-108..M-112): el corpus solo ejercitaba el JUICIO, luego cuatro mutantes se comportaban IGUAL que el gate sano |
+| 4 | gate + check 12 | **FAIL** | el gate PASS, pero el **check 12 no lo vigilaba NINGUN test** (8 mutantes en verde) y dos de ellos eran falsos verdes de PRODUCTO (C-9, C-7) |
+| 5 | 32 mutantes | **PASS** | 31 muertos por su asercion; M-121 sobrevive **por diseno**; cinco NO MEDIDO por la FORMA de los mensajes |
+
+**El corpus del guard es el que se midio y el que enseño.** Con una sola contradiccion, un solo orden y una sola entrada de journal, cuatro mutantes del gate (M-94, M-95, M-99, M-100) son **indistinguibles** del gate sano: el guard no tiene por donde ver la diferencia. De ahi la regla que sale: **un guard que vigila a OTRO guard necesita un corpus que ejercite TODAS las ramas del vigilado**, y **la contraprueba de un superviviente ES la asercion del guard** (el caso que delata a cada ciego pasa a ser asercion).
+
+### El check 12: dos recortes que derivaron
+
+El check 12 (nuevo en este ciclo) verifica que la skill del motor mande publicar en `beta`. Nacio **desvigilado**: ocho mutantes en verde. Y la causa de fondo era una **copia**: el check 12 se hacia su PROPIO recorte (por LINEAS) y el guard de la regla de rama usaba OTRO (por REGEX). La copia del check 12 **no veia las vallas con prefijo `> `**, que es como esta escrita la del propio `SKILL.md` - luego la orden de publicar escondida ahi la leia como contenido operativo y el check decia que si. **Dos copias de un recorte derivan, y derivaron.** El arreglo: el recorte es UNICO, vive en `validate_docs.py` (`_sin_la_capa_que_el_bucle_no_lee`) y los dos lo LLAMAN.
+
+### El fix del dev y lo que midio el auditor (3752c5b)
+
+La seccion **(E)** del guard `test_el_check_9_se_cablea_en_el_camino_real_del_validador` vigila el check 12 en cinco cosas: **(E1)** el cableado con `ast` (una llamada, cuatro argumentos, sin defaults) y que la lectura de la skill use el recorte COMPARTIDO; **(E2)** el recorte medido sobre el del producto (valla con prefijo de cita, comentario de VARIAS lineas, prosa conservada); **(E3)** el check CALLA en un arbol sin `.agents/` y ACUSA con `.agents/` y sin skill; **(E4)** el recorrido real (skill REAL en el esqueleto, validador por SUBPROCESO); **(E5)** la contraprueba (la ORDEN en una valla con `> ` y en un comentario de varias lineas: tiene que ACUSAR).
+
+MEDIDO por el auditor con arnes propia (camara con `git init` propio, `stdin=DEVNULL`): **los ocho mutantes del check 12 MUEREN en la suite**, por su asercion. En el PRODUCTO, tres pasaron de SOBREVIVIENTE a MUERTO (C-5, C-6, C-9) y C-7 sigue callado en el producto, que es justo lo que (E1) vigila.
+
+### M-121: el superviviente que sobrevive POR DISENO
+
+M-121 neutraliza las DOS celdas que cazan a M-109 (la (D1-ter)(d) del LIMITE y la asercion de `entradas cubiertas`) y aplica M-109. La suite queda VERDE. Su veredicto no cambia respecto a la ronda 4: **SOBREVIVIENTE**, y eso es **precisamente lo que demuestra** - las dos celdas neutralizadas son lo UNICO que caza a M-109, luego su supervivencia prueba que tienen dientes. No es un agujero y no se arregla.
+
+### Mutaciones auditadas - la ronda 5
+
+| id | que rompe | veredicto | Motivo literal |
+|---|---|---|---|
+| M-90 | el gate no imprime su REGISTRO | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-91 | el gate EXIGE que el estado derivado sea DISTINTO | **MUERTO** | `EL GATE ACUSA EN LO QUE NO PUEDE` |
+| M-92 | el gate solo mira el PRIMER mutante | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-93 | el gate CALCULA el veredicto pero no lo ACUSA | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-94 | el gate se salta el PRIMER mutante | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-95 | el gate solo mira la PRIMERA entrada del journal | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-96 | el corpus sintetico NO se monta | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-97 | el centinela COHERENTE declarado "SOBREVIVIENTE" | **MUERTO** | `EL GATE ACUSA EN LO QUE NO PUEDE` |
+| M-98 | D3 NO restaura el esqueleto | **MUERTO** | `copia mutada contaminaria las secciones que vienen despues` |
+| M-99 | el gate solo acusa cuando lo declarado es SOBREVIVIENTE | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-100 | el gate no comprueba el MOTIVO literal | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-101 | el journal NO aporta las lineas canonicas | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-102 | el gate no comprueba el SHA contra el catalogo | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-103 | el gate no comprueba que el `asa` sea un test DEFINIDO | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-104 | el gate no comprueba que el test que murio sea el `asa` | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-105 | el gate no compara el bloque del INFORME con el journal | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-106 | el gate no acusa los mutantes que el journal declara y el catalogo NO | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-107 | el EMISOR reescribe la evidencia ajena | **MUERTO** | `el emisor NO puede reescribir la evidencia de un mutante que no se le ha pasado` |
+| M-108 | el gate no mira los mutantes del catalogo que el journal NO lleva | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-109 | el gate deja SIN MIRAR la entrada del LIMITE | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-110 | el gate no comprueba que la linea del INFORME coincida con el derivado | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-111 | el gate compara el sha por LONGITUD | **MUERTO** | `EL GATE NO DISTINGUE` |
+| M-112 | el gate solo mira la diferencia del INFORME | **MUERTO** | `EL GATE NO DISTINGUE` |
+| **M-121** | **meta**: neutraliza las dos celdas que cazan a M-109 | **SOBREVIVIENTE** | `ALL TESTS PASSED.` - **por diseno**: su supervivencia ES la prueba de que esas dos celdas tienen dientes |
+| C-5 | el recorte deja de excluir las VALLAS | **MUERTO** | `el recorte la esta leyendo como contenido` |
+| C-6 | el recorte deja de excluir los COMENTARIOS | **MUERTO** | `el recorte lo esta leyendo como contenido` |
+| C-7 | el check 12 deja de estar CABLEADO | **MUERTO** | `un validador mudo pasa por verde` |
+| C-1, C-2, C-3, C-4, C-9 | la ORDEN desaparece o se esconde en una valla o un comentario | **NO MEDIDO** | mueren (el motivo esta en la evidencia commiteada) pero la asercion que los mata (la de (E4)) **termina en la cola del informe del validador**, luego el emisor - que mira la ULTIMA linea - no ve el motivo |
+
+### Las tres deudas que quedan, con nombre y metrica
+
+- **T-1 (MEDIA)**: las aserciones de (E1), (E2), (E3) y (E4) tienen que **terminar en una linea marcador**, como las de (D) (`EL GATE NO DISTINGUE`) y como la de (E5), que ya lo hace (`EL CHECK 12 NO DISTINGUE`). Con eso los cinco pasan de NO MEDIDO a MUERTO sin tocar el producto. **Metrica**: re-medir C-1, C-2, C-3, C-4 y C-9 exigiendo (a) ROJO, (b) el asa `test_el_check_9_se_cablea_en_el_camino_real_del_validador`, (c) el motivo declarado en la ULTIMA linea de la cola, (d) veredicto canonico MUERTO.
+- **T-6 (MEDIA, de la ronda 4)**: el emisor y el gate derivan DISTINTO cuando el mensaje de la asercion embarga un traceback (M-108): el emisor corta la cola en el ULTIMO traceback y el gate busca el frame en todo el bloque.
+- **D-H (`TASK-091`, pendiente)**: el gate ignora el campo `mutacion` del catalogo: se puede declarar una mutacion que no existe y el gate da 0 FAIL.
+
+### Lo que la medicion fallo, y por que
+
+- **El aparejo se cuelgo en la primera tanda**: los logs se quedaban en 0 bytes con procesos `git cat-file --batch-check` PARADOS. La causa **no era el repo ni la carga**: el runner heredaba el STDIN del shell (un pipe que nunca se cierra) y `git cat-file --batch-check` **lee de stdin**, luego se queda esperando para siempre. En CI el stdin es `/dev/null`; aqui tambien tiene que serlo (`stdin=subprocess.DEVNULL`). Con eso: 32 mutantes en seis tandas de seis, sin un solo cuelgue.
+- **`Get-ChildItem` puede mostrar `0` bytes para un log que se esta escribiendo** (la entrada de directorio del NTFS va con retraso). Para el tamano real: `[System.IO.FileInfo]::new($ruta).Length`.
+- **Los `[FAIL]` que aparecen en el log de la BASE no son fallos**: son PROSA del nombre de dos tests ("... da [FAIL] con la ruta literal y rc 1 ..."). El unico verde legitimo es la ULTIMA linea no vacia = `ALL TESTS PASSED.`.
+
+### El dato de fondo
+
+**Un guard que vigila a OTRO guard necesita un corpus que ejercite TODAS las ramas del vigilado.** Con una sola contradiccion, un solo orden y una sola entrada, ambos guards se comportan IGUAL, luego el guard no tiene por donde ver la diferencia. Y **la contraprueba de un superviviente ES la asercion del guard**: el caso que delata a cada ciego, con su motivo literal, pasa a ser asercion.
+
 ## [CYCLE-070] 2026-10-22 - task-087-killer-check-del-veredicto
 
 ### TASK-087: el veredicto de mutacion se vuelve comprobable

@@ -1,5 +1,11 @@
-=== WOPT_RUN 1 RC=0 ===
-ol sano mas modulo sano nuevo -> exit 0 y ALCANCE_DERIVADO=23).
-STATUS.md declara 22 modulos y verify_ui_syntax.py IMPRIME 22, los dos derivados de src/woptimizer/ (TASK-081, AC-2).
-
-ALL TESTS PASSED.
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_C-5_b\run_tests.py", line 32529, in <module>
+    test_el_check_9_se_cablea_en_el_camino_real_del_validador()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_C-5_b\run_tests.py", line 23535, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+    assert "git push origin beta" not in recorte(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        "> ```bash\n> git push origin beta\n> ```\n"), (
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: una valla con prefijo de cita `> ` no es contenido que el motor lea (es la forma de la valla del propio SKILL.md): el recorte la esta leyendo como contenido, y por eso el check 12 daba un falso verde (C-9)

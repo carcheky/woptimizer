@@ -1,9 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud_E\run_tests.py", line 32319, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-112_b\run_tests.py", line 32529, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud_E\run_tests.py", line 23281, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-112_b\run_tests.py", line 23281, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     exigir_el_fall_con_esta_razon(
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
         informe_sano,
@@ -13,7 +13,7 @@ Traceback (most recent call last):
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         "luego el segundo testigo esta desacoplado del primero")
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud_E\run_tests.py", line 23252, in exigir_el_fall_con_esta_razon
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-112_b\run_tests.py", line 23252, in exigir_el_fall_con_esta_razon
     assert fallos, (
            ^^^^^^
 AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR (el journal del ciclo 74 lleva la linea de M-FIX-INFORME-CORTO y el bloque de maquina de su informe NO, luego el segundo testigo esta desacoplado del primero) y no lo ha hecho: ningun [FAIL] del informe dice 'el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 74'. Sin esta asercion un gate ciego en ESTA rama pasaria por sano: con el cuerpo del gate VACIO el validador tambien daria 0 FAIL. Fallos del informe:

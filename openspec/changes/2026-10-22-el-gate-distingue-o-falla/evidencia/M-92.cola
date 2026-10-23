@@ -1,9 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud_F\run_tests.py", line 32319, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-92_b\run_tests.py", line 32529, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud_F\run_tests.py", line 23272, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-92_b\run_tests.py", line 23272, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     exigir_el_fall_con_esta_razon(
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
         informe_sano,
@@ -13,7 +13,7 @@ Traceback (most recent call last):
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         "de lo publicado sin que nadie lo note")
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_aud_F\run_tests.py", line 23252, in exigir_el_fall_con_esta_razon
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-92_b\run_tests.py", line 23252, in exigir_el_fall_con_esta_razon
     assert fallos, (
            ^^^^^^
 AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR (el catalogo del cambio declara M-FIX-SIN-LINEA y el journal NO lleva su linea canonica, luego ese veredicto podria desaparecer de lo publicado sin que nadie lo note) y no lo ha hecho: ningun [FAIL] del informe dice 'NO tiene linea canonica para el mutante M-FIX-SIN-LINEA'. Sin esta asercion un gate ciego en ESTA rama pasaria por sano: con el cuerpo del gate VACIO el validador tambien daria 0 FAIL. Fallos del informe:

@@ -1,35 +1,37 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara1\run_tests.py", line 32057, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-93_b\run_tests.py", line 32529, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara1\run_tests.py", line 23057, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
-    exigir_la_acusacion(informe_sano, contradictorio, "SOBREVIVIENTE",
-    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-93_b\run_tests.py", line 23304, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+    exigir_la_acusacion(informe_sano, centinela_limite, "SOBREVIVIENTE",
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                         "MUERTO",
                         ^^^^^^^^^
-                        "el journal lo declara SOBREVIVIENTE y su evidencia "
-                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                        "commiteada obliga a MUERTO")
-                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara1\run_tests.py", line 22708, in exigir_la_acusacion
+                        "la entrada del journal que esta en el LIMITE (el "
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        "ciclo 70, el origen del contrato) tiene que estar "
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        "MIRADA: su veredicto se juzga contra la evidencia")
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-93_b\run_tests.py", line 22748, in exigir_la_acusacion
     assert [l for l in nombran if declarado in l and obliga in l], (
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR al sentinela M-FIX-MAL (el journal lo declara SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO: el journal lo declara SOBREVIVIENTE y su evidencia commiteada obliga a MUERTO) y no lo ha hecho. Sin esta asercion un gate ciego en ESTA rama pasaria por sano: con el cuerpo del gate VACIO el validador tambien daria 0 FAIL. Fallos que lo nombran: []. Informe:
-ocs/ai/architecture.md: declara el contrato de persistencia (`%APPDATA%\woptimizer\profiles.json` y que ya NO esta junto al ejecutable) en una sola unidad de texto
-  [OK]   docs/ai/data-models.md: declara el contrato de persistencia (`%APPDATA%\woptimizer\profiles.json` y que ya NO esta junto al ejecutable) en una sola unidad de texto
-  [OK]   check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=4, mutantes re-derivados=9, origen del contrato: ciclo 70
-
-  [FAIL] historial de commits: se lee pero NO aporta ningun ciclo (0 subjects con marcador de ciclo sobre 1 leidos) mientras rd_journal.json si registra 4 ciclo(s). Un parser que no encuentra nada es un parser ROTO, y un parser roto en verde es el falso verde que esta union viene a cerrar
-  [FAIL] CHANGELOG.md (raiz): rd_journal.json registra el ciclo 073 pero el changelog legible no tiene su entrada. Borrarla en los dos ficheros no puede hacer desaparecer la obligacion de registrarla
-  [FAIL] CHANGELOG.md (raiz): sin entrada para el/los ciclo/s 071, 072, 073, exigido por rd_journal.json y/o por el historial de commits. La tabla resumen los enlaza, pero el encabezado seccion no existe: enlace muerto
+AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR al sentinela M-FIX-LIMITE (el journal lo declara SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO: la entrada del journal que esta en el LIMITE (el ciclo 70, el origen del contrato) tiene que estar MIRADA: su veredicto se juzga contra la evidencia) y no lo ha hecho. Sin esta asercion un gate ciego en ESTA rama pasaria por sano: con el cuerpo del gate VACIO el validador tambien daria 0 FAIL. Fallos que lo nombran: []. Informe:
+idos) mientras rd_journal.json si registra 6 ciclo(s). Un parser que no encuentra nada es un parser ROTO, y un parser roto en verde es el falso verde que esta union viene a cerrar
+  [FAIL] CHANGELOG.md (raiz): rd_journal.json registra el ciclo 074 pero el changelog legible no tiene su entrada. Borrarla en los dos ficheros no puede hacer desaparecer la obligacion de registrarla
+  [FAIL] CHANGELOG.md (raiz): sin entrada para el/los ciclo/s 071, 072, 073, 074, exigido por rd_journal.json y/o por el historial de commits. La tabla resumen los enlaza, pero el encabezado seccion no existe: enlace muerto
   [FAIL] rd_journal.json: el mutante M-FIX-SHA cita el sha ffffffffffffffffffffffffffffffffffffffff y el catalogo declara 0000000000000000000000000000000000000000: la linea no apunta al arbol auditado
   [FAIL] mutaciones.json: el asa declarada por M-FIX-ASA (`test_este_asa_no_esta_definido_en_run_tests`) NO es un test definido en run_tests.py
   [FAIL] rd_journal.json: la entrada del ciclo 72 declara el mutante M-FIX-FUERA, que NO esta en el catalogo `mutaciones.json` del cambio
   [FAIL] openspec/changes/2026-10-22-corpus-sintetico-estructural-d/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 73
+  [FAIL] rd_journal.json: la entrada del ciclo 74 NO tiene linea canonica para el mutante M-FIX-SIN-LINEA, que si esta en el catalogo del cambio
+  [FAIL] openspec/changes/2026-10-22-corpus-sintetico-precondiciones/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 74
+  [FAIL] CHANGELOG.md: el mutante M-FIX-CHANGELOG aparece como SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO
+  [FAIL] .taskmaster\CHANGELOG.md: el mutante M-FIX-CHANGELOG aparece como SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO
 
-  [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=4, mutantes re-derivados=9, origen del contrato: ciclo 70
+  [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=6, mutantes re-derivados=13, origen del contrato: ciclo 70
 
-Resumen: 165 OK, 7 FAIL, 0 SKIP
+Resumen: 168 OK, 11 FAIL, 0 SKIP
 
 EL GATE NO DISTINGUE

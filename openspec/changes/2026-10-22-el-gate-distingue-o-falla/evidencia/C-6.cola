@@ -1,5 +1,11 @@
-=== WOPT_RUN 1 RC=0 ===
-ol sano mas modulo sano nuevo -> exit 0 y ALCANCE_DERIVADO=23).
-STATUS.md declara 22 modulos y verify_ui_syntax.py IMPRIME 22, los dos derivados de src/woptimizer/ (TASK-081, AC-2).
-
-ALL TESTS PASSED.
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_C-6_b\run_tests.py", line 32529, in <module>
+    test_el_check_9_se_cablea_en_el_camino_real_del_validador()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_C-6_b\run_tests.py", line 23541, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+    assert "publicas el ciclo en `beta`" not in recorte(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        "<!-- publicas el ciclo en `beta`\ny una nota mas\n-->\n"), (
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: un comentario HTML de VARIAS lineas no es contenido que el motor lea: el recorte lo esta leyendo como contenido, y el control del comentario (que era de UNA linea) no lo via (C-6)

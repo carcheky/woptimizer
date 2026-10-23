@@ -1,11 +1,11 @@
 {
   "cambio": "openspec/changes/2026-10-22-el-gate-distingue-o-falla/",
   "ciclo": 71,
-  "nota": "Los mutantes del CHECK 12 (commit ccf59ca), medidos por el mutation-auditor (ronda 4). NO entran en `mutaciones.json` porque el gate 11 exige un `asa` REAL y el check 12 no tiene ni un test en la suite.",
+  "nota": "RONDA 5 (mutation-auditor): los ocho mutantes del check 12 RE-MEDIDOS sobre el arbol 3752c5b, en camara desechable con su propio .git, base verde nativa (rc=0, 'ALL TESTS PASSED.'). AHORA TIENEN `asa`: la seccion (E) que los mata vive dentro del guard `test_el_check_9_se_cablea_en_el_camino_real_del_validador`, luego el veredicto se puede re-derivar como el de cualquier otro mutante. C-5 y C-6 se REFORMULAN porque su `original` (el control INTERNO de la valla y del comentario, que vivia en el recorte PROPIO por LINEAS) YA NO EXISTE: el commit 3752c5b sustituyo ese recorte por el COMPARTIDO (`_sin_la_capa_que_el_bucle_no_lee`, por REGEX). Se conserva la FORMULA del fallo: 'el recorte deja de excluir las vallas' / 'el recorte deja de excluir los comentarios'.",
   "mutaciones": [
     {
       "id": "C-1",
-      "asa": null,
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
       "mutacion": [
         {
@@ -14,13 +14,15 @@
           "sustituto": "publicas el ciclo en la rama de trabajo"
         }
       ],
-      "sha_arbol_auditado": "04ecf0f9573f",
-      "origen": "La ORDEN desaparece del contenido que el motor lee.",
-      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "La ORDEN desaparece del contenido que el motor lee. MEDIDO en la ronda 5: la seccion (E) del commit 3752c5b lo mata en la suite (en la ronda 4 SOBREVIVIVIA).",
+      "nota": "FUERA del catalogo del gate 11 (a proposito: el gate 11 compara el bloque de maquina con el journal, y un mutante que no esta en `mutaciones.json` lo acusaria). RONDA 5: el check 12 YA TIENE `asa`: la seccion (E) del commit 3752c5b lo vigila dentro del guard `test_el_check_9_se_cablea_en_el_camino_real_del_validador`. El veredicto se sigue midiendo en DOS niveles: la SUITE (que ya lo ve) y el PRODUCTO (el validador real).",
+      "motivo_producto": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche. `motivo` es el motivo de la SUITE (el que el emisor re-deriva de la evidencia) y `motivo_producto` es el que declaro la ronda 4 (el que dice el PRODUCTO)."
     },
     {
       "id": "C-2",
-      "asa": null,
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
       "mutacion": [
         {
@@ -34,13 +36,15 @@
           "sustituto": "publicas el ciclo en `beta` (`git push origin beta`) y compruebas que `HEAD` == `origin/beta`"
         }
       ],
-      "sha_arbol_auditado": "04ecf0f9573f",
-      "origen": "La ORDEN se queda dentro de una VALLA real (fence de 3 lineas, sin prefijo '>').",
-      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "La ORDEN se queda dentro de una VALLA real (fence de 3 lineas, sin prefijo '>'). MEDIDO en la ronda 5: la seccion (E) del commit 3752c5b lo mata en la suite (en la ronda 4 SOBREVIVIVIA).",
+      "nota": "FUERA del catalogo del gate 11 (a proposito: el gate 11 compara el bloque de maquina con el journal, y un mutante que no esta en `mutaciones.json` lo acusaria). RONDA 5: el check 12 YA TIENE `asa`: la seccion (E) del commit 3752c5b lo vigila dentro del guard `test_el_check_9_se_cablea_en_el_camino_real_del_validador`. El veredicto se sigue midiendo en DOS niveles: la SUITE (que ya lo ve) y el PRODUCTO (el validador real).",
+      "motivo_producto": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche. `motivo` es el motivo de la SUITE (el que el emisor re-deriva de la evidencia) y `motivo_producto` es el que declaro la ronda 4 (el que dice el PRODUCTO)."
     },
     {
       "id": "C-9",
-      "asa": null,
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
       "mutacion": [
         {
@@ -54,13 +58,15 @@
           "sustituto": "> publicas el ciclo en `beta` (`git push origin beta`) y compruebas que `HEAD` == `origin/beta`"
         }
       ],
-      "sha_arbol_auditado": "04ecf0f9573f",
-      "origen": "La ORDEN se queda dentro de la valla CON PREFIJO '>' (la que usa el propio SKILL.md en su ejemplo de git). El recorte del check 12 exige que la valla EMPIECE en la linea, luego no la ve.",
-      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "La ORDEN se queda dentro de la valla CON PREFIJO '> ' (la que usa el propio SKILL.md en su ejemplo de git). MEDIDO en la ronda 5: el recorte COMPARTIDO ve esa valla como valla (la excluye), luego el PRODUCTO acusa y la SUITE muere en la seccion (E4). En la ronda 4 el recorte PROPIO por LINEAS exigia que la valla EMPIECE en la linea, luego no la veia: este mutante SOBREVIVIVIA.",
+      "nota": "FUERA del catalogo del gate 11 (a proposito: el gate 11 compara el bloque de maquina con el journal, y un mutante que no esta en `mutaciones.json` lo acusaria). RONDA 5: el check 12 YA TIENE `asa`: la seccion (E) del commit 3752c5b lo vigila dentro del guard `test_el_check_9_se_cablea_en_el_camino_real_del_validador`. El veredicto se sigue midiendo en DOS niveles: la SUITE (que ya lo ve) y el PRODUCTO (el validador real).",
+      "motivo_producto": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche. `motivo` es el motivo de la SUITE (el que el emisor re-deriva de la evidencia) y `motivo_producto` es el que declaro la ronda 4 (el que dice el PRODUCTO)."
     },
     {
       "id": "C-3",
-      "asa": null,
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
       "mutacion": [
         {
@@ -69,13 +75,15 @@
           "sustituto": "<!-- publicas el ciclo en `beta` (`git push origin beta`) y compruebas que `HEAD` == `origin/beta` -->"
         }
       ],
-      "sha_arbol_auditado": "86f3d8f50f91",
-      "origen": "La ORDEN se queda dentro de un COMENTARIO HTML.",
-      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "La ORDEN se queda dentro de un COMENTARIO HTML. MEDIDO en la ronda 5: la seccion (E) del commit 3752c5b lo mata en la suite (en la ronda 4 SOBREVIVIVIA).",
+      "nota": "FUERA del catalogo del gate 11 (a proposito: el gate 11 compara el bloque de maquina con el journal, y un mutante que no esta en `mutaciones.json` lo acusaria). RONDA 5: el check 12 YA TIENE `asa`: la seccion (E) del commit 3752c5b lo vigila dentro del guard `test_el_check_9_se_cablea_en_el_camino_real_del_validador`. El veredicto se sigue midiendo en DOS niveles: la SUITE (que ya lo ve) y el PRODUCTO (el validador real).",
+      "motivo_producto": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche. `motivo` es el motivo de la SUITE (el que el emisor re-deriva de la evidencia) y `motivo_producto` es el que declaro la ronda 4 (el que dice el PRODUCTO)."
     },
     {
       "id": "C-4",
-      "asa": null,
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
       "mutacion": [
         {
@@ -85,44 +93,50 @@
           "veces": 3
         }
       ],
-      "sha_arbol_auditado": "86f3d8f50f91",
-      "origen": "El COMANDO desaparece de las tres apariciones operativas; la COMPROBACION se queda.",
-      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "El COMANDO desaparece de las tres apariciones operativas; la COMPROBACION se queda. MEDIDO en la ronda 5: la seccion (E) del commit 3752c5b lo mata en la suite (en la ronda 4 SOBREVIVIVIA).",
+      "nota": "FUERA del catalogo del gate 11 (a proposito: el gate 11 compara el bloque de maquina con el journal, y un mutante que no esta en `mutaciones.json` lo acusaria). RONDA 5: el check 12 YA TIENE `asa`: la seccion (E) del commit 3752c5b lo vigila dentro del guard `test_el_check_9_se_cablea_en_el_camino_real_del_validador`. El veredicto se sigue midiendo en DOS niveles: la SUITE (que ya lo ve) y el PRODUCTO (el validador real).",
+      "motivo_producto": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche. `motivo` es el motivo de la SUITE (el que el emisor re-deriva de la evidencia) y `motivo_producto` es el que declaro la ronda 4 (el que dice el PRODUCTO)."
     },
     {
       "id": "C-5",
-      "asa": null,
-      "motivo": "el control de valla FALLA",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "el recorte la esta leyendo como contenido",
       "mutacion": [
         {
           "fichero": "validate_docs.py",
-          "original": "        if dentro_de_valla:\n            continue",
-          "sustituto": "        if dentro_de_valla and False:\n            continue"
+          "original": "    sin_vallas = re.sub(r\"```.*?```\", \" \", texto, flags=re.DOTALL)",
+          "sustituto": "    sin_vallas = texto  # MUTANTE C-5: el recorte deja de excluir las vallas"
         }
       ],
-      "sha_arbol_auditado": "86f3d8f50f91",
-      "origen": "El recorte del check 12 deja de excluir las vallas: tiene quetripar su control INTERNO de la valla.",
-      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "El recorte del check 12 deja de excluir las vallas: tiene que tripar su control INTERNO de la valla. MEDIDO en la ronda 5: con el recorte COMPARTIDO (`_sin_la_capa_que_el_bucle_no_lee`) sin la exclusion de las vallas, el PRODUCTO acusa ('el control de valla FALLA' y 'el control de valla con prefijo de cita FALLA') y la SUITE muere en la seccion (E2).",
+      "nota": "FUERA del catalogo del gate 11 (a proposito: el gate 11 compara el bloque de maquina con el journal, y un mutante que no esta en `mutaciones.json` lo acusaria). RONDA 5: el check 12 YA TIENE `asa`: la seccion (E) del commit 3752c5b lo vigila dentro del guard `test_el_check_9_se_cablea_en_el_camino_real_del_validador`. El veredicto se sigue midiendo en DOS niveles: la SUITE (que ya lo ve) y el PRODUCTO (el validador real).",
+      "motivo_producto": "el control de valla FALLA",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche. `motivo` es el motivo de la SUITE (el que el emisor re-deriva de la evidencia) y `motivo_producto` es el que declaro la ronda 4 (el que dice el PRODUCTO)."
     },
     {
       "id": "C-6",
-      "asa": null,
-      "motivo": "el control de comentario HTML FALLA",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "el recorte lo esta leyendo como contenido",
       "mutacion": [
         {
           "fichero": "validate_docs.py",
-          "original": "        if dentro_de_comentario:",
-          "sustituto": "        if dentro_de_comentario and False:"
+          "original": "    sin_comentarios = re.sub(r\"<!--.*?-->\", \" \", sin_vallas, flags=re.DOTALL)",
+          "sustituto": "    sin_comentarios = sin_vallas  # MUTANTE C-6: el recorte deja de excluir los comentarios"
         }
       ],
-      "sha_arbol_auditado": "86f3d8f50f91",
-      "origen": "El recorte del check 12 deja de excluir los comentarios HTML: tiene que tripar su control INTERNO del comentario.",
-      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "El recorte del check 12 deja de excluir los comentarios HTML: tiene que tripar su control INTERNO del comentario. MEDIDO en la ronda 5: con el recorte COMPARTIDO sin la exclusion de los comentarios, el PRODUCTO acusa ('el control de comentario HTML FALLA', y ahora con un comentario de VARIAS lineas) y la SUITE muere en la seccion (E2).",
+      "nota": "FUERA del catalogo del gate 11 (a proposito: el gate 11 compara el bloque de maquina con el journal, y un mutante que no esta en `mutaciones.json` lo acusaria). RONDA 5: el check 12 YA TIENE `asa`: la seccion (E) del commit 3752c5b lo vigila dentro del guard `test_el_check_9_se_cablea_en_el_camino_real_del_validador`. El veredicto se sigue midiendo en DOS niveles: la SUITE (que ya lo ve) y el PRODUCTO (el validador real).",
+      "motivo_producto": "el control de comentario HTML FALLA",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche. `motivo` es el motivo de la SUITE (el que el emisor re-deriva de la evidencia) y `motivo_producto` es el que declaro la ronda 4 (el que dice el PRODUCTO)."
     },
     {
       "id": "C-7",
-      "asa": null,
-      "motivo": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "un validador mudo pasa por verde",
       "mutacion": [
         {
           "fichero": "validate_docs.py",
@@ -130,9 +144,11 @@
           "sustituto": "    return errors, ok, saltados"
         }
       ],
-      "sha_arbol_auditado": "86f3d8f50f91",
-      "origen": "El check 12 deja de estar CABLEADO: `validar()` no lo llama. Ningun FAIL, ningun OK, ningun SKIP.",
-      "nota": "FUERA del catalogo del gate 11: el check 12 NO tiene ningun test en la suite, luego no hay `asa` que declarar. El veredicto de este mutante se mide en DOS niveles: la SUITE (que no lo ve) y el PRODUCTO (el validador real)."
+      "sha_arbol_auditado": "4d7643c7be79e2e52d25707e151699b81075367e",
+      "origen": "El check 12 deja de estar CABLEADO: `validar()` no lo llama. Ningun FAIL, ningun OK, ningun SKIP. MEDIDO en la ronda 5: la seccion (E) del commit 3752c5b lo mata en la suite (en la ronda 4 SOBREVIVIVIA).",
+      "nota": "FUERA del catalogo del gate 11 (a proposito: el gate 11 compara el bloque de maquina con el journal, y un mutante que no esta en `mutaciones.json` lo acusaria). RONDA 5: el check 12 YA TIENE `asa`: la seccion (E) del commit 3752c5b lo vigila dentro del guard `test_el_check_9_se_cablea_en_el_camino_real_del_validador`. El veredicto se sigue midiendo en DOS niveles: la SUITE (que ya lo ve) y el PRODUCTO (el validador real).",
+      "motivo_producto": "check 12 (paso de publicacion): la skill del motor NO manda publicar",
+      "nota_ronda_5": "RE-MEDIDO por el mutation-auditor (ronda 5) sobre el arbol 3752c5b (el fix del check 12) en camara desechable con su propio .git, base VERDE NATIVA (rc=0, 'ALL TESTS PASSED.' como ultima linea) y sin ningun parche. `motivo` es el motivo de la SUITE (el que el emisor re-deriva de la evidencia) y `motivo_producto` es el que declaro la ronda 4 (el que dice el PRODUCTO)."
     }
   ]
 }

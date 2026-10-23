@@ -1,23 +1,25 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara2\run_tests.py", line 32057, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-101_b\run_tests.py", line 32529, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara2\run_tests.py", line 23057, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
-    exigir_la_acusacion(informe_sano, contradictorio, "SOBREVIVIENTE",
-    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                        "MUERTO",
-                        ^^^^^^^^^
-                        "el journal lo declara SOBREVIVIENTE y su evidencia "
-                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                        "commiteada obliga a MUERTO")
-                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_c71_r3_camara2\run_tests.py", line 22708, in exigir_la_acusacion
-    assert [l for l in nombran if declarado in l and obliga in l], (
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR al sentinela M-FIX-MAL (el journal lo declara SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO: el journal lo declara SOBREVIVIENTE y su evidencia commiteada obliga a MUERTO) y no lo ha hecho. Sin esta asercion un gate ciego en ESTA rama pasaria por sano: con el cuerpo del gate VACIO el validador tambien daria 0 FAIL. Fallos que lo nombran: []. Informe:
-talogo del cambio
-  [FAIL] openspec/changes/2026-10-22-corpus-sintetico-del-guard/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 70
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-101_b\run_tests.py", line 23291, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+    exigir_el_fall_con_esta_razon(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        informe_sano,
+        ^^^^^^^^^^^^^
+    ...<3 lines>...
+        "SOBREVIVIENTE y su evidencia commiteada obliga a MUERTO, luego la "
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        "copia legible del veredicto contradice a la evidencia")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r5\cam_r5_M-101_b\run_tests.py", line 23252, in exigir_el_fall_con_esta_razon
+    assert fallos, (
+           ^^^^^^
+AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR (los changelogs declaran M-FIX-CHANGELOG como SOBREVIVIENTE y su evidencia commiteada obliga a MUERTO, luego la copia legible del veredicto contradice a la evidencia) y no lo ha hecho: ningun [FAIL] del informe dice 'el mutante M-FIX-CHANGELOG aparece como SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO'. Sin esta asercion un gate ciego en ESTA rama pasaria por sano: con el cuerpo del gate VACIO el validador tambien daria 0 FAIL. Fallos del informe:
+ntetico-del-guard/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 70
+  [FAIL] rd_journal.json: la entrada del ciclo 70 NO tiene linea canonica para el mutante M-FIX-LIMITE, que si esta en el catalogo del cambio
+  [FAIL] openspec/changes/2026-10-22-corpus-sintetico-limite/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 70
   [FAIL] rd_journal.json: la entrada del ciclo 71 NO tiene linea canonica para el mutante M-FIX-MAL, que si esta en el catalogo del cambio
   [FAIL] rd_journal.json: la entrada del ciclo 71 NO tiene linea canonica para el mutante M-FIX-ALREV, que si esta en el catalogo del cambio
   [FAIL] rd_journal.json: la entrada del ciclo 71 NO tiene linea canonica para el mutante M-FIX-MOTIVO, que si esta en el catalogo del cambio
@@ -29,9 +31,14 @@ talogo del cambio
   [FAIL] openspec/changes/2026-10-22-corpus-sintetico-estructural-c/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 72
   [FAIL] rd_journal.json: la entrada del ciclo 73 NO tiene linea canonica para el mutante M-FIX-INFORME, que si esta en el catalogo del cambio
   [FAIL] openspec/changes/2026-10-22-corpus-sintetico-estructural-d/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 73
+  [FAIL] rd_journal.json: la entrada del ciclo 74 NO tiene linea canonica para el mutante M-FIX-CHANGELOG, que si esta en el catalogo del cambio
+  [FAIL] rd_journal.json: la entrada del ciclo 74 NO tiene linea canonica para el mutante M-FIX-COMPA, que si esta en el catalogo del cambio
+  [FAIL] rd_journal.json: la entrada del ciclo 74 NO tiene linea canonica para el mutante M-FIX-INFORME-CORTO, que si esta en el catalogo del cambio
+  [FAIL] rd_journal.json: la entrada del ciclo 74 NO tiene linea canonica para el mutante M-FIX-SIN-LINEA, que si esta en el catalogo del cambio
+  [FAIL] openspec/changes/2026-10-22-corpus-sintetico-precondiciones/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 74
 
-  [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=4, mutantes re-derivados=0, origen del contrato: ciclo 70
+  [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=6, mutantes re-derivados=0, origen del contrato: ciclo 70
 
-Resumen: 165 OK, 16 FAIL, 0 SKIP
+Resumen: 167 OK, 23 FAIL, 0 SKIP
 
 EL GATE NO DISTINGUE
