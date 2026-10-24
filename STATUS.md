@@ -213,3 +213,14 @@ sin ninguna de esas palabras no la ve). Detalle:
 > ⚠️ **Para cualquier otro host donde corra este motor hay que aplicar la
 > mitigación del host.** El guard del repo es la parte que viaja; el
 > `powercfg` es la parte que se queda en la máquina.
+### La decision del dueno sobre el residual de Windows Update (2026-10-24)
+
+Preguntado con el dato medido, el dueno **eligio dejar Windows Update como
+esta**: no se toca su politica de parches. La politica actual instala las
+actualizaciones de seguridad y **no reinicia con una sesion iniciada**
+(`NoAutoRebootWithLoggedOnUsers = 1`, verificado).
+
+**Residual declarado:** si se **cierra la sesion RDP** y el equipo se queda
+encendido de noche, Windows Update **puede reiniciarlo el solo**. No es un
+apagon del motor: es una instalacion de parches. El comando para cerrarlo (y
+su vuelta) estan en `docs/ai/sandbox-rules.md`.

@@ -1743,3 +1743,29 @@ defecto de WU no reinicia con un usuario con sesion iniciada.
 guard `_la_suite_no_puede_apagar_el_equipo()` de `run_tests.py`: ninguna
 prueba ni ninguna linea de producto puede llamar a la API de energia ni
 simular la entrada. Detalle en `docs/ai/testing-guide.md`.
+### La decision del dueno sobre el residual de Windows Update (2026-10-24)
+
+Preguntado con el dato medido y las dos opciones sobre la mesa, el dueno
+**eligio dejar Windows Update como esta**. O sea: **no se toca nada de su
+politica de parches.** La politica actual (`AUOptions = 5` y
+`NoAutoRebootWithLoggedOnUsers = 1`) instala las actualizaciones de seguridad
+y **no reinicia con una sesion iniciada**: verificado en
+`HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU`.
+
+**Lo que queda, declarado:** si se **cierra la sesion RDP** y el equipo se
+queda encendido de noche, Windows Update **puede reiniciarlo el solo**. No es
+un apagon del motor: es una instalacion de parches, y el equipo vuelve.
+
+**Como cerrarlo, si algun dia quiere cerrarlo** (con su vuelta):
+
+```powershell
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -Name AUOptions -Value 3
+# revertir:
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -Name AUOptions -Value 5
+```
+
+`AUOptions = 3` es "descargar las actualizaciones pero avisar antes de
+instalarlas": **cero reinicios automaticos**, a cambio de que los parches de
+seguridad se acumulan hasta que los instala el a mano. El coste es de
+**seguridad**, no de comodidad: por eso es **su** decision y no se aplica sin
+que la pida.
