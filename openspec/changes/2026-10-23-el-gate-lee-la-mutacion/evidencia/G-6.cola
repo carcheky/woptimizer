@@ -1,0 +1,9 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_b\run_tests.py", line 33475, in <module>
+    _la_suite_no_puede_apagar_el_equipo()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_b\run_tests.py", line 32848, in _la_suite_no_puede_apagar_el_equipo
+    assert len(marcas) == 4, (
+           ^^^^^^^^^^^^^^^^
+AssertionError: TASK-093: el detector tiene que marcar CUATRO vias en la contraprueba (el apagado por lanzador, el de energia por lanzador, la llamada directa a la API y la importacion de raton) y RESPETAR el taskkill por PID propio. Marco 7: [(3, "un lanzador de procesos con el argumento 'shutdown'"), (3, 'taskkill POR NOMBRE (/IM): matar al lsass o al winlogon APAGA el Windows'), (4, "un lanzador de procesos con el argumento 'powercfg'"), (4, 'taskkill POR NOMBRE (/IM): matar al lsass o al winlogon APAGA el Windows'), (6, 'taskkill POR NOMBRE (/IM): matar al lsass o al winlogon APAGA el Windows'), (5, 'una llamada directa a la API de energia'), (2, 'una importacion de simulacion de entrada')]

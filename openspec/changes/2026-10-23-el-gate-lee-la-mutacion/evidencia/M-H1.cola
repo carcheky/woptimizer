@@ -1,0 +1,28 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_a\run_tests.py", line 33095, in <module>
+    test_el_check_9_se_cablea_en_el_camino_real_del_validador()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_a\run_tests.py", line 23869, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+    assert [l for l in fallos_de_la_forma
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            if "NO declara una `mutacion` utilizable" in l], (
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: el centinela de la FORMA de la `mutacion` (el TERCERO, el que declara `linea: 0`) tiene que ser ACUSADO por el gate CON SU RAZON (R1): sin esto, un gate que acepta una `mutacion` ausente o mal formada sigue vivo, y una `mutacion` que no dice ni que fichero sustituye no es una mutacion. Fallos que lo nombran: []. Informe:
+ infraccion declarada)
+  [FAIL] rd_journal.json: el mutante M-FIX-SHA cita el sha ffffffffffffffffffffffffffffffffffffffff y el catalogo declara 0000000000000000000000000000000000000000: la linea no apunta al arbol auditado
+  [FAIL] mutaciones.json: el asa declarada por M-FIX-ASA (`test_este_asa_no_esta_definido_en_run_tests`) NO es un test definido en run_tests.py
+  [FAIL] rd_journal.json: el mutante M-FIX-FRAME esta declarado como MUERTO y la evidencia commiteada obliga a NO MEDIDO (murio `test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real` y el asa declarada es `test_el_check_9_se_cablea_en_el_camino_real_del_validador`)
+  [FAIL] rd_journal.json: la entrada del ciclo 72 declara el mutante M-FIX-FUERA, que NO esta en el catalogo `mutaciones.json` del cambio
+  [FAIL] openspec/changes/2026-10-22-corpus-sintetico-estructural-d/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 73
+  [FAIL] rd_journal.json: la entrada del ciclo 74 NO tiene linea canonica para el mutante M-FIX-SIN-LINEA, que si esta en el catalogo del cambio
+  [FAIL] openspec/changes/2026-10-22-corpus-sintetico-precondiciones/mutation-report.md: el bloque de maquina NO lleva las mismas lineas canonicas que el journal del ciclo 74
+  [FAIL] mutaciones.json: el mutante M-FIX-MUTACION-MAL declara `mutacion.fichero` = 'openspec/changes/no-existe/mutation-report.md' y ese fichero NO EXISTE en el arbol (o se sale de el). Una mutacion que apunta a un fichero que no existe NO es una mutacion: es la DECLARACION de una mutacion
+  [FAIL] CHANGELOG.md: el mutante M-FIX-CHANGELOG aparece como SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO
+  [FAIL] .taskmaster\CHANGELOG.md: el mutante M-FIX-CHANGELOG aparece como SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO
+
+  [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=7, mutantes re-derivados=16, origen del contrato: ciclo 70
+
+Resumen: 173 OK, 17 FAIL, 0 SKIP
+
+EL GATE NO LEE LA MUTACION

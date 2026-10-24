@@ -1,0 +1,9 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_b\run_tests.py", line 33475, in <module>
+    _la_suite_no_puede_apagar_el_equipo()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_b\run_tests.py", line 32893, in _la_suite_no_puede_apagar_el_equipo
+    assert not infracciones, (
+           ^^^^^^^^^^^^^^^^
+AssertionError: TASK-093: hay una via de APAGADO o de SIMULACION DE ENTRADA en el repo. Infracciones: [('run_tests.py', 32841, "un lanzador de procesos con el argumento 'shutdown'"), ('run_tests.py', 32842, "un lanzador de procesos con el argumento 'powercfg'"), ('run_tests.py', 32843, 'una llamada directa a la API de energia')]. El equipo del dueno se ha apagado DOS veces con el motor de I+D corriendo de noche; ninguna via de esas puede quedarse aqui.

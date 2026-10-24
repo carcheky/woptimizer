@@ -1,0 +1,11 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_a\run_tests.py", line 33095, in <module>
+    test_el_check_9_se_cablea_en_el_camino_real_del_validador()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_a\run_tests.py", line 23894, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+    assert fallos_del_ciclo, (
+           ^^^^^^^^^^^^^^^^
+AssertionError: un catalogo que declara `ciclo: 999` y lo ancla una entrada del ciclo 75 tiene que ser ACUSADO por el gate CON SU RAZON (R4): sin esto, el catalogo de un ciclo puede hacerse pasar por el de otro y nadie lo nota. Informe:
+{informe_f2[-2000:]}
+EL GATE NO LEE LA MUTACION

@@ -1997,6 +1997,53 @@
       ],
       "created_at": "2026-10-24",
       "notes": "Hecho por el ORQUESTADOR como fix de seguridad (no por el dev): el dueno interrumpio el ciclo con el aviso de que el equipo se le apagaba, y la prioridad es que no vuelva a pasar, no que lo arregle el ciclo de agentes. La mitigacion del host es lo que corta la cadena; el blindaje del repo es lo que evita que un error futuro la abra. La ronda 6 del mutation-auditor (TASK-091) quedo INTERRUMPIDA y hay que relanzarla: el subagente se perdio con el reinicio del host."
+    },
+    {
+      "id": "TASK-094",
+      "title": "Desde el Gestor de Procesos se puede proteger un proceso: el pack de Aplicaciones Protegidas es alcanzable ahi",
+      "description": "ENCARGO DEL DUENO (2026-10-24): 'SI LAS APLICACIONES PROTEGIDAS SON UN PACK, DEBE PODER AÑADIRSE UN PROCESO AL PACK DESDE EL GESTOR DE PROCESOS'. MEDIDO el estado actual: hoy la UNICA via para proteger una app es el Gestor de Packs -> boton del pack de protegidos -> `filedialog.askopenfilename` (hay que buscar el .exe en el disco), que no tiene nada que ver con los procesos que el usuario tiene delante. Y en el Gestor de Procesos el desplegable de packs EXCLUYE el protegido a proposito: `process_manager_view.py:229` -> `values = [p.name for p in packs.values() if not p.is_protected]`. El boton es '➕ Anadir al Pack' y su destino se elige por NOMBRE (`on_add_to_pack`, process_manager_view.py:435-467). PROPUESTA DEL ORQUESTADOR: que 'Aplicaciones Protegidas' aparezca en ese desplegable (ES un pack, y el dueno lo pide asi) y que el boton cambie de rotulo a '🔒 Proteger' cuando el destino es ese pack, con aviso explicito de que no se cerrara nunca y refresco de la lista (la app protegida desaparece del listado, por la invariante de TASK-071). ⚠️ AGUJERO A VERIFICAR CON UN TEST (lo ha visto el orquestador al leer el codigo, NO esta medido): el Gestor calcula los protegidos al PINTAR la lista (`_render_list` -> `protected_apps = self.pack_service.get_protected_apps()`), o sea que si el usuario protege una app y pulsa 'Cerrar seleccionados' SIN que se repinte la lista, el motor podria no saltarla. Hay que comprobar si el motor recalcula los protegidos en el momento de MATAR, y si no, que lo haga. INVARIANTES: la UI nunca toca psutil ni JSON (siempre via `services/`); `update_pack()` y no `save()` (el bug de TASK-062: `get_all_packs()` devuelve COPIAS defensivas); el pack protegido no se puede eliminar (`delete_pack` lanza ValueError) y `is_protected` no se puede perder al persistir.",
+      "complexity": 2,
+      "priority": "high",
+      "status": "pending",
+      "acceptance_criteria": [
+        "AC-1: en el Gestor de Procesos, el pack 'Aplicaciones Protegidas' es seleccionable como destino y el boton dice '🔒 Proteger' cuando lo es (MEDIDO en la vista).",
+        "AC-2: proteger un proceso desde ahi lo anade al pack de protegidos, lo PERSISTE (update_pack, no save) y el proceso deja de aparecer en el listado.",
+        "AC-3: el proceso protegido NO se puede cerrar ni desde el Gestor ni desde un pack: el motor recalcula los protegidos en el momento de matar, no solo al pintar la lista (el agujero del orquestador, medido con un test).",
+        "AC-4: el pack de protegidos sigue sin poder eliminarse y `is_protected` sobrevive a la persistencia.",
+        "AC-5: el recuento de tests sigue en 235 = 159 + 76, o si sube, las cinco declaraciones escritas a mano se mueven con la cifra medida."
+      ],
+      "files": [
+        "src/woptimizer/ui/views/process_manager_view.py",
+        "src/woptimizer/services/pack_service.py",
+        "src/woptimizer/ui/views/pack_manager_view.py",
+        "docs/ai/ui-design-system.md"
+      ],
+      "created_at": "2026-10-24",
+      "notes": "Encargo DIRECTO del dueno el 2026-10-24, con la interrupcion del ciclo 72. La decision de diseno (desplegable con el pack protegido DENTRO, con el boton que cambia de rotulo) es del orquestador; el arquitecto la ratifica o la corrige en el Paso 2."
+    },
+    {
+      "id": "TASK-095",
+      "title": "La accion por defecto de un pack se entiende: el desplegable lleva etiqueta y todo esta en espanol",
+      "description": "ENCARGO DEL DUENO (2026-10-24): 'EN LOS PACKS, EL DESPLEGABLE NO DEJA CLARO QUE LO SELECCIONADO ES PARA LA ACCION POR DEFECTO EN LA PORTADA. NO SE SI TIENE SENTIDO O SI MEJOR EN LA PORTADA QUE SALGAN LOS BOTONES PARAR/INICIAR SIN MAS, Y MAS SIMPLE'. MEDIDO el estado actual, y es mas de lo que parecia: (1) el desplegable es un `CTkOptionMenu` SIN ETIQUETA con valores 'kill'/'start' en ingles (`pack_manager_view.py:271-279`), o sea que no dice ni para que sirve ni en que idioma esta; (2) lo que ese valor decide lo dice el BOTON de la Portada, con el dato CRUDO: `dashboard_view.py:412-413` -> `pack.default_action.upper()` -> la tarjeta dice '(3 apps - KILL)' en una app que esta en espanol (incoherencia de IDIOMA, y es parte de lo que el dueno percibe como 'no se entiende'); (3) Y EL DATO QUE CAMBIA EL PLANTEAMIENTO: en la tarjeta del pack del GESTOR YA HAY LOS DOS BOTONES, `⛔ Apagar` (`kill_pack`, que ejecuta YA) y `🚀 Iniciar` (`start_pack`, que ejecuta YA) (`pack_manager_view.py:282-306`), junto al desplegable. O sea: el desplegable NO es como se ejecuta, es COMO SE CONFIGURA que ejecuta el boton de la Portada. DECISION DEL ORQUESTADOR (respondiendo al dueno, que preguntaba y no sabia): **VIA B' - en la Portada, los DOS BOTONES, y el desplegable se queda pero deja de ser criptico**. (1) PORTADA: por pack, `⛔ Apagar` (CON doble pulsacion, como hoy) y `🚀 Iniciar` (SIN confirmacion). El boton cuya accion coincide con `default_action` se DISTINGUE visualmente (acento): asi `default_action` conserva su significado real -que accion es la de este pack- y la tarjeta deja de imprimir la sigla inglesa 'KILL'/'START'. (2) GESTOR: el desplegable SE QUEDA, pero con ETIQUETA visible ('Accion por defecto:') y con los valores EN ESPANOL ('Parar' / 'Iniciar'). Los valores GUARDADOS no cambian ('kill'/'start'): el cambio es de PRESENTACION. **POR QUE NO SE QUITA EL DESPLEGABLE** (la parte que el dueno no podia ver): quitarlo dejaria `default_action` MUERTO, y `default_action` es un campo del modelo Pydantic `Pack` **persistido en `profiles.json`**: tocarlo es una MIGRACION de los datos de los usuarios. Manteniendo el desplegable con un significado nuevo y util ('que boton de la portada es el principal') no hay migracion, no se pierde nada y el desplegable deja de ser el sitio donde hay que adivinar. **POR QUE NO SE PONE UN BOTON UNICO EN LA PORTADA** (la via A): porque el dueno tiene razon en que el desplegable es la fuente de la ambiguedad, y meter un boton mas NO lo arregla. RIESGOS A MEDIR (van en los AC): (a) la doble pulsacion de `execute_pack` (`_require_double_tap`, TASK-036) tiene que seguir siendo SOLO de 'Apagar'; (b) la Portada puede APELMIZARSE con dos botones por pack (packs favoritos + gaming) en una ventana estrecha; (c) el pack GAMING tiene `default_action=\"kill\"` y es el caso estrella: `⛔ Apagar` al lado de `🚀 Iniciar` puede ser ruido y un riesgo de arrancar el gaming por error.",
+      "complexity": 1,
+      "priority": "medium",
+      "status": "pending",
+      "acceptance_criteria": [
+        "AC-1: en la Portada, cada pack tiene `⛔ Apagar` (CON doble pulsacion, como hoy) y `🚀 Iniciar` (SIN confirmacion), y el de la accion por defecto se distingue visualmente (AC-1 y AC-4 se miden juntas: el destacado ES la senal de `default_action`).",
+        "AC-2: en el Gestor, el desplegable tiene ETIQUETA visible ('Accion por defecto:') y valores EN ESPANOL ('Parar' / 'Iniciar'); los valores GUARDADOS siguen siendo 'kill'/'start' (el cambio es de presentacion, no de modelo: `data-models.md` no cambia).",
+        "AC-3: la tarjeta de la Portada DEJA de imprimir la sigla inglesa 'KILL'/'START'; la accion la dicen los botones.",
+        "AC-4: `default_action` conserva su significado (que boton es el principal) y su valor guardado en `profiles.json`: CERO migracion, cero perdida de datos.",
+        "AC-5: la doble pulsacion se pide SOLO para 'Apagar' (igual que hoy) y 'Iniciar' no la pide; medido en la vista.",
+        "AC-6: la Portada no se apelmiza: MEDIDO el ancho y el numero de controles por pack con 1, 2 y 3 packs visibles (p. ej. gaming + 2 favoritos).",
+        "AC-7: el recuento de tests sigue en 235 = 159 + 76, o si sube, las cinco declaraciones escritas a mano se mueven con la cifra medida."
+      ],
+      "files": [
+        "src/woptimizer/ui/views/pack_manager_view.py",
+        "src/woptimizer/ui/views/dashboard_view.py",
+        "docs/ai/ui-design-system.md"
+      ],
+      "created_at": "2026-10-24",
+      "notes": "Segunda parte del encargo del dueno. Su PREGUNTA ('¿dos botones en la Portada?') tiene respuesta: SI, y con el matiz de que el desplegable NO se quita (quitarlo deja `default_action` muerto y `default_action` esta PERSISTIDO en `profiles.json`: tocarlo es una migracion). El orquestador decidio la VIA B' y el arquitecto la ratifica o la corrige en el Paso 2, que es quien puede medir el apelmizamiento de la Portada."
     }
   ]
 }

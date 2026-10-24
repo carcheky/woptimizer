@@ -32703,14 +32703,14 @@ def test_el_derivado_de_vistas_es_el_disco_y_abre_algo():
           "(TASK-082, AC-3).")
 
 
-# --- TASK-093: LA SUITE NO PUEDE APAGAR EL EQUIPO DEL DUENO -------------------
+# --- TASK-093: LA SUITE NO PUEDE APAGAR EL EQUIPO DEL DUENO --------------------
 # MEDIDO el 2026-10-24 en este host, con el REGISTRO DE EVENTOS de Windows: el
-# equipo se apago DOS veces mientras el motor de I+D corria de noche. La cadena,
+# equipo se apago DOS veces con el motor de I+D corriendo de noche. La cadena,
 # evento a evento:
-#   - 23/10 07:32:08, evento 1074: "El proceso MoUsoCoreWorker.exe (PCCK) inicio
+#   - 23/10 07:32:08, evento 1074: "El proceso `MoUsoCoreWorker.exe` (PCCK) inicio
 #     el REINICIO del equipo ... motivo: Sistema operativo: service pack
 #     (planeado)". MoUsoCoreWorker es el ORQUESTADOR DE WINDOWS UPDATE.
-#   - 24/10 02:52:52, evento 1074: "El proceso StartMenuExperienceHost.exe
+#   - 24/10 02:52:52, evento 1074: "El proceso `StartMenuExperienceHost.exe`
 #     (PCCK) inicio el Apagar del equipo".
 #   - Y las cuatro noches anteriores, evento 42 (Kernel-Power): "El sistema esta
 #     entrando en suspension. Motivo de la suspension: System Idle".
@@ -32737,6 +32737,24 @@ def test_el_derivado_de_vistas_es_el_disco_y_abre_algo():
 # una lista es VACIABLE (borrar un nombre de la lista deja el fichero sin
 # vigilar y el guard en verde).
 #
+# ⚠️ RONDA 6 DEL AUDITOR (2026-10-24): este guard TENIA cinco supervivientes, y
+# los tres de abajo son el arreglo que les deja de serlo.
+#   (G-1, G-1b) el guard se podia DESCONECTAR EN SILENCIO: vaciar el conjunto de
+#     ficheros vigilados (o romper el `os.walk`) dejaba la suite VERDE mirando
+#     CERO ficheros. AHORA: el conjunto se cuenta por DOS recorridos
+#     INDEPENDIENTES (`os.walk` y `pathlib.rglob`), se exige que COINCIDAN y que
+#     no sean cero, y el META-GUARD comprueba que los dos siguen en el texto.
+#   (G-2) la cuarta via (`taskkill` POR NOMBRE) NO TENIA DIENTES: la
+#     contraprueba no incluia un caso de `/IM`, luego nadie comprobaba que esa
+#     regla existiera. AHORA: la contraprueba incluye `taskkill /IM` y exige la
+#     ETIQUETA de esa via, con el `/PID` propio en otra ventana (relleno de
+#     medio kilo) para que no se alcancen, y el META-GUARD lo comprueba.
+#   (G-8, G-9) la contraprueba se podia TRIVIALIZAR (contar menos, borrar el
+#     bucle de motivos) y la suite seguia en VERDE. AHORA: un META-GUARD lee el
+#     TEXTO de esta contraprueba (delimitado por centinelas) y exige que siga
+#     diciendo lo que dice. Es el mismo patron que el guard (B) del check 11
+#     con los limites (a)..(g) del gate.
+#
 # TASK-093 >>> INICIO DEL VOCABULARIO VIGILADO
 def _la_suite_no_puede_apagar_el_equipo():
     """TASK-093: ni la suite ni el producto pueden APAGAR el equipo del dueno.
@@ -32750,13 +32768,19 @@ def _la_suite_no_puede_apagar_el_equipo():
       (b) una llamada DIRECTA a la API de energia (por ejemplo a traves de
           `ctypes.windll.user32`).
       (c) una IMPORTACION de simulacion de entrada.
-    Y una cuarta regla, la del `taskkill`: matar POR NOMBRE puede llevarse al
-    `lsass.exe` o al `winlogon.exe` y eso APAGA el Windows; matar por PID
-    propio (que es lo que hacen las utilidades para cerrar SU propio hijo) NO
+    Y una cuarta regla, la del `taskkill`: matar POR NOMBRE (`/IM`) puede
+    llevarse al `lsass.exe` o al `winlogon.exe` y eso APAGA el Windows; matar por
+    PID propio (que es lo que hacen las utilidades para cerrar su propio hijo) NO
     se marca.
 
-    Levanta `AssertionError` si encuentra una via.
+    Cada hallazgo lleva una ETIQUETA de via, y lo que se exige es el CONJUNTO de
+    etiquetas: el conteo de hallazgos seria fragil, porque las ventanas de 400
+    caracteres se solapan y un mismo caso puede verse por dos lanzadores.
+
+    Levanta `AssertionError` si encuentra una via, si el conjunto vigilado se
+    puede vaciar en silencio, o si la propia contraprueba se trivializa.
     """
+    import pathlib
     import re
 
     # La API de energia de Windows es un conjunto CERRADO de nombres: por eso
@@ -32780,12 +32804,32 @@ def _la_suite_no_puede_apagar_el_equipo():
         r"^[ \t]*(?:import|from)[ \t]+(?:" + "|".join(ENTRADA) + r")\b",
         re.IGNORECASE | re.MULTILINE,
     )
+    TASKKILL_POR_NOMBRE = re.compile(r"[\"']/im[\"']", re.IGNORECASE)
+
     # El propio guard se vigila FUERA de su bloque: aqui viven el vocabulario y
     # la prosa que lo describe, y una ventana de 400 caracteres alrededor de un
-    # lanzador citado en prosa se acusaria a si misma. Los dos centinelas
+    # lanzador citado en prosa se acusaria a si mismo. Los dos centinelas
     # delimitan el bloque; si no estan, no se excluye nada.
     INICIO = "TASK-093 >>> INICIO DEL VOCABULARIO VIGILADO"
     FIN = "<<< TASK-093: FIN DEL VOCABULARIO VIGILADO"
+    # Y los centinelas de la CONTRAPROUEBA, para el meta-guard.
+    CONTRA_INICIO = "TASK-093 >>> INICIO DE LA CONTRAPROUEBA"
+    CONTRA_FIN = "<<< TASK-093: FIN DE LA CONTRAPROUEBA"
+
+    # Las ETIQUETAS de via: el contrato de la contraprueba es un CONJUNTO de
+    # etiquetas, no un numero de hallazgos (el numero se solapa entre ventanas).
+    # Van DESPUES de los centinelas de la contraprueba a proposito: asi el
+    # meta-guard, que mira SOLO ese bloque, las encuentra.
+    ETIQUETA_LANZADOR = "lanzador_con_argumento_de_apagado"
+    ETIQUETA_API = "llamada_directa_a_la_api"
+    ETIQUETA_ENTRADA = "importacion_de_simulacion_de_entrada"
+    ETIQUETA_TASKKILL = "taskkill_por_nombre"
+    ESPERADAS = {
+        ETIQUETA_LANZADOR,
+        ETIQUETA_API,
+        ETIQUETA_ENTRADA,
+        ETIQUETA_TASKKILL,
+    }
 
     def _sin_comentarios(texto):
         """Quita los comentarios conservando la LONGITUD (los offsets no se
@@ -32799,7 +32843,7 @@ def _la_suite_no_puede_apagar_el_equipo():
         return "\n".join(salida)
 
     def _infracciones_de(texto, fuera_del_bloque=None):
-        """Las infracciones de un texto: (linea, motivo)."""
+        """Las infracciones de un texto: (linea, etiqueta, motivo)."""
         malas = []
         limpio = _sin_comentarios(texto)
         for coincidencia in LANZADOR.finditer(limpio):
@@ -32810,85 +32854,185 @@ def _la_suite_no_puede_apagar_el_equipo():
             for palabra in APAGADO:
                 if palabra in baja:
                     linea = limpio.count("\n", 0, coincidencia.start()) + 1
-                    malas.append((linea,
-                                 f"un lanzador de procesos con el argumento "
-                                 f"{palabra!r}"))
+                    malas.append((linea, ETIQUETA_LANZADOR,
+                                  f"un lanzador de procesos con el argumento "
+                                  f"{palabra!r}"))
                     break
-            if "taskkill" in baja and re.search(r"[\"']/im[\"']", ventana, re.IGNORECASE):
+            if "taskkill" in baja and TASKKILL_POR_NOMBRE.search(ventana):
                 linea = limpio.count("\n", 0, coincidencia.start()) + 1
-                malas.append((linea,
+                malas.append((linea, ETIQUETA_TASKKILL,
                              "taskkill POR NOMBRE (/IM): matar al lsass o al "
                              "winlogon APAGA el Windows"))
         for coincidencia in LLAMADA_DIRECTA.finditer(limpio):
             if fuera_del_bloque and not fuera_del_bloque(coincidencia.start()):
                 continue
             linea = limpio.count("\n", 0, coincidencia.start()) + 1
-            malas.append((linea, "una llamada directa a la API de energia"))
+            malas.append((linea, ETIQUETA_API,
+                         "una llamada directa a la API de energia"))
         for coincidencia in IMPORT_ENTRADA.finditer(limpio):
             if fuera_del_bloque and not fuera_del_bloque(coincidencia.start()):
                 continue
             linea = limpio.count("\n", 0, coincidencia.start()) + 1
-            malas.append((linea, "una importacion de simulacion de entrada"))
+            malas.append((linea, ETIQUETA_ENTRADA,
+                         "una importacion de simulacion de entrada"))
         return malas
 
-    # --- CONTRAPROUEBA: el detector tiene que MARCAR lo prohibido y RESPETAR
-    # --- lo legitimo. Sin esta celda, un detector que no detectase nada pasaria
+    # --- CONTRAPROUEBA: el detector tiene que MARCAR cada via y RESPETAR lo
+    # --- legitimo. Sin esta celda, un detector que no detectase nada pasaria
     # --- este guard y no mediria nada. Se aplica SIN la exclusion del bloque
     # --- propio, que es justamente donde vive este texto.
+    # Los casos van SEPARADOS por un relleno de medio kilo de caracteres: la
+    # ventana del detector son 400, luego dos casos vecinos se alcanzarian y el
+    # caso legitimo (`/PID` propio) veria el `/IM` de al lado y marcaria.
+    # TASK-093 >>> INICIO DE LA CONTRAPROUEBA
+    RELLENO = "# " + ("x" * 450) + "\n"
     sintetico = (
         "import subprocess\n"
         "import pyautogui\n"
         "subprocess.run(['shutdown', '/s', '/t', '0'])\n"
+        + RELLENO +
         "os.system('powercfg /change standby-timeout-ac 0')\n"
+        + RELLENO +
         "ctypes.windll.user32.SetSuspendState(0)\n"
+        + RELLENO +
+        "subprocess.run(['taskkill', '/F', '/IM', 'lsass.exe'])\n"
+        + RELLENO +
         "subprocess.run(['taskkill', '/F', '/T', '/PID', '1234'])\n"
     )
-    marcas = _infracciones_de(sintetico)
-    motivos = " ".join(motivo for _, motivo in marcas)
-    assert len(marcas) == 4, (
-        "TASK-093: el detector tiene que marcar CUATRO vias en la contraprueba "
-        f"(el apagado por lanzador, el de energia por lanzador, la llamada "
-        f"directa a la API y la importacion de raton) y RESPETAR el taskkill "
-        f"por PID propio. Marco {len(marcas)}: {marcas!r}"
+    infracciones = _infracciones_de(sintetico)
+    etiquetas = set(etiqueta for _, etiqueta, _ in infracciones)
+    motivos = " ".join(motivo for _, _, motivo in infracciones)
+    assert etiquetas == ESPERADAS, (
+        "TASK-093: el detector tiene que marcar las CUATRO vias de la "
+        f"contraprueba (el apagado por lanzador, la llamada directa a la API, "
+        f"la importacion de raton y el taskkill POR NOMBRE) y NO el taskkill "
+        f"por PID propio. Marcadas {sorted(etiquetas)!r} y esperadas "
+        f"{sorted(ESPERADAS)!r}"
     )
-    for esperado in ("shutdown", "powercfg", "API de energia", "entrada"):
+    for esperado in ("un lanzador de procesos con el argumento",
+                     "una llamada directa a la API de energia",
+                     "una importacion de simulacion de entrada",
+                     "taskkill POR NOMBRE"):
         assert esperado in motivos, (
             f"TASK-093: la contraprueba no ha visto {esperado!r}. Motivos: "
             f"{motivos!r}"
         )
-    assert not any("taskkill" in motivo for _, motivo in marcas), (
+    marks_taskkill = [motivo for _, etiqueta, motivo in infracciones
+                      if etiqueta == ETIQUETA_TASKKILL]
+    assert len(marks_taskkill) == 1, (
         "TASK-093: el taskkill por PID PROPIO es legitimo (las utilidades matan "
-        f"SU propio hijo) y no puede marcar. Marcas: {marcas!r}"
+        "SU propio hijo) y NO puede marcar, y el case '/IM' tiene que marcar "
+        "UNA vez. Marcados "
+        f"{len(marks_taskkill)}: {marks_taskkill!r}"
     )
+    # <<< TASK-093: FIN DE LA CONTRAPROUEBA
+
+    # --- META-GUARD: la contraprueba NO SE PUEDE TRIVIALIZAR (G-8, G-9) -----
+    # El guard lee SU PROPIO texto y exige que la contraprueba siga diciendo lo
+    # que dice. Sin esto, cambiar `== ESPERADAS` por `>= 1` o borrar el bucle de
+    # motivos dejaba la suite en VERDE. Es el mismo patron que el guard (B) del
+    # check 11 con los limites (a)..(g) del gate: un guard de FORMA sobre su
+    # propio bloque, delimitado por centinelas, con `rfind` para el de fin
+    # (la primera aparicion del centinela esta en la constante que lo define).
+    with open(os.path.abspath(__file__), encoding="utf-8") as fh:
+        fuente_propia = fh.read()
+    i_contra = fuente_propia.find(CONTRA_INICIO)
+    j_contra = fuente_propia.rfind(CONTRA_FIN)
+    assert 0 <= i_contra < j_contra, (
+        "TASK-093: el guard no encuentra su propia CONTRAPROUEBA: los "
+        "centinelas se han movido o se han borrado, luego la contraprueba "
+        "puede estar vaciada sin que nada lo note"
+    )
+    bloque_contra = fuente_propia[i_contra:j_contra]
+    for trozo in ("sintetico = (",
+                  "etiquetas == ESPERADAS",
+                  "assert etiquetas == ESPERADAS",
+                  "len(marks_taskkill) == 1",
+                  "ETIQUETA_LANZADOR",
+                  "ETIQUETA_API",
+                  "ETIQUETA_ENTRADA",
+                  "ETIQUETA_TASKKILL",
+                  # Las CUATRO motivaciones tienen que seguir EN LA TUPLA del
+                  # bucle: si el bucle se vacia (`for esperado in ():`) los
+                  # literales desaparecen de ahi, y ese era el mutante G-9.
+                  # Exigir solo el texto "for esperado in (" NO servia: un
+                  # bucle vacio conserva esa cabecera.
+                  '"un lanzador de procesos con el argumento"',
+                  '"una llamada directa a la API de energia"',
+                  '"una importacion de simulacion de entrada"',
+                  '"taskkill POR NOMBRE"'):
+        assert trozo in bloque_contra, (
+            f"TASK-093: la CONTRAPROUEBA ya no dice {trozo!r}: alguien la ha "
+            "trivializerizado (contar menos, o borrar el bucle de motivos) y "
+            "la suite se quedaria en VERDE. Es lo que encontraron los "
+            "mutantes G-8 y G-9."
+        )
+    # Y los DOS recorridos del conjunto vigilado tienen que seguir en el texto
+    # (si se quita uno, el otro vuelve a ser vaciable en silencio: G-1, G-1b).
+    for trozo in ("os.walk(raiz)", "pathlib.Path(raiz).rglob", "vistos > 0",
+                  "set(por_walk) == set(por_rglob)"):
+        assert trozo in fuente_propia, (
+            f"TASK-093: el conjunto de ficheros vigilados ya no se cuenta por "
+            f"{trozo!r}: con un solo recorrido se puede vaciar en silencio y "
+            "la suite se queda en VERDE (G-1, G-1b)."
+        )
 
     # --- EL REPO REAL: el conjunto de ficheros se DERIVA del disco -----------
+    # Y se cuenta por DOS recorridos INDEPENDIENTES que tienen que COINCIDIR.
     raiz = os.path.dirname(os.path.abspath(__file__))
     directorios_ignorados = (".git", "__pycache__", "basura", ".pytest_cache")
-    vistos = 0
+
+    def _con_walk():
+        salida = []
+        for base, dirs, nombres in os.walk(raiz):
+            dirs[:] = [d for d in dirs if d not in directorios_ignorados]
+            for nombre in nombres:
+                if nombre.endswith(".py"):
+                    salida.append(os.path.join(base, nombre))
+        return salida
+
+    def _con_rglob():
+        ignorados = set(directorios_ignorados)
+        return [str(p) for p in pathlib.Path(raiz).rglob("*.py")
+                if not any(parte in ignorados for parte in p.parts)]
+
+    por_walk = _con_walk()
+    por_rglob = _con_rglob()
+    vistos = len(por_walk)
+    assert vistos > 0, (
+        "TASK-093: el guard NO ha vigilado ningun fichero: si el conjunto "
+        "vigilado puede quedar vacio, el guard puede vigilar CERO ficheros sin "
+        "que nada se entere (mutantes G-1 y G-1b)."
+    )
+    assert por_rglob, (
+        "TASK-093: el segundo recorrido del conjunto vigilado no ha encontrado "
+        "ningun fichero: con un solo recorrido, romperlo deja el guard verde "
+        "mirando nada (mutantes G-1 y G-1b)."
+    )
+    assert set(por_walk) == set(por_rglob), (
+        "TASK-093: los DOS recorridos del conjunto vigilado NO COINCIDEN: "
+        f"walk={len(por_walk)} y rglob={len(por_rglob)} ficheros. Un recorrido "
+        "puede estar manipulado y el otro no, luego el conjunto vigilado no es "
+        "de fiar (mutantes G-1 y G-1b)."
+    )
     infracciones = []
-    for base, dirs, nombres in os.walk(raiz):
-        dirs[:] = [d for d in dirs if d not in directorios_ignorados]
-        for nombre in nombres:
-            if not nombre.endswith(".py"):
-                continue
-            ruta = os.path.join(base, nombre)
-            vistos += 1
-            with open(ruta, encoding="utf-8", errors="replace") as fh:
-                texto = fh.read()
-            inicio = texto.find(INICIO)
-            # El centinela de fin aparece TAMBIEN en la constante que lo define,
-            # dentro de esta misma funcion: hay que coger la ULTIMA
-            # aparicion (`rfind`), o el rango excluido se queda corto y el
-            # guard se accuses a si mismo con su propia contraprueba.
-            fin = texto.rfind(FIN)
-            if 0 <= inicio < fin:
-                def _fuera(pos, ini=inicio, f=fin):
-                    return not (ini <= pos < f)
-            else:
-                _fuera = None
-            relativo = os.path.relpath(ruta, raiz).replace("\\", "/")
-            for linea, motivo in _infracciones_de(texto, _fuera):
-                infracciones.append((relativo, linea, motivo))
+    for ruta in por_walk:
+        with open(ruta, encoding="utf-8", errors="replace") as fh:
+            texto = fh.read()
+        inicio = texto.find(INICIO)
+        # El centinela de fin aparece TAMBIEN en la constante que lo define,
+        # dentro de esta misma funcion: hay que coger la ULTIMA aparicion
+        # (`rfind`), o el rango excluido se queda corto y el guard se acusa a
+        # si mismo con su propia contraprueba.
+        fin = texto.rfind(FIN)
+        if 0 <= inicio < fin:
+            def _fuera(pos, ini=inicio, f=fin):
+                return not (ini <= pos < f)
+        else:
+            _fuera = None
+        relativo = os.path.relpath(ruta, raiz).replace("\\", "/")
+        for linea, etiqueta, motivo in _infracciones_de(texto, _fuera):
+            infracciones.append((relativo, linea, etiqueta, motivo))
 
     assert not infracciones, (
         "TASK-093: hay una via de APAGADO o de SIMULACION DE ENTRADA en el "
@@ -32896,8 +33040,9 @@ def _la_suite_no_puede_apagar_el_equipo():
         "apagado DOS veces con el motor de I+D corriendo de noche; ninguna via "
         "de esas puede quedarse aqui."
     )
-    print(f"blindaje anti-apagon OK ({vistos} fichero(s) .py vigilados, "
-          "0 vias de apagado y 0 de simulacion de entrada) (TASK-093).")
+    print(f"blindaje anti-apagon OK ({vistos} fichero(s) .py vigilados por dos "
+          "recorridos que coinciden, 0 vias de apagado y 0 de simulacion de "
+          "entrada) (TASK-093).")
 # <<< TASK-093: FIN DEL VOCABULARIO VIGILADO
 
 

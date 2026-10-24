@@ -1,0 +1,9 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_a\run_tests.py", line 32954, in <module>
+    test_no_system_process_is_killable()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_a\run_tests.py", line 1969, in test_no_system_process_is_killable
+    assert s == len(vivos) and s >= 2, f"Todos los procesos de sistema vivos deberian contar como omitidos: s={s}, vivos={len(vivos)}"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Todos los procesos de sistema vivos deberian contar como omitidos: s=0, vivos=2

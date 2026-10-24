@@ -1,0 +1,217 @@
+{
+  "cambio": "openspec/changes/2026-10-23-el-gate-lee-la-mutacion/",
+  "ciclo": 72,
+  "nota": "RONDA 6 (mutation-auditor): el fix de TASK-091 (gate que lee la mutacion del catalogo, commit 54c62a9) y el guard nuevo de TASK-093 (commit cd31f18) medidos en camara desechable con su propio .git, sobre el arbol 0f654fc6 (base VERDE NATIVA: rc=0 y 'ALL TESTS PASSED.' como ultima linea, 55 ficheros .py vigilados por el guard anti-apagon). Los mutantes del guard de TASK-093 NO estan en este catalogo: el veredicto canonico exige que el `asa` sea un `test_*` DEFINIDO en run_tests.py (regla 4 del contrato y la comprobacion `asa not in definidos` del gate), y el guard TASK-093 no es un test_* (a proposito: el recuento se queda en 235 = 159 + 76). Se miden y se reportan FUERA del veredicto canonico, con su veredicto literal y su metrica.",
+  "mutaciones": [
+    {
+      "id": "M-H1",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO LEE LA MUTACION",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3488,
+        "original": "            detalle = _detalle_de_la_mutacion(mutacion)",
+        "sustituto": "            detalle = None  # MUTANTE M-H1: R1 no se comprueba"
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "propio (TASK-091, celda F1-bis)",
+      "nota_ronda_6": "El gate deja de LLAMAR al comprobador de forma: R1 no puede acusar nada."
+    },
+    {
+      "id": "M-H2",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO LEE LA MUTACION",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3499,
+        "original": "                if destino is None or not os.path.isfile(destino):",
+        "sustituto": "                if destino is None:  # MUTANTE M-H2: R2 no comprueba que EXISTA"
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "propio (TASK-091, celda F1)",
+      "nota_ronda_6": "El gate solo comprueba que el fichero este DENTRO del arbol, no que exista."
+    },
+    {
+      "id": "M-H3",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO LEE LA MUTACION",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3432,
+        "original": "                and cambio_del_catalogo.rstrip(\"/\") == cambio_de_la_entrada):",
+        "sustituto": "                and cambio_de_la_entrada is not None):  # MUTANTE M-H3: R3 no compara"
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "propio (TASK-091, celda F2-bis)",
+      "nota_ronda_6": "El gate comprueba el TIPO del `cambio` pero no lo compara con el de la entrada."
+    },
+    {
+      "id": "M-H4",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO LEE LA MUTACION",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3423,
+        "original": "        ciclo_del_catalogo = (encabezado.get(\"ciclo\")\n                              if isinstance(encabezado, dict) else None)",
+        "sustituto": "        ciclo_del_catalogo = ciclo  # MUTANTE M-H4: R4 no compara"
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "propio (TASK-091, celda F2)",
+      "nota_ronda_6": "El gate se DECLARA el ciclo de la entrada y lo compara contra si mismo."
+    },
+    {
+      "id": "M-92",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3482,
+        "original": "        for identificador, asa, motivo, sha_del_catalogo, mutacion in mutantes:",
+        "sustituto": "        for identificador, asa, motivo, sha_del_catalogo, mutacion in mutantes[:1]:  # MUTANTE M-H5/M-92: solo el primero"
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "propio (TASK-091, celda F1); RE-DECLARA M-92 del ciclo 71",
+      "nota_ronda_6": "El centinela ROTO de (F) va SEGUNDO a proposito: un gate que mire solo el primero (el patron de M-92) tiene que quedar cogido."
+    },
+    {
+      "id": "M-H6",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE ACUSA EN LO QUE NO PUEDE",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3540,
+        "original": "            if estado_derivado != estado_declarado:",
+        "sustituto": "            if estado_derivado == estado_declarado:  # MUTANTE M-H6/M-91: acusa en lo que no puede"
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "propio (TASK-091, celda F3); RE-DECLARA M-91 del ciclo 71",
+      "nota_ronda_6": "Acusar de mas es tan ciego como no acusar: la contraprueba F3 exige 0 FAIL sobre los centinelas en regla."
+    },
+    {
+      "id": "M-H7",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "el limite (g) tiene que decir el COSTE MEDIDO",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 2903,
+        "original": "#   (g) que el TEXTO declarado (`mutacion.original`) este EN el fichero. El\n#       gate comprueba que la `mutacion` este DECLARADA y con FORMA (R1), que\n#       su fichero EXISTA y este dentro del arbol (R2) y que el catalogo sea\n#       el del ciclo y del cambio que dice ser (R3 y R4), pero **NO** que el\n#       texto que se declara este en ese fichero.\n#\n#       MOTIVO MEDIDO (CADUCIDAD): el texto declarado se mueve con cada ciclo\n#       que toca el codigo. MEDIDO el 2026-10-22 (ANTES de este cambio): el\n#       `original` declarado era un bloque CONTIGUO en **24 de los 26**\n#       mutantes (los dos que no: M-A1, dos `if` que existen pero NO son\n#       contiguos, y M-121, que era prosa). MEDIDO el 2026-10-23 (DESPUES de\n#       este cambio, que toco el cuerpo del gate y su bucle de mutantes):\n#       **22 de los 26**, porque las tres recetas de M-90, M-92 y M-94\n#       apuntaban precisamente a esas dos cosas. O sea que **cualquier**\n#       cambio del codigo invalida las recetas. Y el `original` esta en la\n#       LINEA declarada en **1 de 26** (solo M-107), luego una regla que lo\n#       exigiera en la linea daria FAIL sobre **25 de los 26** mutantes, y una\n#       que exigiera el texto daria FAIL sobre el propio catalogo del repo.\n#\n#       MOTIVO MEDIDO (COSTE): comprobarlo cuesta **62,3 ms** (26 mutantes,\n#       5 ficheros, 1.891 MB leidos, cache por ruta + busqueda `in`) y el\n#       presupuesto del gate es del **0,5 %** de los 11,28 s del validador =\n#       **56,4 ms**, con un margen actual de **10,2 ms**: disponibles\n#       **46,2 ms**, luego **NO CABE**. Las CUATRO reglas que si caben (forma,\n#       fichero, cambio, ciclo) cuestan **0,88 ms MEDIDOS** el 2026-10-23 (R1\n#       0,011 ms; R2 0,872 ms, que son 26 `stat` a ~33 us cada uno; R3+R4\n#       0,0003 ms) porque NO leen contenido: solo `os.path.isfile`. El margen\n#       del check 11 en este host: 13,674 ms antes y 14,837 ms despues.\n#\n#       MOTIVO MEDIDO (SEMANTICA): la RECETA caduca, el VEREDICTO no. El\n#       veredicto es un hecho sobre el arbol AUDITADO (`sha_arbol_auditado`),\n#       y ese hecho no se invalida porque el codigo se haya movido despues;\n#       lo que caduca es el PROCEDIMIENTO para reproducirlo. Un FAIL por\n#       esto convertiria el gate en una bomba de relojería (habria que\n#       re-declarar mutantes historicos cada vez que se mueve el codigo),\n#       que es justo lo que este encargo prohibe.\n#\n#       Y la seccion (F) de\n#       `test_el_check_9_se_cablea_en_el_camino_real_del_validador` vigila las\n#       CUATRO reglas con un cambio sintetico PROPIO y TRES centinelas PROPIOS\n#       (uno COHERENTE, uno con `mutacion.fichero` inexistente y uno con la\n#       FORMA rota), y exige que el gate ACUSE a los rotos y CALLE sobre el\n#       coherente.",
+        "sustituto": "#   (g) MUTANTE M-H7: el limite (g) se borra del bloque canonico (sustituto NO VACIO, que es lo que R1 exige del catalogo)"
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "propio (TASK-091, guard (B))",
+      "nota_ronda_6": "Un limite que no esta escrito no esta declarado: el guard (B) exige los siete limites con su motivo medido."
+    },
+    {
+      "id": "M-H8",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "el limite (g) tiene que decir QUE es lo que NO se comprueba",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 2907,
+        "original": "#       texto que se declara este en ese fichero.",
+        "sustituto": "#       TEXTO declarado en el fichero.  # MUTANTE M-H8"
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "propio (TASK-091, celda F5)",
+      "nota_ronda_6": "El limite (g) tiene que NOMBRAR las cuatro reglas que el gate SI comprueba (R1..R4) y decir QUE es lo que no comprueba."
+    },
+    {
+      "id": "M-H9",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "el catalogo REAL del repo tiene que pasar el gate con 0 FAIL",
+      "mutacion": {
+        "fichero": "openspec/changes/2026-10-22-el-gate-distingue-o-falla/mutaciones.json",
+        "linea": 339,
+        "original": "\"fichero\": \"run_tests.py\"",
+        "sustituto": "\"fichero\": \"src/woptimizer/NO_EXISTE.py\""
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "propio (TASK-091, celda F4)",
+      "nota_ronda_6": "Rompe la MIGRACION de M-121 (la `mutacion.fichero` que declara un fichero que no es un fichero). Si la celda F4 no muere, la migracion no esta vigilada: con el gate como estaba (sin R1 ni R2) daba 0 FAIL."
+    },
+    {
+      "id": "M-90",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3343,
+        "original": "    journal = _leer_el_journal(root)\n",
+        "sustituto": "    journal = _leer_el_journal(root)\n    if journal is not None:  # MUTANTE M-90: el cuerpo del gate VACIO\n        _REGISTRO_DE_VEREDICTOS = (\n            \"check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=0, \"\n            \"mutantes re-derivados=0, origen del contrato: ciclo 70\")\n        return\n"
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "RE-DECLARADO (era del ciclo 71; su `original` apuntaba al cuerpo del gate, que este ciclo cambio)",
+      "nota_ronda_6": "El limite (f) del gate: el validador, POR SI SOLO, no detecta un gate ciego. Lo que lo detecta es la SUITE, con la seccion (D)."
+    },
+    {
+      "id": "M-94",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "validate_docs.py",
+        "linea": 3482,
+        "original": "        for identificador, asa, motivo, sha_del_catalogo, mutacion in mutantes:",
+        "sustituto": "        for identificador, asa, motivo, sha_del_catalogo, mutacion in mutantes[1:]:  # MUTANTE M-94: se salta el primero"
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "RE-DECLARADO (era del ciclo 71; su `original` apuntaba al `for` de cuatro campos, que este ciclo cambio a cinco)",
+      "nota_ronda_6": "El simetrico de M-H5: no es que mire solo el primero, es que se salta el primero y no mira ninguno mas de los que le importan."
+    },
+    {
+      "id": "M-121-r6",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "run_tests.py",
+        "linea": 23360,
+        "original": "        exigir_la_acusacion(informe_sano, centinela_limite, \"SOBREVIVIENTE\",\n                            \"MUERTO\",\n                            \"la entrada del journal que esta en el LIMITE (el \"\n                            \"ciclo 70, el origen del contrato) tiene que estar \"\n                            \"MIRADA: su veredicto se juzga contra la evidencia\")\n        assert f\"entradas cubiertas={len(entradas_sinteticas)}\" in informe_sano, (\n            f\"el gate tiene que EXAMINAR las {len(entradas_sinteticas)} \"\n            \"entradas del corpus (incluida la del LIMITE, el ciclo 70): su \"\n            \"REGISTRO tiene que decir 'entradas cubiertas=\"\n            f\"{len(entradas_sinteticas)}'. Un gate que se queda en el ciclo 71 \"\n            \"deja el origen del contrato sin re-derivar y no lo dice: \"\n            f\"Informe:\\n{informe_sano[-2000:]}\\nEL GATE NO DISTINGUE\")",
+        "sustituto": "        pass  # MUTANTE M-121: la celda (D1-ter)(d) del LIMITE y la asercion de 'entradas cubiertas' NEUTRALIZADAS"
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "RE-MEDIDO (la receta migrada en el ciclo 72)",
+      "nota_ronda_6": "La receta migrada (run_tests.py, bloque contiguo de 12 lineas) se aplica tal cual: comprueba que la migracion NO es un mutante fantasma."
+    },
+    {
+      "id": "M-121-b",
+      "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "motivo": "EL GATE NO DISTINGUE",
+      "mutacion": {
+        "fichero": "run_tests.py",
+        "linea": 23360,
+        "original": "        exigir_la_acusacion(informe_sano, centinela_limite, \"SOBREVIVIENTE\",\n                            \"MUERTO\",\n                            \"la entrada del journal que esta en el LIMITE (el \"\n                            \"ciclo 70, el origen del contrato) tiene que estar \"\n                            \"MIRADA: su veredicto se juzga contra la evidencia\")\n        assert f\"entradas cubiertas={len(entradas_sinteticas)}\" in informe_sano, (\n            f\"el gate tiene que EXAMINAR las {len(entradas_sinteticas)} \"\n            \"entradas del corpus (incluida la del LIMITE, el ciclo 70): su \"\n            \"REGISTRO tiene que decir 'entradas cubiertas=\"\n            f\"{len(entradas_sinteticas)}'. Un gate que se queda en el ciclo 71 \"\n            \"deja el origen del contrato sin re-derivar y no lo dice: \"\n            f\"Informe:\\n{informe_sano[-2000:]}\\nEL GATE NO DISTINGUE\")",
+        "sustituto": "        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        pass  # MUTANTE M-121b: la celda (D1-ter)(d) y la asercion de 'entradas cubiertas' NEUTRALIZADAS"
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "RE-MEDIDO con desplazamiento CERO (la receta migrada mueve 11 lineas y mata el test de las citas vivas, luego no mide la celda (d))",
+      "nota_ronda_6": "La MISMA receta migrada de M-121 pero con el mismo numero de lineas: asi se mide la celda (D1-ter)(d) y no el desplazamiento de las citas."
+    },
+    {
+      "id": "M-979a",
+      "asa": "test_no_system_process_is_killable",
+      "motivo": "Todos los procesos de sistema vivos deberian contar como omitidos",
+      "mutacion": {
+        "fichero": "src/woptimizer/services/process_service.py",
+        "linea": 637,
+        "original": "                    if (self.is_system_protected(name)\n                            or self.is_system_protected(os.path.basename(exe))):\n                        skipped += 1\n                        continue\n",
+        "sustituto": "                    if (self.is_system_protected(name)\n                            or self.is_system_protected(os.path.basename(exe))):\n                        continue\n                        skipped += 1  # MUTANTE 979-a: el += quedo debajo del continue\n"
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "propio (commit 9798402)",
+      "nota_ronda_6": "El blindaje sigue SIN MATAR nada (el `continue` sigue antes), pero deja de CONTAR lo que omite: el `+=` quedo debajo del `continue`."
+    },
+    {
+      "id": "M-979b",
+      "asa": "test_no_system_process_is_killable",
+      "motivo": "Todos los procesos de sistema vivos deberian contar como omitidos",
+      "mutacion": {
+        "fichero": "src/woptimizer/services/process_service.py",
+        "linea": 624,
+        "original": "        apps_lower = [a.lower() for a in apps]\n\n        for proc in psutil.process_iter(['name', 'exe']):\n            try:\n                info = proc.info\n                name = (info.get('name') or '').lower()\n                exe = (info.get('exe') or '').lower()\n\n                if name in apps_lower or exe in apps_lower:\n                    # TASK-024: blindaje tambien en la via de packs. El pack lo\n                    # escribe el usuario a mano, asi que no basta con lo que\n                    # muestra la lista de la UI: aqui se cuenta como omitido y\n                    # no se toca el proceso.\n                    if (self.is_system_protected(name)\n                            or self.is_system_protected(os.path.basename(exe))):\n                        skipped += 1\n                        continue\n",
+        "sustituto": "        apps_lower = [a.lower() for a in apps]\n        _contados = set()  # MUTANTE 979-b2: el blindaje cuenta POR NOMBRE\n\n        for proc in psutil.process_iter(['name', 'exe']):\n            try:\n                info = proc.info\n                name = (info.get('name') or '').lower()\n                exe = (info.get('exe') or '').lower()\n\n                if name in apps_lower or exe in apps_lower:\n                    # TASK-024: blindaje tambien en la via de packs. El pack lo\n                    # escribe el usuario a mano, asi que no basta con lo que\n                    # muestra la lista de la UI: aqui se cuenta como omitido y\n                    # no se toca el proceso.\n                    if (self.is_system_protected(name)\n                            or self.is_system_protected(os.path.basename(exe))):\n                        if name not in _contados:  # MUTANTE 979-b2\n                            _contados.add(name)\n                            skipped += 1\n                        continue\n"
+      },
+      "sha_arbol_auditado": "0f654fc6c79236a95aea5746e84f25f6bedb2386",
+      "origen": "propio (commit 9798402)",
+      "nota_ronda_6": "El blindaje cuenta UNA VEZ POR NOMBRE en vez de por instancia. Es el mutante que la asercion por PROPIEDAD (`s == len(vivos)`) distingue de la asercion por INSTANCIAS (`s == 2`) SOLO cuando el host tiene mas de dos procesos de sistema vivos: MEDIDO en este host, hay 2 (1 lsass + 1 winlogon), luego aqui NO se distinguen."
+    }
+  ]
+}
