@@ -1,9 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_a\run_tests.py", line 33095, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 33240, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_a\run_tests.py", line 23975, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 23975, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     assert not errores_reales, (
            ^^^^^^^^^^^^^^^^^^
 AssertionError: el catalogo REAL del repo tiene que pasar el gate con 0 FAIL: acuso ["mutaciones.json: el mutante M-121 declara `mutacion.fichero` = 'src/woptimizer/NO_EXISTE.py' y ese fichero NO EXISTE en el arbol (o se sale de el). Una mutacion que apunta a un fichero que no existe NO es una mutacion: es la DECLARACION de una mutacion"]. O la migracion de un mutante real esta rota, o el gate es mas estricto que lo que el repo declara (y entonces el gate esta midiendo algo que nadie pidio)

@@ -1,9 +1,9 @@
-# Ronda 6 — Auditoría de mutación: el gate que lee la mutación (TASK-091) y el guard anti-apagón (TASK-093)
+# Ronda 6 (commiteada en `0894e5c`) — el gate que lee la mutación (TASK-091) y el guard anti-apagón (TASK-093)
 
 **Ciclo:** 72 · **Rama:** `beta` · **Auditor:** `mutation-auditor` (Sherlock)
 **Árbol auditado:** `0f654fc6c79236a95aea5746e84f25f6bedb2386` (311 ficheros; el commit de la cámara desechable)
 **Base VERDE NATIVA:** `rc=0`, última línea `ALL TESTS PASSED.`, 365,5 s, y el guard anti-apagón con `55 fichero(s) .py vigilados, 0 vias de apagado y 0 de simulacion de entrada`.
-**VERDICT: FAIL** — el fix de TASK-091 está sólido (12 MUERTO, 1 NO MEDIDO y 2 SOBREVIVIENTE de 15 mutantes canonicos), **pero el guard nuevo de TASK-093 se puede desconectar en silencio** (5 supervivientes EN SEGURIDAD, medidos fuera del veredicto canonico) y el veredicto canonico no es capaz de expresar su muerte.
+**VERDICT de la ronda 6: FAIL** — el fix de TASK-091 está sólido (12 MUERTO, 1 NO MEDIDO y 2 SOBREVIVIENTE de 15 mutantes canonicos), **pero el guard nuevo de TASK-093 se puede desconectar en silencio** (5 supervivientes EN SEGURIDAD, medidos fuera del veredicto canonico) y el veredicto canonico no es capaz de expresar su muerte.
 
 ---
 
@@ -186,23 +186,27 @@ Yo, el auditor, escribi **siete** scripts de sondeo (`probe_journal.py`, `probe_
 
 ## 11. Bloque de maquina
 
-<!-- WOPT_VEREDICTOS -->
-WOPT_VEREDICTO M-H1 MUERTO 0f654fc6c79236a95aea5746e84f25f6bedb2386
-WOPT_VEREDICTO M-H2 MUERTO 0f654fc6c79236a95aea5746e84f25f6bedb2386
-WOPT_VEREDICTO M-H3 MUERTO 0f654fc6c79236a95aea5746e84f25f6bedb2386
-WOPT_VEREDICTO M-H4 MUERTO 0f654fc6c79236a95aea5746e84f25f6bedb2386
-WOPT_VEREDICTO M-92 MUERTO 0f654fc6c79236a95aea5746e84f25f6bedb2386
-WOPT_VEREDICTO M-H6 MUERTO 0f654fc6c79236a95aea5746e84f25f6bedb2386
-WOPT_VEREDICTO M-H7 MUERTO 0f654fc6c79236a95aea5746e84f25f6bedb2386
-WOPT_VEREDICTO M-H8 MUERTO 0f654fc6c79236a95aea5746e84f25f6bedb2386
-WOPT_VEREDICTO M-H9 MUERTO 0f654fc6c79236a95aea5746e84f25f6bedb2386
-WOPT_VEREDICTO M-90 MUERTO 0f654fc6c79236a95aea5746e84f25f6bedb2386
-WOPT_VEREDICTO M-94 MUERTO 0f654fc6c79236a95aea5746e84f25f6bedb2386
-WOPT_VEREDICTO M-121-r6 NO MEDIDO 0f654fc6c79236a95aea5746e84f25f6bedb2386
-WOPT_VEREDICTO M-121-b SOBREVIVIENTE 0f654fc6c79236a95aea5746e84f25f6bedb2386
-WOPT_VEREDICTO M-979a MUERTO 0f654fc6c79236a95aea5746e84f25f6bedb2386
-WOPT_VEREDICTO M-979b SOBREVIVIENTE 0f654fc6c79236a95aea5746e84f25f6bedb2386
-<!-- /WOPT_VEREDICTOS -->
+### El bloque de maquina de la ronda 6 (estado en `0894e5c`)
+
+El gate compara el CONJUNTO de lineas canonicas del informe con el del journal (`del_informe != del_journal` -> FAIL), luego en este fichero solo puede haber UN bloque canonico: el de la ronda vigente (abajo, seccion 8). El de la ronda 6 se conserva aqui como tabla y en el historial (`git show 0894e5c:openspec/changes/2026-10-23-el-gate-lee-la-mutacion/mutation-report.md`).
+
+| Mutante | Estado en la ronda 6 | sha del arbol auditado |
+|---|---|---|
+| M-H1 | MUERTO | `0f654fc6c79236a95aea5746e84f25f6bedb2386` |
+| M-H2 | MUERTO | `0f654fc6c79236a95aea5746e84f25f6bedb2386` |
+| M-H3 | MUERTO | `0f654fc6c79236a95aea5746e84f25f6bedb2386` |
+| M-H4 | MUERTO | `0f654fc6c79236a95aea5746e84f25f6bedb2386` |
+| M-92 | MUERTO | `0f654fc6c79236a95aea5746e84f25f6bedb2386` |
+| M-H6 | MUERTO | `0f654fc6c79236a95aea5746e84f25f6bedb2386` |
+| M-H7 | MUERTO | `0f654fc6c79236a95aea5746e84f25f6bedb2386` |
+| M-H8 | MUERTO | `0f654fc6c79236a95aea5746e84f25f6bedb2386` |
+| M-H9 | MUERTO | `0f654fc6c79236a95aea5746e84f25f6bedb2386` |
+| M-90 | MUERTO | `0f654fc6c79236a95aea5746e84f25f6bedb2386` |
+| M-94 | MUERTO | `0f654fc6c79236a95aea5746e84f25f6bedb2386` |
+| M-121-b | SOBREVIVIENTE | `0f654fc6c79236a95aea5746e84f25f6bedb2386` |
+| M-979a | MUERTO | `0f654fc6c79236a95aea5746e84f25f6bedb2386` |
+| M-979b | SOBREVIVIENTE | `0f654fc6c79236a95aea5746e84f25f6bedb2386` |
+
 
 ## 12. VERDICT
 
@@ -212,3 +216,189 @@ WOPT_VEREDICTO M-979b SOBREVIVIENTE 0f654fc6c79236a95aea5746e84f25f6bedb2386
 - **TASK-093 (el guard anti-apagón): FAIL.** Cinco supervivientes, todos en seguridad: el guard puede vigilar cero ficheros sin que nadie lo note, la cuarta via (`taskkill /IM`) no tiene dientes y su contraprueba se puede trivializar. El ciclo **no se cierra** con T-2 abierto.
 - **Dos supervivientes mas, documentados:** `M-121-b` (la celda (D1-ter)(d) no la vigila nadie) y `M-979b` (la asercion por propiedad es indistinguible de la por instancias en un host con 2 procesos de sistema vivos).
 - **Una tarea estructural (T-1):** el veredicto canonico no sabe expresar un guard que no es un `test_*`, y por eso 5 muertes comprobadas del guard quedan NO MEDIDO.
+
+---
+
+# Ronda 7 — Auditoría de mutación: el ARREGLO del guard anti-apagón (TASK-093) y la revalidación del gate que lee la mutación (TASK-091)
+
+**Ciclo:** 72 · **Rama:** `beta` · **Auditor:** `mutation-auditor` (Sherlock)
+**Árbol auditado:** `68b97718fb12636d5d9c7aa7f64f59df8e826d60` (344 ficheros; el commit de la cámara desechable)
+**Base VERDE NATIVA:** `rc=0`, última línea `ALL TESTS PASSED.`, 315,8 s, y el guard anti-apagón con `55 fichero(s) .py vigilados por dos recorridos que coinciden, 0 vias de apagado y 0 de simulacion de entrada`.
+**Encargo:** la ronda 6 (artefactos en `0894e5c`) dio **FAIL** en TASK-093: cinco mutantes del guard anti-apagón sobrevivieron (G-1, G-1b, G-2, G-8, G-9). El orquestador arregló el guard en `0894e5c` y toca **RE-MEDIR**. Nada de esto está cerrado hasta que se mide.
+
+**VERDICT: FAIL (parcial).** Los **cinco** supervivientes de la ronda 6 están **cerrados y medidos MUERTOS**, y TASK-091 sigue en **PASS**. Pero esta ronda ha encontrado un **hueco NUEVO y más estrecho** en el arreglo: el meta-guard que el propio arreglo añadió **vigila la FORMA del texto de la contraprueba, no su semántica** (`G-10` y `G-11` sobreviven, §3.1). Con un superviviente en seguridad abierto, **el ciclo 72 NO se cierra**.
+
+---
+
+## 1. Qué se re-medió
+
+| Fix | Commit | Qué promete |
+|---|---|---|
+| TASK-093 | `0894e5c` | El guard `_la_suite_no_puede_apagar_el_equipo()` **no se puede desconectar en silencio**: el conjunto vigilado se cuenta por DOS recorridos independientes (`os.walk` + `pathlib.rglob`) que tienen que COINCIDIR y no pueden ser cero; la contraprueba interna incluye el caso `taskkill /IM` y exige un **CONJUNTO de etiquetas** (cuatro vías); y un **meta-guard** lee el texto de la propia contraprueba (centinelas con `find`/`rfind`) y exige que siga diciendo lo que dice. |
+| TASK-091 | `54c62a9`, `9798402` | El gate (check 11 de `validate_docs.py`) **lee la `mutacion` del catálogo**: R1 (forma), R2 (el fichero existe y está dentro del árbol), R3 (el `cambio`), R4 (el `ciclo`). Y el blindaje anti-brick se comprueba por la **PROPIEDAD**, no por el número de instancias. |
+
+**Lo que NO se auditó** (y por qué): el recuento de tests (235 = 159 + 76) no se toca; el guard de TASK-093 **no es un `test_*`** (se invoca desde `__main__`, línea 33620), luego no cuenta como test ni como mutante canónico (§6).
+
+## 2. Cómo se midió
+
+- **Cámara desechable** en `%TEMP%\wopt_r7_20261024\cam`, con `git init` PROPIO. El `.git` del repo real es un **FICHERO** (57 bytes, gitlink a `%LOCALAPPDATA%`), y el árbol se puebla con `git archive` del GIT_DIR desacoplado, **sin copiar ficheros del VFS** (T-6: la copia desde Nextcloud pierde ficheros). MEDIDO: 344 ficheros declarados = 344 en disco, `git status --porcelain` vacío, `.git` de la cámara = **directorio** (no el fichero-gitlink) y la config de la cámara **no menciona** `woptimizer_git`.
+- **Cada mutación se aplica con un parcheo EXACTO**: si el texto original no aparece el número exacto de veces, el script aborta y la corrida **no cuenta** (una mutación que no se aplica mide otra cosa). Las 29 recetas se ensayaron antes de correr: **todas aplican**.
+- **`__pycache__` purgado entre mutaciones** (un `.pyc` obsoleto puede cambiar el veredicto).
+- **El `rc` va ARRIBA del log**: la cola que se commitea como evidencia es la del último traceback; si el `rc` quedase al final sería su última línea y **taparía el motivo literal** de la aserción. El `stderr` de este host (el teardown de Tk: `invalid command name ...`) se coloca **delante** del `stdout` en VERDE y **detrás** en ROJO, para que la última línea útil sea la de éxito o la traza.
+- **Base verde antes de mutar**: sin base, un verde de mutante no significa nada.
+- **Carga del host**: las 29 corridas van **secuenciales**, con `stdin=DEVNULL`.
+- **El entorno de medición es parte de la medición**: la fixture del tripwire del sha (`run_tests.py:25361`) **clava el reloj pero no la identidad de git** (T-7). En esta ronda **no se exportó ninguna variable `GIT_*`**: el `rc=0` de la base lo demuestra.
+- **El repo real se movió DURANTE la medición** (el orquestador commiteó `2ab91d0`, el plan del ciclo 73). MEDIDO: `git diff --stat 0894e5c 2ab91d0` toca **solo dos ficheros de documentación** (`proposal.md` y `tasks.md` del cambio nuevo). El **código medido** es el del árbol auditado, y la cámara nunca tocó el repo real.
+
+## 3. La tabla: los cinco supervivientes de la ronda 6, RE-MEDIDOS
+
+| Mutante | Que rompe | Veredicto | Motivo literal medido |
+|---|---|---|---|
+| **G-1** | el conjunto de ficheros vigilados se vacia (`raiz` apunta a un arbol que no existe) | **MUERTO** | la suite se puso ROJO en el guard (fuera del veredicto canonico: no es un `test_*`); motivo literal: AssertionError: TASK-093: el guard NO ha vigilado ningun fichero: si el conjunto vigilado puede quedar vacio, el guard puede vigilar CERO ficheros sin que nada se entere (mutantes G-1 y G-1b). |
+| **G-1b** | el `os.walk` se rompe (`for ... in ()`) | **MUERTO** | la suite se puso ROJO en el guard (fuera del veredicto canonico: no es un `test_*`); motivo literal: AssertionError: TASK-093: el guard NO ha vigilado ningun fichero: si el conjunto vigilado puede quedar vacio, el guard puede vigilar CERO ficheros sin que nada se entere (mutantes G-1 y G-1b). |
+| **G-1b-func** | el recorrido se vacia SIN tocar el texto que vigila el meta-guard (la asercion `vistos > 0`, no la de forma) | **MUERTO** | la suite se puso ROJO en el guard (fuera del veredicto canonico: no es un `test_*`); motivo literal: AssertionError: TASK-093: el guard NO ha vigilado ningun fichero: si el conjunto vigilado puede quedar vacio, el guard puede vigilar CERO ficheros sin que nada se entere (mutantes G-1 y G-1b). |
+| **G-2** | se borra la regla del `taskkill` POR NOMBRE (`/IM`) | **MUERTO** | la suite se puso ROJO en el guard (fuera del veredicto canonico: no es un `test_*`); motivo literal: AssertionError: TASK-093: el detector tiene que marcar las CUATRO vias de la contraprueba (el apagado por lanzador, la llamada directa a la API, la importacion de raton y el taskkill POR NOMBRE) y NO el taskkill por PID propio. Marcadas ['importacion_de_simulacion_de_entrada', 'lanzador_con_argumento_de_apagado', 'llamada_directa_a_la_api'] y esperadas ['importacion_de_simulacion_de_entrada', 'lanzador_con_argumento_de_apagado', 'llamada_directa_a_la_api', 'taskkill_por_nombre'] |
+| **G-8** | la contraprueba deja de exigir el CONJUNTO de etiquetas (`etiquetas == ESPERADAS` -> `len >= 1`) | **MUERTO** | la suite se puso ROJO en el guard (fuera del veredicto canonico: no es un `test_*`); motivo literal: AssertionError: TASK-093: la CONTRAPROUEBA ya no dice 'etiquetas == ESPERADAS': alguien la ha trivializerizado (contar menos, o borrar el bucle de motivos) y la suite se quedaria en VERDE. Es lo que encontraron los mutantes G-8 y G-9. |
+| **G-9** | la contraprueba se trivializa (cuenta `>= 1` **y** se borra el bucle de motivos) | **MUERTO** | la suite se puso ROJO en el guard (fuera del veredicto canonico: no es un `test_*`); motivo literal: AssertionError: TASK-093: la CONTRAPROUEBA ya no dice 'etiquetas == ESPERADAS': alguien la ha trivializerizado (contar menos, o borrar el bucle de motivos) y la suite se quedaria en VERDE. Es lo que encontraron los mutantes G-8 y G-9. |
+| **G-9b** | SOLO se borra el bucle de motivos (aisla el segundo diente del meta-guard) | **MUERTO** | la suite se puso ROJO en el guard (fuera del veredicto canonico: no es un `test_*`); motivo literal: AssertionError: TASK-093: la CONTRAPROUEBA ya no dice '"un lanzador de procesos con el argumento"': alguien la ha trivializerizado (contar menos, o borrar el bucle de motivos) y la suite se quedaria en VERDE. Es lo que encontraron los mutantes G-8 y G-9. |
+| **G-10** | la asercion del CONJUNTO de etiquetas se neutra (`or True`) y se conservan los literales | **SOBREVIVIENTE** | la suite termino en VERDE (rc=0, 'ALL TESTS PASSED.' como ultima linea) |
+| **G-11** | la asercion del CONJUNTO se neutra Y el bucle de motivos deja de COMPROBAR (conservando sus literales) | **SOBREVIVIENTE** | la suite termino en VERDE (rc=0, 'ALL TESTS PASSED.' como ultima linea) |
+| **G-3** | el detector deja de mirar los lanzadores de procesos | **MUERTO** | la suite se puso ROJO en el guard (fuera del veredicto canonico: no es un `test_*`); motivo literal: AssertionError: TASK-093: el detector tiene que marcar las CUATRO vias de la contraprueba (el apagado por lanzador, la llamada directa a la API, la importacion de raton y el taskkill POR NOMBRE) y NO el taskkill por PID propio. Marcadas ['importacion_de_simulacion_de_entrada', 'llamada_directa_a_la_api'] y esperadas ['importacion_de_simulacion_de_entrada', 'lanzador_con_argumento_de_apagado', 'llamada_directa_a_la_api', 'taskkill_por_nombre'] |
+| **G-4** | el detector deja de mirar la llamada directa a la API de energia | **MUERTO** | la suite se puso ROJO en el guard (fuera del veredicto canonico: no es un `test_*`); motivo literal: AssertionError: TASK-093: el detector tiene que marcar las CUATRO vias de la contraprueba (el apagado por lanzador, la llamada directa a la API, la importacion de raton y el taskkill POR NOMBRE) y NO el taskkill por PID propio. Marcadas ['importacion_de_simulacion_de_entrada', 'lanzador_con_argumento_de_apagado', 'taskkill_por_nombre'] y esperadas ['importacion_de_simulacion_de_entrada', 'lanzador_con_argumento_de_apagado', 'llamada_directa_a_la_api', 'taskkill_por_nombre'] |
+| **G-5** | el detector deja de mirar la importacion de simulacion de entrada | **MUERTO** | la suite se puso ROJO en el guard (fuera del veredicto canonico: no es un `test_*`); motivo literal: AssertionError: TASK-093: el detector tiene que marcar las CUATRO vias de la contraprueba (el apagado por lanzador, la llamada directa a la API, la importacion de raton y el taskkill POR NOMBRE) y NO el taskkill por PID propio. Marcadas ['lanzador_con_argumento_de_apagado', 'llamada_directa_a_la_api', 'taskkill_por_nombre'] y esperadas ['importacion_de_simulacion_de_entrada', 'lanzador_con_argumento_de_apagado', 'llamada_directa_a_la_api', 'taskkill_por_nombre'] |
+| **G-6** | el detector marca tambien el taskkill por PID PROPIO (el caso legitimo) | **MUERTO** | la suite se puso ROJO en el guard (fuera del veredicto canonico: no es un `test_*`); motivo literal: AssertionError: TASK-093: el taskkill por PID PROPIO es legitimo (las utilidades matan SU propio hijo) y NO puede marcar, y el case '/IM' tiene que marcar UNA vez. Marcados 2: ['taskkill POR NOMBRE (/IM): matar al lsass o al winlogon APAGA el Windows', 'taskkill POR NOMBRE (/IM): matar al lsass o al winlogon APAGA el Windows'] |
+| **G-7** | la auto-exclusion del guard se acorta (el `rfind` pasa a `find`) | **MUERTO** | la suite se puso ROJO en el guard (fuera del veredicto canonico: no es un `test_*`); motivo literal: AssertionError: TASK-093: hay una via de APAGADO o de SIMULACION DE ENTRADA en el repo. Infracciones: [('run_tests.py', 32892, 'lanzador_con_argumento_de_apagado', "un lanzador de procesos con el argumento 'shutdown'"), ('run_tests.py', 32892, 'taskkill_por_nombre', 'taskkill POR NOMBRE (/IM): matar al lsass o al winlogon APAGA el Windows'), ('run_tests.py', 32894, 'lanzador_con_argumento_de_apagado', "un lanzador de procesos con el argumento 'powercfg'"), ('run_tests.py', 32894, 'taskkill_por_nombre', 'taskkill POR NOMBRE (/IM): matar al lsass o al winlogon APAGA el Windows'), ('run_tests.py', 32898, 'taskkill_por_nombre', 'taskkill POR NOMBRE (/IM): matar al lsass o al winlogon APAGA el Windows'), ('run_tests.py', 32896, 'llamada_directa_a_la_api', 'una llamada directa a la API de energia')]. El equipo del dueno se ha apagado DOS veces con el motor de I+D corriendo de noche; ninguna via de esas puede quedarse aqui. |
+
+### 3.1 El hallazgo NUEVO de esta ronda: el meta-guard vigila la FORMA del texto, no su SEMÁNTICA
+
+El arreglo de la ronda 6 añadió un **meta-guard** que lee el texto de la propia contraprueba (delimitado por centinelas) y exige que siga diciendo lo que dice. **MEDIDO: eso vigila la PRESENCIA de los literales, no que las aserciones se EXECUTEN.** Dos recetas lo demuestran:
+
+- **`G-10`** (una sola edición): `assert etiquetas == ESPERADAS, (` → `assert etiquetas == ESPERADAS or True, (`. Los literales siguen en el texto (el meta-guard no se entera) y la aserción del conjunto de etiquetas deja de comprobar. **La suite termina en VERDE** (`ALL TESTS PASSED.`). La consecuencia es **menor**: el bucle de motivaciones sigue exigiendo las cuatro motivaciones, luego las cuatro vías siguen vigiladas por el otro camino.
+- **`G-11`** (dos ediciones coordinadas, conservando los literales): la aserción del conjunto se neutra **y** el bucle de motivos pasa a `pass` **conservando su tupla de literales**. El meta-guard ve los literales y no dice nada. **La suite termina en VERDE.** La consecuencia es **REAL**: las tres vías (lanzador, API de energía, simulación de entrada) podrían dejar de detectarse sin que la suite se entere; solo la cuarta (`taskkill /IM`) seguiría vigilada por el `assert len(marks_taskkill) == 1`, que `G-11` no toca.
+
+**Lo que hay que arreglar** (no lo arreglo yo: es de `openspec-dev`): el meta-guard tiene que **fijar el texto EXACTO de las aserciones**, no fragmentos. Hoy exige `"assert etiquetas == ESPERADAS"`; si exigiera `"assert etiquetas == ESPERADAS, ("` (con la coma y el paréntesis) la receta de `G-10` no casaría, y exigir `"assert esperado in motivos, ("` cerraría la de `G-11`. La alternativa más fuerte (y la que este repo ya usa en el guard (B) del check 11) es un **meta-meta-guard**: que el propio guard compruebe que su texto, al que se le neutra la aserción, **deja de ser aceptado** por su propio meta-guard.
+
+### 3.2 Lo que el arreglo SÍ ha cerrado (medido)
+
+- **El guard ya no se puede desconectar en silencio**: `G-1` (el conjunto vigilado vacío) y `G-1b` (el `os.walk` roto) mueren por la aserción `vistos > 0`. Se midió además una **tercera variante** (`G-1b-func`) que rompe el recorrido **sin tocar el texto que vigila el meta-guard**: también muere por `vistos > 0`, luego elArrange no es solo de forma.
+- **La cuarta vía (`taskkill /IM`) ya tiene dientes**: `G-2` (se borra la regla del `/IM`) muere por la aserción de las cuatro vías, que ahora es un **conjunto de etiquetas** y no un número.
+- **La contraprueba ya no se puede trivializar borrando sus textos**: `G-8` (se exige `>= 1` en vez del conjunto) y `G-9` (se exige `>= 1` **y** se borra el bucle de motivos) mueren por el meta-guard; `G-9b` (solo se borra el bucle) muere por el **segundo** diente del meta-guard (los cuatro literales de motivaciones).
+- **Los dientes del detector siguen vivos** (re-medidos en esta ronda, recetas reconstruidas): `G-3` (deja de mirar los lanzadores), `G-4` (deja de mirar la llamada directa a la API), `G-5` (deja de mirar la importación de simulación de entrada), `G-6` (marca el `taskkill` por PID propio, que es legítimo) y `G-7` (la auto-exclusión se acorta y el guard se acusa a sí mismo). Los cinco mueren con su motivo literal.
+
+## 4. La tabla: los quince del catálogo, revalidados sobre el árbol nuevo
+
+| Mutante | Que rompe | Veredicto | Motivo literal medido |
+|---|---|---|---|
+| **M-H1** | el gate NO comprueba R1 (la FORMA de la `mutacion`) | **MUERTO** | murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion; motivo literal: EL GATE NO LEE LA MUTACION |
+| **M-H2** | el gate NO comprueba R2 (que el fichero declarado EXISTA) | **MUERTO** | murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion; motivo literal: EL GATE NO LEE LA MUTACION |
+| **M-H3** | el gate NO comprueba R3 (el `cambio` del catalogo) | **MUERTO** | murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion; motivo literal: EL GATE NO LEE LA MUTACION |
+| **M-H4** | el gate NO comprueba R4 (el `ciclo` del catalogo) | **MUERTO** | murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion; motivo literal: EL GATE NO LEE LA MUTACION |
+| **M-92** | el gate mira SOLO el primer mutante del catalogo | **MUERTO** | murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion; motivo literal: EL GATE NO DISTINGUE |
+| **M-H6** | el gate ACUSA en lo que no puede | **MUERTO** | murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion; motivo literal: EL GATE ACUSA EN LO QUE NO PUEDE |
+| **M-H7** | el limite (g) se borra del bloque canonico del gate | **MUERTO** | murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion; motivo literal: AssertionError: el limite (g) tiene que decir el COSTE MEDIDO de comprobar el texto declarado (62,3 ms): un limite sin motivo medido es una opinion |
+| **M-H8** | el limite (g) deja de decir QUE es lo que no se comprueba | **MUERTO** | murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion; motivo literal: AssertionError: el limite (g) tiene que decir QUE es lo que NO se comprueba: el TEXTO declarado, no la DECLARACION |
+| **M-H9** | la migracion de M-121 (el catalogo real) se rompe | **MUERTO** | murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion; motivo literal: AssertionError: el catalogo REAL del repo tiene que pasar el gate con 0 FAIL: acuso ["mutaciones.json: el mutante M-121 declara `mutacion.fichero` = 'src/woptimizer/NO_EXISTE.py' y ese fichero NO EXISTE en el arbol (o se sale de el). Una mutacion que apunta a un fichero que no existe NO es una mutacion: es la DECLARACION de una mutacion"]. O la migracion de un mutante real esta rota, o el gate es mas estricto que lo que el repo declara (y entonces el gate esta midiendo algo que nadie pidio) |
+| **M-90** | el cuerpo del gate se vacia (solo queda el REGISTRO) | **MUERTO** | murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion; motivo literal: EL GATE NO DISTINGUE |
+| **M-94** | el gate se salta el PRIMER mutante del catalogo | **MUERTO** | murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion; motivo literal: EL GATE NO DISTINGUE |
+| **M-121-r6** | la celda (D1-ter)(d) y la asercion de 'entradas cubiertas' se neutralizan (receta migrada, 12 lineas -> 1) | **NO MEDIDO** | murio `test_las_citas_de_sandbox_rules_siguen_siendo_ciertas` y **NO** el `asa` declarada: motivo literal: AssertionError: run_tests.py:24785 ya no cita `sandbox-rules.md:55-56`: es una de las cuatro afirmaciones que atan la tabla al numero de linea |
+| **M-121-b** | la MISMA receta migrada, con desplazamiento CERO (12 lineas -> 12) | **SOBREVIVIENTE** | la suite termino en VERDE (rc=0, 'ALL TESTS PASSED.' como ultima linea) |
+| **M-979a** | el blindaje deja de CONTAR los procesos de sistema que omite (el `+=` quedo debajo del `continue`) | **MUERTO** | murio `test_no_system_process_is_killable` por su asercion; motivo literal: AssertionError: Todos los procesos de sistema vivos deberian contar como omitidos: s=0, vivos=2 |
+| **M-979b** | el blindaje cuenta POR NOMBRE y no por instancia | **SOBREVIVIENTE** | la suite termino en VERDE (rc=0, 'ALL TESTS PASSED.' como ultima linea) |
+
+### 4.1 El catálogo: qué se actualizó y por qué NO hay identificadores nuevos
+
+- **Los 15 identificadores de la ronda 6 se CONSERVAN** (`M-H1`, `M-H2`, `M-H3`, `M-H4`, `M-92`, `M-H6`, `M-H7`, `M-H8`, `M-H9`, `M-90`, `M-94`, `M-121-r6`, `M-121-b`, `M-979a`, `M-979b`): el gate lleva **un único estado por identificador** y su historia está en git (`0894e5c`). Lo que cambia es su **estado**, su **sha del árbol auditado** y la **nota de esta ronda**.
+- **NO se han añadido identificadores nuevos** al catálogo canónico, y la razón es **MEDIDA, no de estilo**: los mutantes nuevos de esta ronda (`G-1b-func`, `G-9b`, `G-10`, `G-11`, `G-3`..`G-7`) son **del guard**, y el gate **rechaza** un `asa` que no sea un `test_*` (§6). Declararlos en el catálogo haría que el **validador entero** fallara con *"NO es un test definido en run_tests.py"*. Quedan **fuera** del veredicto canónico, con su veredicto literal, su motivo literal medido y su evidencia en `evidencia/<mutante>-r7.cola` (la de la ronda 6 sigue viva en `evidencia/<mutante>.cola`).
+- **`M-H9` sí ha cambiado de receta** (y se declara): el ancla de la ronda 6 (`"fichero": "run_tests.py"`) aparece **CUATRO** veces en el catálogo del ciclo 71, luego la receta se acota con el contexto de la entrada `M-121` (la que declara la migración que R2 tiene que vigilar). Se declara el ancla **real** que se aplicó.
+
+## 5. Las tres deudas de medición
+
+| Deuda | Mutante | Veredicto | Motivo literal medido | Qué falta |
+|---|---|---|---|---|
+| **T-3** | `M-121-b` | **SOBREVIVIENTE** | la suite termina en VERDE (`rc=0`, `ALL TESTS PASSED.`) con la celda (D1-ter)(d) y la aserción de `entradas cubiertas` neutralizadas (12 líneas → 12, **desplazamiento CERO**) | un meta-guard que compruebe que la celda EXISTE y que se USA (§5.1) |
+| **T-4** | `M-979b` | **SOBREVIVIENTE** | la suite termina en VERDE (`rc=0`, `ALL TESTS PASSED.`): en este host el blindaje que cuenta por NOMBRE cuenta lo mismo que el que cuenta por INSTANCIA (2 vivos, 2 nombres distintos) | afirmar la propiedad **por PID**; la diferencia real está medida en aislamiento: 2 contra 1 (§5.3) |
+| **T-5** | `M-121-r6` | **NO MEDIDO** | `AssertionError: run_tests.py:24785 ya no cita 'sandbox-rules.md:55-56': es una de las cuatro afirmaciones que atan la tabla al numero de linea` — murió `test_las_citas_de_sandbox_rules_siguen_siendo_ciertas` y **no** el `asa` declarada | la receta es **no medible** en el veredicto canónico (desplaza 11 líneas); la pregunta de fondo ya tiene respuesta medida: `M-121-b` SOBREVIVIENTE (§5.2) |
+
+### 5.1 T-3 (`M-121-b`): la celda (D1-ter)(d) sigue sin dientes — **SOBREVIVIENTE, MEDIDO DE NUEVO**
+
+La receta migrada de M-121 neutraliza la celda (D1-ter)(d) —la que exige que la entrada del journal **en el límite** (el ciclo 70, el origen del contrato) se re-derive— y la aserción de `entradas cubiertas`. Aplicada **sin desplazamiento** (12 líneas por 12), la suite queda **VERDE**: nadie vigila que esa celda se neutralice. Es la **misma** celda que el gate afirma vigilar en su propio corpus (`R2`), luego el hueco no es del gate: es de la suite que lo mira.
+
+**Arreglo que necesita** (no lo arreglo yo): una celda (o un `test_*`) que compruebe que la celda (D1-ter)(d) **EXISTE** y que la aserción de `entradas cubiertas` **se usa**. Es el mismo patrón que ya usa el guard (B) con los límites (a)..(g) del gate.
+
+### 5.2 T-5 (`M-121-r6`): la receta **no es medible** en el veredicto canónico, y la pregunta ya tiene respuesta
+
+La receta **tal como está declarada** (12 líneas → 1) **desplaza 11 líneas**, y al desplazar mueve la cita viva `run_tests.py:24785`: la suite se pone ROJO, pero muere `test_las_citas_de_sandbox_rules_siguen_siendo_ciertas` y **no** el `asa` declarada → **NO MEDIDO**. Es un defecto **de la receta** (un hecho del mutante), no del código.
+
+La pregunta de fondo ("¿tiene dientes la celda (D1-ter)(d)?") **ya tiene respuesta medida**: la variante de **desplazamiento CERO** (`M-121-b`) **sobrevive** (§5.1). O sea que la celda **no** tiene dientes, tanto si se desplaza como si no. Lo que queda abierto de T-5 es el **defecto de la receta**, que hay que arreglar en el catálogo (una receta que desplaza líneas no puede medir una celda), no en el código.
+
+### 5.3 T-4 (`M-979b`): la diferencia ES real, y queda said su magnitud — MEDIDO en aislamiento
+
+La ronda 6 dijo: "en este host hay 2 procesos de sistema vivos, no 3, luego la aserción por PROPIEDAD y la por INSTANCIAS **no se distinguen**". Eso es cierto **como aserción**, pero no dice si la diferencia es real o no. Esta ronda la ha medido **en aislamiento**, sin escribir un test que asuma un número fijo de instancias:
+
+- **Sonda:** dos procesos SINTÉTICOS con el MISMO nombre (`lsass.exe`, PIDs 4242 y 4243), con `psutil.process_iter` parcheado en la cámara. El número de instancias lo pone la sonda, no el host.
+- **Código REAL (cuenta por instancia):** `skipped = 2`.
+- **MUTANTE `M-979b` (cuenta por NOMBRE):** `skipped = 1`.
+
+**La diferencia es REAL y vale 1 omisión por cada nombre duplicado.** El hueco del test no es teórico: un blindaje que cuenta por nombre **deja de avisar** de un `lsass.exe` duplicado. Y en este host, MEDIDO: hay **2** procesos de sistema vivos (`lsass.exe` PID 1632 y `winlogon.exe` PID 1592) con **2 nombres DISTINTOS**, luego **aquí** el mutante cuenta lo mismo que el código real (2 = 2) y la aserción `s == len(vivos)` no lo distingue: por eso `M-979b` **sobrevive** en este host.
+
+**Lo que hay que arreglar** (no lo arreglo yo: es de `openspec-dev`): el test debe afirmar la propiedad por **PID**, no por número de procesos: que el blindaje salte **cada** proceso de sistema vivo **por su PID** (contando PIDs omitidos, no nombres). Con eso, el hueco se cierra en cualquier host, incluido este.
+
+**Y lo que NO hay que escribir** (regla del repo): un test que asuma "3 procesos de sistema" o "s == 2". En este host son 2, y en otro podrían ser 1 o 5: el número de instancias **no es un contrato**.
+
+## 6. El guard anti-apagón: por qué sigue FUERA del veredicto canónico (T-1, declarado y NO arreglado)
+
+El encargo de esta ronda dice que T-1 está **declarado y no lo arregles**: pero que lo midas y lo documente. MEDIDO:
+
+- El gate (check 11 de `validate_docs.py`) exige que el `asa` declarada sea **un `test_*` DEFINIDO en `run_tests.py`**: `validate_docs.py:3521` (`if asa not in definidos:` → *"el asa declarada por {id} (`{asa}`) NO es un test definido en run_tests.py"*), y `definidos` sale de `_tests_definidos(root)`, que son **las funciones de módulo cuyo nombre empieza por `test_`**.
+- El guard `_la_suite_no_puede_apagar_el_equipo()` **no** es un `test_*` **a propósito**: el recuento de tests es un contrato escrito a mano en cinco sitios (**235 = 159 + 76**) y el guard se invoca desde `__main__` (línea 33620), luego no cuenta como test.
+- **CONSECUENCIA MEDIDA en esta ronda:** los mutantes del guard **no pueden entrar en el catálogo canónico**. Declararlos ahí (con `asa` = el nombre del guard) haría que el **validador entero** fallara. Por eso se miden **fuera** del veredicto canónico, con su veredicto literal y su motivo literal medido, y su evidencia vive en `evidencia/<mutante>-r7.cola`.
+- **Y el hueco del contrato sigue abierto:** con el contrato actual, un guard **con dientes** no puede tener veredicto canónico (su muerte queda NO MEDIDO porque la cola no tiene el frame de un `test_*`), y un guard **sin dientes** tampoco puede declararse sin inventar el `asa`.
+
+**T-1 (medido, no arreglado):** el veredicto canónico necesita una cuarta vía para los guards que no son tests (por ejemplo: que el `asa` pueda ser el nombre de un guard declarado, con su propia lista de frames válidos, como ya se hace con los `test_*`). En esta ronda: **14 mutantes del guard** con veredicto literal medido (5 de ellos los que la ronda 6 dejó sobrevivir) y **0** de ellos con veredicto canónico posible.
+
+## 7. Qué queda encolado
+
+| # | Qué queda | Métrica (medida, no opinada) |
+|---|---|---|
+| **T-1** | El veredicto canónico no puede expresar un guard que no es `test_*` | 14 mutantes del guard medidos **fuera** del veredicto canónico en esta ronda (5 de ellos los que la ronda 6 dejó sobrevivir), con su motivo literal. El gate lo impide: `validate_docs.py:3521` + `_tests_definidos` (solo `test_*` de módulo). **NO arreglado en esta ronda** (lo declara el encargo): es un hueco del CONTRATO, no del código. |
+| **T-8 (NUEVA)** | El meta-guard del guard anti-apagón **vigila la FORMA del texto de la contraprueba, no su semántica**: comprueba que los literales estén, no que las aserciones se ejecuten | `G-10` **SOBREVIVIENTE** (una edición: `assert etiquetas == ESPERADAS or True`; consecuencia menor: el bucle de motivaciones sigue vigilando las cuatro vías) y `G-11` **SOBREVIVIENTE** (dos ediciones coordinadas que conservan los literales: la contraprueba entera se queda sin dientes y **tres de las cuatro vías podrían dejar de detectarse sin que la suite se entere**). Arreglo: fijar el texto EXACTO de las aserciones (`"assert etiquetas == ESPERADAS, ("`, `"assert esperado in motivos, ("`) o un meta-meta-guard. |
+| **T-3** | La celda (D1-ter)(d) y la aserción de `entradas cubiertas` **no las vigila nadie** | `M-121-b` **SOBREVIVIENTE** (suite VERDE con la celda neutralizada y **desplazamiento CERO**), re-medido en esta ronda. El arreglo que necesita: un meta-guard como el (B) del gate, que compruebe que la celda EXISTE y que se USA. |
+| **T-4** | El blindaje cuenta **POR NOMBRE**, no por instancia | `M-979b` **SOBREVIVIENTE**, re-medido. **Métrica nueva de esta ronda:** con dos instancias del MISMO nombre, el código real cuenta **2** y el mutante **1** (gap = **1 omisión por nombre duplicado**); en este host hay **2** vivos (`lsass.exe` PID 1632, `winlogon.exe` PID 1592) con **2 nombres distintos**, luego aquí son indistinguibles. Arreglo: afirmar la propiedad **por PID**. |
+| **T-5** | La receta migrada de M-121 **desplaza 11 líneas** y no se puede re-medir en el veredicto canónico | `M-121-r6` **NO MEDIDO** (muere `test_las_citas_de_sandbox_rules_siguen_siendo_ciertas`, no el `asa` declarada) y `M-121-b` (desplazamiento CERO) **SOBREVIVIENTE**: o sea que la PREGUNTA de T-5 ("¿tiene dientes la celda?") **ya tiene respuesta: NO**. Lo que queda es el defecto de la receta, que es un hecho del mutante, no del código. |
+| **T-6** | Copiar el repo desde el VFS a `%TEMP%` pierde ficheros | **ELUDIDA en esta ronda**: el árbol se pobló con `git archive` del GIT_DIR desacoplado (sin copiar ficheros). MEDIDO: 344 ficheros declarados = 344 en disco, `git status --porcelain` vacío. La deuda sigue viva para quien copie ficheros. |
+| **T-7** | La fixture del tripwire del sha clava el reloj pero **no la identidad de git** | **ELUDIDA en esta ronda**: no se exportó ninguna variable `GIT_*` (la base sale `rc=0`). La deuda sigue viva: la fixture debería clavar `GIT_AUTHOR_*`/`GIT_COMMITTER_*` igual que clava la fecha. |
+
+## 8. Bloque de máquina
+
+<!-- WOPT_VEREDICTOS -->
+WOPT_VEREDICTO M-H1 MUERTO 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+WOPT_VEREDICTO M-H2 MUERTO 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+WOPT_VEREDICTO M-H3 MUERTO 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+WOPT_VEREDICTO M-H4 MUERTO 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+WOPT_VEREDICTO M-92 MUERTO 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+WOPT_VEREDICTO M-H6 MUERTO 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+WOPT_VEREDICTO M-H7 MUERTO 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+WOPT_VEREDICTO M-H8 MUERTO 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+WOPT_VEREDICTO M-H9 MUERTO 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+WOPT_VEREDICTO M-90 MUERTO 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+WOPT_VEREDICTO M-94 MUERTO 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+WOPT_VEREDICTO M-121-r6 NO MEDIDO 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+WOPT_VEREDICTO M-121-b SOBREVIVIENTE 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+WOPT_VEREDICTO M-979a MUERTO 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+WOPT_VEREDICTO M-979b SOBREVIVIENTE 68b97718fb12636d5d9c7aa7f64f59df8e826d60
+<!-- /WOPT_VEREDICTOS -->
+
+## 9. VERDICT
+
+**FAIL (parcial).**
+
+- **TASK-091 (el gate que lee la mutación): PASS.** Revalidado sobre el árbol nuevo: las cuatro reglas (R1, R2, R3, R4) tienen dientes y mueren por su aserción; el gate no se puede desconectar en silencio (M-92, M-94), no acusa en lo que no puede (M-H6), el límite (g) está vigilado (M-H7, M-H8) y la migración de M-121 está vigilada (M-H9). Los tres mutantes re-declarados del ciclo 71 (M-90, M-92, M-94) mueren también. **12 MUERTO · 1 NO MEDIDO · 2 SOBREVIVIENTE** de 15.
+- **TASK-093 (el guard anti-apagón): FAIL, pero por un motivo NUEVO y más estrecho.** Los **cinco** supervivientes de la ronda 6 (G-1, G-1b, G-2, G-8, G-9) están **cerrados y medidos MUERTOS**, con su motivo literal; y los cinco dientes del detector (G-3..G-7, re-medidos con recetas reconstruidas) siguen vivos. **PERO** esta ronda ha medido un **hueco nuevo**: el meta-guard que el propio arreglo añadió vigila la **forma** del texto de la contraprueba, no su **semántica** (`G-10` y `G-11` sobreviven: la suite termina en VERDE con la contraprueba neutralizada). Con `G-11`, **tres de las cuatro vías** (lanzador, API de energía, simulación de entrada) podrían dejar de detectarse sin que nada lo note. Es un superviviente **en seguridad**: **el ciclo 72 NO se cierra** hasta que se arregle.
+- **Dos supervivientes más, documentados:** `M-121-b` (la celda (D1-ter)(d) no la vigila nadie) y `M-979b` (el blindaje cuenta por nombre; la diferencia es real y medida: 2 contra 1 con dos instancias del mismo nombre, pero en este host los dos vivos tienen nombres distintos).
+- **Una tarea estructural (T-1):** el veredicto canónico no sabe expresar un guard que no es un `test_*`, y por eso las 14 muertes del guard quedan fuera del veredicto canónico.
+
+**Qué hace falta para cerrar el ciclo 72** (en orden de gravedad):
+
+1. **T-8 (seguridad):** que el meta-guard fije el texto **EXACTO** de las dos aserciones de la contraprueba (`"assert etiquetas == ESPERADAS, ("` y `"assert esperado in motivos, ("`), o un meta-meta-guard que compruebe que su propio texto, neutralizado, deja de ser aceptado. **Sin esto, el ciclo NO se cierra.**
+2. **T-3 y T-4:** el meta-guard de la celda (D1-ter)(d) y la aserción del blindaje **por PID**.
+3. **T-1 (estructural):** una cuarta vía en el contrato del veredicto canónico para los guards que no son tests.

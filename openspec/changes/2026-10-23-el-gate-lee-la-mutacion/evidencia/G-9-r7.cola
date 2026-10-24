@@ -1,0 +1,9 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 33626, in <module>
+    _la_suite_no_puede_apagar_el_equipo()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 32970, in _la_suite_no_puede_apagar_el_equipo
+    assert trozo in bloque_contra, (
+           ^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: TASK-093: la CONTRAPROUEBA ya no dice 'etiquetas == ESPERADAS': alguien la ha trivializerizado (contar menos, o borrar el bucle de motivos) y la suite se quedaria en VERDE. Es lo que encontraron los mutantes G-8 y G-9.

@@ -1,0 +1,9 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 33620, in <module>
+    _la_suite_no_puede_apagar_el_equipo()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 32905, in _la_suite_no_puede_apagar_el_equipo
+    assert etiquetas == ESPERADAS, (
+           ^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: TASK-093: el detector tiene que marcar las CUATRO vias de la contraprueba (el apagado por lanzador, la llamada directa a la API, la importacion de raton y el taskkill POR NOMBRE) y NO el taskkill por PID propio. Marcadas ['lanzador_con_argumento_de_apagado', 'llamada_directa_a_la_api', 'taskkill_por_nombre'] y esperadas ['importacion_de_simulacion_de_entrada', 'lanzador_con_argumento_de_apagado', 'llamada_directa_a_la_api', 'taskkill_por_nombre']

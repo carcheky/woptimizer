@@ -1,0 +1,9 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 33620, in <module>
+    _la_suite_no_puede_apagar_el_equipo()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 32922, in _la_suite_no_puede_apagar_el_equipo
+    assert len(marks_taskkill) == 1, (
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: TASK-093: el taskkill por PID PROPIO es legitimo (las utilidades matan SU propio hijo) y NO puede marcar, y el case '/IM' tiene que marcar UNA vez. Marcados 2: ['taskkill POR NOMBRE (/IM): matar al lsass o al winlogon APAGA el Windows', 'taskkill POR NOMBRE (/IM): matar al lsass o al winlogon APAGA el Windows']

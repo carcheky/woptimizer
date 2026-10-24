@@ -1,9 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_a\run_tests.py", line 33095, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 33240, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_a\run_tests.py", line 23328, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 23328, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     exigir_el_fall_con_esta_razon(
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
         informe_sano,
@@ -13,7 +13,7 @@ Traceback (most recent call last):
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         "de lo publicado sin que nadie lo note")
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r6_20261024\cam_a\run_tests.py", line 23308, in exigir_el_fall_con_esta_razon
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 23308, in exigir_el_fall_con_esta_razon
     assert fallos, (
            ^^^^^^
 AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR (el catalogo del cambio declara M-FIX-SIN-LINEA y el journal NO lleva su linea canonica, luego ese veredicto podria desaparecer de lo publicado sin que nadie lo note) y no lo ha hecho: ningun [FAIL] del informe dice 'NO tiene linea canonica para el mutante M-FIX-SIN-LINEA'. Sin esta asercion un gate ciego en ESTA rama pasaria por sano: con el cuerpo del gate VACIO el validador tambien daria 0 FAIL. Fallos del informe:
@@ -33,7 +33,7 @@ osal.md: existe (6416 bytes)
   [OK]   AGENTS.md: declara los 235 tests que run_tests.py tiene de verdad
   [OK]   README.md: declara los 235 tests que run_tests.py tiene de verdad
   [OK]   docs/ai/testing-guide.md: 235 filas de test, una por test definido
-  [OK]   run_tests.py: reparto 159 backend + 76 headless derivado con ast (marcador en run_tests.py:33230); suma el total que ya deriva el check 7
+  [OK]   run_tests.py: reparto 159 backend + 76 headless derivado con ast (marcador en run_tests.py:33375); suma el total que ya deriva el check 7
   [OK]   STATUS.md: declara el reparto 159 backend + 76 headless que deriva el marcador de run_tests.py
   [OK]   STATUS.md: Deuda Tecnica Conocida: 28 fila(s), 4 exenta(s) CERRADA(s), 24 viva(s) con 47 ancla(s) de ruta resuelta(s) y 1 por contenido
   [OK]   campo 'commits' del journal: 6 entrada(s) con 'cycle', 0 con lista de hash(es), 0 conforme(s) a R1, 6 sin hash declarado, 0 hash(es) perdido(s) declarados con causa (ninguna), 0 sin resolver sin declaracion | techos R5: 3 hash(es) y 2 ciclo(s) sin hash

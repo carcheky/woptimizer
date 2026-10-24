@@ -1,0 +1,9 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 33620, in <module>
+    _la_suite_no_puede_apagar_el_equipo()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 33037, in _la_suite_no_puede_apagar_el_equipo
+    assert not infracciones, (
+           ^^^^^^^^^^^^^^^^
+AssertionError: TASK-093: hay una via de APAGADO o de SIMULACION DE ENTRADA en el repo. Infracciones: [('run_tests.py', 32892, 'lanzador_con_argumento_de_apagado', "un lanzador de procesos con el argumento 'shutdown'"), ('run_tests.py', 32892, 'taskkill_por_nombre', 'taskkill POR NOMBRE (/IM): matar al lsass o al winlogon APAGA el Windows'), ('run_tests.py', 32894, 'lanzador_con_argumento_de_apagado', "un lanzador de procesos con el argumento 'powercfg'"), ('run_tests.py', 32894, 'taskkill_por_nombre', 'taskkill POR NOMBRE (/IM): matar al lsass o al winlogon APAGA el Windows'), ('run_tests.py', 32898, 'taskkill_por_nombre', 'taskkill POR NOMBRE (/IM): matar al lsass o al winlogon APAGA el Windows'), ('run_tests.py', 32896, 'llamada_directa_a_la_api', 'una llamada directa a la API de energia')]. El equipo del dueno se ha apagado DOS veces con el motor de I+D corriendo de noche; ninguna via de esas puede quedarse aqui.
