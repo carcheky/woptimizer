@@ -32703,6 +32703,204 @@ def test_el_derivado_de_vistas_es_el_disco_y_abre_algo():
           "(TASK-082, AC-3).")
 
 
+# --- TASK-093: LA SUITE NO PUEDE APAGAR EL EQUIPO DEL DUENO -------------------
+# MEDIDO el 2026-10-24 en este host, con el REGISTRO DE EVENTOS de Windows: el
+# equipo se apago DOS veces mientras el motor de I+D corria de noche. La cadena,
+# evento a evento:
+#   - 23/10 07:32:08, evento 1074: "El proceso MoUsoCoreWorker.exe (PCCK) inicio
+#     el REINICIO del equipo ... motivo: Sistema operativo: service pack
+#     (planeado)". MoUsoCoreWorker es el ORQUESTADOR DE WINDOWS UPDATE.
+#   - 24/10 02:52:52, evento 1074: "El proceso StartMenuExperienceHost.exe
+#     (PCCK) inicio el Apagar del equipo".
+#   - Y las cuatro noches anteriores, evento 42 (Kernel-Power): "El sistema esta
+#     entrando en suspension. Motivo de la suspension: System Idle".
+# O sea: el equipo se DORMIA por INACTIVIDAD (900 s con el enchufe: `powercfg
+# /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE` daba 0x384) y Windows Update lo
+# REINICIABA de madrugada. La carga de las pruebas NO cuenta como actividad de
+# usuario: por mucha CPU que queme el motor, el temporizador de inactividad no
+# se reinicia. Por eso el apagon NO lo provoco ninguna prueba: lo provoco la
+# combinacion "el equipo dormia" + "Windows Update reinicia lo que duerme".
+# (La mitigacion del HOST esta fuera del repo: `powercfg /change
+# standby-timeout-ac 0`. Aqui lo que se blinda es OTRA cosa, y es la que si
+# depende de nos.)
+#
+# LO QUE ESTE GUARD HACE: que NI LA SUITE NI EL PRODUCTO puedan llamar a la API
+# de energia de Windows ni simular la entrada. Un raton sintetico puede caer en
+# "Apagar" del menu Inicio, que es LITERALMENTE como se registro el apagon del
+# 24/10 (1074 StartMenuExperienceHost). MEDIDO sobre los 55 `.py` del repo:
+# CERO coincidencias. Aqui pasa a ser una PROPIEDAD VIGILADA y no una
+# costumbre: el dia que alguien anada un "comando para apagar el PC cuando
+# termine la descarga", la suite se pone en ROJO ANTES de que llegue a
+# ejecutarse.
+#
+# EL CONJUNTO DE FICHEROS SE DERIVA DEL DISCO, no es una lista escrita a mano:
+# una lista es VACIABLE (borrar un nombre de la lista deja el fichero sin
+# vigilar y el guard en verde).
+#
+# TASK-093 >>> INICIO DEL VOCABULARIO VIGILADO
+def _la_suite_no_puede_apagar_el_equipo():
+    """TASK-093: ni la suite ni el producto pueden APAGAR el equipo del dueno.
+
+    Vigila TRES cosas con vocabulario CERRADO (la API de energia de Windows y
+    la simulacion de entrada), y no por la FORMA de una llamada sino por lo que
+    la llamada HACE:
+      (a) un lanzador de procesos cuyo ARGUMENTO nombra el apagado o la
+          suspension. Se mira el ARGUMENTO, no la palabra suelta: por eso este
+          guard no se accuse a si mismo.
+      (b) una llamada DIRECTA a la API de energia (por ejemplo a traves de
+          `ctypes.windll.user32`).
+      (c) una IMPORTACION de simulacion de entrada.
+    Y una cuarta regla, la del `taskkill`: matar POR NOMBRE puede llevarse al
+    `lsass.exe` o al `winlogon.exe` y eso APAGA el Windows; matar por PID
+    propio (que es lo que hacen las utilidades para cerrar SU propio hijo) NO
+    se marca.
+
+    Levanta `AssertionError` si encuentra una via.
+    """
+    import re
+
+    # La API de energia de Windows es un conjunto CERRADO de nombres: por eso
+    # este guard es perfectible en la practica, al contrario que un guard de
+    # forma abierta (que siempre admite una variante nueva que escribir).
+    APAGADO = (
+        "shutdown", "powercfg", "powrprof", "stop-computer",
+        "suspend-computer", "setsuspendstate", "exitwindowsex",
+        "initiatesystemshutdown", "ntshutsystem", "ntsetsystempowerstate",
+        "setsystempowerstate",
+    )
+    ENTRADA = ("pyautogui", "pynput")
+    LANZADOR = re.compile(
+        r"subprocess\.(?:run|popen|call|check_call|check_output)"
+        r"|os\.(?:system|popen)",
+        re.IGNORECASE,
+    )
+    LLAMADA_DIRECTA = re.compile(
+        r"\b(?:" + "|".join(APAGADO) + r")\s*\(", re.IGNORECASE)
+    IMPORT_ENTRADA = re.compile(
+        r"^[ \t]*(?:import|from)[ \t]+(?:" + "|".join(ENTRADA) + r")\b",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    # El propio guard se vigila FUERA de su bloque: aqui viven el vocabulario y
+    # la prosa que lo describe, y una ventana de 400 caracteres alrededor de un
+    # lanzador citado en prosa se acusaria a si misma. Los dos centinelas
+    # delimitan el bloque; si no estan, no se excluye nada.
+    INICIO = "TASK-093 >>> INICIO DEL VOCABULARIO VIGILADO"
+    FIN = "<<< TASK-093: FIN DEL VOCABULARIO VIGILADO"
+
+    def _sin_comentarios(texto):
+        """Quita los comentarios conservando la LONGITUD (los offsets no se
+        mueven, luego la linea que se informa sigue siendo la buena)."""
+        salida = []
+        for linea in texto.split("\n"):
+            corte = linea.find("#")
+            if corte >= 0:
+                linea = linea[:corte] + " " * (len(linea) - corte)
+            salida.append(linea)
+        return "\n".join(salida)
+
+    def _infracciones_de(texto, fuera_del_bloque=None):
+        """Las infracciones de un texto: (linea, motivo)."""
+        malas = []
+        limpio = _sin_comentarios(texto)
+        for coincidencia in LANZADOR.finditer(limpio):
+            if fuera_del_bloque and not fuera_del_bloque(coincidencia.start()):
+                continue
+            ventana = limpio[coincidencia.start():coincidencia.start() + 400]
+            baja = ventana.lower()
+            for palabra in APAGADO:
+                if palabra in baja:
+                    linea = limpio.count("\n", 0, coincidencia.start()) + 1
+                    malas.append((linea,
+                                 f"un lanzador de procesos con el argumento "
+                                 f"{palabra!r}"))
+                    break
+            if "taskkill" in baja and re.search(r"[\"']/im[\"']", ventana, re.IGNORECASE):
+                linea = limpio.count("\n", 0, coincidencia.start()) + 1
+                malas.append((linea,
+                             "taskkill POR NOMBRE (/IM): matar al lsass o al "
+                             "winlogon APAGA el Windows"))
+        for coincidencia in LLAMADA_DIRECTA.finditer(limpio):
+            if fuera_del_bloque and not fuera_del_bloque(coincidencia.start()):
+                continue
+            linea = limpio.count("\n", 0, coincidencia.start()) + 1
+            malas.append((linea, "una llamada directa a la API de energia"))
+        for coincidencia in IMPORT_ENTRADA.finditer(limpio):
+            if fuera_del_bloque and not fuera_del_bloque(coincidencia.start()):
+                continue
+            linea = limpio.count("\n", 0, coincidencia.start()) + 1
+            malas.append((linea, "una importacion de simulacion de entrada"))
+        return malas
+
+    # --- CONTRAPROUEBA: el detector tiene que MARCAR lo prohibido y RESPETAR
+    # --- lo legitimo. Sin esta celda, un detector que no detectase nada pasaria
+    # --- este guard y no mediria nada. Se aplica SIN la exclusion del bloque
+    # --- propio, que es justamente donde vive este texto.
+    sintetico = (
+        "import subprocess\n"
+        "import pyautogui\n"
+        "subprocess.run(['shutdown', '/s', '/t', '0'])\n"
+        "os.system('powercfg /change standby-timeout-ac 0')\n"
+        "ctypes.windll.user32.SetSuspendState(0)\n"
+        "subprocess.run(['taskkill', '/F', '/T', '/PID', '1234'])\n"
+    )
+    marcas = _infracciones_de(sintetico)
+    motivos = " ".join(motivo for _, motivo in marcas)
+    assert len(marcas) == 4, (
+        "TASK-093: el detector tiene que marcar CUATRO vias en la contraprueba "
+        f"(el apagado por lanzador, el de energia por lanzador, la llamada "
+        f"directa a la API y la importacion de raton) y RESPETAR el taskkill "
+        f"por PID propio. Marco {len(marcas)}: {marcas!r}"
+    )
+    for esperado in ("shutdown", "powercfg", "API de energia", "entrada"):
+        assert esperado in motivos, (
+            f"TASK-093: la contraprueba no ha visto {esperado!r}. Motivos: "
+            f"{motivos!r}"
+        )
+    assert not any("taskkill" in motivo for _, motivo in marcas), (
+        "TASK-093: el taskkill por PID PROPIO es legitimo (las utilidades matan "
+        f"SU propio hijo) y no puede marcar. Marcas: {marcas!r}"
+    )
+
+    # --- EL REPO REAL: el conjunto de ficheros se DERIVA del disco -----------
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    directorios_ignorados = (".git", "__pycache__", "basura", ".pytest_cache")
+    vistos = 0
+    infracciones = []
+    for base, dirs, nombres in os.walk(raiz):
+        dirs[:] = [d for d in dirs if d not in directorios_ignorados]
+        for nombre in nombres:
+            if not nombre.endswith(".py"):
+                continue
+            ruta = os.path.join(base, nombre)
+            vistos += 1
+            with open(ruta, encoding="utf-8", errors="replace") as fh:
+                texto = fh.read()
+            inicio = texto.find(INICIO)
+            # El centinela de fin aparece TAMBIEN en la constante que lo define,
+            # dentro de esta misma funcion: hay que coger la ULTIMA
+            # aparicion (`rfind`), o el rango excluido se queda corto y el
+            # guard se accuses a si mismo con su propia contraprueba.
+            fin = texto.rfind(FIN)
+            if 0 <= inicio < fin:
+                def _fuera(pos, ini=inicio, f=fin):
+                    return not (ini <= pos < f)
+            else:
+                _fuera = None
+            relativo = os.path.relpath(ruta, raiz).replace("\\", "/")
+            for linea, motivo in _infracciones_de(texto, _fuera):
+                infracciones.append((relativo, linea, motivo))
+
+    assert not infracciones, (
+        "TASK-093: hay una via de APAGADO o de SIMULACION DE ENTRADA en el "
+        f"repo. Infracciones: {infracciones!r}. El equipo del dueno se ha "
+        "apagado DOS veces con el motor de I+D corriendo de noche; ninguna via "
+        "de esas puede quedarse aqui."
+    )
+    print(f"blindaje anti-apagon OK ({vistos} fichero(s) .py vigilados, "
+          "0 vias de apagado y 0 de simulacion de entrada) (TASK-093).")
+# <<< TASK-093: FIN DEL VOCABULARIO VIGILADO
+
+
 if __name__ == "__main__":
     # TASK-028 (FIX-010): el canal de log se declara aqui, no se hereda de
     # importar `config`. Sin esta llamada, los `logger.warning` de la suite caen
@@ -33272,4 +33470,7 @@ if __name__ == "__main__":
     test_la_verificacion_de_sintaxis_agrega_un_modulo_nuevo()            # AC-3
     test_la_camara_de_sintaxis_ui_distingue_sano_de_roto()               # AC-4
     test_el_recuento_de_modulos_de_sintaxis_es_derivado()                # AC-2
+    # TASK-093: el motor no puede apagar el equipo del dueno. Se invoca
+    # aqui, y no como `test_*`, para no tocar el RECUENTO de tests (235).
+    _la_suite_no_puede_apagar_el_equipo()
     print("\nALL TESTS PASSED.")

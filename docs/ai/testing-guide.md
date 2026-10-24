@@ -1688,3 +1688,54 @@ Repetir cuesta **N × 734,9 s por mutante** (N=3 → **8,0 h por ciclo**), y
 repetir **sin** exigir consistencia **empeora** el veredicto falso:
 `1-(1-p)^N` con p=1/16 da 6,25 % (N=1) → **17,6 % (N=3)** → 27,5 % (N=5).
 El killer-check cuesta **cero** corridas extra: el harness ya captura el log.
+### El motor no puede apagar el equipo (TASK-093, ciclo 72)
+
+MEDIDO el 2026-10-24 en el host del dueno, con el **registro de eventos de
+Windows**: el equipo se apago **DOS veces** mientras el motor de I+D corria de
+noche. La cadena, evento a evento:
+
+| momento | evento | que dice |
+|---|---|---|
+| 23/10 07:32:08 | 1074 (User32) | "El proceso `MoUsoCoreWorker.exe` (PCCK) inicio el **Reinicio** del equipo ... motivo: *Sistema operativo: service pack (planeado)*" |
+| 24/10 02:52:52 | 1074 (User32) | "El proceso `StartMenuExperienceHost.exe` (PCCK) inicio el **Apagar** del equipo" |
+| las 4 noches anteriores | 42 (Kernel-Power) | "El sistema esta entrando en suspension. Motivo de la suspension: **System Idle**" |
+
+O sea: el equipo **se dormia por inactividad** (900 s con el enchufe:
+`powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE` daba `0x384`) y
+**Windows Update reiniciaba lo que dormia**. Y **la carga de las pruebas NO
+cuenta como actividad de usuario**: por mucha CPU que queme el motor, el
+temporizador de inactividad no se reinicia. Por eso el apagon **no lo provoco
+ninguna prueba**: lo provoco la combinacion "el equipo dormia" + "Windows
+Update reinicia lo que duerme".
+
+**Lo que SI depende de nosotros, y queda vigilado:** que ni la suite ni el
+producto puedan llamar a la **API de energia** de Windows ni **simular la
+entrada**. Un raton sintetico puede caer en "Apagar" del menu Inicio, que es
+literalmente como se registro el apagon del 24/10 (1074
+`StartMenuExperienceHost`).
+
+El guard es `_la_suite_no_puede_apagar_el_equipo()` (`run_tests.py`) y vigila
+los **`.py` del repo DERIVADOS del disco** (`os.walk`, no una lista escrita a
+mano: una lista es vaciable) con un vocabulario **cerrado**:
+
+- **(a) lanzador con argumento prohibido** - `subprocess.run`/`Popen`/`call`/
+  `check_call`/`check_output` y `os.system`/`os.popen` cuyo argumento nombra el
+  apago o la suspension. Se mira el **argumento**, no la palabra suelta: por eso
+  el guard no se accuse a si mismo.
+- **(b) llamada directa a la API** - `SetSuspendState`, `ExitWindowsEx`,
+  `InitiateSystemShutdown`, `NtShutdownSystem`... (por ejemplo via
+  `ctypes.windll.user32`).
+- **(c) importacion de simulacion de entrada** - `pyautogui`, `pynput`.
+- **(d) `taskkill` por NOMBRE (`/IM`)** - matar al `lsass.exe` o al
+  `winlogon.exe` apaga el Windows. `taskkill /F /T /PID <propio>` **no** se
+  marca: es lo que hacen las utilidades para cerrar su propio hijo.
+
+**MEDIDO con contrapruebas en camara desechable** (cuatro inyecciones y dos
+controles positivos): el guard se pone en **ROJO** con el apago por lanzador,
+con la simulacion de entrada, con la llamada directa a la API y con el
+`taskkill` por nombre; y **VERDE** con el `taskkill` por PID propio.
+
+> **Por que no es un `test_*`:** el recuento de tests es un contrato escrito a
+> mano en cinco sitios (`235 = 159 + 76`) y `validate_docs.py` lo declara
+> explicitamente. El guard se invoca desde `__main__` como una comprobacion
+> transversal, no como un test mas, y el recuento **no se mueve**.

@@ -1974,6 +1974,29 @@
         "AC-4: los cinco mutantes pueden entrar en `mutaciones.json` (hoy estan FUERA a proposito, porque el gate 11 compara el bloque de maquina con el journal), de modo que la cadena emisor -> gate queda entera y el gate 11 los re-deriva."
       ],
       "notes": "Ciclo 71, auditor (ronda 5), seccion 5.1 de `openspec/changes/2026-10-22-el-gate-distingue-o-falla/mutation-report.md`. Es de la MISMA clase que T-6 (el emisor y el gate derivan distinto cuando el mensaje de la asercion embarga un traceback), pero se encola APARTE porque el arreglo es distinto: T-1 es una linea por asercion, y T-6 es el criterio de corte de la cola del emisor. NO MEDIDO no es un FAIL del ciclo (el agujero de DETECCION esta cerrado y medido: los ocho mutantes del check 12 mueren), pero un mutante sin medir es un agujero con la etiqueta de 'medido'."
+    },
+    {
+      "id": "TASK-093",
+      "title": "Ni la suite ni el producto pueden apagar el equipo del dueno: el motor no llama a la API de energia ni simula la entrada",
+      "description": "MEDIDO el 2026-10-24 con el REGISTRO DE EVENTOS del host: el equipo se apago DOS veces mientras el motor de I+D corria de noche. La cadena, evento a evento: 23/10 07:32:08 evento 1074 'El proceso MoUsoCoreWorker.exe (PCCK) inicio el REINICIO del equipo ... motivo: Sistema operativo: service pack (planeado)' (MoUsoCoreWorker es el orquestador de WINDOWS UPDATE); 24/10 02:52:52 evento 1074 'El proceso StartMenuExperienceHost.exe (PCCK) inicio el Apagar del equipo'; y las cuatro noches anteriores, evento 42 (Kernel-Power) 'El sistema esta entrando en suspension. Motivo de la suspension: System Idle'. O sea: el equipo se DORMIA por inactividad (900 s con el enchufe: powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE daba 0x384) y WINDOWS UPDATE reiniciaba lo que dormia. Y la carga de las pruebas NO cuenta como actividad de usuario: por mucha CPU que queme el motor, el temporizador de inactividad no se reinicia. NINGUNA PRUEBA apago el equipo (grep sobre los 55 .py del repo: CERO coincidencias de las 17 palabras de la API de energia y de la simulacion de entrada, y CERO llamadas a shutdown/powercfg/SetSuspendState/pyautogui/SendInput/mouse_event/SetCursorPos). LO QUE SI ES NUESTRO, y lo que queda cerrado: que nada en el repo pueda abrir esa via el dia de manana (un comando de apagado 'para cuando termine la descarga' o un raton sintetico que caiga en 'Apagar' del menu Inicio). EL ARREGLO, en dos partes. (1) MITIGACION DEL HOST: powercfg /change standby-timeout-ac 0 (el equipo ya no se suspende con el enchufe; DC intacto en 600 s; reversible con standby-timeout-ac 900). (2) BLINDAJE EN EL REPO: el guard _la_suite_no_puede_apagar_el_equipo() (run_tests.py) vigila los .py del repo DERIVADOS del disco (os.walk, no una lista escrita a mano) con un vocabulario CERRADO: (a) lanzador de procesos cuyo ARGUMENTO nombre el apagado o la suspension, (b) llamada directa a la API de energia, (c) importacion de simulacion de entrada, (d) taskkill POR NOMBRE (/IM), que mata al lsass o al winlogon y APAGA el Windows. El taskkill por PID PROPIO NO se marca (es lo que hacen las utilidades para cerrar su propio hijo). MEDIDO con contrapruebas en camara desechable: ROJO con el apagado por lanzador, con la simulacion de entrada, con la llamada directa a la API y con el taskkill por nombre; VERDE con el taskkill por PID propio. El guard NO es un test_* a proposito: el recuento (235 = 159 + 76) es un contrato escrito a mano en cinco sitios y validate_docs.py:2967 lo declara; el guard se invoca desde __main__ como comprobacion transversal y el recuento no se mueve. Se inserto POR DEBAJO de las tres citas por numero de linea que apuntan a run_tests.py (1600, 24785, 30731), con desplazamiento CERO verificado. LIMITES DECLARADOS: no arregla un apagon por otra causa (sobrecalentamiento o corte), no vigila codigo que no esta en el repo, y es un guard de FORMA sobre un vocabulario cerrado (una llamada hecha con ctypes construida a mano y sin ninguna de esas palabras no la ve).",
+      "complexity": 2,
+      "priority": "high",
+      "status": "completed",
+      "acceptance_criteria": [
+        "AC-1: powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE -> el indice de corriente alterna es 0x00000000 y el de corriente continua sigue en 0x258 (MEDIDO).",
+        "AC-2: el guard pasa sobre el repo real: 55 ficheros .py vigilados, 0 vias de apagado y 0 de simulacion de entrada (MEDIDO).",
+        "AC-3: contrapruebas en camara desechable: ROJO con (a) lanzador con 'shutdown', (b) import pyautogui, (c) SetSuspendState, (d) taskkill /IM lsass.exe; VERDE con el control positivo del taskkill por PID propio (MEDIDO).",
+        "AC-4: las tres citas por numero de linea que apuntan a run_tests.py (1600, 24785, 30731) siguen intactas: insercion con desplazamiento CERO (MEDIDO).",
+        "AC-5: el recuento de tests NO se mueve: sigue en 235 = 159 + 76, porque el guard se invoca desde __main__ y no es un test_* (MEDIDO por validate_docs.py)."
+      ],
+      "files": [
+        "run_tests.py",
+        "docs/ai/testing-guide.md",
+        "docs/ai/sandbox-rules.md",
+        "openspec/changes/2026-10-24-la-suite-no-puede-apagar-el-equipo/proposal.md"
+      ],
+      "created_at": "2026-10-24",
+      "notes": "Hecho por el ORQUESTADOR como fix de seguridad (no por el dev): el dueno interrumpio el ciclo con el aviso de que el equipo se le apagaba, y la prioridad es que no vuelva a pasar, no que lo arregle el ciclo de agentes. La mitigacion del host es lo que corta la cadena; el blindaje del repo es lo que evita que un error futuro la abra. La ronda 6 del mutation-auditor (TASK-091) quedo INTERRUMPIDA y hay que relanzarla: el subagente se perdio con el reinicio del host."
     }
   ]
 }

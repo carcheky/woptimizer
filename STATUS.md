@@ -140,6 +140,7 @@
 ## 📋 Últimos Hitos (resumen compacto)
 
 | Ciclo | Área | Qué se hizo |
+| #72 | Tooling / Testing | El motor no puede apagar el equipo del dueno: la API de energia y la simulacion de entrada quedan vigiladas (TASK-093) |
 |---|---|---|
 | #70 | Tooling / Testing | El veredicto de mutación se vuelve comprobable: emisor + gate que lo re-deriva (TASK-087) |
 | #69 | Tooling / Testing | Un test flaky que fabricaba falsos veredictos: el hash muerto se derivaba del hash real (1/16) (TASK-083) |
@@ -167,3 +168,48 @@
 | #35 | Rendimiento | Memoización categorización O(1) (TASK-045) |
 
 > Historial completo de los 61 ciclos en `.taskmaster/rd_journal.json` y `.taskmaster/CHANGELOG.md`.
+---
+
+## 🛡️ Seguridad del host: el motor NO puede apagar el equipo (TASK-093, ciclo 72)
+
+**MEDIDO el 2026-10-24 con el registro de eventos de Windows: el equipo se
+apagó DOS veces mientras el motor de I+D corría de noche.** La cadena, evento a
+evento: `1074` del 23/10 07:32:08 dice *"El proceso `MoUsoCoreWorker.exe` (PCCK)
+inició el **Reinicio** del equipo ... motivo: Sistema operativo: service pack
+(planeado)"* (`MoUsoCoreWorker` = orquestador de **Windows Update**); `1074`
+del 24/10 02:52:52 dice *"El proceso `StartMenuExperienceHost.exe` (PCCK)
+inició el **Apagar** del equipo"*; y las cuatro noches anteriores, `42`
+(Kernel-Power) dice *"El sistema está entrando en suspensión. Motivo de la
+suspensión: **System Idle**"*.
+
+**El equipo se dormía por inactividad y Windows Update reiniciaba lo que
+dormía.** `powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE` daba
+`0x384` = **900 s con el enchufe**. Y ese temporizador **no lo reinicia la
+carga de CPU**: cuenta inactividad **de usuario**, no trabajo del proceso.
+
+**Ninguna prueba apagó el equipo** (grep sobre los 55 `.py` del repo: cero
+coincidencias de la API de energía y de la simulación de entrada). Lo que sí
+era nuestro es que **nada en el repo pudiera abrir esa vía el día de mañana**.
+
+**Lo hecho, en dos partes:**
+
+- **HOST (fuera del repo, reversible):** `powercfg /change standby-timeout-ac 0`
+  → el equipo ya no se suspende con el enchufe. Batería intacta en 600 s.
+  Reversible con `powercfg /change standby-timeout-ac 900`.
+- **REPO:** el guard `_la_suite_no_puede_apagar_el_equipo()` (`run_tests.py`)
+  vigila los `.py` **derivados del disco** con un vocabulario cerrado: lanzador
+  con argumento de apagado, llamada directa a la API, importación de simulación
+  de entrada y `taskkill` **por nombre** (matar al `lsass` o al `winlogon`
+  apaga el Windows). El `taskkill` por PID propio **no** se marca.
+  **MEDIDO** con contrapruebas en cámara desechable: ROJO con las cuatro vías
+  peligrosas, VERDE con el control positivo.
+
+**Límites, declarados:** no arregla un apagón por otra causa (sobrecalentamiento
+o corte de luz), no vigila código que no esté en el repo, y es un guard de
+**forma** sobre un vocabulario cerrado (una llamada hecha a mano con `ctypes` y
+sin ninguna de esas palabras no la ve). Detalle:
+`openspec/changes/2026-10-24-la-suite-no-puede-apagar-el-equipo/proposal.md`.
+
+> ⚠️ **Para cualquier otro host donde corra este motor hay que aplicar la
+> mitigación del host.** El guard del repo es la parte que viaja; el
+> `powercfg` es la parte que se queda en la máquina.

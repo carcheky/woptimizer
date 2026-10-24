@@ -1699,3 +1699,47 @@ cambia es que el `.bat` **nunca imprime su mensaje de fallo**.
 > tiene que dar 7): sin él, una cámara que devuelve `0` **siempre** sobrevive, y eso se
 > midió.
 
+## El equipo NO debe dormirse mientras el motor de I+D corre (TASK-093)
+
+**Regla del host, MEDIDA el 2026-10-24:** con el motor de I+D corriendo de
+noche, el temporizador de **suspension por inactividad** le entrega el apagado
+a **Windows Update**, no a nadie del repo.
+
+MEDIDO con el registro de eventos de Windows:
+
+- `powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE` daba `0x384` =
+  **900 s** con el equipo enchufado (600 s con bateria).
+- Ese temporizador **no lo reinicia la carga de CPU**: cuenta inactividad
+  **de usuario**, no trabajo del proceso.
+- Evento `42` (Kernel-Power) en las cuatro noches anteriores al apagon:
+  *"El sistema esta entrando en suspension. Motivo de la suspension: **System
+  Idle**"*.
+- Evento `1074` (User32) el 23/10 07:32:08: *"El proceso
+  `MoUsoCoreWorker.exe` (PCCK) inicio el **Reinicio** del equipo ... motivo:
+  Sistema operativo: service pack (planeado)"* - `MoUsoCoreWorker` es el
+  orquestador de **Windows Update**.
+- Evento `1074` el 24/10 02:52:52: *"El proceso `StartMenuExperienceHost.exe`
+  (PCCK) inicio el **Apagar** del equipo"*.
+
+O sea: el equipo **se dormia** y **Windows Update lo reiniciaba de
+madrugada**. Ninguna prueba lo apago.
+
+**Mitigacion aplicada en este host** (2026-10-24):
+
+```powershell
+powercfg /change standby-timeout-ac 0
+```
+
+- **Valor original**: `0x384` = 900 s (AC). **Valor de bateria**: `0x258` =
+  600 s (DC), **sin tocar**: en bateria el equipo si puede dormirse.
+- **Como revertirlo**: `powercfg /change standby-timeout-ac 900`.
+
+**Lo que NO se toca y por que:** la politica de Windows Update (reinicio
+automatico) y el resto del plan de energia. El reinicio de WU solo ocurre
+contra una maquina **dormida**; con el equipo despierto, la politica por
+defecto de WU no reinicia con un usuario con sesion iniciada.
+
+**Y en el repo, la parte que SI depende de nosotros** esta vigilada por el
+guard `_la_suite_no_puede_apagar_el_equipo()` de `run_tests.py`: ninguna
+prueba ni ninguna linea de producto puede llamar a la API de energia ni
+simular la entrada. Detalle en `docs/ai/testing-guide.md`.
