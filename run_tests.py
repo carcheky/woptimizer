@@ -1962,10 +1962,10 @@ def test_no_system_process_is_killable():
                 f"is_system_protected({nombre!r}) deberia ser True"
             )
 
-        # 3d) El kill por pack respeta el blindaje: nunca toca un PID de sistema.
         wopt_config._data_dir = _dir_data_original; vivos = [p.pid for p in _psutil.process_iter(["name"]) if (p.info.get("name") or "").lower() in {"lsass.exe", "winlogon.exe"}]
         k, f, s, mb = ProcessService().kill_pack_apps(["lsass.exe", "winlogon.exe"])
         assert (k, f) == (0, 0), f"kill_pack_apps intento matar un proceso de sistema: {k, f}"
+        _el_blindaje_omite_una_instancia_por_pid()
         assert s == len(vivos) and s >= 2, f"Todos los procesos de sistema vivos deberian contar como omitidos: s={s}, vivos={len(vivos)}"
         assert mb == 0.0, f"No se debe liberar memoria de un kill que no ocurrio: {mb}"
 
@@ -23352,11 +23352,11 @@ def test_el_check_9_se_cablea_en_el_camino_real_del_validador():
             "SOBREVIVIENTE y su evidencia commiteada obliga a MUERTO, luego la "
             "copia legible del veredicto contradice a la evidencia")
         # (d) M-109: la entrada del LIMITE (el ciclo 70, el origen del
-        # contrato) tiene que estar MIRADA. Su veredicto se ACUSA (el gate lo
-        # ha JUZGADO) y el REGISTRO cuenta las SEIS entradas del corpus (el
-        # gate las ha EXAMINADO todas). Un gate que filtre el journal con
-        # `>` en vez de `>=` deja el origen del contrato sin re-derivar, y el
-        # solo hecho de que el guard no lo notara era el agujero.
+        # contrato) tiene que estar MIRADA: su veredicto se ACUSA y el
+        # REGISTRO cuenta las SEIS entradas del corpus. Un gate que filtre
+        # el journal con `>` en vez de `>=` deja el origen del contrato sin
+        # re-derivar, y el guard no lo notaba (T-3: no se puede BORRAR).
+        _la_celda_del_limite_no_se_puede_borrar()
         exigir_la_acusacion(informe_sano, centinela_limite, "SOBREVIVIENTE",
                             "MUERTO",
                             "la entrada del journal que esta en el LIMITE (el "
@@ -32936,14 +32936,126 @@ def _la_suite_no_puede_apagar_el_equipo():
     # (la primera aparicion del centinela esta en la constante que lo define).
     with open(os.path.abspath(__file__), encoding="utf-8") as fh:
         fuente_propia = fh.read()
-    i_contra = fuente_propia.find(CONTRA_INICIO)
+    i_contra = fuente_propia.find('# ' + CONTRA_INICIO)
+    # El centinela del CODIGO (no el de la constante que lo define): el bloque
+    # tiene que empezar en el PRINCIPIO de la linea siguiente, o el dedent de
+    # la contraprueba se queda con la indentacion del comentario del centinela
+    # y el `ast.parse` revienta con un IndentationError que no dice nada del
+    # guard.
+    i_contra = fuente_propia.find("\n", i_contra) + 1
     j_contra = fuente_propia.rfind(CONTRA_FIN)
     assert 0 <= i_contra < j_contra, (
         "TASK-093: el guard no encuentra su propia CONTRAPROUEBA: los "
         "centinelas se han movido o se han borrado, luego la contraprueba "
         "puede estar vaciada sin que nada lo note"
     )
+    # DOS RANGOS, con dos propositos distintos:
+    #   - `bloque_contra` es SOLO la contraprueba, y es lo que se PARSEA con
+    #     `ast` (el `ast.parse` de un fragmento de funcion no vale);
+    #   - `bloque_del_guard` es el rango que empieza en la CONSTANTE que
+    #     define el centinela, y es donde viven las constantes del detector
+    #     (`ETIQUETA_LANZADOR` y companyia) que los fragmentos tienen que ver.
+    i_codigo = fuente_propia.find(CONTRA_INICIO)
     bloque_contra = fuente_propia[i_contra:j_contra]
+    bloque_del_guard = fuente_propia[i_codigo:j_contra]
+
+    # --- (T-8) LA SEMANTICA, NO LA FORMA -------------------------------------
+    # MEDIDO en la ronda 7 del `mutation-auditor`: EXIGIR FRAGMENTOS DE TEXTO
+    # NO BASTA. Con `assert etiquetas == ESPERADAS or True` (G-10) el fragmento
+    # "assert etiquetas == ESPERADAS" sigue ahi, y con el bucle de motivos en
+    # `pass` (G-11) sus cuatro literales siguen ahi: los dos SOBREVIVIVEN y la
+    # contraprueba queda SIN DIENTES. Un fragmento conserva la FORMA y rompe la
+    # SEMANTICA. Por eso el meta-guard PARSEA la contraprueba y exige la
+    # SEMANTICA: la asercion de las etiquetas tiene que ser una COMPARACION
+    # (`ast.Compare` con `ast.Eq`), el bucle de motivos tiene que recorrer las
+    # CUATRO motivaciones Y comprobar algo dentro, y la del `taskkill` propio
+    # tiene que comparar `== 1`. Es el mismo patron que el guard de la
+    # seccion (E) (que deriva su expectativa con `ast`) y que el tripwire de
+    # TASK-083.
+    import textwrap as _textwrap_meta
+
+    arbol_contra = ast.parse(_textwrap_meta.dedent(bloque_contra))
+    asserts_contra = [n for n in ast.walk(arbol_contra)
+                      if isinstance(n, ast.Assert)]
+
+    def _comparacion_por_igual(nodo, izquierda, derecha):
+        """True si `nodo` es exactamente `izquierda == derecha`."""
+        return (isinstance(nodo, ast.Compare)
+                and len(nodo.ops) == 1
+                and isinstance(nodo.ops[0], ast.Eq)
+                and isinstance(nodo.left, ast.Name)
+                and nodo.left.id == izquierda
+                and len(nodo.comparators) == 1
+                and isinstance(nodo.comparators[0], ast.Name)
+                and nodo.comparators[0].id == derecha)
+
+    asercion_de_las_etiquetas = [
+        n for n in asserts_contra
+        if _comparacion_por_igual(n.test, "etiquetas", "ESPERADAS")
+    ]
+    assert asercion_de_las_etiquetas, (
+        "TASK-093: la CONTRAPROUEBA ya no COMPARA las etiquetas con ESPERADAS: "
+        "la asercion tiene que ser una comparacion (`etiquetas == ESPERADAS`), "
+        "no un `or True` ni un `or` de nada (mutante G-10). Con la comparacion "
+        "trivializada la contraprueba pasa siempre, y tres de las cuatro vias "
+        "de apagado podrian dejar de detectarse sin que nada lo note."
+    )
+
+    bucles_de_motivos = []
+    bucles_sin_asercion = []
+    for _nodo in ast.walk(arbol_contra):
+        if not isinstance(_nodo, ast.For):
+            continue
+        if not isinstance(_nodo.iter, (ast.Tuple, ast.List)):
+            continue
+        motivos_del_bucle = [e.value for e in _nodo.iter.elts
+                             if isinstance(e, ast.Constant)
+                             and isinstance(e.value, str)]
+        if len(motivos_del_bucle) != 4:
+            continue
+        bucles_de_motivos.append(motivos_del_bucle)
+        if not any(isinstance(x, ast.Assert) for x in ast.walk(_nodo)):
+            bucles_sin_asercion.append(motivos_del_bucle)
+    assert not bucles_sin_asercion, (
+        "TASK-093: el bucle de motivos de la CONTRAPROUEBA no comprueba NADA: "
+        "sus cuatro motivaciones siguen ahi pero su cuerpo no tiene ninguna "
+        "asercion (mutante G-11). Con el bucle vacio la contraprueba no ve si "
+        "el detector marco las cuatro vias."
+    )
+    assert bucles_de_motivos, (
+        "TASK-093: la CONTRAPROUEBA ya no tiene el bucle que recorre las CUATRO "
+        "motivaciones del detector: sin el, el detector puede dejar de marcar "
+        "una via y la contraprueba no se entera."
+    )
+    assert set(bucles_de_motivos[0]) == {
+        "un lanzador de procesos con el argumento",
+        "una llamada directa a la API de energia",
+        "una importacion de simulacion de entrada",
+        "taskkill POR NOMBRE",
+    }, (
+        "TASK-093: el bucle de motivos de la CONTRAPROUEBA ya no recorre las "
+        f"CUATRO motivaciones del detector: {sorted(bucles_de_motivos[0])!r}"
+    )
+
+    asercion_del_taskkill = [
+        n for n in asserts_contra
+        if (isinstance(n.test, ast.Compare)
+            and len(n.test.ops) == 1
+            and isinstance(n.test.ops[0], ast.Eq)
+            and isinstance(n.test.left, ast.Call)
+            and isinstance(n.test.left.func, ast.Name)
+            and n.test.left.func.id == "len"
+            and n.test.left.args
+            and isinstance(n.test.left.args[0], ast.Name)
+            and n.test.left.args[0].id == "marks_taskkill"
+            and isinstance(n.test.comparators[0], ast.Constant)
+            and n.test.comparators[0].value == 1)
+    ]
+    assert asercion_del_taskkill, (
+        "TASK-093: la CONTRAPROUEBA ya no exige que el `taskkill` por PID PROPIO "
+        "se marque UNA vez: la asercion tiene que ser `len(marks_taskkill) == 1`."
+    )
+
     for trozo in ("sintetico = (",
                   "etiquetas == ESPERADAS",
                   "assert etiquetas == ESPERADAS",
@@ -32961,7 +33073,7 @@ def _la_suite_no_puede_apagar_el_equipo():
                   '"una llamada directa a la API de energia"',
                   '"una importacion de simulacion de entrada"',
                   '"taskkill POR NOMBRE"'):
-        assert trozo in bloque_contra, (
+        assert trozo in bloque_del_guard, (
             f"TASK-093: la CONTRAPROUEBA ya no dice {trozo!r}: alguien la ha "
             "trivializerizado (contar menos, o borrar el bucle de motivos) y "
             "la suite se quedaria en VERDE. Es lo que encontraron los "
@@ -33044,6 +33156,127 @@ def _la_suite_no_puede_apagar_el_equipo():
           "recorridos que coinciden, 0 vias de apagado y 0 de simulacion de "
           "entrada) (TASK-093).")
 # <<< TASK-093: FIN DEL VOCABULARIO VIGILADO
+
+
+# ===========================================================================
+# TASK-097 (T-3) y TASK-098 (T-4): LOS MUTANTES QUE SOBREVIVIERON.
+#
+# Los dos helpers van AQUI, y no dentro de los tests que los usan, por una
+# razon que no es de estilo: estan DESPUES de la linea 30731, que es la ultima
+# cita viva por numero de linea de este fichero. Anadirlos mas arriba
+# desplazaria esas citas y el guard `test_las_citas_de_sandbox_rules_siguen_
+# siendo_ciertas` se pondria en ROJO con un motivo que parece otro (el mismo
+# que dejo a `M-121-r6` en NO MEDIDO en la ronda 7). Los tests los LLAMAN con
+# `;` en una linea que ya existia, luego el numero de lineas por encima de la
+# 30731 no se mueve NADA.
+# ===========================================================================
+
+
+def _la_celda_del_limite_no_se_puede_borrar():
+    """TASK-097 (T-3): la celda (d) del guard del gate no se puede BORRAR.
+
+    MEDIDO por el `mutation-auditor` (ronda 7): el mutante `M-121-b` borra
+    entero el bloque de la celda (d) —la acusacion de la entrada del LIMITE
+    (el ciclo 70, el origen del contrato) y su `entradas cubiertas=`— y la
+    suite se queda en VERDE: NADIE vigila que el gate siga mirando la entrada
+    del LIMITE, que es justo la rama que el propio guard dice mirar.
+
+    Un BORRADO no se puede detectar buscando un fragmento (el fragmento
+    desaparece CON el), asi que este guard PARSEA el fichero con `ast` y exige
+    que la llamada siga existiendo CON SUS ARGUMENTOS: si alguien la vacia de
+    argumentos, la cambia de funcion o la comenta, tambien cae.
+    """
+    with open(os.path.abspath(__file__), encoding="utf-8") as fh:
+        fuente = fh.read()
+    arbol = ast.parse(fuente)
+
+    llamadas_al_limite = []
+    for nodo in ast.walk(arbol):
+        if not isinstance(nodo, ast.Call):
+            continue
+        func = nodo.func
+        if not (isinstance(func, ast.Name)
+                and func.id == "exigir_la_acusacion"):
+            continue
+        args = nodo.args
+        if len(args) < 4:
+            continue
+        primero, segundo, tercero, cuarto = args[0], args[1], args[2], args[3]
+        if not (isinstance(primero, ast.Name) and primero.id == "informe_sano"):
+            continue
+        if not (isinstance(segundo, ast.Name) and segundo.id == "centinela_limite"):
+            continue
+        if not (isinstance(tercero, ast.Constant)
+                and tercero.value == "SOBREVIVIENTE"):
+            continue
+        if not (isinstance(cuarto, ast.Constant) and cuarto.value == "MUERTO"):
+            continue
+        llamadas_al_limite.append(args)
+
+    assert llamadas_al_limite, (
+        "TASK-097: la celda (d) del guard del gate ya no EXISTE: la llamada "
+        "`exigir_la_acusacion(informe_sano, centinela_limite, 'SOBREVIVIENTE', "
+        "'MUERTO')` ha desaparecido, o ha cambiado de funcion o de argumentos. "
+        "Sin ella el gate puede dejar de MIRAR la entrada del LIMITE (el ciclo "
+        "70, el origen del contrato) y nada lo nota (mutante M-121-b)."
+    )
+
+
+def _el_blindaje_omite_una_instancia_por_pid():
+    """TASK-098 (T-4): el blindaje anti-brick omite UNA INSTANCIA POR PID.
+
+    MEDIDO por el `mutation-auditor` (ronda 7): el mutante `M-979b` sustituye
+    el `skipped += 1` por un conteo POR NOMBRE (`_contados`). Con dos procesos
+    que se llaman igual, el codigo real cuenta DOS y el mutante UNO. En este
+    host los dos procesos de sistema vivos se llaman DISTINTO (`lsass.exe` y
+    `winlogon.exe`), luego con los procesos REALES el mutante sale en VERDE y
+    es INDISTINGUIBLE. Por eso aqui va un DOBLE con DOS INSTANCIAS del MISMO
+    nombre y PIDs distintos: el codigo real omite dos, el mutante omite uno.
+
+    El doble NUNCA puede morir ni medir memoria: si el blindaje se salta y
+    llega a `kill()`, el propio doble revienta con un `AssertionError`.
+    """
+    import psutil as _psutil_t4
+
+    class _ProcesoDeSistemaFalso:
+        """Doble de un proceso de sistema: no se puede ni tocar ni medir."""
+
+        def __init__(self, pid, nombre):
+            self.pid = pid
+            self.info = {"name": nombre,
+                         "exe": "C:\\Windows\\System32\\" + nombre}
+
+        def kill(self):
+            raise AssertionError(
+                "el blindaje no puede llegar a matar un proceso de sistema")
+
+        def children(self, recursive=False):
+            return []
+
+        def memory_info(self):
+            raise AssertionError(
+                "un proceso omitido por el blindaje no mide memoria")
+
+    iterador_original = _psutil_t4.process_iter
+    try:
+        _psutil_t4.process_iter = lambda *a, **k: iter([
+            _ProcesoDeSistemaFalso(999001, "lsass.exe"),
+            _ProcesoDeSistemaFalso(999002, "lsass.exe"),
+        ])
+        killed, failed, skipped, freed = ProcessService().kill_pack_apps(
+            ["lsass.exe"])
+    finally:
+        _psutil_t4.process_iter = iterador_original
+
+    assert (killed, failed) == (0, 0), (
+        f"kill_pack_apps toco un proceso de sistema con el doble: "
+        f"{killed, failed}")
+    assert skipped == 2, (
+        "el blindaje tiene que omitir UNA INSTANCIA POR PID: con dos procesos "
+        f"de sistema del MISMO nombre, omitidos={skipped} y PIDs=2. Un conteo "
+        "POR NOMBRE cuenta uno y deja el otro sin omitir (mutante M-979b)")
+    assert freed == 0.0, (
+        f"No se debe liberar memoria de un kill que no ocurrio: {freed}")
 
 
 if __name__ == "__main__":
