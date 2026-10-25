@@ -1,8 +1,8 @@
 {
   "project": "woptimizer",
   "version": "3.0.1.dev0",
-  "updated_at": "2026-10-22",
-  "active_task_id": "TASK-091",
+  "updated_at": "2026-10-24",
+  "active_task_id": "TASK-096",
   "tasks": [
     {
       "id": "TASK-001",
@@ -2044,6 +2044,87 @@
       ],
       "created_at": "2026-10-24",
       "notes": "Segunda parte del encargo del dueno. Su PREGUNTA ('¿dos botones en la Portada?') tiene respuesta: SI, y con el matiz de que el desplegable NO se quita (quitarlo deja `default_action` muerto y `default_action` esta PERSISTIDO en `profiles.json`: tocarlo es una migracion). El orquestador decidio la VIA B' y el arquitecto la ratifica o la corrige en el Paso 2, que es quien puede medir el apelmizamiento de la Portada."
+    },
+    {
+      "id": "TASK-096",
+      "title": "El meta-guard del guard anti-apagon vigila la FORMA del texto de la contraprueba, no su semantica: G-10 y G-11 sobreviven",
+      "description": "DEUDA T-8, ABIERTA POR LA RONDA 7 DEL AUDITOR (2026-10-24, sha 68b9771). El arreglo del guard anti-apagon (commit 0894e5c)cerro los cinco supervivientes de la ronda 6 (G-1, G-1b, G-2, G-8, G-9: TODOS MUERTOS con motivo literal medido), pero anadio un META-GUARD que vigila que el texto de la contraprueba siga diciendo lo que dice. Ese meta-guard exige FRAGMENTOS de texto (p.ej. 'assert etiquetas == ESPERADAS'), y un fragmento se puede conservar con la semantica rota: G-10 pone 'assert etiquetas == ESPERADAS or True' y G-11 deja el bucle de motivos en 'pass' CONSERVANDO sus literales. Los dos SOBREVIVIVEN ('ALL TESTS PASSED.'): la contraprueba queda SIN DIENTES y tres de las cuatro vias de apagado podrian dejar de detectarse sin que nada lo note. Es un superviviente EN SEGURIDAD (TASK-093), luego el ciclo 72 NO se cierra. El arreglo tiene que exigir la SEMANTICA (que la asercion sea una comparacion real y que el bucle de motivos contenga un assert), no el fragmento.",
+      "complexity": 2,
+      "priority": "high",
+      "status": "pending",
+      "acceptance_criteria": [
+        "AC-1: G-10 ('or True') MUERE por la asercion del meta-guard, con motivo literal medido.",
+        "AC-2: G-11 (bucle de motivos en 'pass' conservando sus literales) MUERE, con motivo literal medido.",
+        "AC-3: la contraprueba VACIA (todo el bloque de contraprueba reducido a un 'pass') tambien MUERE.",
+        "AC-4: el meta-guard sigue mueriendo cuando se rompe el DETECTOR (no solo el texto): un mutante que toque el detector, no la contraprueba, sigue detected.",
+        "AC-5: recuento de tests INTACTO: 235 = 159 + 76 (no se anaden tests).",
+        "AC-6: los cinco dientes del detector (G-3..G-7) siguen MUERTOS (no se rompen al arreglar el meta-guard)."
+      ],
+      "files": [
+        "run_tests.py",
+        "openspec/changes/2026-10-23-el-gate-lee-la-mutacion/mutation-report.md"
+      ],
+      "created_at": "2026-10-24",
+      "notes": "PATRON RELEVANTE (repo): el guard de la seccion (E) de TASK-090 y el tripwire de TASK-083 ya derivan su expectativa con 'ast' en vez de buscar texto. Ese es el camino: el meta-guard tiene que PARSEAR la contraprueba (una 'ast.Compare' con 'Eq' y no un 'ast.BoolOp' con 'or True'; un bucle 'for' con un 'assert' dentro y no un 'pass') en vez de buscar un fragmento. Ojo: el meta-guard se vigila a si mismo con centinelas; el centinela de FIN se localiza con 'rfind' (la primera aparicion esta en la constante) y NO con 'find'."
+    },
+    {
+      "id": "TASK-097",
+      "title": "La celda (D1-ter)(d) del guard del gate no tiene dientes: M-121-b sobrevive",
+      "description": "DEUDA T-3, ABIERTA POR LA RONDA 7 DEL AUDITOR (2026-10-24, sha 68b9771). El mutante M-121-b (la variante de desplazamiento CERO de la receta migrada de M-121) deja la suite VERDE: la celda (D1-ter)(d) del guard del gate (el de TASK-090/TASK-091) no la vigila nadie. La celda tiene que distinguir el caso que la receta neutraliza. Es un superviviente del GATE (no del guard anti-apagon), luego no bloquea por si mismo el cierre si T-8 se arregla, pero queda declarado y medido.",
+      "complexity": 2,
+      "priority": "medium",
+      "status": "pending",
+      "acceptance_criteria": [
+        "AC-1: M-121-b MUERE por una asercion que viva en la celda (D1-ter)(d) o donde corresponda, con motivo literal medido.",
+        "AC-2: M-121-r6 y M-121 (la variante original) siguen con el veredicto medido que tengan.",
+        "AC-3: el gate sigue detectando lo que detectaba (no se relaja ninguna asercion para que M-121-b muera).",
+        "AC-4: recuento de tests INTACTO: 235 = 159 + 76."
+      ],
+      "files": [
+        "run_tests.py",
+        "openspec/changes/2026-10-23-el-gate-lee-la-mutacion/mutation-report.md"
+      ],
+      "created_at": "2026-10-24",
+      "notes": "El auditor no fijo cual es el texto que hay que vigilar: hay que leer la seccion (D) del guard y decidir. La receita que hay que neutralizar esta declarada en 'mutaciones.json' (M-121-b)."
+    },
+    {
+      "id": "TASK-098",
+      "title": "La asercion de los procesos de sistema cuenta por NOMBRE: con dos instancias del mismo nombre no se distingue (M-979b)",
+      "description": "DEUDA T-4, ABIERTA POR LA RONDA 7 DEL AUDITOR (2026-10-24, sha 68b9771). M-979b deja la suite VERDE. MEDIDO por el auditor con una sonda in-process: con DOS instancias del mismo nombre, el codigo real cuenta 2 y el mutante por nombre cuenta 1 (gap = 1 omision). En este host hay 2 procesos de sistema vivos ('lsass.exe' 1632, 'winlogon.exe' 1592) pero con 2 NOMBRES DISTINTOS, luego aqui son INDISTINGUIBLES y el hueco es LATENTE, no ausente. El arreglo: la asercion tiene que afirmar POR PID (el conjunto de PIDs omitidos), no por nombre, para que un nombre duplicado se note.",
+      "complexity": 2,
+      "priority": "medium",
+      "status": "pending",
+      "acceptance_criteria": [
+        "AC-1: M-979b MUERE por una asercion que compare por PID, con motivo literal medido.",
+        "AC-2: la asercion NO depende de un numero fijo de instancias (este host tiene 2, otros tendran 3 o mas): se mide con el conjunto real, no con una constante.",
+        "AC-3: el caso legitimo (un proceso de sistema que NO es del sistema) sigue couverts.",
+        "AC-4: recuento de tests INTACTO: 235 = 159 + 76."
+      ],
+      "files": [
+        "run_tests.py",
+        "openspec/changes/2026-10-23-el-gate-lee-la-mutacion/mutation-report.md"
+      ],
+      "created_at": "2026-10-24",
+      "notes": "El test afectado es 'test_no_system_process_is_killable' (el ya arreglado en 9798402). Ojo: no escribir un test que asuma un numero fijo de instancias de procesos de sistema (aqui hay 2, no 3)."
+    },
+    {
+      "id": "TASK-099",
+      "title": "M-121-r6 queda NO MEDIDO: su receta desplaza una cita viva y muere por otra asercion",
+      "description": "DEUDA T-5, ABIERTA POR LA RONDA 7 DEL AUDITOR (2026-10-24, sha 68b9771). M-121-r6 no se puede medir en su 'asa': la receta sustituye 12 lineas por 1 y desplaza 11 lineas, con lo que mata OTRA asercion ('AssertionError: run_tests.py:24785 ya no cita 'sandbox-rules.md:55-56''): el test de las citas vivas, no el del comportamiento. Es decir, el mutante no se sabe si el comportamiento esta o no vigilado. La pregunta de fondo ya tiene respuesta parcial: M-121-b (desplazamiento CERO) SOBREVIVE, luego el hueco de la celda (D1-ter)(d) es real (ver TASK-097).",
+      "complexity": 1,
+      "priority": "low",
+      "status": "pending",
+      "acceptance_criteria": [
+        "AC-1: M-121-r6 tiene un veredicto medido (MUERTO/SOBREVIVIENTE) en SU 'asa', no en el de otro test.",
+        "AC-2: si sigue sin poder medirse, se declara NO MEDIDO con el MOTIVO y se encola como deuda con identificador, sin rellenar.",
+        "AC-3: la cita viva 'run_tests.py:24785' sigue existiendo y sigue citando 'sandbox-rules.md:55-56'."
+      ],
+      "files": [
+        "openspec/changes/2026-10-23-el-gate-lee-la-mutacion/mutaciones.json",
+        "openspec/changes/2026-10-23-el-gate-lee-la-mutacion/mutation-report.md"
+      ],
+      "created_at": "2026-10-24",
+      "notes": "Opcionalmente se puede re-declarar el mutante con un desplazamiento CERO (como M-121-b) para que sea medible en su propia asercion."
     }
   ]
 }
