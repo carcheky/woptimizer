@@ -1739,3 +1739,37 @@ con la simulacion de entrada, con la llamada directa a la API y con el
 > mano en cinco sitios (`235 = 159 + 76`) y `validate_docs.py` lo declara
 > explicitamente. El guard se invoca desde `__main__` como una comprobacion
 > transversal, no como un test mas, y el recuento **no se mueve**.
+
+## TASK-096/097/098 — los tres arreglos del guard anti-apagón (ciclo 72)
+
+La ronda 7 del `mutation-auditor` medió que el meta-guard del guard
+anti-apagón vigilaba la **FORMA** del texto de su contraprueba y no su
+**SEMÁNTICA**: un `assert etiquetas == ESPERADAS or True` conserva el
+fragmento de texto, y un bucle de motivos en `pass` conserva sus cuatro
+literales. Los dos mutantes (`G-10`, `G-11`) **sobrevivían**, y con ellos
+tres de las cuatro vías de apagado podían dejar de detectarse en silencio.
+
+| Arreglo | Qué hace | Mutante que mata |
+|---|---|---|
+| **TASK-096** | El meta-guard **parsea la contraprueba con `ast`** y exige la semántica: la aserción de las etiquetas tiene que ser una `ast.Compare` con `ast.Eq` (no un `ast.BoolOp`), el bucle de motivos tiene que recorrer las cuatro motivaciones **y** tener un `ast.Assert` dentro, y la del `taskkill` propio tiene que comparar `len(marks_taskkill) == 1`. | `G-10`, `G-11` |
+| **TASK-097** | `_la_celda_del_limite_no_se_puede_borrar()` parsea el fichero con `ast` y exige que la llamada `exigir_la_acusacion(informe_sano, centinela_limite, "SOBREVIVIENTE", "MUERTO")` siga existiendo **con sus argumentos**. Un borrado no se detecta buscando un fragmento: el fragmento desaparece con él. | `M-121-b` |
+| **TASK-098** | `_el_blindaje_omite_una_instancia_por_pid()` usa un **doble** con dos instancias del MISMO nombre y PIDs distintos, porque en este host los procesos de sistema vivos se llaman distinto y el conteo por nombre era indistinguible. El doble revienta con `AssertionError` si el blindaje llega a `kill()` o a `memory_info()`. | `M-979b` |
+
+**Dos cosas que hay que saber al tocar este guard:**
+
+1. **El guard tiene DOS rangos.** `bloque_contra` es SOLO la contraprueba (lo
+   que se parsea con `ast`) y `bloque_del_guard` es el que empieza en la
+   **constante** que define el centinela (donde viven las `ETIQUETA_*` que
+   miran los fragmentos). El `ast.parse` de un fragmento de función no vale:
+   hay que delimitar por el centinela del **código** (el que va tras un `# `) y
+   arrancar en el principio de la línea siguiente.
+2. **La comprobación no puede vivir en la línea que su propio mutante borra.**
+   Los dos helpers nuevos se llaman desde tests que ya existían, con `;` en
+   una línea que ya existía, y **por debajo** de la última cita viva por
+   número de línea (`run_tests.py:30731`): el desplazamiento de las citas es
+   **cero** (`1600`, `24777`, `24785`, `30671` y `30731` siguen diciendo
+   exactamente lo mismo). El recuento de tests se queda en **235 = 159 + 76**:
+   los helpers **no** son `test_*`.
+
+Evidencia: `openspec/changes/2026-10-23-el-gate-lee-la-mutacion/mutation-report.md`
+(rondas 6, 7 y 8) y `openspec/changes/2026-10-24-la-suite-no-puede-apagar-el-equipo/`.

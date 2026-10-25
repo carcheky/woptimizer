@@ -1,0 +1,9 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_d\run_tests.py", line 33853, in <module>
+    _la_suite_no_puede_apagar_el_equipo()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_d\run_tests.py", line 32947, in _la_suite_no_puede_apagar_el_equipo
+    assert 0 <= i_contra < j_contra, (
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: TASK-093: el guard no encuentra su propia CONTRAPROUEBA: los centinelas se han movido o se han borrado, luego la contraprueba puede estar vaciada sin que nada lo note

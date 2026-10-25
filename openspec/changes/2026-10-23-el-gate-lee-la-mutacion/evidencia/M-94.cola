@@ -1,9 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 33240, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 33473, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 23347, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 23347, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     exigir_el_fall_con_esta_razon(
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
         informe_sano,
@@ -13,7 +13,7 @@ Traceback (most recent call last):
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         "copia legible del veredicto contradice a la evidencia")
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 23308, in exigir_el_fall_con_esta_razon
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 23308, in exigir_el_fall_con_esta_razon
     assert fallos, (
            ^^^^^^
 AssertionError: EL GATE NO DISTINGUE: con el catalogo del corpus sintetico, el validador tiene que ACUSAR (los changelogs declaran M-FIX-CHANGELOG como SOBREVIVIENTE y su evidencia commiteada obliga a MUERTO, luego la copia legible del veredicto contradice a la evidencia) y no lo ha hecho: ningun [FAIL] del informe dice 'el mutante M-FIX-CHANGELOG aparece como SOBREVIVIENTE y la evidencia commiteada obliga a MUERTO'. Sin esta asercion un gate ciego en ESTA rama pasaria por sano: con el cuerpo del gate VACIO el validador tambien daria 0 FAIL. Fallos del informe:
@@ -36,6 +36,6 @@ commits' del journal: 6 entrada(s) con 'cycle', 0 con lista de hash(es), 0 confo
 
   [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=6, mutantes re-derivados=7, origen del contrato: ciclo 70
 
-Resumen: 170 OK, 11 FAIL, 0 SKIP
+Resumen: 172 OK, 11 FAIL, 0 SKIP
 
 EL GATE NO DISTINGUE

@@ -1,7 +1,7 @@
 {
   "cambio": "openspec/changes/2026-10-23-el-gate-lee-la-mutacion/",
   "ciclo": 72,
-  "nota": "RONDA 7 (mutation-auditor): el ARREGLO del guard anti-apagon (TASK-093, commit 0894e5c) y el gate que lee la mutacion (TASK-091, commits 54c62a9 y 9798402) medidos de nuevo en camara desechable con su PROPIO .git (arbol poblado con `git archive`, SIN copiar ficheros del VFS: T-6), sobre el arbol 68b97718fb12636d5d9c7aa7f64f59df8e826d60 (344 ficheros; base VERDE NATIVA: rc=0 y 'ALL TESTS PASSED.' como ultima linea, 315,8 s; el guard anti-apagon con '55 fichero(s) .py vigilados por dos recorridos que coinciden'). Los mutantes del GUARD de TASK-093 siguen FUERA de este catalogo: el gate exige que el `asa` sea un `test_*` DEFINIDO en run_tests.py (`asa not in definidos`, validate_docs.py:3521) y el guard no lo es a proposito (el recuento de tests se queda en 235 = 159 + 76). Se miden y se reportan FUERA del veredicto canonico, con su veredicto literal y su metrica; su evidencia de esta ronda vive en `evidencia/<mutante>-r7.cola` (la de la ronda 6 sigue viva en `evidencia/<mutante>.cola`).",
+  "nota": "RONDA 8 (mutation-auditor): los TRES arreglos del ciclo 73 (TASK-096 meta-guard con `ast`, TASK-097 celda (d) con `_la_celda_del_limite_no_se_puede_borrar`, TASK-098 blindaje por PID con `_el_blindaje_omite_una_instancia_por_pid`) MEDIDOS sobre el arbol f080f23 (rama beta, publicada). Camara desechable con `git init` PROPIO y arbol poblado con `git archive` del GIT_DIR desacoplado (SIN copiar ficheros del VFS: T-6); el arbol de la camara es IDENTICO al de f080f23 (sha de arbol 4ccc7edb67388bc681d125ebfb39609e03d2e0ba, 360 ficheros) y su `.git` es un DIRECTORIO, nunca el gitlink de 57 bytes (T-7). BASE VERDE: rc=0 y 'ALL TESTS PASSED.' como ultima linea en las DOS camaras. `M-H9` se RE-DECLARA con la linea 335 (su `original` sigue vigente: la linea 339 caducó). Los mutantes del GUARD anti-apagon (TASK-093) siguen FUERA de este catalogo: el gate exige que el `asa` sea un `test_*` DEFINIDO en run_tests.py (`asa not in definidos`, validate_docs.py:3521) y el guard no lo es a proposito (el recuento de tests se queda en 235 = 159 + 76). Se miden y se reportan FUERA del veredicto canonico, con su veredicto literal y su metrica; su evidencia de esta ronda vive en `evidencia/<mutante>-r8.cola`.",
   "mutaciones": [
     {
       "id": "M-H1",
@@ -13,14 +13,19 @@
         "original": "            detalle = _detalle_de_la_mutacion(mutacion)",
         "sustituto": "            detalle = None  # MUTANTE M-H1: R1 no se comprueba"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "propio (TASK-091, celda F1-bis)",
       "nota_ronda_6": "El gate deja de LLAMAR al comprobador de forma: R1 no puede acusar nada.",
       "rc_ronda_7": 1,
       "test_que_murio_ronda_7": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo_literal_ronda_7": "EL GATE NO LEE LA MUTACION",
       "estado_ronda_7": "MUERTO",
-      "nota_ronda_7": "todas las corridas mueren por el asa"
+      "nota_ronda_7": "todas las corridas mueren por el asa",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "EL GATE NO LEE LA MUTACION",
+      "test_que_murio_ronda_8": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "por_que_ronda_8": "murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion"
     },
     {
       "id": "M-H2",
@@ -32,14 +37,19 @@
         "original": "                if destino is None or not os.path.isfile(destino):",
         "sustituto": "                if destino is None:  # MUTANTE M-H2: R2 no comprueba que EXISTA"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "propio (TASK-091, celda F1)",
       "nota_ronda_6": "El gate solo comprueba que el fichero este DENTRO del arbol, no que exista.",
       "rc_ronda_7": 1,
       "test_que_murio_ronda_7": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo_literal_ronda_7": "EL GATE NO LEE LA MUTACION",
       "estado_ronda_7": "MUERTO",
-      "nota_ronda_7": "todas las corridas mueren por el asa"
+      "nota_ronda_7": "todas las corridas mueren por el asa",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "EL GATE NO LEE LA MUTACION",
+      "test_que_murio_ronda_8": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "por_que_ronda_8": "murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion"
     },
     {
       "id": "M-H3",
@@ -51,14 +61,19 @@
         "original": "                and cambio_del_catalogo.rstrip(\"/\") == cambio_de_la_entrada):",
         "sustituto": "                and cambio_de_la_entrada is not None):  # MUTANTE M-H3: R3 no compara"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "propio (TASK-091, celda F2-bis)",
       "nota_ronda_6": "El gate comprueba el TIPO del `cambio` pero no lo compara con el de la entrada.",
       "rc_ronda_7": 1,
       "test_que_murio_ronda_7": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo_literal_ronda_7": "EL GATE NO LEE LA MUTACION",
       "estado_ronda_7": "MUERTO",
-      "nota_ronda_7": "todas las corridas mueren por el asa"
+      "nota_ronda_7": "todas las corridas mueren por el asa",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "EL GATE NO LEE LA MUTACION",
+      "test_que_murio_ronda_8": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "por_que_ronda_8": "murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion"
     },
     {
       "id": "M-H4",
@@ -70,14 +85,19 @@
         "original": "        ciclo_del_catalogo = (encabezado.get(\"ciclo\")\n                              if isinstance(encabezado, dict) else None)",
         "sustituto": "        ciclo_del_catalogo = ciclo  # MUTANTE M-H4: R4 no compara"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "propio (TASK-091, celda F2)",
       "nota_ronda_6": "El gate se DECLARA el ciclo de la entrada y lo compara contra si mismo.",
       "rc_ronda_7": 1,
       "test_que_murio_ronda_7": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo_literal_ronda_7": "EL GATE NO LEE LA MUTACION",
       "estado_ronda_7": "MUERTO",
-      "nota_ronda_7": "todas las corridas mueren por el asa"
+      "nota_ronda_7": "todas las corridas mueren por el asa",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "EL GATE NO LEE LA MUTACION",
+      "test_que_murio_ronda_8": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "por_que_ronda_8": "murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion"
     },
     {
       "id": "M-92",
@@ -89,14 +109,19 @@
         "original": "        for identificador, asa, motivo, sha_del_catalogo, mutacion in mutantes:",
         "sustituto": "        for identificador, asa, motivo, sha_del_catalogo, mutacion in mutantes[:1]:  # MUTANTE M-H5/M-92: solo el primero"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "propio (TASK-091, celda F1); RE-DECLARA M-92 del ciclo 71",
       "nota_ronda_6": "El centinela ROTO de (F) va SEGUNDO a proposito: un gate que mire solo el primero (el patron de M-92) tiene que quedar cogido.",
       "rc_ronda_7": 1,
       "test_que_murio_ronda_7": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo_literal_ronda_7": "EL GATE NO DISTINGUE",
       "estado_ronda_7": "MUERTO",
-      "nota_ronda_7": "todas las corridas mueren por el asa"
+      "nota_ronda_7": "todas las corridas mueren por el asa",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "EL GATE NO DISTINGUE",
+      "test_que_murio_ronda_8": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "por_que_ronda_8": "murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion"
     },
     {
       "id": "M-H6",
@@ -108,14 +133,19 @@
         "original": "            if estado_derivado != estado_declarado:",
         "sustituto": "            if estado_derivado == estado_declarado:  # MUTANTE M-H6/M-91: acusa en lo que no puede"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "propio (TASK-091, celda F3); RE-DECLARA M-91 del ciclo 71",
       "nota_ronda_6": "Acusar de mas es tan ciego como no acusar: la contraprueba F3 exige 0 FAIL sobre los centinelas en regla.",
       "rc_ronda_7": 1,
       "test_que_murio_ronda_7": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo_literal_ronda_7": "EL GATE ACUSA EN LO QUE NO PUEDE",
       "estado_ronda_7": "MUERTO",
-      "nota_ronda_7": "todas las corridas mueren por el asa"
+      "nota_ronda_7": "todas las corridas mueren por el asa",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "EL GATE ACUSA EN LO QUE NO PUEDE",
+      "test_que_murio_ronda_8": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "por_que_ronda_8": "murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion"
     },
     {
       "id": "M-H7",
@@ -127,14 +157,19 @@
         "original": "#   (g) que el TEXTO declarado (`mutacion.original`) este EN el fichero. El\n#       gate comprueba que la `mutacion` este DECLARADA y con FORMA (R1), que\n#       su fichero EXISTA y este dentro del arbol (R2) y que el catalogo sea\n#       el del ciclo y del cambio que dice ser (R3 y R4), pero **NO** que el\n#       texto que se declara este en ese fichero.\n#\n#       MOTIVO MEDIDO (CADUCIDAD): el texto declarado se mueve con cada ciclo\n#       que toca el codigo. MEDIDO el 2026-10-22 (ANTES de este cambio): el\n#       `original` declarado era un bloque CONTIGUO en **24 de los 26**\n#       mutantes (los dos que no: M-A1, dos `if` que existen pero NO son\n#       contiguos, y M-121, que era prosa). MEDIDO el 2026-10-23 (DESPUES de\n#       este cambio, que toco el cuerpo del gate y su bucle de mutantes):\n#       **22 de los 26**, porque las tres recetas de M-90, M-92 y M-94\n#       apuntaban precisamente a esas dos cosas. O sea que **cualquier**\n#       cambio del codigo invalida las recetas. Y el `original` esta en la\n#       LINEA declarada en **1 de 26** (solo M-107), luego una regla que lo\n#       exigiera en la linea daria FAIL sobre **25 de los 26** mutantes, y una\n#       que exigiera el texto daria FAIL sobre el propio catalogo del repo.\n#\n#       MOTIVO MEDIDO (COSTE): comprobarlo cuesta **62,3 ms** (26 mutantes,\n#       5 ficheros, 1.891 MB leidos, cache por ruta + busqueda `in`) y el\n#       presupuesto del gate es del **0,5 %** de los 11,28 s del validador =\n#       **56,4 ms**, con un margen actual de **10,2 ms**: disponibles\n#       **46,2 ms**, luego **NO CABE**. Las CUATRO reglas que si caben (forma,\n#       fichero, cambio, ciclo) cuestan **0,88 ms MEDIDOS** el 2026-10-23 (R1\n#       0,011 ms; R2 0,872 ms, que son 26 `stat` a ~33 us cada uno; R3+R4\n#       0,0003 ms) porque NO leen contenido: solo `os.path.isfile`. El margen\n#       del check 11 en este host: 13,674 ms antes y 14,837 ms despues.\n#\n#       MOTIVO MEDIDO (SEMANTICA): la RECETA caduca, el VEREDICTO no. El\n#       veredicto es un hecho sobre el arbol AUDITADO (`sha_arbol_auditado`),\n#       y ese hecho no se invalida porque el codigo se haya movido despues;\n#       lo que caduca es el PROCEDIMIENTO para reproducirlo. Un FAIL por\n#       esto convertiria el gate en una bomba de relojería (habria que\n#       re-declarar mutantes historicos cada vez que se mueve el codigo),\n#       que es justo lo que este encargo prohibe.\n#\n#       Y la seccion (F) de\n#       `test_el_check_9_se_cablea_en_el_camino_real_del_validador` vigila las\n#       CUATRO reglas con un cambio sintetico PROPIO y TRES centinelas PROPIOS\n#       (uno COHERENTE, uno con `mutacion.fichero` inexistente y uno con la\n#       FORMA rota), y exige que el gate ACUSE a los rotos y CALLE sobre el\n#       coherente.",
         "sustituto": "#   (g) MUTANTE M-H7: el limite (g) se borra del bloque canonico (sustituto NO VACIO, que es lo que R1 exige del catalogo)"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "propio (TASK-091, guard (B))",
       "nota_ronda_6": "Un limite que no esta escrito no esta declarado: el guard (B) exige los siete limites con su motivo medido.",
       "rc_ronda_7": 1,
       "test_que_murio_ronda_7": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo_literal_ronda_7": "AssertionError: el limite (g) tiene que decir el COSTE MEDIDO de comprobar el texto declarado (62,3 ms): un limite sin motivo medido es una opinion",
       "estado_ronda_7": "MUERTO",
-      "nota_ronda_7": "todas las corridas mueren por el asa"
+      "nota_ronda_7": "todas las corridas mueren por el asa",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "AssertionError: el limite (g) tiene que decir el COSTE MEDIDO de comprobar el texto declarado (62,3 ms): un limite sin motivo medido es una opinion",
+      "test_que_murio_ronda_8": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "por_que_ronda_8": "murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion"
     },
     {
       "id": "M-H8",
@@ -146,14 +181,19 @@
         "original": "#       texto que se declara este en ese fichero.",
         "sustituto": "#       TEXTO declarado en el fichero.  # MUTANTE M-H8"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "propio (TASK-091, celda F5)",
       "nota_ronda_6": "El limite (g) tiene que NOMBRAR las cuatro reglas que el gate SI comprueba (R1..R4) y decir QUE es lo que no comprueba.",
       "rc_ronda_7": 1,
       "test_que_murio_ronda_7": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo_literal_ronda_7": "AssertionError: el limite (g) tiene que decir QUE es lo que NO se comprueba: el TEXTO declarado, no la DECLARACION",
       "estado_ronda_7": "MUERTO",
-      "nota_ronda_7": "todas las corridas mueren por el asa"
+      "nota_ronda_7": "todas las corridas mueren por el asa",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "AssertionError: el limite (g) tiene que decir QUE es lo que NO se comprueba: el TEXTO declarado, no la DECLARACION",
+      "test_que_murio_ronda_8": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "por_que_ronda_8": "murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion"
     },
     {
       "id": "M-H9",
@@ -165,14 +205,19 @@
         "original": "      \"id\": \"M-121\",\n      \"asa\": \"test_el_check_9_se_cablea_en_el_camino_real_del_validador\",\n      \"motivo\": \"EL GATE NO DISTINGUE\",\n      \"mutacion\": {\n        \"fichero\": \"run_tests.py\",\n",
         "sustituto": "      \"id\": \"M-121\",\n      \"asa\": \"test_el_check_9_se_cablea_en_el_camino_real_del_validador\",\n      \"motivo\": \"EL GATE NO DISTINGUE\",\n      \"mutacion\": {\n        \"fichero\": \"src/woptimizer/NO_EXISTE.py\",\n"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "propio (TASK-091, celda F4)",
       "nota_ronda_6": "Rompe la MIGRACION de M-121 (la `mutacion.fichero` que declara un fichero que no es un fichero). Si la celda F4 no muere, la migracion no esta vigilada: con el gate como estaba (sin R1 ni R2) daba 0 FAIL.",
       "rc_ronda_7": 1,
       "test_que_murio_ronda_7": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo_literal_ronda_7": "AssertionError: el catalogo REAL del repo tiene que pasar el gate con 0 FAIL: acuso [\"mutaciones.json: el mutante M-121 declara `mutacion.fichero` = 'src/woptimizer/NO_EXISTE.py' y ese fichero NO EXISTE en el arbol (o se sale de el). Una mutacion que apunta a un fichero que no existe NO es una mutacion: es la DECLARACION de una mutacion\"]. O la migracion de un mutante real esta rota, o el gate es mas estricto que lo que el repo declara (y entonces el gate esta midiendo algo que nadie pidio)",
       "nota_ronda_7": "El ancla declarada en la ronda 6 (`\"fichero\": \"run_tests.py\"`) aparece CUATRO veces en el catalogo del ciclo 71: en esta ronda se acota con el contexto de la entrada M-121 (la que declara la migracion que R2 tiene que vigilar). Se declara el ancla REAL que se aplico.",
-      "estado_ronda_7": "MUERTO"
+      "estado_ronda_7": "MUERTO",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "AssertionError: el catalogo REAL del repo tiene que pasar el gate con 0 FAIL: acuso [\"mutaciones.json: el mutante M-121 declara `mutacion.fichero` = 'src/woptimizer/NO_EXISTE.py' y ese fichero NO EXISTE en el arbol (o se sale de el). Una mutacion que apunta a un fichero que no existe NO es una mutacion: es la DECLARACION de una mutacion\"]. O la migracion de un mutante real esta rota, o el gate es mas estricto que lo que el repo declara (y entonces el gate esta midiendo algo que nadie pidio)",
+      "test_que_murio_ronda_8": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "por_que_ronda_8": "murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion"
     },
     {
       "id": "M-90",
@@ -184,14 +229,19 @@
         "original": "    journal = _leer_el_journal(root)\n",
         "sustituto": "    journal = _leer_el_journal(root)\n    if journal is not None:  # MUTANTE M-90: el cuerpo del gate VACIO\n        _REGISTRO_DE_VEREDICTOS = (\n            \"check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=0, \"\n            \"mutantes re-derivados=0, origen del contrato: ciclo 70\")\n        return\n"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "RE-DECLARADO (era del ciclo 71; su `original` apuntaba al cuerpo del gate, que este ciclo cambio)",
       "nota_ronda_6": "El limite (f) del gate: el validador, POR SI SOLO, no detecta un gate ciego. Lo que lo detecta es la SUITE, con la seccion (D).",
       "rc_ronda_7": 1,
       "test_que_murio_ronda_7": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo_literal_ronda_7": "EL GATE NO DISTINGUE",
       "estado_ronda_7": "MUERTO",
-      "nota_ronda_7": "todas las corridas mueren por el asa"
+      "nota_ronda_7": "todas las corridas mueren por el asa",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "EL GATE NO DISTINGUE",
+      "test_que_murio_ronda_8": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "por_que_ronda_8": "murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion"
     },
     {
       "id": "M-94",
@@ -203,90 +253,119 @@
         "original": "        for identificador, asa, motivo, sha_del_catalogo, mutacion in mutantes:",
         "sustituto": "        for identificador, asa, motivo, sha_del_catalogo, mutacion in mutantes[1:]:  # MUTANTE M-94: se salta el primero"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "RE-DECLARADO (era del ciclo 71; su `original` apuntaba al `for` de cuatro campos, que este ciclo cambio a cinco)",
       "nota_ronda_6": "El simetrico de M-H5: no es que mire solo el primero, es que se salta el primero y no mira ninguno mas de los que le importan.",
       "rc_ronda_7": 1,
       "test_que_murio_ronda_7": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
       "motivo_literal_ronda_7": "EL GATE NO DISTINGUE",
       "estado_ronda_7": "MUERTO",
-      "nota_ronda_7": "todas las corridas mueren por el asa"
+      "nota_ronda_7": "todas las corridas mueren por el asa",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "EL GATE NO DISTINGUE",
+      "test_que_murio_ronda_8": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "por_que_ronda_8": "murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion"
     },
     {
       "id": "M-121-r6",
       "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
-      "motivo": "EL GATE NO DISTINGUE",
+      "motivo": "la celda (d) del guard del gate ya no EXISTE",
       "mutacion": {
         "fichero": "run_tests.py",
         "linea": 23360,
         "original": "        exigir_la_acusacion(informe_sano, centinela_limite, \"SOBREVIVIENTE\",\n                            \"MUERTO\",\n                            \"la entrada del journal que esta en el LIMITE (el \"\n                            \"ciclo 70, el origen del contrato) tiene que estar \"\n                            \"MIRADA: su veredicto se juzga contra la evidencia\")\n        assert f\"entradas cubiertas={len(entradas_sinteticas)}\" in informe_sano, (\n            f\"el gate tiene que EXAMINAR las {len(entradas_sinteticas)} \"\n            \"entradas del corpus (incluida la del LIMITE, el ciclo 70): su \"\n            \"REGISTRO tiene que decir 'entradas cubiertas=\"\n            f\"{len(entradas_sinteticas)}'. Un gate que se queda en el ciclo 71 \"\n            \"deja el origen del contrato sin re-derivar y no lo dice: \"\n            f\"Informe:\\n{informe_sano[-2000:]}\\nEL GATE NO DISTINGUE\")",
         "sustituto": "        pass  # MUTANTE M-121: la celda (D1-ter)(d) del LIMITE y la asercion de 'entradas cubiertas' NEUTRALIZADAS"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "RE-MEDIDO (la receta migrada en el ciclo 72)",
       "nota_ronda_6": "La receta migrada (run_tests.py, bloque contiguo de 12 lineas) se aplica tal cual: comprueba que la migracion NO es un mutante fantasma.",
       "rc_ronda_7": 1,
       "test_que_murio_ronda_7": "test_las_citas_de_sandbox_rules_siguen_siendo_ciertas",
       "motivo_literal_ronda_7": "AssertionError: run_tests.py:24785 ya no cita `sandbox-rules.md:55-56`: es una de las cuatro afirmaciones que atan la tabla al numero de linea",
       "estado_ronda_7": "NO MEDIDO",
-      "nota_ronda_7": "murio `test_las_citas_de_sandbox_rules_siguen_siendo_ciertas` y el asa declarada es `test_el_check_9_se_cablea_en_el_camino_real_del_validador`"
+      "nota_ronda_7": "murio `test_las_citas_de_sandbox_rules_siguen_siendo_ciertas` y el asa declarada es `test_el_check_9_se_cablea_en_el_camino_real_del_validador`",
+      "nota_ronda_8": "RE-DECLARADO (ronda 8): MISMO texto nuevo que M-121-b, porque es la MISMA asercion la que lo mata (el helper `_la_celda_del_limite_no_se_puede_borrar`, de TASK-097). MEDIDO: con el arreglo de TASK-097 el mutante YA NO muere de forma indirecta por `test_las_citas_de_sandbox_rules_siguen_siendo_ciertas` (que era el NO MEDIDO de la ronda 7): muere ANTES, en el `asa` declarada `test_el_check_9_se_cablea_en_el_camino_real_del_validador`, porque el helper salta en la celda (d) antes de que la receta desplace la cita viva `run_tests.py:24785`. El `asa` NO se ajusta. La receta (12 lineas -> 1, con desplazamiento de 11) se CONSERVA tal cual: el desplazamiento sigue existiendo, pero ya no es lo que se mide.",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "AssertionError: TASK-097: la celda (d) del guard del gate ya no EXISTE: la llamada `exigir_la_acusacion(informe_sano, centinela_limite, 'SOBREVIVIENTE', 'MUERTO')` ha desaparecido, o ha cambiado de funcion o de argumentos. Sin ella el gate puede dejar de MIRAR la entrada del LIMITE (el ciclo 70, el origen del contrato) y nada lo nota (mutante M-121-b).",
+      "test_que_murio_ronda_8": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "por_que_ronda_8": "murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion"
     },
     {
       "id": "M-121-b",
       "asa": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
-      "motivo": "EL GATE NO DISTINGUE",
+      "motivo": "la celda (d) del guard del gate ya no EXISTE",
       "mutacion": {
         "fichero": "run_tests.py",
         "linea": 23360,
         "original": "        exigir_la_acusacion(informe_sano, centinela_limite, \"SOBREVIVIENTE\",\n                            \"MUERTO\",\n                            \"la entrada del journal que esta en el LIMITE (el \"\n                            \"ciclo 70, el origen del contrato) tiene que estar \"\n                            \"MIRADA: su veredicto se juzga contra la evidencia\")\n        assert f\"entradas cubiertas={len(entradas_sinteticas)}\" in informe_sano, (\n            f\"el gate tiene que EXAMINAR las {len(entradas_sinteticas)} \"\n            \"entradas del corpus (incluida la del LIMITE, el ciclo 70): su \"\n            \"REGISTRO tiene que decir 'entradas cubiertas=\"\n            f\"{len(entradas_sinteticas)}'. Un gate que se queda en el ciclo 71 \"\n            \"deja el origen del contrato sin re-derivar y no lo dice: \"\n            f\"Informe:\\n{informe_sano[-2000:]}\\nEL GATE NO DISTINGUE\")",
         "sustituto": "        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        # MUTANTE M-121b: celda (D1-ter)(d) neutralizada (desplazamiento CERO)\n        pass  # MUTANTE M-121b: la celda (D1-ter)(d) y la asercion de 'entradas cubiertas' NEUTRALIZADAS"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "RE-MEDIDO con desplazamiento CERO (la receta migrada mueve 11 lineas y mata el test de las citas vivas, luego no mide la celda (d))",
       "nota_ronda_6": "La MISMA receta migrada de M-121 pero con el mismo numero de lineas: asi se mide la celda (D1-ter)(d) y no el desplazamiento de las citas.",
       "rc_ronda_7": 0,
       "test_que_murio_ronda_7": "",
       "motivo_literal_ronda_7": "ALL TESTS PASSED.",
       "estado_ronda_7": "SOBREVIVIENTE",
-      "nota_ronda_7": "la suite termino en VERDE"
+      "nota_ronda_7": "la suite termino en VERDE",
+      "nota_ronda_8": "RE-DECLARADO (ronda 8): el `motivo` declarado en las rondas 6 y 7 ('EL GATE NO DISTINGUE') era el texto de la asercion VIEJA. El arreglo de TASK-097 (commit f080f23) introduce una asercion NUEVA (`_la_celda_del_limite_no_se_puede_borrar`), y su texto es el que nombra la infraccion. El `asa` NO se ajusta: sigue siendo `test_el_check_9_se_cablea_en_el_camino_real_del_validador`, y MEDIDO es el frame que murio. Es CADUCIDAD del texto declarado, no un ajuste del asa despues de ver el log (limite (b) del gate).",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "AssertionError: TASK-097: la celda (d) del guard del gate ya no EXISTE: la llamada `exigir_la_acusacion(informe_sano, centinela_limite, 'SOBREVIVIENTE', 'MUERTO')` ha desaparecido, o ha cambiado de funcion o de argumentos. Sin ella el gate puede dejar de MIRAR la entrada del LIMITE (el ciclo 70, el origen del contrato) y nada lo nota (mutante M-121-b).",
+      "test_que_murio_ronda_8": "test_el_check_9_se_cablea_en_el_camino_real_del_validador",
+      "por_que_ronda_8": "murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion"
     },
     {
       "id": "M-979a",
       "asa": "test_no_system_process_is_killable",
-      "motivo": "Todos los procesos de sistema vivos deberian contar como omitidos",
+      "motivo": "omitidos=0 y PIDs=2",
       "mutacion": {
         "fichero": "src/woptimizer/services/process_service.py",
         "linea": 637,
         "original": "                    if (self.is_system_protected(name)\n                            or self.is_system_protected(os.path.basename(exe))):\n                        skipped += 1\n                        continue\n",
         "sustituto": "                    if (self.is_system_protected(name)\n                            or self.is_system_protected(os.path.basename(exe))):\n                        continue\n                        skipped += 1  # MUTANTE 979-a: el += quedo debajo del continue\n"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "propio (commit 9798402)",
       "nota_ronda_6": "El blindaje sigue SIN MATAR nada (el `continue` sigue antes), pero deja de CONTAR lo que omite: el `+=` quedo debajo del `continue`.",
       "rc_ronda_7": 1,
       "test_que_murio_ronda_7": "test_no_system_process_is_killable",
       "motivo_literal_ronda_7": "AssertionError: Todos los procesos de sistema vivos deberian contar como omitidos: s=0, vivos=2",
       "estado_ronda_7": "MUERTO",
-      "nota_ronda_7": "todas las corridas mueren por el asa"
+      "nota_ronda_7": "todas las corridas mueren por el asa",
+      "nota_ronda_8": "RE-DECLARADO (ronda 8): MEDIDO, el arreglo de TASK-098 hace que M-979a muera por la asercion del helper NUEVO (`_el_blindaje_omite_una_instancia_por_pid`), que se llama ANTES de la asercion vieja del test (run_tests.py:1968 llama al helper y 1969 afirma `s == len(vivos)`). El texto 'omitidos=0 y PIDs=2' nombra la infraccion REAL de M-979a (el blindaje no cuenta NINGUN omitido: `omitidos=0` con dos PIDs de sistema). El `asa` NO se ajusta: sigue siendo `test_no_system_process_is_killable`, y MEDIDO es el frame que murio. El texto viejo ('Todos los procesos de sistema vivos deberian contar como omitidos') ya no aparece en la cola porque el helper salta antes.",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "AssertionError: el blindaje tiene que omitir UNA INSTANCIA POR PID: con dos procesos de sistema del MISMO nombre, omitidos=0 y PIDs=2. Un conteo POR NOMBRE cuenta uno y deja el otro sin omitir (mutante M-979b)",
+      "test_que_murio_ronda_8": "test_no_system_process_is_killable",
+      "por_que_ronda_8": "murio `test_no_system_process_is_killable` por su asercion"
     },
     {
       "id": "M-979b",
       "asa": "test_no_system_process_is_killable",
-      "motivo": "Todos los procesos de sistema vivos deberian contar como omitidos",
+      "motivo": "omitidos=1 y PIDs=2",
       "mutacion": {
         "fichero": "src/woptimizer/services/process_service.py",
         "linea": 624,
         "original": "        apps_lower = [a.lower() for a in apps]\n\n        for proc in psutil.process_iter(['name', 'exe']):\n            try:\n                info = proc.info\n                name = (info.get('name') or '').lower()\n                exe = (info.get('exe') or '').lower()\n\n                if name in apps_lower or exe in apps_lower:\n                    # TASK-024: blindaje tambien en la via de packs. El pack lo\n                    # escribe el usuario a mano, asi que no basta con lo que\n                    # muestra la lista de la UI: aqui se cuenta como omitido y\n                    # no se toca el proceso.\n                    if (self.is_system_protected(name)\n                            or self.is_system_protected(os.path.basename(exe))):\n                        skipped += 1\n                        continue\n",
         "sustituto": "        apps_lower = [a.lower() for a in apps]\n        _contados = set()  # MUTANTE 979-b2: el blindaje cuenta POR NOMBRE\n\n        for proc in psutil.process_iter(['name', 'exe']):\n            try:\n                info = proc.info\n                name = (info.get('name') or '').lower()\n                exe = (info.get('exe') or '').lower()\n\n                if name in apps_lower or exe in apps_lower:\n                    # TASK-024: blindaje tambien en la via de packs. El pack lo\n                    # escribe el usuario a mano, asi que no basta con lo que\n                    # muestra la lista de la UI: aqui se cuenta como omitido y\n                    # no se toca el proceso.\n                    if (self.is_system_protected(name)\n                            or self.is_system_protected(os.path.basename(exe))):\n                        if name not in _contados:  # MUTANTE 979-b2\n                            _contados.add(name)\n                            skipped += 1\n                        continue\n"
       },
-      "sha_arbol_auditado": "68b97718fb12636d5d9c7aa7f64f59df8e826d60",
+      "sha_arbol_auditado": "f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34",
       "origen": "propio (commit 9798402)",
       "nota_ronda_6": "El blindaje cuenta UNA VEZ POR NOMBRE en vez de por instancia. Es el mutante que la asercion por PROPIEDAD (`s == len(vivos)`) distingue de la asercion por INSTANCIAS (`s == 2`) SOLO cuando el host tiene mas de dos procesos de sistema vivos: MEDIDO en este host, hay 2 (1 lsass + 1 winlogon), luego aqui NO se distinguen.",
       "rc_ronda_7": 0,
       "test_que_murio_ronda_7": "",
       "motivo_literal_ronda_7": "ALL TESTS PASSED.",
       "estado_ronda_7": "SOBREVIVIENTE",
-      "nota_ronda_7": "la suite termino en VERDE"
+      "nota_ronda_7": "la suite termino en VERDE",
+      "nota_ronda_8": "RE-DECLARADO (ronda 8): el `motivo` declarado en las rondas 6 y 7 ('Todos los procesos de sistema vivos deberian contar como omitidos') era el texto de la asercion VIEJA del test. El arreglo de TASK-098 (commit f080f23) introduce el helper `_el_blindaje_omite_una_instancia_por_pid`, y su asercion es la que nombra la infraccion ('omitidos=1 y PIDs=2': el codigo real cuenta POR INSTANCIA y omite dos, el mutante cuenta POR NOMBRE y omite uno). El `asa` NO se ajusta: sigue siendo `test_no_system_process_is_killable`, y MEDIDO es el frame que murio. Es CADUCIDAD del texto declarado, no un ajuste del asa despues de ver el log (limite (b) del gate).",
+      "estado_ronda_8": "MUERTO",
+      "rc_ronda_8": 1,
+      "motivo_literal_ronda_8": "AssertionError: el blindaje tiene que omitir UNA INSTANCIA POR PID: con dos procesos de sistema del MISMO nombre, omitidos=1 y PIDs=2. Un conteo POR NOMBRE cuenta uno y deja el otro sin omitir (mutante M-979b)",
+      "test_que_murio_ronda_8": "test_no_system_process_is_killable",
+      "por_que_ronda_8": "murio `test_no_system_process_is_killable` por su asercion"
     }
   ]
 }

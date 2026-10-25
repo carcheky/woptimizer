@@ -1,0 +1,9 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_d\run_tests.py", line 33854, in <module>
+    _la_suite_no_puede_apagar_el_equipo()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_d\run_tests.py", line 33115, in _la_suite_no_puede_apagar_el_equipo
+    assert vistos > 0, (
+           ^^^^^^^^^^
+AssertionError: TASK-093: el guard NO ha vigilado ningun fichero: si el conjunto vigilado puede quedar vacio, el guard puede vigilar CERO ficheros sin que nada se entere (mutantes G-1 y G-1b).

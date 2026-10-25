@@ -1,9 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 33240, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 33473, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 23923, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 23923, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     assert fallos_del_cambio, (
            ^^^^^^^^^^^^^^^^^
 AssertionError: un catalogo que declara un `cambio` que NO es el de la entrada del journal que lo ancla tiene que ser ACUSADO por el gate CON SU RAZON (R3): sin esto, el catalogo de un cambio puede hacerse pasar por el de otro y nadie lo nota. Informe:

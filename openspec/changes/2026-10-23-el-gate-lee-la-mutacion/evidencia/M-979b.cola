@@ -1,5 +1,12 @@
-=== WOPT_RUN 1 RC=0 ===
-src/woptimizer/ (TASK-081, AC-2).
-blindaje anti-apagon OK (55 fichero(s) .py vigilados por dos recorridos que coinciden, 0 vias de apagado y 0 de simulacion de entrada) (TASK-093).
-
-ALL TESTS PASSED.
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 33332, in <module>
+    test_no_system_process_is_killable()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 1968, in test_no_system_process_is_killable
+    _el_blindaje_omite_una_instancia_por_pid()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 33274, in _el_blindaje_omite_una_instancia_por_pid
+    assert skipped == 2, (
+           ^^^^^^^^^^^^
+AssertionError: el blindaje tiene que omitir UNA INSTANCIA POR PID: con dos procesos de sistema del MISMO nombre, omitidos=1 y PIDs=2. Un conteo POR NOMBRE cuenta uno y deja el otro sin omitir (mutante M-979b)

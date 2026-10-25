@@ -1,9 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 33240, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 33473, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 23295, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 23295, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     assert not fallos_del_coherente, (
            ^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: EL GATE ACUSA EN LO QUE NO PUEDE: los sentinelas M-FIX-BIEN y M-FIX-SANO declaran MUERTO y su evidencia commiteada obliga a MUERTO, luego no hay nada que acusar, y el gate los ha acusado. Un gate que acusa en lo que no puede es tan ciego como uno que no acusa nada (mutante M-91). Fallos que los nombran: ['  [FAIL] rd_journal.json: el mutante M-FIX-BIEN esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_el_check_9_se_cablea_en_el_camino_real_del_validador` por su asercion)', '  [FAIL] rd_journal.json: el mutante M-FIX-SANO esta declarado como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_un_journal_ilegible_produce_exactamente_un_error_en_el_validador_real` por su asercion)']. Informe:
@@ -21,6 +21,6 @@ do como MUERTO y la evidencia commiteada obliga a MUERTO (murio `test_este_asa_n
 
   [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=6, mutantes re-derivados=13, origen del contrato: ciclo 70
 
-Resumen: 171 OK, 19 FAIL, 0 SKIP
+Resumen: 173 OK, 19 FAIL, 0 SKIP
 
 EL GATE ACUSA EN LO QUE NO PUEDE

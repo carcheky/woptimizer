@@ -1,9 +1,12 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 33338, in <module>
-    test_las_citas_de_sandbox_rules_siguen_siendo_ciertas()                # AC-4
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 30715, in test_las_citas_de_sandbox_rules_siguen_siendo_ciertas
-    assert cita in texto[indice], (
-           ^^^^^^^^^^^^^^^^^^^^^
-AssertionError: run_tests.py:24785 ya no cita `sandbox-rules.md:55-56`: es una de las cuatro afirmaciones que atan la tabla al numero de linea
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 33462, in <module>
+    test_el_check_9_se_cablea_en_el_camino_real_del_validador()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 23359, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+    _la_celda_del_limite_no_se_puede_borrar()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 33205, in _la_celda_del_limite_no_se_puede_borrar
+    assert llamadas_al_limite, (
+           ^^^^^^^^^^^^^^^^^^
+AssertionError: TASK-097: la celda (d) del guard del gate ya no EXISTE: la llamada `exigir_la_acusacion(informe_sano, centinela_limite, 'SOBREVIVIENTE', 'MUERTO')` ha desaparecido, o ha cambiado de funcion o de argumentos. Sin ella el gate puede dejar de MIRAR la entrada del LIMITE (el ciclo 70, el origen del contrato) y nada lo nota (mutante M-121-b).

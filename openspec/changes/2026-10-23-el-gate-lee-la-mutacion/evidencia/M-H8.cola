@@ -1,9 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 33240, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 33473, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 24001, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 24001, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     assert "texto que se declara este en ese fichero" in bloque_f, (
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: el limite (g) tiene que decir QUE es lo que NO se comprueba: el TEXTO declarado, no la DECLARACION

@@ -1,8 +1,8 @@
 {
   "project": "woptimizer",
   "version": "3.0.1.dev0",
-  "updated_at": "2026-10-24",
-  "active_task_id": "TASK-096",
+  "updated_at": "2026-10-25",
+  "active_task_id": "TASK-094",
   "tasks": [
     {
       "id": "TASK-001",
@@ -1954,7 +1954,7 @@
         "AC-7: CERO regresiones: `python run_tests.py` verde, `python validate_docs.py` 0 FAIL, `python verify_ui_syntax.py` verde, `src/` intacto, y el CONTRATO DE LA LINEA CANONICA intacto (`.taskmaster/veredicto.py` y la re-derivacion NO se tocan; las reglas nuevas no emiten lineas `WOPT_VEREDICTO`).",
         "AC-8: el RECUENTO NO cambia: 235 = 159 + 76, ningun `test_*` nuevo, las cinco declaraciones intactas (AGENTS.md:70, README.md:63, STATUS.md:12, STATUS.md:132, docs/ai/testing-guide.md:57), y la fila 130 de la tabla de `docs/ai/testing-guide.md` nombra la seccion (F) y el limite (g)."
       ],
-      "notes": "Ciclo 72, arquitecto. RE-ESPECIFICADO el AC-1, MEDIDO sobre el arbol 6fe372d (sin tocar el arbol real). HALLAZGO NUEVO 1 (la premisa del encargo 71 era INCOMPLETA, no falsa): el AC-1 de antes decia 'el fichero existe y el texto original declarado esta EN EL FICHERO'. MEDIDO sobre los 26 mutantes vivos: el `original` esta en la LINEA declarada en 1 de 26 (M-107), luego exigir la linea exacta daria FAIL sobre 25 de 26; y esta EN EL FICHERO en 24 de 26 (fallan M-A1, cuyo bloque de dos `if` nunca existio como contiguo, y M-121, que es prosa). O sea: la regla del texto es IMPLEMENTABLE pero CADUCA, y el propio repo la incumple hoy. HALLAZGO NUEVO 2 (no estaba en el encargo): hay un TERCER caso, M-121, cuyo `mutacion.fichero` es 'run_tests.py + validate_docs.py' - NO es un fichero - y cuyo `linea` es 0: ese es el unico que viola la forma y la existencia, y es el que exige la migracion del AC-3. HALLAZGO NUEVO 3: el `ciclo` y el `cambio` del catalogo NO se comparan con la entrada del journal que los ancla (MEDIDO: hoy coinciden 2 de 2, luego es un agujero latente, y es la segunda trivia medida del encargo, `ciclo: 999`). HALLAZGO NUEVO 4 (el que decide): el COSTE de comprobar el texto es de 62,3 ms MEDIDOS (26 mutantes, 5 ficheros, 1.891 MB, cache por ruta + busqueda `in`), y el presupuesto del gate es del 0,5 % de los 11,28 s del validador = 56,4 ms con 10,2 ms usados, luego disponibles 46,2 ms: la comprobacion del texto NO CABE. Las CUATRO reglas que si caben (forma, fichero, cambio, ciclo) cuestan ~0,1 ms porque no leen contenido. HALLAZGO NUEVO 5 (semantica): la RECETA caduca, el VEREDICTO no - el veredicto es un hecho sobre el arbol AUDITADO y no se invalida porque el codigo se mueva despues; luego un FAIL por el texto convertiria el gate en una bomba de relojería (habria que re-declarar mutantes historicos cada vez que se mueve el codigo), que es justo lo que el encargo prohibe. DECISION: el gate comprueba R1..R4 (que no caducan) y el TEXTO declarado queda como el limite (g), declarado con sus tres motivos medidos y vigilado por el guard de FORMA (B) ampliado. NOTA DE FLUJO: el fix cambia la linea 3328 de validate_docs.py (el `for ... in mutantes:`, que pasa de 4 a 5 campos), que es el `original` declarado de M-92 y M-94, y el `original` de M-90 es el cuerpo ENTERO del gate: sus VEREDICTOS no cambian (el texto no se comprueba) pero sus RECETAS ya no se aplican, luego las re-declara la ronda 6 del mutation-auditor con su nota. T-6 (el emisor y el gate derivan distinto) sigue ABIERTO pero este diseno NO lo reproduce: las cuatro reglas salen del catalogo y del journal, no de la cola. Spec: openspec/changes/2026-10-23-el-gate-lee-la-mutacion/proposal.md || CERRADO (ciclo 72, openspec-dev): implementadas R1..R4 en el check 11 de validate_docs.py, la seccion (F) del guard (con cambio y centinelas PROPIOS), el limite (g) declarado en el bloque canonico y repetido en el docstring, y la migracion MINIMA de M-121 (unica mutacion del catalogo real que no pasaba R1/R2). MEDIDO: las cuatro reglas cuestan 0,88 ms (26 stat) y el margen del check 11 pasa de 13,674 ms a 14,837 ms (medianas). || ACTUALIZADO AL CIERRE (ciclo 72, openspec-dev): (a) el gate lee la mutacion con R1..R4; (b) la seccion (F) del guard tiene SIETE celdas (F1=R2, F1-bis=R1, F2=R4, F2-bis=R3, F3=contraprueba, F4=catalogo REAL, F5=limite (g)): las dos celdas BIS se anadieron porque el enunciado de los mutantes M-H1 (R1) y M-H3 (R3) exigia que mueren y sin celda propia SEGUIRIAN VIVOS; (c) migracion MINIMA de M-121 (el UNICO que no pasaba R1/R2), con su nota; (d) se corrigieron las TRES citas por numero de linea que MI cambio dejo caducas (STATUS.md:108: run_tests.py:24417 -> 24785, 30303 -> 30671 y 23718 -> 24086; docs/ai/testing-guide.md:1364: run_tests.py:30303 -> 30671) porque el guard test_las_citas_de_sandbox_rules_siguen_siendo_ciertas las ata por numero; (e) MEDIDO: las cuatro reglas cuestan 0,88 ms (26 stat) y el margen del check 11 pasa de 13,674 ms a 14,837 ms (medianas)."
+      "notes": "Ciclo 72, arquitecto. RE-ESPECIFICADO el AC-1, MEDIDO sobre el arbol 6fe372d (sin tocar el arbol real). HALLAZGO NUEVO 1 (la premisa del encargo 71 era INCOMPLETA, no falsa): el AC-1 de antes decia 'el fichero existe y el texto original declarado esta EN EL FICHERO'. MEDIDO sobre los 26 mutantes vivos: el `original` esta en la LINEA declarada en 1 de 26 (M-107), luego exigir la linea exacta daria FAIL sobre 25 de 26; y esta EN EL FICHERO en 24 de 26 (fallan M-A1, cuyo bloque de dos `if` nunca existio como contiguo, y M-121, que es prosa). O sea: la regla del texto es IMPLEMENTABLE pero CADUCA, y el propio repo la incumple hoy. HALLAZGO NUEVO 2 (no estaba en el encargo): hay un TERCER caso, M-121, cuyo `mutacion.fichero` es 'run_tests.py + validate_docs.py' - NO es un fichero - y cuyo `linea` es 0: ese es el unico que viola la forma y la existencia, y es el que exige la migracion del AC-3. HALLAZGO NUEVO 3: el `ciclo` y el `cambio` del catalogo NO se comparan con la entrada del journal que los ancla (MEDIDO: hoy coinciden 2 de 2, luego es un agujero latente, y es la segunda trivia medida del encargo, `ciclo: 999`). HALLAZGO NUEVO 4 (el que decide): el COSTE de comprobar el texto es de 62,3 ms MEDIDOS (26 mutantes, 5 ficheros, 1.891 MB, cache por ruta + busqueda `in`), y el presupuesto del gate es del 0,5 % de los 11,28 s del validador = 56,4 ms con 10,2 ms usados, luego disponibles 46,2 ms: la comprobacion del texto NO CABE. Las CUATRO reglas que si caben (forma, fichero, cambio, ciclo) cuestan ~0,1 ms porque no leen contenido. HALLAZGO NUEVO 5 (semantica): la RECETA caduca, el VEREDICTO no - el veredicto es un hecho sobre el arbol AUDITADO y no se invalida porque el codigo se mueva despues; luego un FAIL por el texto convertiria el gate en una bomba de relojería (habria que re-declarar mutantes historicos cada vez que se mueve el codigo), que es justo lo que el encargo prohibe. DECISION: el gate comprueba R1..R4 (que no caducan) y el TEXTO declarado queda como el limite (g), declarado con sus tres motivos medidos y vigilado por el guard de FORMA (B) ampliado. NOTA DE FLUJO: el fix cambia la linea 3328 de validate_docs.py (el `for ... in mutantes:`, que pasa de 4 a 5 campos), que es el `original` declarado de M-92 y M-94, y el `original` de M-90 es el cuerpo ENTERO del gate: sus VEREDICTOS no cambian (el texto no se comprueba) pero sus RECETAS ya no se aplican, luego las re-declara la ronda 6 del mutation-auditor con su nota. T-6 (el emisor y el gate derivan distinto) sigue ABIERTO pero este diseno NO lo reproduce: las cuatro reglas salen del catalogo y del journal, no de la cola. Spec: openspec/changes/2026-10-23-el-gate-lee-la-mutacion/proposal.md || CERRADO (ciclo 72, openspec-dev): implementadas R1..R4 en el check 11 de validate_docs.py, la seccion (F) del guard (con cambio y centinelas PROPIOS), el limite (g) declarado en el bloque canonico y repetido en el docstring, y la migracion MINIMA de M-121 (unica mutacion del catalogo real que no pasaba R1/R2). MEDIDO: las cuatro reglas cuestan 0,88 ms (26 stat) y el margen del check 11 pasa de 13,674 ms a 14,837 ms (medianas). || ACTUALIZADO AL CIERRE (ciclo 72, openspec-dev): (a) el gate lee la mutacion con R1..R4; (b) la seccion (F) del guard tiene SIETE celdas (F1=R2, F1-bis=R1, F2=R4, F2-bis=R3, F3=contraprueba, F4=catalogo REAL, F5=limite (g)): las dos celdas BIS se anadieron porque el enunciado de los mutantes M-H1 (R1) y M-H3 (R3) exigia que mueren y sin celda propia SEGUIRIAN VIVOS; (c) migracion MINIMA de M-121 (el UNICO que no pasaba R1/R2), con su nota; (d) se corrigieron las TRES citas por numero de linea que MI cambio dejo caducas (STATUS.md:108: run_tests.py:24417 -> 24785, 30303 -> 30671 y 23718 -> 24086; docs/ai/testing-guide.md:1364: run_tests.py:30303 -> 30671) porque el guard test_las_citas_de_sandbox_rules_siguen_siendo_ciertas las ata por numero; (e) MEDIDO: las cuatro reglas cuestan 0,88 ms (26 stat) y el margen del check 11 pasa de 13,674 ms a 14,837 ms (medianas). **CERRADO 2026-10-25 (ciclo 72, ronda 8):** el gate LEE la `mutacion` del catálogo y la contrasta con la evidencia. Auditoría **PASS**: 15/15 mutantes del catálogo MUERTOS por su aserción en su `asa` declarado. Límite (g) declarado."
     },
     {
       "id": "TASK-092",
@@ -2051,7 +2051,7 @@
       "description": "DEUDA T-8, ABIERTA POR LA RONDA 7 DEL AUDITOR (2026-10-24, sha 68b9771). El arreglo del guard anti-apagon (commit 0894e5c)cerro los cinco supervivientes de la ronda 6 (G-1, G-1b, G-2, G-8, G-9: TODOS MUERTOS con motivo literal medido), pero anadio un META-GUARD que vigila que el texto de la contraprueba siga diciendo lo que dice. Ese meta-guard exige FRAGMENTOS de texto (p.ej. 'assert etiquetas == ESPERADAS'), y un fragmento se puede conservar con la semantica rota: G-10 pone 'assert etiquetas == ESPERADAS or True' y G-11 deja el bucle de motivos en 'pass' CONSERVANDO sus literales. Los dos SOBREVIVIVEN ('ALL TESTS PASSED.'): la contraprueba queda SIN DIENTES y tres de las cuatro vias de apagado podrian dejar de detectarse sin que nada lo note. Es un superviviente EN SEGURIDAD (TASK-093), luego el ciclo 72 NO se cierra. El arreglo tiene que exigir la SEMANTICA (que la asercion sea una comparacion real y que el bucle de motivos contenga un assert), no el fragmento.",
       "complexity": 2,
       "priority": "high",
-      "status": "pending",
+      "status": "completed",
       "acceptance_criteria": [
         "AC-1: G-10 ('or True') MUERE por la asercion del meta-guard, con motivo literal medido.",
         "AC-2: G-11 (bucle de motivos en 'pass' conservando sus literales) MUERE, con motivo literal medido.",
@@ -2065,7 +2065,7 @@
         "openspec/changes/2026-10-23-el-gate-lee-la-mutacion/mutation-report.md"
       ],
       "created_at": "2026-10-24",
-      "notes": "PATRON RELEVANTE (repo): el guard de la seccion (E) de TASK-090 y el tripwire de TASK-083 ya derivan su expectativa con 'ast' en vez de buscar texto. Ese es el camino: el meta-guard tiene que PARSEAR la contraprueba (una 'ast.Compare' con 'Eq' y no un 'ast.BoolOp' con 'or True'; un bucle 'for' con un 'assert' dentro y no un 'pass') en vez de buscar un fragmento. Ojo: el meta-guard se vigila a si mismo con centinelas; el centinela de FIN se localiza con 'rfind' (la primera aparicion esta en la constante) y NO con 'find'."
+      "notes": "PATRON RELEVANTE (repo): el guard de la seccion (E) de TASK-090 y el tripwire de TASK-083 ya derivan su expectativa con 'ast' en vez de buscar texto. Ese es el camino: el meta-guard tiene que PARSEAR la contraprueba (una 'ast.Compare' con 'Eq' y no un 'ast.BoolOp' con 'or True'; un bucle 'for' con un 'assert' dentro y no un 'pass') en vez de buscar un fragmento. Ojo: el meta-guard se vigila a si mismo con centinelas; el centinela de FIN se localiza con 'rfind' (la primera aparicion esta en la constante) y NO con 'find'. **CERRADO 2026-10-25 (ciclo 72, ronda 8):** el meta-guard exige la SEMANTICA (parsea la contraprueba con `ast`), no la forma. G-10 y G-11 MUERTOS con su motivo literal."
     },
     {
       "id": "TASK-097",
@@ -2073,7 +2073,7 @@
       "description": "DEUDA T-3, ABIERTA POR LA RONDA 7 DEL AUDITOR (2026-10-24, sha 68b9771). El mutante M-121-b (la variante de desplazamiento CERO de la receta migrada de M-121) deja la suite VERDE: la celda (D1-ter)(d) del guard del gate (el de TASK-090/TASK-091) no la vigila nadie. La celda tiene que distinguir el caso que la receta neutraliza. Es un superviviente del GATE (no del guard anti-apagon), luego no bloquea por si mismo el cierre si T-8 se arregla, pero queda declarado y medido.",
       "complexity": 2,
       "priority": "medium",
-      "status": "pending",
+      "status": "completed",
       "acceptance_criteria": [
         "AC-1: M-121-b MUERE por una asercion que viva en la celda (D1-ter)(d) o donde corresponda, con motivo literal medido.",
         "AC-2: M-121-r6 y M-121 (la variante original) siguen con el veredicto medido que tengan.",
@@ -2085,7 +2085,7 @@
         "openspec/changes/2026-10-23-el-gate-lee-la-mutacion/mutation-report.md"
       ],
       "created_at": "2026-10-24",
-      "notes": "El auditor no fijo cual es el texto que hay que vigilar: hay que leer la seccion (D) del guard y decidir. La receita que hay que neutralizar esta declarada en 'mutaciones.json' (M-121-b)."
+      "notes": "El auditor no fijo cual es el texto que hay que vigilar: hay que leer la seccion (D) del guard y decidir. La receita que hay que neutralizar esta declarada en 'mutaciones.json' (M-121-b). **CERRADO 2026-10-25 (ciclo 72, ronda 8):** la celda (d) del guard del gate no se puede BORRAR en silencio. M-121-b MUERTO con el motivo literal."
     },
     {
       "id": "TASK-098",
@@ -2093,7 +2093,7 @@
       "description": "DEUDA T-4, ABIERTA POR LA RONDA 7 DEL AUDITOR (2026-10-24, sha 68b9771). M-979b deja la suite VERDE. MEDIDO por el auditor con una sonda in-process: con DOS instancias del mismo nombre, el codigo real cuenta 2 y el mutante por nombre cuenta 1 (gap = 1 omision). En este host hay 2 procesos de sistema vivos ('lsass.exe' 1632, 'winlogon.exe' 1592) pero con 2 NOMBRES DISTINTOS, luego aqui son INDISTINGUIBLES y el hueco es LATENTE, no ausente. El arreglo: la asercion tiene que afirmar POR PID (el conjunto de PIDs omitidos), no por nombre, para que un nombre duplicado se note.",
       "complexity": 2,
       "priority": "medium",
-      "status": "pending",
+      "status": "completed",
       "acceptance_criteria": [
         "AC-1: M-979b MUERE por una asercion que compare por PID, con motivo literal medido.",
         "AC-2: la asercion NO depende de un numero fijo de instancias (este host tiene 2, otros tendran 3 o mas): se mide con el conjunto real, no con una constante.",
@@ -2105,7 +2105,7 @@
         "openspec/changes/2026-10-23-el-gate-lee-la-mutacion/mutation-report.md"
       ],
       "created_at": "2026-10-24",
-      "notes": "El test afectado es 'test_no_system_process_is_killable' (el ya arreglado en 9798402). Ojo: no escribir un test que asuma un numero fijo de instancias de procesos de sistema (aqui hay 2, no 3)."
+      "notes": "El test afectado es 'test_no_system_process_is_killable' (el ya arreglado en 9798402). Ojo: no escribir un test que asuma un numero fijo de instancias de procesos de sistema (aqui hay 2, no 3). **CERRADO 2026-10-25 (ciclo 72, ronda 8):** el blindaje anti-brick omite UNA INSTANCIA POR PID, no un nombre. M-979b MUERTO con el motivo literal ('omitidos=1 y PIDs=2')."
     },
     {
       "id": "TASK-099",
@@ -2113,7 +2113,7 @@
       "description": "DEUDA T-5, ABIERTA POR LA RONDA 7 DEL AUDITOR (2026-10-24, sha 68b9771). M-121-r6 no se puede medir en su 'asa': la receta sustituye 12 lineas por 1 y desplaza 11 lineas, con lo que mata OTRA asercion ('AssertionError: run_tests.py:24785 ya no cita 'sandbox-rules.md:55-56''): el test de las citas vivas, no el del comportamiento. Es decir, el mutante no se sabe si el comportamiento esta o no vigilado. La pregunta de fondo ya tiene respuesta parcial: M-121-b (desplazamiento CERO) SOBREVIVE, luego el hueco de la celda (D1-ter)(d) es real (ver TASK-097).",
       "complexity": 1,
       "priority": "low",
-      "status": "pending",
+      "status": "completed",
       "acceptance_criteria": [
         "AC-1: M-121-r6 tiene un veredicto medido (MUERTO/SOBREVIVIENTE) en SU 'asa', no en el de otro test.",
         "AC-2: si sigue sin poder medirse, se declara NO MEDIDO con el MOTIVO y se encola como deuda con identificador, sin rellenar.",
@@ -2124,7 +2124,7 @@
         "openspec/changes/2026-10-23-el-gate-lee-la-mutacion/mutation-report.md"
       ],
       "created_at": "2026-10-24",
-      "notes": "Opcionalmente se puede re-declarar el mutante con un desplazamiento CERO (como M-121-b) para que sea medible en su propia asercion."
+      "notes": "Opcionalmente se puede re-declarar el mutante con un desplazamiento CERO (como M-121-b) para que sea medible en su propia asercion. **CERRADO 2026-10-25 (ciclo 72, ronda 8):** M-121-r6 ya NO es NO MEDIDO: con la celda (d) vigilada, el mutante muere en su propia `asa` y deja de desplazar la cita viva."
     }
   ]
 }

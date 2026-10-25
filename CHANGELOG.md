@@ -1,3 +1,52 @@
+## CYCLE-072 - 2026-10-25
+
+### 🔴 Corregido — El gate lee la mutación y el guard anti-apagón ya no se puede silenciar
+
+**Estado**: **PASS** en auditoría de mutación (ronda 8: **15 de 15** mutantes del catálogo **MUERTOS** por su aserción en su `asa` declarado, 14 controles "deben morir" muertos y 1 control benigno **verde**). Tests: **235** (159 backend + 76 headless, **intactos**). Commits: `d2e0cc6`, `54c62a9`, `9798402`, `cd31f18`, `952cfae`, `0894e5c`, `8eb3edf`, `1c34c3b`, `f080f23`.
+
+- 🔴 **TASK-091 — el gate ignoraba el campo `mutacion` del catálogo**: se podía declarar una mutación que **no existía** (un `original` y un `sustituto` inventados) y el gate daba **0 FAIL**. Ahora el gate **lee** la mutación declarada y la contrasta con la evidencia.
+- 🔴 **TASK-093 — el motor no podía apagar el equipo del dueño**: el diagnóstico salió del **registro de eventos de Windows**, no de una suposición (23/10 `1074`: `MoUsoCoreWorker.exe` —Windows Update— inició el reinicio; 24/10 `1074`: `StartMenuExperienceHost.exe` inició el apagado; las cuatro noches anteriores, `42` "suspensión, motivo System Idle"). Loalapagó Windows Update reiniciando un equipo **dormido por inactividad**; **ninguna prueba lo apagó**. Mitigación en el host (`powercfg /change standby-timeout-ac 0`) y blindaje en el repo. El dueño decidió **no tocar** su política de parches y el residual queda **declarado**: si cierra la sesión RDP con el equipo encendido, Windows Update puede reiniciarlo.
+- 🔴 **Los cinco supervivientes de la ronda 6 están muertos** (G-1, G-1b, G-2, G-8, G-9) y **el hueco nuevo también**: el meta-guard exigía *fragmentos de texto* (un `assert ... or True` conserva el fragmento), así que **G-10** y **G-11** sobrevivían en silencio. Ahora exige la **semántica** parseando con `ast`.
+- 🔴 **Y dos celdas que no tenían dientes**: la celda (d) del guard del gate se podía **borrar** entera (`M-121-b`) y el blindaje anti-brick contaba **por nombre** en vez de por instancia (`M-979b`, indistinguible en este host porque los dos procesos de sistema vivos se llaman distinto). Con `M-121-r6` cerrando como **MUERTO**, el catálogo queda **15/15**.
+
+| Mutante | Veredicto |
+|---|---|
+| `M-H1` | **MUERTO** |
+| `M-H2` | **MUERTO** |
+| `M-H3` | **MUERTO** |
+| `M-H4` | **MUERTO** |
+| `M-92` | **MUERTO** |
+| `M-H6` | **MUERTO** |
+| `M-H7` | **MUERTO** |
+| `M-H8` | **MUERTO** |
+| `M-H9` | **MUERTO** |
+| `M-90` | **MUERTO** |
+| `M-94` | **MUERTO** |
+| `M-121-r6` | **MUERTO** |
+| `M-121-b` | **MUERTO** |
+| `M-979a` | **MUERTO** |
+| `M-979b` | **MUERTO** |
+
+- 🟡 **Lo que queda abierto (no bloquea)**: **T-1** (el veredicto canónico exige que el `asa` sea un `test_*` y el guard anti-apagón no lo es: sus mutantes quedan fuera del bloque de máquina), **T-6** (resuelta: `git archive` + `git add -A -f`) y **T-7** (parcial).
+
+<!-- WOPT_VEREDICTOS -->
+WOPT_VEREDICTO M-H1 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-H2 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-H3 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-H4 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-92 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-H6 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-H7 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-H8 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-H9 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-90 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-94 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-121-r6 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-121-b MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-979a MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-979b MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+<!-- /WOPT_VEREDICTOS -->
+
 ## CYCLE-071 - 2026-10-23
 
 ### 🔴 Corregido — El motor ya no puede salir en verde con el aviso de publicar apagado

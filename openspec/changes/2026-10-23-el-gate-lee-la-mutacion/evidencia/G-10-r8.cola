@@ -1,0 +1,9 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 33853, in <module>
+    _la_suite_no_puede_apagar_el_equipo()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 32996, in _la_suite_no_puede_apagar_el_equipo
+    assert asercion_de_las_etiquetas, (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: TASK-093: la CONTRAPROUEBA ya no COMPARA las etiquetas con ESPERADAS: la asercion tiene que ser una comparacion (`etiquetas == ESPERADAS`), no un `or True` ni un `or` de nada (mutante G-10). Con la comparacion trivializada la contraprueba pasa siempre, y tres de las cuatro vias de apagado podrian dejar de detectarse sin que nada lo note.

@@ -1,3 +1,40 @@
+## [CYCLE-072] 2026-10-25 - task-091-093-el-gate-y-el-guard
+
+### TASK-091 + TASK-093: el gate lee la mutacion, y el motor no puede apagar el equipo
+
+**Area**: Tooling / Testing. **Change**: `openspec/changes/2026-10-23-el-gate-lee-la-mutacion/`
+**Estado**: **COMPLETED** - auditoria **PASS** (ronda 8), **15/15 mutantes MUERTOS**. **Tests**: **235 = 159 + 76 INTACTOS**. `src/woptimizer/**` intacto.
+**Commits**: `d2e0cc6`, `54c62a9`, `9798402`, `cd31f18`, `952cfae`, `0894e5c`, `8eb3edf`, `1c34c3b`, `f080f23`.
+
+**Models**
+- Paso 1 (Buscar): orquestador - backlog: `TASK-091` (el gate ignora la `mutacion`) y `TASK-093` (el motor no puede apagar el equipo del dueno, creado tras el aviso de apagones del dueno).
+- Paso 2 (Planear): `architect-review` (plan R1..R4 con el limite (g) explicito) y el `mutation-auditor` (rondas 6 y 7, que son las que miden).
+- Paso 3 (Ejecutar): `openspec-dev` (el gate que lee la `mutacion`, `54c62a9`) y el orquestador (el guard anti-apagon, `cd31f18`, y los tres arreglos `f080f23`: el meta-guard con `ast`, la celda (d) que no se puede borrar y el blindaje que omite por PID).
+- Paso 4 (Auditar): `mutation-auditor`, rondas 6, 7 y 8. La ronda 6 dio FAIL con cinco supervivientes; la ronda 7 los mato todos pero abrio T-8 (el meta-guard vigilaba la FORMA, no la SEMANTICA); la ronda 8 midio los arreglos: **PASS**.
+
+**Decisiones**
+- El limit (g) del gate queda **DECLARADO**: el TEXTO declarado no se comprueba. El coste medido es que 3 de las 24 recetas del ciclo 71 caducaron y hubo que re-declararlas (M-90, M-92, M-94).
+- El apagon **no lo causo ninguna prueba**: lo causo Windows Update reiniciando un equipo dormido por inactividad. Mitigacion en el host (`standby-timeout-ac 0`) y blindaje en el repo; el dueno decide **no tocar** su politica de parches y el residual queda declarado.
+- Un guard **no puede entrar en el veredicto canonico** si no es un `test_*` (T-1), asi que sus mutantes se miden con motivo literal pero quedan fuera del bloque de maquina.
+
+<!-- WOPT_VEREDICTOS -->
+WOPT_VEREDICTO M-H1 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-H2 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-H3 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-H4 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-92 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-H6 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-H7 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-H8 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-H9 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-90 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-94 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-121-r6 MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-121-b MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-979a MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+WOPT_VEREDICTO M-979b MUERTO f080f23b4d9710d54747f8dbc8ea1c9bafcf0c34
+<!-- /WOPT_VEREDICTOS -->
+
 ## [CYCLE-071] 2026-10-23 - task-090-el-gate-distingue-o-falla
 
 ### TASK-090: el gate tiene que DISTINGUIR, no solo existir

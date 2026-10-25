@@ -1,0 +1,9 @@
+=== WOPT_RUN 1 RC=1 ===
+Traceback (most recent call last):
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 33853, in <module>
+    _la_suite_no_puede_apagar_el_equipo()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 33019, in _la_suite_no_puede_apagar_el_equipo
+    assert not bucles_sin_asercion, (
+           ^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: TASK-093: el bucle de motivos de la CONTRAPROUEBA no comprueba NADA: sus cuatro motivaciones siguen ahi pero su cuerpo no tiene ninguna asercion (mutante G-11). Con el bucle vacio la contraprueba no ve si el detector marco las cuatro vias.

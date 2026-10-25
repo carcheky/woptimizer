@@ -1,9 +1,9 @@
 === WOPT_RUN 1 RC=1 ===
 Traceback (most recent call last):
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 33240, in <module>
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 33473, in <module>
     test_el_check_9_se_cablea_en_el_camino_real_del_validador()
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\carch\AppData\Local\Temp\wopt_r7_20261024\cam\run_tests.py", line 23869, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
+  File "C:\Users\carch\AppData\Local\Temp\wopt_r8_20261025\cam_c\run_tests.py", line 23869, in test_el_check_9_se_cablea_en_el_camino_real_del_validador
     assert [l for l in fallos_de_la_forma
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             if "NO declara una `mutacion` utilizable" in l], (
@@ -23,6 +23,6 @@ AssertionError: el centinela de la FORMA de la `mutacion` (el TERCERO, el que de
 
   [REGISTRO] check 11 (veredicto de mutacion): REGISTRO entradas cubiertas=7, mutantes re-derivados=16, origen del contrato: ciclo 70
 
-Resumen: 173 OK, 17 FAIL, 0 SKIP
+Resumen: 175 OK, 17 FAIL, 0 SKIP
 
 EL GATE NO LEE LA MUTACION
